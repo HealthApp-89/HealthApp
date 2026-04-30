@@ -16,7 +16,12 @@ export type DailyLog = {
   weight_kg: number | null;
   body_fat_pct: number | null;
   steps: number | null;
-  calories_burned: number | null;
+  calories: number | null;
+  calories_eaten: number | null;
+  protein_g: number | null;
+  carbs_g: number | null;
+  fat_g: number | null;
+  respiratory_rate: number | null;
   notes: string | null;
   source: string | null;
   updated_at: string;

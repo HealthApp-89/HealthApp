@@ -23,7 +23,7 @@ export type DailyLogKey =
   | "rem_sleep_hours"
   | "strain"
   | "steps"
-  | "calories_burned"
+  | "calories"
   | "weight_kg"
   | "body_fat_pct";
 
@@ -46,7 +46,7 @@ export const FIELDS: FieldMeta[] = [
   { k: "rem_sleep_hours", l: "REM Sleep", u: "hrs", m: 4, c: "#7c6af7" },
   { k: "strain", l: "Strain", u: "/21", m: 21, c: "#ff9f43" },
   { k: "steps", l: "Steps", u: "", m: 15000, c: "#00f5c4" },
-  { k: "calories_burned", l: "Calories", u: "kcal", m: 4000, c: "#ffd93d" },
+  { k: "calories", l: "Calories", u: "kcal", m: 4000, c: "#ffd93d" },
   { k: "weight_kg", l: "Weight", u: "kg", m: 150, c: "#4fc3f7" },
   { k: "body_fat_pct", l: "Body Fat", u: "%", m: 40, c: "#ff9f43" },
 ];

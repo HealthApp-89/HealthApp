@@ -1,0 +1,1857 @@
+{
+  "_apex": true,
+  "_v": 5,
+  "_date": "2026-04-30T08:36:00.000Z",
+  "profile": {
+    "name": "Abdelouahed",
+    "age": "36",
+    "height": "184",
+    "goal": "Deep understanding of my health patterns over time",
+    "whoop_baselines": {
+      "hrv_6mo_avg": 33,
+      "hrv_prior_6mo_avg": 41,
+      "hrv_peak_monthly": 45,
+      "hrv_peak_period": "Oct 2025",
+      "rhr_6mo_avg": 58,
+      "rhr_prior_6mo_avg": 56,
+      "rhr_best_monthly": 52,
+      "rhr_best_period": "Oct 2025",
+      "recovery_6mo_avg": 61,
+      "recovery_prior_6mo_avg": 64,
+      "green_days_6mo": 71,
+      "yellow_days_6mo": 87,
+      "red_days_6mo": 18,
+      "resp_rate_6mo_avg": 17.8,
+      "recorded_at": "2026-04-24",
+      "sleep_performance_6mo_avg": 77,
+      "sleep_performance_prior_6mo_avg": 75,
+      "sleep_breakdown_6mo": {
+        "optimal_above_85": 17,
+        "sufficient_70_85": 136,
+        "poor_below_70": 23
+      },
+      "sleep_breakdown_prior": {
+        "optimal_above_85": 10,
+        "sufficient_70_85": 113,
+        "poor_below_70": 31
+      },
+      "sleep_monthly_recent": {
+        "Nov 2025": 78,
+        "Dec 2025": 73,
+        "Jan 2026": 74,
+        "Feb 2026": 84,
+        "Mar 2026": 74,
+        "Apr 2026": 77
+      },
+      "sleep_monthly_prior": {
+        "May 2025": 84,
+        "Jun 2025": 77,
+        "Jul 2025": 74,
+        "Aug 2025": 77,
+        "Sep 2025": 67,
+        "Oct 2025": 76
+      }
+    },
+    "training_plan": {
+      "structure": "4 weightlifting + 1 mobility per week, full rest weekends",
+      "weekly_template": {
+        "Monday": "Weightlifting (Session 1)",
+        "Tuesday": "Weightlifting (Session 2)",
+        "Wednesday": "Mobility & Stretching",
+        "Thursday": "Weightlifting (Session 3)",
+        "Friday": "Weightlifting (Session 4)",
+        "Saturday": "Rest — family time",
+        "Sunday": "Rest — family time"
+      },
+      "split_suggestion": {
+        "Session 1": "Chest + Shoulders",
+        "Session 2": "Legs",
+        "Session 3": "Back + Biceps",
+        "Session 4": "Arms + Accessory / Weak Points"
+      },
+      "notes": "Weekends are non-negotiable rest and family time. Mobility mid-week acts as active recovery between sessions 2 and 3."
+    }
+  },
+  "logs": [
+    {
+      "date": "2026-04-13",
+      "hrv": "",
+      "restingHR": "",
+      "sleepScore": "",
+      "sleepHours": "",
+      "deepSleep": "",
+      "remSleep": "",
+      "spO2": "",
+      "skinTemp": "",
+      "strain": "",
+      "steps": "",
+      "calories": "",
+      "weight": "107.3",
+      "bodyFat": "",
+      "notes": "Weight: 107.3kg (06:38). Upper Heavy session: Bench 70kgx6 (est 1RM ~84kg), Lat Pulldown 50kgx8, OHP 30kgx6, Bent Over Row 40kgx8x3, Bench Dips to failure. Volume: 4760kg.",
+      "_source": "Withings scale",
+      "_workout": {
+        "type": "Chest",
+        "date": "2026-04-13",
+        "duration": 60,
+        "exercises": [
+          {
+            "name": "Bench Press (Barbell)",
+            "sets": [
+              {
+                "kg": 20,
+                "reps": 15,
+                "warmup": true
+              },
+              {
+                "kg": 30,
+                "reps": 10,
+                "warmup": true
+              },
+              {
+                "kg": 50,
+                "reps": 8
+              },
+              {
+                "kg": 60,
+                "reps": 6
+              },
+              {
+                "kg": 60,
+                "reps": 6
+              },
+              {
+                "kg": 60,
+                "reps": 6
+              },
+              {
+                "kg": 70,
+                "reps": 6
+              }
+            ]
+          },
+          {
+            "name": "Lat Pulldown (Cable)",
+            "sets": [
+              {
+                "kg": 35,
+                "reps": 8
+              },
+              {
+                "kg": 45,
+                "reps": 8
+              },
+              {
+                "kg": 50,
+                "reps": 8
+              },
+              {
+                "kg": 50,
+                "reps": 8
+              }
+            ]
+          },
+          {
+            "name": "Overhead Press (Barbell)",
+            "sets": [
+              {
+                "kg": 30,
+                "reps": 6
+              },
+              {
+                "kg": 30,
+                "reps": 6
+              },
+              {
+                "kg": 30,
+                "reps": 6
+              }
+            ]
+          },
+          {
+            "name": "Bent Over Row (Barbell)",
+            "sets": [
+              {
+                "kg": 40,
+                "reps": 6
+              },
+              {
+                "kg": 40,
+                "reps": 8
+              },
+              {
+                "kg": 40,
+                "reps": 8
+              }
+            ]
+          },
+          {
+            "name": "Bench Dip",
+            "sets": [
+              {
+                "reps": 6,
+                "failure": true
+              },
+              {
+                "reps": 5,
+                "failure": true
+              },
+              {
+                "reps": 7,
+                "failure": true
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "date": "2026-04-14",
+      "hrv": "",
+      "restingHR": "",
+      "sleepScore": "",
+      "sleepHours": "",
+      "deepSleep": "",
+      "remSleep": "",
+      "spO2": "",
+      "skinTemp": "",
+      "strain": "",
+      "steps": "",
+      "calories": "",
+      "weight": "107.2",
+      "bodyFat": "",
+      "notes": "Weight: 107.2kg (08:13). Legs session: Squat 60kgx6x3 (est 1RM ~72kg), RDL 60kgx6x4, Leg Press 70kgx10x3, Leg Curl 30kgx12x2, Calf Raises BW. Volume: 5780kg.",
+      "_source": "Withings scale",
+      "_workout": {
+        "type": "Legs",
+        "date": "2026-04-14",
+        "duration": 60,
+        "exercises": [
+          {
+            "name": "Squat (Barbell)",
+            "sets": [
+              {
+                "kg": 20,
+                "reps": 10,
+                "warmup": true
+              },
+              {
+                "kg": 30,
+                "reps": 8,
+                "warmup": true
+              },
+              {
+                "kg": 40,
+                "reps": 5
+              },
+              {
+                "kg": 60,
+                "reps": 6
+              },
+              {
+                "kg": 60,
+                "reps": 6
+              },
+              {
+                "kg": 60,
+                "reps": 6
+              }
+            ]
+          },
+          {
+            "name": "Romanian Deadlift (Barbell)",
+            "sets": [
+              {
+                "kg": 60,
+                "reps": 6
+              },
+              {
+                "kg": 60,
+                "reps": 6
+              },
+              {
+                "kg": 60,
+                "reps": 6
+              },
+              {
+                "kg": 60,
+                "reps": 6
+              }
+            ]
+          },
+          {
+            "name": "Seated Leg Press (Machine)",
+            "sets": [
+              {
+                "kg": 70,
+                "reps": 10
+              },
+              {
+                "kg": 70,
+                "reps": 10
+              },
+              {
+                "kg": 70,
+                "reps": 10
+              }
+            ]
+          },
+          {
+            "name": "Seated Leg Curl (Machine)",
+            "sets": [
+              {
+                "kg": 20,
+                "reps": 12
+              },
+              {
+                "kg": 30,
+                "reps": 12
+              },
+              {
+                "kg": 30,
+                "reps": 12
+              }
+            ]
+          },
+          {
+            "name": "Standing Calf Raise (Bodyweight)",
+            "sets": [
+              {
+                "reps": 15
+              },
+              {
+                "reps": 14
+              },
+              {
+                "reps": 12
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "date": "2026-04-16",
+      "hrv": "",
+      "restingHR": "",
+      "sleepScore": "",
+      "sleepHours": "",
+      "deepSleep": "",
+      "remSleep": "",
+      "spO2": "",
+      "skinTemp": "",
+      "strain": "",
+      "steps": "",
+      "calories": "",
+      "weight": "",
+      "bodyFat": "",
+      "notes": "Upper session: Incline DB 32kgx10x4 (est 1RM ~43kg), Lat Pulldown 45kgx10x4, Lateral Raise 8kgx15x4, Seated Row 25kgx15x3, Triceps Pushdown 17.5kgx12x3, Bicep Curl 16kgx15x3 to failure. Volume: 6017.5kg.",
+      "_savedAt": "17:25",
+      "_source": "Strong app",
+      "_workout": {
+        "type": "Chest",
+        "date": "2026-04-16",
+        "duration": 60,
+        "exercises": [
+          {
+            "name": "Incline Bench Press (Dumbbell)",
+            "sets": [
+              {
+                "kg": 12,
+                "reps": 15,
+                "warmup": true
+              },
+              {
+                "kg": 20,
+                "reps": 12,
+                "warmup": true
+              },
+              {
+                "kg": 24,
+                "reps": 10,
+                "warmup": true
+              },
+              {
+                "kg": 32,
+                "reps": 10
+              },
+              {
+                "kg": 32,
+                "reps": 10
+              },
+              {
+                "kg": 32,
+                "reps": 10
+              },
+              {
+                "kg": 32,
+                "reps": 10
+              }
+            ]
+          },
+          {
+            "name": "Lat Pulldown (Cable)",
+            "sets": [
+              {
+                "kg": 45,
+                "reps": 10
+              },
+              {
+                "kg": 45,
+                "reps": 10
+              },
+              {
+                "kg": 45,
+                "reps": 10
+              },
+              {
+                "kg": 45,
+                "reps": 10
+              }
+            ]
+          },
+          {
+            "name": "Lateral Raise (Dumbbell)",
+            "sets": [
+              {
+                "kg": 8,
+                "reps": 15
+              },
+              {
+                "kg": 8,
+                "reps": 15
+              },
+              {
+                "kg": 8,
+                "reps": 15
+              },
+              {
+                "kg": 8,
+                "reps": 15
+              }
+            ]
+          },
+          {
+            "name": "Seated Row (Cable)",
+            "sets": [
+              {
+                "kg": 25,
+                "reps": 15
+              },
+              {
+                "kg": 25,
+                "reps": 15
+              },
+              {
+                "kg": 25,
+                "reps": 15
+              }
+            ]
+          },
+          {
+            "name": "Triceps Pushdown (Cable)",
+            "sets": [
+              {
+                "kg": 17.5,
+                "reps": 11
+              },
+              {
+                "kg": 17.5,
+                "reps": 12
+              },
+              {
+                "kg": 17.5,
+                "reps": 12
+              }
+            ]
+          },
+          {
+            "name": "Bicep Curl (Dumbbell)",
+            "sets": [
+              {
+                "kg": 16,
+                "reps": 15,
+                "failure": true
+              },
+              {
+                "kg": 16,
+                "reps": 15,
+                "failure": true
+              },
+              {
+                "kg": 16,
+                "reps": 15,
+                "failure": true
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "date": "2026-04-18",
+      "hrv": "27",
+      "restingHR": "61",
+      "sleepScore": "76",
+      "notes": "WHOOP 7-day history: HRV 27ms, RHR 61bpm, Sleep 76%.",
+      "_source": "WHOOP chart",
+      "sleepHours": "",
+      "deepSleep": "",
+      "remSleep": "",
+      "spO2": "",
+      "skinTemp": "",
+      "strain": "",
+      "steps": "",
+      "calories": "",
+      "weight": "",
+      "bodyFat": ""
+    },
+    {
+      "date": "2026-04-19",
+      "hrv": "31",
+      "restingHR": "58",
+      "notes": "WHOOP 7-day history: HRV 31ms (week high), RHR 58bpm.",
+      "_source": "WHOOP chart",
+      "sleepScore": "",
+      "sleepHours": "",
+      "deepSleep": "",
+      "remSleep": "",
+      "spO2": "",
+      "skinTemp": "",
+      "strain": "",
+      "steps": "",
+      "calories": "",
+      "weight": "",
+      "bodyFat": ""
+    },
+    {
+      "date": "2026-04-20",
+      "hrv": "28",
+      "restingHR": "57",
+      "sleepScore": "",
+      "sleepHours": "",
+      "deepSleep": "",
+      "remSleep": "",
+      "spO2": "",
+      "skinTemp": "",
+      "weight": "106.0",
+      "bodyFat": "",
+      "steps": "8659",
+      "calories": "1733",
+      "strain": "",
+      "notes": "Yazio: Eaten 1733 kcal, Burned 406, Carbs 131g/178g, Protein 138g/162g, Fat 83g/74g. Workout: Chest day.",
+      "_savedAt": "12:45",
+      "_source": "Yazio + Apple Health + Strong app",
+      "_workout": {
+        "type": "Chest",
+        "date": "2026-04-20",
+        "exercises": [
+          {
+            "name": "Push Up",
+            "sets": [
+              {
+                "reps": 10
+              },
+              {
+                "reps": 10
+              },
+              {
+                "reps": 10
+              }
+            ]
+          },
+          {
+            "name": "Decline Bench Press (Barbell)",
+            "sets": [
+              {
+                "kg": 40,
+                "reps": 15,
+                "warmup": true
+              },
+              {
+                "kg": 50,
+                "reps": 10
+              },
+              {
+                "kg": 60,
+                "reps": 7
+              },
+              {
+                "kg": 60,
+                "reps": 5
+              }
+            ]
+          },
+          {
+            "name": "Incline Bench Press (Dumbbell)",
+            "sets": [
+              {
+                "kg": 32,
+                "reps": 11
+              },
+              {
+                "kg": 32,
+                "reps": 10
+              },
+              {
+                "kg": 32,
+                "reps": 10
+              }
+            ]
+          },
+          {
+            "name": "Chest Fly",
+            "sets": [
+              {
+                "kg": 22,
+                "reps": 15
+              },
+              {
+                "kg": 22,
+                "reps": 15
+              },
+              {
+                "kg": 22,
+                "reps": 15
+              }
+            ]
+          },
+          {
+            "name": "Overhead Press (Barbell)",
+            "sets": [
+              {
+                "kg": 30,
+                "reps": 6
+              },
+              {
+                "kg": 30,
+                "reps": 6
+              },
+              {
+                "kg": 30,
+                "reps": 6
+              }
+            ]
+          },
+          {
+            "name": "Lateral Raise (Dumbbell)",
+            "sets": [
+              {
+                "kg": 8,
+                "reps": 15
+              },
+              {
+                "kg": 8,
+                "reps": 15
+              },
+              {
+                "kg": 8,
+                "reps": 15
+              },
+              {
+                "kg": 8,
+                "reps": 15
+              }
+            ]
+          },
+          {
+            "name": "Triceps Pushdown (Cable)",
+            "sets": [
+              {
+                "kg": 17.5,
+                "reps": 15
+              },
+              {
+                "kg": 22,
+                "reps": 15
+              },
+              {
+                "kg": 22,
+                "reps": 15
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "date": "2026-04-21",
+      "hrv": "28",
+      "restingHR": "58",
+      "sleepScore": "75",
+      "sleepHours": "6.75",
+      "deepSleep": "2.18",
+      "remSleep": "1.55",
+      "spO2": "",
+      "skinTemp": "",
+      "strain": "",
+      "steps": "9605",
+      "calories": "2050",
+      "weight": "",
+      "bodyFat": "",
+      "notes": "WHOOP: Recovery 76%, HRV 28ms, RHR 58bpm. Sleep 75% performance. Legs workout. Steps: 9605 (120% of 8000 goal). Yazio: Eaten 2050 kcal, Burned 308, Protein 159g/162g, Carbs 194g/178g, Fat 70g/74g. Meals: Breakfast 331kcal (Egg, granola, kefir), Lunch 840kcal (Chickpeas, quinoa, turkey), Dinner 789kcal (Zucchini, carrots, brown rice, beef), Snacks 89kcal (walnuts, dark chocolate).",
+      "_savedAt": "15:18",
+      "_source": "WHOOP + Strong app + Apple Health",
+      "_workout": {
+        "type": "Legs",
+        "date": "2026-04-21",
+        "exercises": [
+          {
+            "name": "Squat (Barbell)",
+            "sets": [
+              {
+                "kg": 20,
+                "reps": 10,
+                "warmup": true
+              },
+              {
+                "kg": 40,
+                "reps": 10
+              },
+              {
+                "kg": 60,
+                "reps": 7
+              },
+              {
+                "kg": 60,
+                "reps": 7
+              },
+              {
+                "kg": 60,
+                "reps": 6
+              }
+            ]
+          },
+          {
+            "name": "Leg Press Single Leg",
+            "sets": [
+              {
+                "kg": 40,
+                "reps": 21
+              },
+              {
+                "kg": 40,
+                "reps": 22
+              },
+              {
+                "kg": 60,
+                "reps": 22
+              }
+            ]
+          },
+          {
+            "name": "Leg Extension (Machine)",
+            "sets": [
+              {
+                "kg": 23,
+                "reps": 15,
+                "failure": true
+              },
+              {
+                "kg": 27,
+                "reps": 15,
+                "failure": true
+              },
+              {
+                "kg": 27,
+                "reps": 15,
+                "failure": true
+              }
+            ]
+          },
+          {
+            "name": "Seated Calf Raise (Machine)",
+            "sets": [
+              {
+                "kg": 40,
+                "reps": 15
+              },
+              {
+                "kg": 40,
+                "reps": 15
+              },
+              {
+                "kg": 40,
+                "reps": 14
+              }
+            ]
+          },
+          {
+            "name": "Seated Leg Curl (Machine)",
+            "sets": [
+              {
+                "kg": 23,
+                "reps": 15
+              },
+              {
+                "kg": 25,
+                "reps": 15
+              },
+              {
+                "kg": 25,
+                "reps": 15
+              }
+            ]
+          },
+          {
+            "name": "Hip Abductor (Machine)",
+            "sets": [
+              {
+                "kg": 56,
+                "reps": 10
+              },
+              {
+                "kg": 56,
+                "reps": 15
+              },
+              {
+                "kg": 56,
+                "reps": 15
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "date": "2026-04-22",
+      "hrv": "27",
+      "restingHR": "59",
+      "sleepScore": "84",
+      "sleepHours": "8.17",
+      "deepSleep": "2.12",
+      "remSleep": "2.07",
+      "spO2": "",
+      "skinTemp": "",
+      "strain": "3.5",
+      "steps": "9539",
+      "calories": "1935",
+      "weight": "105.3",
+      "bodyFat": "",
+      "notes": "WHOOP: Recovery 70%, HRV 27ms, RHR 59bpm. Sleep 84%, 8h10 actual, REM 2h04, Deep 2h07. Restorative 4h11. Weight: 105.3kg. Mobility session 48min. Yazio: Eaten 1935 kcal, Burned 388, Protein 192g/162g, Carbs 131g/178g, Fat 71g/74g. Meals: Breakfast 416kcal (Raspberries, strawberries, kefir), Lunch 718kcal (Chicken breast roasted), Dinner 648kcal (Dietary supplement, HydroPro), Snacks 152kcal (supplement, 85% dark chocolate). Steps: 9539.",
+      "_savedAt": "09:32",
+      "_source": "WHOOP + Yazio screenshots",
+      "_workout": {
+        "type": "Mobility",
+        "date": "2026-04-22",
+        "duration": 48,
+        "exercises": [
+          {
+            "name": "Diaphragmatic Breathing",
+            "sets": [
+              {
+                "reps": 5
+              },
+              {
+                "reps": 5
+              }
+            ]
+          },
+          {
+            "name": "Neck Controlled Rotations",
+            "sets": [
+              {
+                "reps": 5
+              },
+              {
+                "reps": 5
+              }
+            ]
+          },
+          {
+            "name": "Shoulder Rolls",
+            "sets": [
+              {
+                "reps": 20
+              },
+              {
+                "reps": 20
+              }
+            ]
+          },
+          {
+            "name": "Pelvic Tilts",
+            "sets": [
+              {
+                "reps": 10
+              },
+              {
+                "reps": 10
+              }
+            ]
+          },
+          {
+            "name": "Hip Hinge Drill",
+            "sets": [
+              {
+                "reps": 8
+              },
+              {
+                "reps": 8
+              }
+            ]
+          },
+          {
+            "name": "Wall Slides",
+            "sets": [
+              {
+                "reps": 9
+              },
+              {
+                "reps": 9
+              },
+              {
+                "reps": 9
+              }
+            ]
+          },
+          {
+            "name": "Thread the Needle",
+            "sets": [
+              {
+                "reps": 8
+              },
+              {
+                "reps": 8
+              }
+            ]
+          },
+          {
+            "name": "Open Books",
+            "sets": [
+              {
+                "reps": 8
+              },
+              {
+                "reps": 8
+              }
+            ]
+          },
+          {
+            "name": "Scapular Push-Ups",
+            "sets": [
+              {
+                "reps": 10
+              },
+              {
+                "reps": 10
+              },
+              {
+                "reps": 10
+              }
+            ]
+          },
+          {
+            "name": "Shoulder CARs",
+            "sets": [
+              {
+                "reps": 5
+              },
+              {
+                "reps": 5
+              }
+            ]
+          },
+          {
+            "name": "Cat-Cow",
+            "sets": [
+              {
+                "reps": 8
+              },
+              {
+                "reps": 8
+              }
+            ]
+          },
+          {
+            "name": "Glute Bridge",
+            "sets": [
+              {
+                "reps": 10
+              },
+              {
+                "reps": 10
+              },
+              {
+                "reps": 10
+              }
+            ]
+          },
+          {
+            "name": "90/90 Hip Mobility",
+            "sets": [
+              {
+                "reps": 6
+              },
+              {
+                "reps": 6
+              },
+              {
+                "reps": 6
+              }
+            ]
+          },
+          {
+            "name": "Half-Kneeling Hip Flexor Stretch",
+            "sets": [
+              {
+                "duration": 30
+              },
+              {
+                "duration": 30
+              }
+            ]
+          },
+          {
+            "name": "Ankle Mobility",
+            "sets": [
+              {
+                "reps": 10
+              },
+              {
+                "reps": 10
+              }
+            ]
+          },
+          {
+            "name": "Supported Deep Squat Hold",
+            "sets": [
+              {
+                "duration": 25
+              },
+              {
+                "duration": 25
+              }
+            ]
+          },
+          {
+            "name": "Upper Trap Stretch",
+            "sets": [
+              {
+                "duration": 25
+              },
+              {
+                "duration": 25
+              }
+            ]
+          },
+          {
+            "name": "Chest Opener Stretch",
+            "sets": [
+              {
+                "duration": 30
+              },
+              {
+                "duration": 30
+              }
+            ]
+          },
+          {
+            "name": "Child's Pose",
+            "sets": [
+              {
+                "duration": 52
+              },
+              {
+                "duration": 52
+              }
+            ]
+          },
+          {
+            "name": "Supine Knee Drops",
+            "sets": [
+              {
+                "reps": 8
+              },
+              {
+                "reps": 8
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "date": "2026-04-23",
+      "hrv": "26",
+      "restingHR": "61",
+      "sleepScore": "82",
+      "sleepHours": "8.6",
+      "deepSleep": "2.03",
+      "remSleep": "2.12",
+      "spO2": "",
+      "skinTemp": "",
+      "strain": "13.6",
+      "steps": "9198",
+      "calories": "1800",
+      "weight": "",
+      "bodyFat": "",
+      "notes": "WHOOP: Recovery 59% (yellow), HRV 26ms, RHR 61bpm, Strain 13.6 (above optimal range). Sleep 82%, 8h36 actual, Deep 2h02, REM 2h07. Restorative 4h09. Back session 45min: Deadlift 80kgx6x2 (est 1RM ~96kg), Shrug 40kgx15x3, Seated Row 36kgx15x3, Lat Pulldown 36kgx15/15/11, Pullover 16kgx15/15/9, Back Ext 8x3. Yazio: Eaten 1800 kcal, Burned 485, Protein 159g/162g, Carbs 151g/178g, Fat 60g/74g. Meals: Breakfast 481kcal (toasted whole wheat bread), Lunch 747kcal (mixed quinoa bulgur salad), Dinner 573kcal (85% dark chocolate). Steps: 9198.",
+      "_savedAt": "08:27",
+      "_source": "WHOOP screenshots",
+      "_workout": {
+        "type": "Back",
+        "date": "2026-04-23",
+        "duration": 45,
+        "exercises": [
+          {
+            "name": "Deadlift (Barbell)",
+            "sets": [
+              {
+                "kg": 40,
+                "reps": 15,
+                "warmup": true
+              },
+              {
+                "kg": 60,
+                "reps": 10
+              },
+              {
+                "kg": 80,
+                "reps": 6
+              },
+              {
+                "kg": 80,
+                "reps": 6
+              }
+            ]
+          },
+          {
+            "name": "Shrug (Barbell)",
+            "sets": [
+              {
+                "kg": 40,
+                "reps": 15
+              },
+              {
+                "kg": 40,
+                "reps": 15
+              },
+              {
+                "kg": 40,
+                "reps": 15
+              }
+            ]
+          },
+          {
+            "name": "Seated Row (Machine)",
+            "sets": [
+              {
+                "kg": 36,
+                "reps": 15
+              },
+              {
+                "kg": 36,
+                "reps": 15
+              },
+              {
+                "kg": 36,
+                "reps": 15
+              }
+            ]
+          },
+          {
+            "name": "Lat Pulldown (Cable)",
+            "sets": [
+              {
+                "kg": 36,
+                "reps": 15
+              },
+              {
+                "kg": 36,
+                "reps": 15
+              },
+              {
+                "kg": 36,
+                "reps": 11
+              }
+            ]
+          },
+          {
+            "name": "Pullover (Dumbbell)",
+            "sets": [
+              {
+                "kg": 16,
+                "reps": 15
+              },
+              {
+                "kg": 16,
+                "reps": 15
+              },
+              {
+                "kg": 16,
+                "reps": 9
+              }
+            ]
+          },
+          {
+            "name": "Back Extension",
+            "sets": [
+              {
+                "reps": 8
+              },
+              {
+                "reps": 8
+              },
+              {
+                "reps": 8
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "date": "2026-04-24",
+      "hrv": "25",
+      "restingHR": "62",
+      "sleepScore": "85",
+      "sleepHours": "7.73",
+      "deepSleep": "1.95",
+      "remSleep": "1.82",
+      "spO2": "",
+      "skinTemp": "",
+      "strain": "",
+      "steps": "10418",
+      "calories": "1863",
+      "weight": "",
+      "bodyFat": "",
+      "notes": "WHOOP: Recovery 53%, HRV 25ms, RHR 62bpm. Sleep 85%, 7h44 actual. Legs & Arms session: DB Squat 16kgx15x3, Bicep Curl 16kgx15x3, Leg Ext 29.5kgx15x3 (PR), Hammer Curl 16kgx15x3, Leg Press 80kgx15x3, Lateral Raise 8kgx15x3, Calf Raise 40kgx15x3, Triceps Pushdown 20/23/23kgx15. Volume: 10237.5kg. Yazio: Eaten 1863 kcal, Burned 720, Protein 168g/162g (over target), Carbs 128g/178g (under), Fat 66g/74g. Meals: Breakfast 436kcal (chicken sausage), Lunch 824kcal (supplement, HydroPro), Dinner 458kcal (leafy salad, white rice, chicken), Snacks 145kcal (kefir protein, granola). Steps: 10418 (best day this week, 130% of 8000 goal).",
+      "_savedAt": "10:04",
+      "_source": "WHOOP screenshots",
+      "_workout": {
+        "type": "Legs",
+        "date": "2026-04-24",
+        "duration": 60,
+        "exercises": [
+          {
+            "name": "Squat (Dumbbell)",
+            "sets": [
+              {
+                "kg": 16,
+                "reps": 15,
+                "failure": true
+              },
+              {
+                "kg": 16,
+                "reps": 15,
+                "failure": true
+              },
+              {
+                "kg": 16,
+                "reps": 15,
+                "failure": true
+              }
+            ]
+          },
+          {
+            "name": "Bicep Curl (Dumbbell)",
+            "sets": [
+              {
+                "kg": 16,
+                "reps": 15,
+                "failure": true
+              },
+              {
+                "kg": 16,
+                "reps": 15,
+                "failure": true
+              },
+              {
+                "kg": 16,
+                "reps": 15,
+                "failure": true
+              }
+            ]
+          },
+          {
+            "name": "Leg Extension (Machine)",
+            "sets": [
+              {
+                "kg": 29.5,
+                "reps": 15,
+                "failure": true
+              },
+              {
+                "kg": 29.5,
+                "reps": 15,
+                "failure": true
+              },
+              {
+                "kg": 29.5,
+                "reps": 15,
+                "failure": true
+              }
+            ]
+          },
+          {
+            "name": "Hammer Curl (Dumbbell)",
+            "sets": [
+              {
+                "kg": 16,
+                "reps": 15,
+                "failure": true
+              },
+              {
+                "kg": 16,
+                "reps": 15,
+                "failure": true
+              },
+              {
+                "kg": 16,
+                "reps": 15,
+                "failure": true
+              }
+            ]
+          },
+          {
+            "name": "Leg Press",
+            "sets": [
+              {
+                "kg": 80,
+                "reps": 15
+              },
+              {
+                "kg": 80,
+                "reps": 15
+              },
+              {
+                "kg": 80,
+                "reps": 15
+              }
+            ]
+          },
+          {
+            "name": "Lateral Raise (Dumbbell)",
+            "sets": [
+              {
+                "kg": 8,
+                "reps": 15
+              },
+              {
+                "kg": 8,
+                "reps": 15
+              },
+              {
+                "kg": 8,
+                "reps": 15
+              }
+            ]
+          },
+          {
+            "name": "Seated Calf Raise (Plate Loaded)",
+            "sets": [
+              {
+                "kg": 40,
+                "reps": 15,
+                "failure": true
+              },
+              {
+                "kg": 40,
+                "reps": 15,
+                "failure": true
+              },
+              {
+                "kg": 40,
+                "reps": 15,
+                "failure": true
+              }
+            ]
+          },
+          {
+            "name": "Triceps Pushdown (Cable)",
+            "sets": [
+              {
+                "kg": 20,
+                "reps": 15
+              },
+              {
+                "kg": 23,
+                "reps": 15
+              },
+              {
+                "kg": 23,
+                "reps": 15
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "date": "2026-04-25",
+      "hrv": "27",
+      "restingHR": "62",
+      "sleepScore": "88",
+      "sleepHours": "7.87",
+      "deepSleep": "1.5",
+      "remSleep": "1.87",
+      "spO2": "",
+      "skinTemp": "",
+      "strain": "0.5",
+      "steps": "9604",
+      "calories": "1929",
+      "weight": "",
+      "bodyFat": "",
+      "notes": "WHOOP: Recovery 69% (green), HRV 27ms (first rebound from 25ms), RHR 62bpm, Resp Rate 17.3. Sleep 88% performance, 95% hrs vs needed, 90% consistency. Sleep: 9h06 in bed, 7h52 actual, Deep 1h30, REM 1h52. Saturday rest day — family time. Yazio: Eaten 1929 kcal, Burned 305, Protein 196g/162g (over target), Carbs 159g/178g, Fat 61g/74g. Meals: Breakfast 515kcal (wholewheat toast, fried egg), Lunch 635kcal (supplement, HydroPro), Dinner 626kcal (cooked bell pepper, onion, tomato), Snacks 153kcal (blueberries, strawberries, kefir). Steps: 9604.",
+      "_savedAt": "08:56",
+      "_source": "WHOOP screenshots"
+    },
+    {
+      "date": "2026-04-26",
+      "hrv": "35",
+      "restingHR": "57",
+      "sleepScore": "89",
+      "sleepHours": "8.15",
+      "deepSleep": "2.42",
+      "remSleep": "2.15",
+      "spO2": "",
+      "skinTemp": "",
+      "strain": "0.1",
+      "steps": "12256",
+      "calories": "2019",
+      "weight": "105.0",
+      "bodyFat": "",
+      "notes": "WHOOP: Recovery 98% (green - peak), HRV 35ms, RHR 57bpm. Sleep 89% optimal, Deep 2h25, REM 2h09. Restorative 4h34. Sunday rest day - family time. Yazio: Eaten 2019 kcal, Burned 235, Protein 153g/162g, Carbs 158g/178g, Fat 89g/74g. Meals: Breakfast 685kcal (egg, cottage cheese), Lunch 186kcal (pineapple, cantaloupe, blueberries), Dinner 606kcal (pasta, beetroot, ground turkey), Snacks 542kcal (medjool dates, 85% dark chocolate). Steps: 12256 (best day of entire recording period). Weight: 105.0kg (down 0.3kg).",
+      "_savedAt": "08:19",
+      "_source": "WHOOP screenshots"
+    },
+    {
+      "date": "2026-04-27",
+      "hrv": "33",
+      "restingHR": "60",
+      "sleepScore": "88",
+      "sleepHours": "7.62",
+      "deepSleep": "2.08",
+      "remSleep": "2.05",
+      "spO2": "",
+      "skinTemp": "",
+      "strain": "13.5",
+      "steps": "8335",
+      "calories": "2065",
+      "weight": "105.0",
+      "bodyFat": "",
+      "notes": "WHOOP: Recovery 96%, HRV 33ms, RHR 60bpm. Week 2 Day 1 — Chest. Decline Bench 60kgx8/6, Incline DB 32kgx12/11/11, Triceps 23kgx15x3. Yazio: Eaten 2065 kcal, Burned 281, Protein 182g/162g ✅, Carbs 163g/178g, Fat 69g/74g. Meals: Breakfast 592kcal (shakshuka, wholewheat toast), Lunch 774kcal (supplement, HydroPro), Dinner 318kcal (brown rice, turkey breast, R...), Snacks 382kcal (medjool dates, 85% dark chocolate). Steps: 8335.",
+      "_savedAt": "09:01",
+      "_source": "WHOOP screenshots",
+      "_workout": {
+        "type": "Chest",
+        "date": "2026-04-27",
+        "duration": 65,
+        "exercises": [
+          {
+            "name": "Push Up",
+            "sets": [
+              {
+                "reps": 12
+              },
+              {
+                "reps": 12
+              },
+              {
+                "reps": 12
+              }
+            ]
+          },
+          {
+            "name": "Decline Bench Press (Barbell)",
+            "sets": [
+              {
+                "kg": 40,
+                "reps": 15,
+                "warmup": true
+              },
+              {
+                "kg": 50,
+                "reps": 10
+              },
+              {
+                "kg": 60,
+                "reps": 8
+              },
+              {
+                "kg": 60,
+                "reps": 6
+              }
+            ]
+          },
+          {
+            "name": "Incline Bench Press (Dumbbell)",
+            "sets": [
+              {
+                "kg": 32,
+                "reps": 12
+              },
+              {
+                "kg": 32,
+                "reps": 11
+              },
+              {
+                "kg": 32,
+                "reps": 11
+              }
+            ]
+          },
+          {
+            "name": "Chest Fly",
+            "sets": [
+              {
+                "kg": 22,
+                "reps": 16
+              },
+              {
+                "kg": 22,
+                "reps": 15
+              },
+              {
+                "kg": 22,
+                "reps": 17
+              }
+            ]
+          },
+          {
+            "name": "Overhead Press (Barbell)",
+            "sets": [
+              {
+                "kg": 30,
+                "reps": 7
+              },
+              {
+                "kg": 30,
+                "reps": 8
+              },
+              {
+                "kg": 30,
+                "reps": 5,
+                "failure": true
+              }
+            ]
+          },
+          {
+            "name": "Lateral Raise (Dumbbell)",
+            "sets": [
+              {
+                "kg": 8,
+                "reps": 16
+              },
+              {
+                "kg": 8,
+                "reps": 16
+              },
+              {
+                "kg": 8,
+                "reps": 16
+              },
+              {
+                "kg": 8,
+                "reps": 16
+              }
+            ]
+          },
+          {
+            "name": "Triceps Pushdown (Cable)",
+            "sets": [
+              {
+                "kg": 23,
+                "reps": 15
+              },
+              {
+                "kg": 23,
+                "reps": 15
+              },
+              {
+                "kg": 23,
+                "reps": 15
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "date": "2026-04-28",
+      "hrv": "29",
+      "restingHR": "57",
+      "sleepScore": "80",
+      "sleepHours": "6.6",
+      "deepSleep": "2.08",
+      "remSleep": "1.4",
+      "spO2": "",
+      "skinTemp": "",
+      "strain": "4.1",
+      "steps": "10794",
+      "calories": "2057",
+      "weight": "",
+      "bodyFat": "",
+      "notes": "WHOOP: Recovery 75% (green), HRV 29ms, RHR 57bpm. Week 2 Day 2 — Legs. Squat 65kgx8 (est 1RM ~82kg, PR +8kg). Leg Press SL 100kgx11 (PR). Hip Abductor 61kgx15 (PR). Volume: 10915kg. Yazio: 2057 kcal, Burned 389, Protein 156g/162g, Carbs 130g/178g (48g short), Fat 101g/74g. Meals: Breakfast 606kcal (3 egg omelette, wholewheat toast), Lunch 425kcal (HydroProtein, supplement), Dinner 533kcal (aubergine, ground turkey, brown rice), Snacks 494kcal (85% dark chocolate, medjool dates). Steps: 10794.",
+      "_savedAt": "13:00",
+      "_source": "WHOOP screenshots",
+      "_workout": {
+        "type": "Legs",
+        "date": "2026-04-28",
+        "duration": 65,
+        "exercises": [
+          {
+            "name": "Squat (Barbell)",
+            "sets": [
+              {
+                "kg": 20,
+                "reps": 15,
+                "warmup": true
+              },
+              {
+                "kg": 30,
+                "reps": 8,
+                "warmup": true
+              },
+              {
+                "kg": 40,
+                "reps": 5
+              },
+              {
+                "kg": 60,
+                "reps": 10
+              },
+              {
+                "kg": 60,
+                "reps": 10
+              },
+              {
+                "kg": 65,
+                "reps": 8
+              }
+            ]
+          },
+          {
+            "name": "Leg Press Single Leg",
+            "sets": [
+              {
+                "kg": 80,
+                "reps": 12
+              },
+              {
+                "kg": 100,
+                "reps": 11
+              },
+              {
+                "kg": 100,
+                "reps": 11
+              }
+            ]
+          },
+          {
+            "name": "Leg Extension (Machine)",
+            "sets": [
+              {
+                "kg": 27,
+                "reps": 15,
+                "failure": true
+              },
+              {
+                "kg": 29.5,
+                "reps": 15,
+                "failure": true
+              },
+              {
+                "kg": 29.5,
+                "reps": 15,
+                "failure": true
+              }
+            ]
+          },
+          {
+            "name": "Seated Calf Raise (Plate Loaded)",
+            "sets": [
+              {
+                "kg": 40,
+                "reps": 15,
+                "failure": true
+              },
+              {
+                "kg": 40,
+                "reps": 15,
+                "failure": true
+              },
+              {
+                "kg": 40,
+                "reps": 15,
+                "failure": true
+              }
+            ]
+          },
+          {
+            "name": "Hip Abductor (Machine)",
+            "sets": [
+              {
+                "kg": 61,
+                "reps": 15
+              },
+              {
+                "kg": 61,
+                "reps": 15
+              },
+              {
+                "kg": 61,
+                "reps": 15
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "date": "2026-04-29",
+      "hrv": "24",
+      "restingHR": "62",
+      "sleepScore": "81",
+      "sleepHours": "6.53",
+      "deepSleep": "2.23",
+      "remSleep": "1.48",
+      "spO2": "",
+      "skinTemp": "",
+      "strain": "",
+      "steps": "10217",
+      "calories": "1583",
+      "weight": "",
+      "bodyFat": "",
+      "notes": "WHOOP: Recovery 48% (yellow), HRV 24ms, RHR 62bpm. Sleep 81%, 6h32 actual. Mobility SKIPPED — went to bed early (20:41) to prioritise recovery. Yazio: 1583 kcal, Burned 548, Protein 130g/162g, Carbs 77g/178g (101g SHORT ❌), Fat 81g/74g. Meals: Breakfast 446kcal (cottage cheese, 2-egg omelette), Lunch 1138kcal (beef tenderloin steak, shrimp). Dinner: 0 — went to bed early. Snacks: 0. Steps: 10217.",
+      "_savedAt": "09:47",
+      "_source": "WHOOP screenshots"
+    },
+    {
+      "date": "2026-04-30",
+      "hrv": "26",
+      "restingHR": "62",
+      "sleepScore": "86",
+      "sleepHours": "8.83",
+      "deepSleep": "2.77",
+      "remSleep": "2.07",
+      "spO2": "",
+      "skinTemp": "",
+      "strain": "4.1",
+      "steps": "",
+      "calories": "",
+      "weight": "",
+      "bodyFat": "",
+      "notes": "WHOOP: Recovery 62% (yellow), HRV 26ms (rebounding from 24ms), RHR 62bpm. Sleep 86% optimal, 8h50 actual — best sleep of programme, Deep 2h46 (record), Restorative 4h50 (record). Week 2 Day 4 — Back. Deadlift: 80kgx6x3 (+1 set vs W1, est 1RM ~96kg). Shrug: 50kgx15x2 (up from 40kg W1). Seated Row: 41kgx10-14 (up from 36kg W1). Lat Pulldown: 36kgx15/15 (better than W1 which dropped to 11). Pullover: 16kgx15/15/14 (set 3 improved from 9 reps W1). Back Extension: 10x3 (up from 8x3 W1). Volume: 7186kg.",
+      "_savedAt": "12:50",
+      "_source": "WHOOP screenshots",
+      "_workout": {
+        "type": "Back",
+        "date": "2026-04-30",
+        "duration": 65,
+        "exercises": [
+          {
+            "name": "Deadlift (Barbell)",
+            "sets": [
+              {
+                "kg": 60,
+                "reps": 10,
+                "warmup": true
+              },
+              {
+                "kg": 70,
+                "reps": 8,
+                "warmup": true
+              },
+              {
+                "kg": 80,
+                "reps": 6
+              },
+              {
+                "kg": 80,
+                "reps": 6
+              },
+              {
+                "kg": 80,
+                "reps": 6
+              }
+            ]
+          },
+          {
+            "name": "Shrug (Barbell)",
+            "sets": [
+              {
+                "kg": 40,
+                "reps": 15
+              },
+              {
+                "kg": 50,
+                "reps": 15
+              },
+              {
+                "kg": 50,
+                "reps": 15
+              }
+            ]
+          },
+          {
+            "name": "Seated Row (Machine)",
+            "sets": [
+              {
+                "kg": 41,
+                "reps": 14
+              },
+              {
+                "kg": 41,
+                "reps": 10
+              },
+              {
+                "kg": 41,
+                "reps": 10
+              }
+            ]
+          },
+          {
+            "name": "Lat Pulldown (Cable)",
+            "sets": [
+              {
+                "kg": 36,
+                "reps": 13
+              },
+              {
+                "kg": 36,
+                "reps": 15
+              },
+              {
+                "kg": 36,
+                "reps": 15
+              }
+            ]
+          },
+          {
+            "name": "Pullover (Dumbbell)",
+            "sets": [
+              {
+                "kg": 16,
+                "reps": 15
+              },
+              {
+                "kg": 16,
+                "reps": 15
+              },
+              {
+                "kg": 16,
+                "reps": 14
+              }
+            ]
+          },
+          {
+            "name": "Back Extension",
+            "sets": [
+              {
+                "reps": 10
+              },
+              {
+                "reps": 10
+              },
+              {
+                "reps": 10
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

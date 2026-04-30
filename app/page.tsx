@@ -6,8 +6,10 @@ import { Card, SectionLabel } from "@/components/ui/Card";
 import { Gauge } from "@/components/ui/Gauge";
 import { MetricBar } from "@/components/ui/MetricBar";
 import { SparkLine } from "@/components/ui/SparkLine";
+import { MorningCheckIn } from "@/components/dashboard/MorningCheckIn";
 import { FIELDS, scoreColor, scoreLabel } from "@/lib/ui/colors";
 import { calcScore, avg, buildWeekWindow } from "@/lib/ui/score";
+import { buildDailyPlan } from "@/lib/coach/readiness";
 import type { DailyLog } from "@/lib/data/types";
 
 export const dynamic = "force-dynamic";
@@ -21,18 +23,27 @@ export default async function Home() {
 
   const today = new Date().toISOString().slice(0, 10);
 
-  const [{ data: profile }, { data: tokens }, { data: logsRaw }] = await Promise.all([
-    supabase.from("profiles").select("name").eq("user_id", user.id).maybeSingle(),
+  const [{ data: profile }, { data: tokens }, { data: logsRaw }, { data: checkin }] = await Promise.all([
+    supabase.from("profiles").select("name, whoop_baselines").eq("user_id", user.id).maybeSingle(),
     supabase.from("whoop_tokens").select("updated_at").eq("user_id", user.id).maybeSingle(),
     supabase
       .from("daily_logs")
       .select(
-        "user_id, date, hrv, resting_hr, recovery, spo2, skin_temp_c, strain, sleep_hours, sleep_score, deep_sleep_hours, rem_sleep_hours, weight_kg, body_fat_pct, steps, calories_burned, notes, source, updated_at",
+        "user_id, date, hrv, resting_hr, recovery, spo2, skin_temp_c, strain, sleep_hours, sleep_score, deep_sleep_hours, rem_sleep_hours, weight_kg, body_fat_pct, steps, calories, notes, source, updated_at",
       )
       .eq("user_id", user.id)
       .order("date", { ascending: false })
       .limit(30),
+    supabase
+      .from("checkins")
+      .select("readiness, energy_label, mood, soreness, feel_notes")
+      .eq("user_id", user.id)
+      .eq("date", new Date().toISOString().slice(0, 10))
+      .maybeSingle(),
   ]);
+  const baselines = (profile?.whoop_baselines as Record<string, unknown> | null) ?? null;
+  const hrvBaseline =
+    typeof baselines?.hrv_6mo_avg === "number" ? (baselines.hrv_6mo_avg as number) : 33;
 
   const logs: DailyLog[] = (logsRaw ?? []) as DailyLog[];
   const todayLog = logs.find((l) => l.date === today) ?? null;
@@ -42,7 +53,7 @@ export default async function Home() {
 
   const week = buildWeekWindow(logs, today);
   const wSteps = week.rows.map((r) => r?.steps ?? null);
-  const wCals = week.rows.map((r) => r?.calories_burned ?? null);
+  const wCals = week.rows.map((r) => r?.calories ?? null);
   const wWgt = week.rows.map((r) => r?.weight_kg ?? null);
   const latestWeightRow = logs.find((l) => l.weight_kg !== null);
   const validWts = wWgt.filter((v): v is number => typeof v === "number");
@@ -51,6 +62,17 @@ export default async function Home() {
   const hasSteps = wSteps.some((v) => v !== null);
   const hasCals = wCals.some((v) => v !== null);
   const hasWeight = validWts.length > 0;
+
+  const feelInput = checkin
+    ? {
+        readiness: checkin.readiness,
+        energyLabel: checkin.energy_label,
+        mood: checkin.mood,
+        soreness: checkin.soreness,
+        notes: checkin.feel_notes,
+      }
+    : null;
+  const dailyPlan = buildDailyPlan(todayLog, feelInput, hrvBaseline);
 
   return (
     <main>
@@ -62,6 +84,22 @@ export default async function Home() {
       />
 
       <div className="px-4 pt-3.5 max-w-3xl mx-auto flex flex-col gap-3.5">
+        <MorningCheckIn
+          date={today}
+          plan={dailyPlan}
+          initial={
+            checkin
+              ? {
+                  readiness: checkin.readiness,
+                  energy_label: checkin.energy_label,
+                  mood: checkin.mood,
+                  soreness: checkin.soreness,
+                  feel_notes: checkin.feel_notes,
+                }
+              : null
+          }
+        />
+
         {/* TODAY'S STATUS */}
         <div
           className="rounded-2xl p-4 px-4"
