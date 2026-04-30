@@ -4,6 +4,7 @@ import { Header } from "@/components/layout/Header";
 import { Card, SectionLabel } from "@/components/ui/Card";
 import { ProfileForm } from "@/components/profile/ProfileForm";
 import { BaselinesPanel } from "@/components/profile/BaselinesPanel";
+import { BackfillButton } from "@/components/profile/BackfillButton";
 import type { DailyLog } from "@/lib/data/types";
 
 export const dynamic = "force-dynamic";
@@ -57,6 +58,15 @@ export default async function ProfilePage() {
         </Card>
 
         <BaselinesPanel logs={logs} />
+
+        <Card>
+          <SectionLabel>🔄 WHOOP HISTORY</SectionLabel>
+          <p className="text-xs text-white/40 leading-relaxed mb-3">
+            Pulls every recovery / cycle / sleep record back to 2 years ago and upserts into your
+            daily logs. Manual fields (notes, weight, steps, calories) are preserved.
+          </p>
+          <BackfillButton />
+        </Card>
 
         <form action="/api/auth/signout" method="post" className="flex justify-end pt-2">
           <button className="text-[10px] text-white/30 hover:text-white" type="submit">

@@ -168,3 +168,28 @@ export async function whoopGet<T>(accessToken: string, path: string): Promise<T>
   if (!res.ok) throw new Error(`WHOOP GET ${path} failed: ${res.status} ${await res.text()}`);
   return res.json() as Promise<T>;
 }
+
+/** Page through WHOOP collection endpoints (recovery / cycle / activity/sleep / activity/workout)
+ *  until next_token is exhausted. Hard-caps at maxPages to prevent runaway loops. */
+export async function whoopGetAll<T>(
+  accessToken: string,
+  basePath: string,
+  params: { start?: string; end?: string; limit?: number } = {},
+  maxPages = 200,
+): Promise<T[]> {
+  const out: T[] = [];
+  let nextToken: string | undefined;
+  for (let i = 0; i < maxPages; i++) {
+    const qs = new URLSearchParams();
+    if (params.start) qs.set("start", params.start);
+    if (params.end) qs.set("end", params.end);
+    qs.set("limit", String(params.limit ?? 25));
+    if (nextToken) qs.set("nextToken", nextToken);
+    const path = `${basePath}?${qs.toString()}`;
+    const page = await whoopGet<{ records: T[]; next_token?: string }>(accessToken, path);
+    out.push(...(page.records ?? []));
+    nextToken = page.next_token;
+    if (!nextToken) break;
+  }
+  return out;
+}
