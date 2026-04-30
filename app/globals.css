@@ -6,12 +6,17 @@
   --color-accent: #00f5c4;
   --color-warn: #ffd93d;
   --color-bad: #ff6b6b;
+  --color-good: #6bcb77;
+  --color-purple: #a29bfe;
+  --color-blue: #4fc3f7;
+  --color-orange: #ff9f43;
+  --color-pink: #ff6b9d;
   --font-sans: "DM Sans", system-ui, sans-serif;
   --font-mono: "DM Mono", ui-monospace, monospace;
 }
 
 html, body {
-  background: linear-gradient(160deg, var(--color-bg), var(--color-bg-2));
+  background: linear-gradient(160deg, #080e1a 0%, #0d1628 50%, #091420 100%);
   color: white;
   font-family: var(--font-sans);
   min-height: 100vh;
@@ -19,4 +24,8 @@ html, body {
 
 * { box-sizing: border-box; }
 input::placeholder, textarea::placeholder { color: rgba(255, 255, 255, 0.2); }
-::-webkit-scrollbar { width: 0; }
+input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
+
+::-webkit-scrollbar { width: 0; height: 0; }
+.scrollbar-none { scrollbar-width: none; -ms-overflow-style: none; }
+.scrollbar-none::-webkit-scrollbar { display: none; }

@@ -35,3 +35,7 @@ yarn-error.log*
 # IDE
 .idea
 .vscode
+
+# prototype (kept locally for reference, never committed)
+_prototype.jsx
+.claude/
