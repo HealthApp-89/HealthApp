@@ -1,29 +1,35 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
+type Mode = "signin" | "signup";
+
 export default function LoginPage() {
+  const router = useRouter();
+  const [mode, setMode] = useState<Mode>("signin");
   const [email, setEmail] = useState("");
-  const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
-  const [error, setError] = useState<string>("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setStatus("sending");
+    setBusy(true);
     setError("");
     const supabase = createSupabaseBrowserClient();
-    const origin = typeof window !== "undefined" ? window.location.origin : "";
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: { emailRedirectTo: `${origin}/auth/callback` },
-    });
+    const { error } =
+      mode === "signin"
+        ? await supabase.auth.signInWithPassword({ email, password })
+        : await supabase.auth.signUp({ email, password });
+    setBusy(false);
     if (error) {
-      setStatus("error");
       setError(error.message);
-    } else {
-      setStatus("sent");
+      return;
     }
+    router.push("/");
+    router.refresh();
   }
 
   return (
@@ -32,33 +38,52 @@ export default function LoginPage() {
         <div className="text-xs uppercase tracking-[0.2em] text-white/30 text-center mb-3">
           APEX HEALTH OS
         </div>
-        <h1 className="text-xl font-semibold text-center mb-6">Sign in</h1>
+        <h1 className="text-xl font-semibold text-center mb-6">
+          {mode === "signin" ? "Sign in" : "Create account"}
+        </h1>
 
-        {status === "sent" ? (
-          <p className="text-sm text-emerald-300 leading-relaxed">
-            Check your inbox at <span className="font-mono">{email}</span> for a sign-in link.
-          </p>
-        ) : (
-          <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-            <label className="text-[10px] uppercase tracking-[0.08em] text-white/40">Email</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              placeholder="you@example.com"
-              className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm font-mono outline-none focus:border-emerald-300/50"
-            />
-            <button
-              type="submit"
-              disabled={status === "sending"}
-              className="mt-2 rounded-xl bg-emerald-300/20 border border-emerald-300/40 text-emerald-300 px-4 py-3 text-sm font-bold disabled:opacity-50"
-            >
-              {status === "sending" ? "Sending…" : "Send magic link"}
-            </button>
-            {error && <p className="text-sm text-red-400">{error}</p>}
-          </form>
-        )}
+        <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+          <label className="text-[10px] uppercase tracking-[0.08em] text-white/40">Email</label>
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+            placeholder="you@example.com"
+            className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm font-mono outline-none focus:border-emerald-300/50"
+          />
+          <label className="text-[10px] uppercase tracking-[0.08em] text-white/40 mt-2">
+            Password
+          </label>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            minLength={6}
+            placeholder="••••••••"
+            className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm font-mono outline-none focus:border-emerald-300/50"
+          />
+          <button
+            type="submit"
+            disabled={busy}
+            className="mt-2 rounded-xl bg-emerald-300/20 border border-emerald-300/40 text-emerald-300 px-4 py-3 text-sm font-bold disabled:opacity-50"
+          >
+            {busy ? "…" : mode === "signin" ? "Sign in" : "Create account"}
+          </button>
+          {error && <p className="text-sm text-red-400">{error}</p>}
+        </form>
+
+        <button
+          type="button"
+          onClick={() => {
+            setMode(mode === "signin" ? "signup" : "signin");
+            setError("");
+          }}
+          className="mt-4 w-full text-xs text-white/50 hover:text-white"
+        >
+          {mode === "signin" ? "No account? Create one" : "Have an account? Sign in"}
+        </button>
       </div>
     </main>
   );
