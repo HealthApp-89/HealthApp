@@ -7,9 +7,17 @@ import { BarChart } from "@/components/charts/BarChart";
 import { RecoveryBars } from "@/components/charts/RecoveryBars";
 import { MetricCard } from "@/components/charts/MetricCard";
 import { TrendsNav } from "@/components/trends/TrendsNav";
+import { PeriodSelector } from "@/components/trends/PeriodSelector";
 import { loadWorkouts, buildPRs } from "@/lib/data/workouts";
 import { avg } from "@/lib/ui/score";
 import type { DailyLog } from "@/lib/data/types";
+import {
+  resolvePeriod,
+  pickGranularity,
+  aggregateSeries,
+  periodLengthDays,
+  type PeriodPreset,
+} from "@/lib/ui/period";
 
 export const dynamic = "force-dynamic";
 
@@ -17,12 +25,22 @@ const HRV_BASELINE = 33;
 const RHR_BASELINE = 58;
 
 export default async function TrendsPage(props: {
-  searchParams: Promise<{ section?: string }>;
+  searchParams: Promise<{
+    section?: string;
+    period?: string;
+    start?: string;
+    end?: string;
+  }>;
 }) {
-  const { section: rawSection } = await props.searchParams;
-  const section = ["body", "sleep", "training", "strength", "compare"].includes(rawSection ?? "")
-    ? (rawSection as string)
+  const sp = await props.searchParams;
+  const section = ["body", "sleep", "training", "strength", "compare"].includes(sp.section ?? "")
+    ? (sp.section as string)
     : "body";
+
+  // Default period = today; "all" if user wants the full backfilled history.
+  const { from, to, preset } = resolvePeriod(sp.period as PeriodPreset, sp.start, sp.end);
+  const days = periodLengthDays(from, to);
+  const granularity = pickGranularity(days);
 
   const supabase = await createSupabaseServerClient();
   const {
@@ -39,34 +57,49 @@ export default async function TrendsPage(props: {
         "user_id, date, hrv, resting_hr, recovery, spo2, skin_temp_c, strain, sleep_hours, sleep_score, deep_sleep_hours, rem_sleep_hours, weight_kg, body_fat_pct, steps, calories, calories_eaten, protein_g, carbs_g, fat_g, respiratory_rate, notes, source, updated_at",
       )
       .eq("user_id", user.id)
+      .gte("date", from)
+      .lte("date", to)
       .order("date", { ascending: true }),
     loadWorkouts(user.id),
   ]);
 
   const sorted = (logsRaw ?? []) as DailyLog[];
 
-  const allHRV = sorted.map((l) => l.hrv);
-  const allRHR = sorted.map((l) => l.resting_hr);
-  const allSleep = sorted.map((l) => l.sleep_hours);
-  const allSleepSc = sorted.map((l) => l.sleep_score);
-  const allDeep = sorted.map((l) => l.deep_sleep_hours);
-  const allREM = sorted.map((l) => l.rem_sleep_hours);
-  const allSteps = sorted.map((l) => l.steps);
-  const allCals = sorted.map((l) => l.calories);
-  const allRecovery = sorted.map((l) => l.recovery);
+  // Aggregate each metric to the picked granularity (day/week/month).
+  const aggHRV = aggregateSeries(sorted, (l) => l.hrv, granularity);
+  const aggRHR = aggregateSeries(sorted, (l) => l.resting_hr, granularity);
+  const aggRecov = aggregateSeries(sorted, (l) => l.recovery, granularity);
+  const aggSleepH = aggregateSeries(sorted, (l) => l.sleep_hours, granularity);
+  const aggSleepSc = aggregateSeries(sorted, (l) => l.sleep_score, granularity);
+  const aggDeep = aggregateSeries(sorted, (l) => l.deep_sleep_hours, granularity);
+  const aggREM = aggregateSeries(sorted, (l) => l.rem_sleep_hours, granularity);
+  const aggSteps = aggregateSeries(sorted, (l) => l.steps, granularity);
+  const aggCals = aggregateSeries(sorted, (l) => l.calories, granularity);
+  const aggStrain = aggregateSeries(sorted, (l) => l.strain, granularity);
+  const aggWeight = aggregateSeries(sorted, (l) => l.weight_kg, granularity);
 
-  const weightPoints = sorted.filter((l) => l.weight_kg !== null) as (DailyLog & { weight_kg: number })[];
-  const lastWeight = weightPoints[weightPoints.length - 1]?.weight_kg ?? null;
-  const firstWeight = weightPoints[0]?.weight_kg ?? null;
-  const lastHRV = lastVal(allHRV);
-  const lastRHR = lastVal(allRHR);
-  const lastSleep = lastVal(allSleep);
+  const lastVal = (s: { value: number | null }[]) => {
+    for (let i = s.length - 1; i >= 0; i--) if (s[i].value !== null) return s[i].value;
+    return null;
+  };
+  const lastHRV = lastVal(aggHRV);
+  const lastRHR = lastVal(aggRHR);
+  const lastSleepH = lastVal(aggSleepH);
+  const lastWeight = lastVal(aggWeight);
+  const firstWeight = aggWeight.find((p) => p.value !== null)?.value ?? null;
 
-  // Two-week split for compare: last 7 days = w2, prior 7 = w1
-  const w2 = sorted.slice(-7);
-  const w1 = sorted.slice(-14, -7);
+  // Filter workouts to the same window for the strength panel.
+  const filteredWorkouts = workouts.filter((w) => w.date >= from && w.date <= to);
 
-  const prs = buildPRs(workouts);
+  // Compare: split the window in half (W1 = first half, W2 = second half).
+  const mid = Math.floor(sorted.length / 2);
+  const w1 = sorted.slice(0, mid);
+  const w2 = sorted.slice(mid);
+
+  const prs = buildPRs(filteredWorkouts);
+  const granularityLabel = granularity === "day" ? "daily" : granularity === "week" ? "weekly avg" : "monthly avg";
+
+  const preserve = { section, period: preset, start: from, end: to };
 
   return (
     <main>
@@ -78,13 +111,21 @@ export default async function TrendsPage(props: {
       />
 
       <div className="px-4 pt-3.5 max-w-3xl mx-auto">
-        <TrendsNav active={section} />
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <TrendsNav active={section} preserve={{ period: preset, start: from, end: to }} />
+          <PeriodSelector preset={preset} from={from} to={to} preserve={{ section }} />
+        </div>
+
+        <div className="text-[10px] uppercase tracking-[0.1em] text-white/30 mb-3 font-mono">
+          {from} → {to} · {days} day{days === 1 ? "" : "s"} · {granularityLabel}
+          {sorted.length === 0 && <span className="text-white/40 ml-2">· no data in range</span>}
+        </div>
 
         {section === "body" && (
           <div>
             <MetricCard
               title="Body Weight"
-              current={lastWeight}
+              current={lastWeight !== null ? lastWeight.toFixed(1) : null}
               unit="kg"
               delta={
                 firstWeight !== null && lastWeight !== null
@@ -95,9 +136,9 @@ export default async function TrendsPage(props: {
               positiveIsGood={false}
               color="#fbbf24"
             >
-              {weightPoints.length >= 2 && (
+              {aggWeight.filter((p) => p.value !== null).length >= 2 && (
                 <BarChart
-                  data={sorted.map((l) => l.weight_kg)}
+                  data={aggWeight.map((p) => p.value)}
                   color="#fbbf24"
                   height={60}
                 />
@@ -106,34 +147,48 @@ export default async function TrendsPage(props: {
 
             <MetricCard
               title="Heart Rate Variability"
-              current={lastHRV}
+              current={lastHRV !== null ? Math.round(lastHRV) : null}
               unit="ms"
               delta={lastHRV !== null ? Math.round((lastHRV - HRV_BASELINE) * 10) / 10 : null}
               deltaLabel={`vs ${HRV_BASELINE}ms avg`}
               color="#00f5c4"
               note="Baseline 33ms (6mo). Peak 45ms (Oct 2025). Goal: rebuild toward 40ms+."
             >
-              <LineChart data={allHRV} color="#00f5c4" height={64} refLine={HRV_BASELINE} refLabel={`${HRV_BASELINE}ms avg`} />
+              <LineChart
+                data={aggHRV.map((p) => p.value)}
+                color="#00f5c4"
+                height={64}
+                refLine={HRV_BASELINE}
+                refLabel={`${HRV_BASELINE}ms avg`}
+              />
             </MetricCard>
 
             <MetricCard
               title="Resting Heart Rate"
-              current={lastRHR}
+              current={lastRHR !== null ? Math.round(lastRHR) : null}
               unit="bpm"
               delta={lastRHR !== null ? Math.round((lastRHR - RHR_BASELINE) * 10) / 10 : null}
               deltaLabel={`vs ${RHR_BASELINE}bpm avg`}
               positiveIsGood={false}
               color="#f87171"
             >
-              <LineChart data={allRHR} color="#f87171" height={64} refLine={RHR_BASELINE} refLabel={`${RHR_BASELINE}bpm avg`} />
+              <LineChart
+                data={aggRHR.map((p) => p.value)}
+                color="#f87171"
+                height={64}
+                refLine={RHR_BASELINE}
+                refLabel={`${RHR_BASELINE}bpm avg`}
+              />
             </MetricCard>
 
             <Card>
-              <SectionLabel>Recovery % — All Days</SectionLabel>
-              <RecoveryBars data={allRecovery} />
+              <SectionLabel>Recovery % — {granularityLabel}</SectionLabel>
+              <RecoveryBars data={aggRecov.map((p) => (p.value !== null ? Math.round(p.value) : null))} />
               <div className="flex gap-3 mt-2.5">
                 {(["🟢 Green ≥67%", "🟡 Yellow 34-66%", "🔴 Red <34%"]).map((l) => (
-                  <span key={l} className="text-[10px] text-white/40">{l}</span>
+                  <span key={l} className="text-[10px] text-white/40">
+                    {l}
+                  </span>
                 ))}
               </div>
             </Card>
@@ -144,16 +199,27 @@ export default async function TrendsPage(props: {
           <div>
             <MetricCard
               title="Sleep Hours"
-              current={lastSleep?.toFixed(1) ?? null}
+              current={lastSleepH !== null ? lastSleepH.toFixed(1) : null}
               unit="hrs"
               color="#a29bfe"
               note="Target 7.5–9 hrs. Dashed line = 7.5h."
             >
-              <BarChart data={allSleep} color="#a29bfe" height={60} goalLine={7.5} />
+              <BarChart data={aggSleepH.map((p) => p.value)} color="#a29bfe" height={60} goalLine={7.5} />
             </MetricCard>
 
-            <MetricCard title="Sleep Score" current={lastVal(allSleepSc)} unit="/100" color="#a29bfe">
-              <LineChart data={allSleepSc} color="#a29bfe" height={56} refLine={85} refLabel="85 optimal" />
+            <MetricCard
+              title="Sleep Score"
+              current={lastVal(aggSleepSc) !== null ? Math.round(lastVal(aggSleepSc)!) : null}
+              unit="/100"
+              color="#a29bfe"
+            >
+              <LineChart
+                data={aggSleepSc.map((p) => p.value)}
+                color="#a29bfe"
+                height={56}
+                refLine={85}
+                refLabel="85 optimal"
+              />
             </MetricCard>
 
             <Card>
@@ -161,11 +227,11 @@ export default async function TrendsPage(props: {
               <div className="flex flex-col gap-2 mt-1">
                 <div>
                   <div className="text-[10px] text-white/40 mb-1">Deep</div>
-                  <BarChart data={allDeep} color="#4fc3f7" height={36} />
+                  <BarChart data={aggDeep.map((p) => p.value)} color="#4fc3f7" height={36} />
                 </div>
                 <div>
                   <div className="text-[10px] text-white/40 mb-1">REM</div>
-                  <BarChart data={allREM} color="#7c6af7" height={36} />
+                  <BarChart data={aggREM.map((p) => p.value)} color="#7c6af7" height={36} />
                 </div>
               </div>
             </Card>
@@ -176,29 +242,39 @@ export default async function TrendsPage(props: {
           <div>
             <MetricCard
               title="Steps"
-              current={lastVal(allSteps)?.toLocaleString() ?? null}
-              unit="/day"
+              current={lastVal(aggSteps) !== null ? Math.round(lastVal(aggSteps)!).toLocaleString() : null}
+              unit={granularity === "day" ? "/day" : `/${granularity}`}
               color="#00f5c4"
             >
-              <BarChart data={allSteps} color="#00f5c4" height={60} goalLine={8000} />
+              <BarChart
+                data={aggSteps.map((p) => p.value)}
+                color="#00f5c4"
+                height={60}
+                goalLine={granularity === "day" ? 8000 : undefined}
+              />
             </MetricCard>
 
             <MetricCard
               title="Calories Eaten"
-              current={lastVal(allCals)?.toLocaleString() ?? null}
+              current={lastVal(aggCals) !== null ? Math.round(lastVal(aggCals)!).toLocaleString() : null}
               unit="kcal"
               color="#ffd93d"
             >
-              <BarChart data={allCals} color="#ffd93d" height={60} />
+              <BarChart data={aggCals.map((p) => p.value)} color="#ffd93d" height={60} />
             </MetricCard>
 
             <MetricCard
               title="Strain"
-              current={lastVal(sorted.map((l) => l.strain)) ?? null}
+              current={lastVal(aggStrain) !== null ? lastVal(aggStrain)!.toFixed(1) : null}
               unit="/21"
               color="#ff9f43"
             >
-              <BarChart data={sorted.map((l) => l.strain)} color="#ff9f43" height={60} goalLine={14} />
+              <BarChart
+                data={aggStrain.map((p) => p.value)}
+                color="#ff9f43"
+                height={60}
+                goalLine={granularity === "day" ? 14 : undefined}
+              />
             </MetricCard>
           </div>
         )}
@@ -206,12 +282,17 @@ export default async function TrendsPage(props: {
         {section === "strength" && (
           <div>
             <Card>
-              <SectionLabel>🏆 PRs by est. 1RM</SectionLabel>
+              <SectionLabel>🏆 PRs in window · est. 1RM</SectionLabel>
               {prs.length === 0 && (
-                <p className="text-xs text-white/30 py-3 text-center">No workouts logged yet.</p>
+                <p className="text-xs text-white/30 py-3 text-center">
+                  No workouts in this period.
+                </p>
               )}
               {prs.slice(0, 12).map((pr) => (
-                <div key={pr.name} className="flex justify-between items-center py-2 border-t border-white/[0.04] first:border-t-0">
+                <div
+                  key={pr.name}
+                  className="flex justify-between items-center py-2 border-t border-white/[0.04] first:border-t-0"
+                >
                   <div>
                     <div className="text-xs text-white/75">{pr.name.split("(")[0].trim()}</div>
                     <div className="text-[10px] text-white/30 mt-px">
@@ -233,7 +314,7 @@ export default async function TrendsPage(props: {
         {section === "compare" && (
           <div>
             <Card>
-              <SectionLabel>WEEK 1 vs WEEK 2 · 7-DAY AVG</SectionLabel>
+              <SectionLabel>FIRST HALF vs SECOND HALF · 7-day window split</SectionLabel>
               <CompareRow
                 label="HRV"
                 w1={avg(w1.map((l) => l.hrv))}
@@ -278,18 +359,14 @@ export default async function TrendsPage(props: {
                 positiveIsGood
               />
             </Card>
+            <p className="text-[10px] text-white/30 mt-2">
+              Splits the selected period in half and averages each metric.
+            </p>
           </div>
         )}
       </div>
     </main>
   );
-}
-
-function lastVal(arr: (number | null)[]): number | null {
-  for (let i = arr.length - 1; i >= 0; i--) {
-    if (arr[i] !== null && arr[i] !== undefined) return arr[i] as number;
-  }
-  return null;
 }
 
 function CompareRow({

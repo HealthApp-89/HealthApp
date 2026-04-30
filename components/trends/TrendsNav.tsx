@@ -5,18 +5,29 @@ const SECTIONS = [
   { id: "sleep", label: "Sleep" },
   { id: "training", label: "Training" },
   { id: "strength", label: "Strength" },
-  { id: "compare", label: "W1 vs W2" },
+  { id: "compare", label: "Compare" },
 ];
 
-export function TrendsNav({ active }: { active: string }) {
+type Props = {
+  active: string;
+  /** Other querystring keys to preserve when switching section. */
+  preserve?: Record<string, string | undefined>;
+};
+
+export function TrendsNav({ active, preserve = {} }: Props) {
   return (
-    <div className="flex gap-1 mb-4 overflow-x-auto pb-0.5 scrollbar-none">
+    <div className="flex gap-1 overflow-x-auto pb-0.5 scrollbar-none">
       {SECTIONS.map((s) => {
         const isActive = active === s.id;
+        const params = new URLSearchParams();
+        for (const [k, v] of Object.entries(preserve)) {
+          if (v) params.set(k, v);
+        }
+        params.set("section", s.id);
         return (
           <Link
             key={s.id}
-            href={`/trends?section=${s.id}`}
+            href={`/trends?${params.toString()}`}
             scroll={false}
             className="flex-none px-3.5 py-1.5 rounded-full text-xs whitespace-nowrap transition-colors"
             style={{
