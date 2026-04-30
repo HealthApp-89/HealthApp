@@ -18,9 +18,9 @@ async function syncForUser(userId: string) {
   const qs = `?start=${encodeURIComponent(since)}&limit=25`;
 
   const [recovery, cycles, sleep] = await Promise.all([
-    whoopGet<{ records: WhoopRecovery[] }>(accessToken, `/v1/recovery${qs}`),
-    whoopGet<{ records: WhoopCycle[] }>(accessToken, `/v1/cycle${qs}`),
-    whoopGet<{ records: WhoopSleep[] }>(accessToken, `/v1/activity/sleep${qs}`),
+    whoopGet<{ records: WhoopRecovery[] }>(accessToken, `/v2/recovery${qs}`),
+    whoopGet<{ records: WhoopCycle[] }>(accessToken, `/v2/cycle${qs}`),
+    whoopGet<{ records: WhoopSleep[] }>(accessToken, `/v2/activity/sleep${qs}`),
   ]);
 
   type DayRow = {

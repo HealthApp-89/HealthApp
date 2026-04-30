@@ -26,7 +26,7 @@ export async function GET(request: Request) {
     const tokens = await exchangeCodeForTokens(code);
     let whoopUserId: string | undefined;
     try {
-      const profile = await whoopGet<{ user_id: number }>(tokens.access_token, "/v1/user/profile/basic");
+      const profile = await whoopGet<{ user_id: number }>(tokens.access_token, "/v2/user/profile/basic");
       whoopUserId = String(profile.user_id);
     } catch { /* profile fetch is non-critical */ }
     await saveTokens(user.id, tokens, whoopUserId);
