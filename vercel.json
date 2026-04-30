@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/whoop/sync",
+      "schedule": "0 8 * * *"
+    }
+  ]
+}
