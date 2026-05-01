@@ -93,6 +93,16 @@ export async function POST(request: Request) {
     "notes",
   ]);
 
+  // Apple Health quantities arrive as floats (e.g. Dietary Energy = 3543.4298 kcal),
+  // but these columns are int in Postgres — round before upsert.
+  const INT_DAY_FIELDS = new Set([
+    "steps",
+    "active_calories",
+    "calories",
+    "calories_eaten",
+    "exercise_min",
+  ]);
+
   if (Array.isArray(body.days) && body.days.length > 0) {
     const rows: Record<string, unknown>[] = [];
     for (const d of body.days) {
@@ -108,7 +118,11 @@ export async function POST(request: Request) {
         if (k === "date") continue;
         if (!ALLOWED_DAY_FIELDS.has(k)) continue;
         if (v === null || v === undefined) continue;
-        row[k] = v;
+        if (INT_DAY_FIELDS.has(k) && typeof v === "number") {
+          row[k] = Math.round(v);
+        } else {
+          row[k] = v;
+        }
       }
       rows.push(row);
     }
@@ -140,7 +154,11 @@ export async function POST(request: Request) {
       for (const [k, v] of Object.entries(w)) {
         if (!ALLOWED_WORKOUT_FIELDS.has(k)) continue;
         if (v === null || v === undefined) continue;
-        row[k] = v;
+        if (k === "duration_min" && typeof v === "number") {
+          row[k] = Math.round(v);
+        } else {
+          row[k] = v;
+        }
       }
       rows.push(row);
     }
