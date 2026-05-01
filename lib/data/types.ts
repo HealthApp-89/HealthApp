@@ -15,8 +15,16 @@ export type DailyLog = {
   rem_sleep_hours: number | null;
   weight_kg: number | null;
   body_fat_pct: number | null;
+  fat_mass_kg: number | null;
+  fat_free_mass_kg: number | null;
+  muscle_mass_kg: number | null;
+  bone_mass_kg: number | null;
+  hydration_kg: number | null;
   steps: number | null;
   calories: number | null;
+  active_calories: number | null;
+  distance_km: number | null;
+  exercise_min: number | null;
   calories_eaten: number | null;
   protein_g: number | null;
   carbs_g: number | null;
@@ -41,4 +49,18 @@ export type WhoopTokensRow = {
   user_id: string;
   whoop_user_id: string | null;
   updated_at: string;
+};
+
+export type WithingsTokensRow = {
+  user_id: string;
+  withings_user_id: string | null;
+  updated_at: string;
+};
+
+export type IngestTokenRow = {
+  user_id: string;
+  token_prefix: string;
+  created_at: string;
+  last_used_at: string | null;
+  last_used_source: "apple_health" | "strong" | "yazio" | null;
 };
