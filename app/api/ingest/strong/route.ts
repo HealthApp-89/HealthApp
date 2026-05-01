@@ -174,6 +174,18 @@ export async function POST(request: Request) {
   let workoutCount = 0;
   let setCount = 0;
 
+  // Dates touched by this import — used to evict HealthKit summary stubs that
+  // the nightly Shortcut may have created (`strong-hk-<date>`). The CSV's full
+  // set detail wins.
+  const touchedDates = [...new Set([...byWorkout.values()].map((w) => w.date))];
+  for (const d of touchedDates) {
+    await sr
+      .from("workouts")
+      .delete()
+      .eq("user_id", userId)
+      .like("external_id", `strong-hk-${d}%`);
+  }
+
   for (const [, w] of byWorkout) {
     const externalId = `strong-${w.date}-${slug(w.name)}`;
 

@@ -77,14 +77,50 @@ All connection management lives at **/profile**.
          ]
        }
        ```
-3. Schedule via **Personal Automation → Time of Day** (e.g. 11:55 PM) so it runs every night.
+3. **Add the Strong-via-HealthKit block to the same Shortcut** (so workouts auto-flow even without a CSV):
+   - Action **Find Workouts where**: Start Date is yesterday, End Date is today
+   - Action **Repeat with Each** over the workouts list, and inside the loop:
+     - **Get Details of Workouts** → Workout Activity Type → set variable `wType`
+     - **Get Details of Workouts** → Duration → divide by 60 → set variable `wDurMin`
+     - **Format Date** start date as `yyyy-MM-dd` → set variable `wDate`
+     - Build a **Dictionary**: `{ external_id: "strong-hk-<wDate>-<repeat-index>", date: <wDate>, type: <wType>, duration_min: <wDurMin> }`
+     - **Add to Variable** `workoutsList`
+   - At the end, build a final **Dictionary** `{ days: [...], workouts: workoutsList }` and POST that as the JSON body to `/api/ingest/health?source=strong`. (You can also keep the days POST separate and do a second URL action with `?source=strong` for the workouts — easier in Shortcuts UI.)
+4. Schedule via **Personal Automation → Time of Day** (e.g. 11:55 PM) so it runs every night.
 
-### Strong
+### Strong (combo: nightly HealthKit + on-demand CSV folder watcher)
 
-Two options:
+Strong has no public API and no auto-export, so we use two complementary
+flows. The result: workout summaries appear automatically every night;
+set/rep detail flows in whenever you tap Export in Strong.
 
-- **CSV upload** (one-shot, full history): Strong → Settings → Export Data → Export to CSV → upload at `/profile`. Re-importing overwrites prior workouts via `external_id` (`strong-<date>-<slug>`), so it's idempotent.
-- **Live via HealthKit**: Strong writes workouts to Apple Health. Add a Strong block to your iOS Shortcut that posts new workouts to `/api/ingest/health?source=strong` with a `workouts: [{ external_id, date, type, duration_min, notes }]` array. Set tracking only — sets/reps still need CSV import.
+**Path B — nightly HealthKit summary (already in the nightly Shortcut):**
+
+Strong writes every workout to Apple Health. The nightly Shortcut pulls
+yesterday's HealthKit workouts and posts them to
+`/api/ingest/health?source=strong` with `external_id = strong-hk-<date>`.
+You get type, duration, calories. Set/rep detail is null.
+
+**Path A — on-demand CSV upload via folder-watcher Shortcut:**
+
+A second Shortcut auto-fires when a CSV lands in a watched iCloud folder.
+You don't need to open Apex or use a laptop.
+
+1. In **Files** app, create folder **iCloud Drive → Apex Inbox**.
+2. Build a new Shortcut named **"Apex Strong Import"**:
+   - **Get File** action → File Path: `Apex Inbox/(input file)`. Tick **Show Document Picker** off; we'll wire the input below.
+   - Action **Get Contents of URL**:
+     - URL: `${NEXT_PUBLIC_APP_URL}/api/ingest/strong`
+     - Method: `POST`
+     - Headers: `Authorization: Bearer <your-ingest-token>`
+     - Request Body: **Form**
+     - Form field: key `file`, value = the file (Magic Variable from the trigger)
+   - Action **Show Result** → pass the response (so you see `{ok:true, workouts:N, sets:M}`).
+3. Add a **Personal Automation**: **+** → **File** → **Folder: Apex Inbox** → **File Added** → run the Shortcut you built. Toggle **Run Immediately** off so iOS confirms (or on for fully silent).
+4. After every Strong session: tap **Share** on the workout (or Settings → Export to CSV) → **Save to Files** → **iCloud Drive → Apex Inbox**. The Shortcut auto-uploads. The CSV importer evicts the matching `strong-hk-<date>` summary stub and replaces it with full set/rep detail.
+
+The CSV importer is idempotent on `(user_id, external_id)`, so dropping
+the same file twice is a no-op.
 
 ### Yazio
 
