@@ -110,7 +110,11 @@ export function LogForm({ date, initialLog, initialCheckin }: Props) {
   const sourceLabel = initialLog?.source ?? null;
 
   return (
-    <form action={onSubmit} className="flex flex-col gap-4">
+    // key={date} forces React to remount the form on every date navigation.
+    // Inputs use uncontrolled `defaultValue`, which only reads on mount — without
+    // the key, switching dates would leave every field showing the previous day's
+    // values even though the page has already fetched fresh data.
+    <form key={date} action={onSubmit} className="flex flex-col gap-4">
       <input type="hidden" name="date" value={date} />
 
       {/* Date picker — navigate to any day, defaults to today, blocked from the future */}
