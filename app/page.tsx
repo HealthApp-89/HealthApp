@@ -32,25 +32,43 @@ export default async function Home() {
 
   // Fast queries only — these gate first paint. The 14-day window for the
   // weekly rollups loads inside <Suspense> below so it doesn't block the hero.
-  const [{ data: profile }, { data: tokens }, { data: todayRow }, { data: checkin }] =
-    await Promise.all([
-      supabase.from("profiles").select("name, whoop_baselines").eq("user_id", user.id).maybeSingle(),
-      supabase.from("whoop_tokens").select("updated_at").eq("user_id", user.id).maybeSingle(),
-      supabase
-        .from("daily_logs")
-        .select(
-          "user_id, date, hrv, resting_hr, recovery, spo2, skin_temp_c, strain, sleep_hours, sleep_score, deep_sleep_hours, rem_sleep_hours, weight_kg, body_fat_pct, steps, calories, notes, source, updated_at",
-        )
-        .eq("user_id", user.id)
-        .eq("date", today)
-        .maybeSingle(),
-      supabase
-        .from("checkins")
-        .select("readiness, energy_label, mood, soreness, feel_notes")
-        .eq("user_id", user.id)
-        .eq("date", today)
-        .maybeSingle(),
-    ]);
+  const [
+    { data: profile },
+    { data: tokens },
+    { data: todayRow },
+    { data: checkin },
+    { data: latestWeightRow },
+  ] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("name, age, height_cm, whoop_baselines")
+      .eq("user_id", user.id)
+      .maybeSingle(),
+    supabase.from("whoop_tokens").select("updated_at").eq("user_id", user.id).maybeSingle(),
+    supabase
+      .from("daily_logs")
+      .select(
+        "user_id, date, hrv, resting_hr, recovery, spo2, skin_temp_c, strain, sleep_hours, sleep_score, deep_sleep_hours, rem_sleep_hours, weight_kg, body_fat_pct, steps, calories, calories_eaten, protein_g, carbs_g, fat_g, notes, source, updated_at",
+      )
+      .eq("user_id", user.id)
+      .eq("date", today)
+      .maybeSingle(),
+    supabase
+      .from("checkins")
+      .select("readiness, energy_label, mood, soreness, feel_notes")
+      .eq("user_id", user.id)
+      .eq("date", today)
+      .maybeSingle(),
+    supabase
+      .from("daily_logs")
+      .select("weight_kg, date")
+      .eq("user_id", user.id)
+      .lte("date", today)
+      .not("weight_kg", "is", null)
+      .order("date", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
 
   const baselines = (profile?.whoop_baselines as Record<string, unknown> | null) ?? null;
   const hrvBaseline =
@@ -59,7 +77,27 @@ export default async function Home() {
   const todayLog = (todayRow ?? null) as DailyLog | null;
   const score = calcScore(todayLog);
   const hasToday = !!todayLog;
-  const impact = hasToday ? computeImpact(todayLog, hrvBaseline) : null;
+
+  // Resolve the freshest weight available — today's log first, otherwise the
+  // most recent prior log with a weight reading. Used as the protein-target
+  // denominator and as the BMR weight input.
+  const effectiveWeightKg =
+    todayLog?.weight_kg ??
+    (typeof latestWeightRow?.weight_kg === "number" ? latestWeightRow.weight_kg : null);
+
+  // Mifflin-St Jeor (male) × 1.55 activity factor. Returns null if any input is
+  // missing — the calorie segment falls back to "target unknown" in that case.
+  // TODO: read sex from profile once a column exists; hardcoded male for now.
+  const calorieTarget =
+    effectiveWeightKg !== null &&
+    typeof profile?.age === "number" &&
+    typeof profile?.height_cm === "number"
+      ? (10 * effectiveWeightKg + 6.25 * profile.height_cm - 5 * profile.age + 5) * 1.55
+      : null;
+
+  const impact = hasToday
+    ? computeImpact(todayLog, hrvBaseline, effectiveWeightKg, calorieTarget)
+    : null;
 
   const feelInput = checkin
     ? {
