@@ -6,16 +6,23 @@ import { SessionRow } from "@/components/strength/SessionRow";
 import { ExerciseTrendCard } from "@/components/strength/ExerciseTrendCard";
 import { PRList } from "@/components/strength/PRList";
 import { VolumeTrendCard } from "@/components/strength/VolumeTrendCard";
+import { SessionTable } from "@/components/strength/SessionTable";
+import { StrengthNav } from "@/components/strength/StrengthNav";
+import { DateNavigator } from "@/components/strength/DateNavigator";
 import { loadWorkouts, buildPRs, buildExerciseTrend } from "@/lib/data/workouts";
 import { CoachCards } from "@/components/strength/CoachCards";
 import { RefreshButton } from "@/components/coach/RefreshButton";
 
 export const dynamic = "force-dynamic";
 
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
 export default async function StrengthPage(props: {
-  searchParams: Promise<{ ex?: string }>;
+  searchParams: Promise<{ ex?: string; view?: string; date?: string }>;
 }) {
-  const { ex: selectedExercise } = await props.searchParams;
+  const { ex: selectedExercise, view, date: rawDate } = await props.searchParams;
+  const activeView: "recent" | "date" = view === "date" ? "date" : "recent";
+
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
@@ -40,6 +47,15 @@ export default async function StrengthPage(props: {
   const prs = buildPRs(workouts);
   const trend = selectedExercise ? buildExerciseTrend(workouts, selectedExercise) : [];
 
+  // For "By date" view: clamp the picker to the user's actual workout window.
+  // workouts is sorted newest-first by loadWorkouts.
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const latestWorkout = workouts[0]?.date ?? todayIso;
+  const earliestWorkout = workouts[workouts.length - 1]?.date ?? todayIso;
+  const selectedDate =
+    rawDate && ISO_DATE.test(rawDate) && rawDate <= todayIso ? rawDate : latestWorkout;
+  const sessionsOnDate = workouts.filter((w) => w.date === selectedDate);
+
   return (
     <main>
       <Header
@@ -62,34 +78,55 @@ export default async function StrengthPage(props: {
           </Card>
         ) : (
           <>
-            <Card>
-              <SectionLabel>RECENT SESSIONS · tap exercise to see trend</SectionLabel>
-              {workouts.slice(0, 5).map((w, i, arr) => (
-                <SessionRow
-                  key={w.id}
-                  session={w}
-                  selectedExercise={selectedExercise}
-                  isLast={i === arr.length - 1}
-                />
-              ))}
-            </Card>
+            <StrengthNav active={activeView} />
 
-            {selectedExercise && (
-              <ExerciseTrendCard name={selectedExercise} points={trend} />
+            {activeView === "date" ? (
+              <>
+                <DateNavigator date={selectedDate} min={earliestWorkout} max={todayIso} />
+
+                {sessionsOnDate.length === 0 ? (
+                  <Card>
+                    <div className="text-center py-10">
+                      <div className="text-sm text-white/45">No workouts logged on {selectedDate}</div>
+                      <div className="text-[11px] text-white/25 mt-1">
+                        Pick another date — your earliest is {earliestWorkout}.
+                      </div>
+                    </div>
+                  </Card>
+                ) : (
+                  sessionsOnDate.map((s) => <SessionTable key={s.id} session={s} />)
+                )}
+              </>
+            ) : (
+              <>
+                <Card>
+                  <SectionLabel>RECENT SESSIONS · tap exercise to see trend</SectionLabel>
+                  {workouts.slice(0, 5).map((w, i, arr) => (
+                    <SessionRow
+                      key={w.id}
+                      session={w}
+                      selectedExercise={selectedExercise}
+                      isLast={i === arr.length - 1}
+                    />
+                  ))}
+                </Card>
+
+                {selectedExercise && <ExerciseTrendCard name={selectedExercise} points={trend} />}
+
+                <PRList prs={prs} />
+
+                <VolumeTrendCard workouts={workouts} />
+
+                <div className="flex justify-end">
+                  <RefreshButton
+                    endpoint="/api/insights/strength"
+                    label={strengthCoach ? "Refresh strength coach" : "Run strength coach"}
+                  />
+                </div>
+
+                {strengthCoach && <CoachCards payload={strengthCoach} />}
+              </>
             )}
-
-            <PRList prs={prs} />
-
-            <VolumeTrendCard workouts={workouts} />
-
-            <div className="flex justify-end">
-              <RefreshButton
-                endpoint="/api/insights/strength"
-                label={strengthCoach ? "Refresh strength coach" : "Run strength coach"}
-              />
-            </div>
-
-            {strengthCoach && <CoachCards payload={strengthCoach} />}
           </>
         )}
       </div>
