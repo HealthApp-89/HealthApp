@@ -15,10 +15,6 @@ export type DayRow = {
   muscle_mass_kg?: number | null;
   bone_mass_kg?: number | null;
   hydration_kg?: number | null;
-  steps?: number | null;
-  active_calories?: number | null;
-  calories?: number | null;
-  distance_km?: number | null;
   exercise_min?: number | null;
   source: string;
   updated_at: string;
@@ -27,7 +23,9 @@ export type DayRow = {
 /** Merge Withings measurement groups + activity rollups into per-day rows.
  *  - Body comp: pick the LATEST reading per day per type (scale weighs once,
  *    but a user might step on twice — last wins).
- *  - Activity: 1:1 mapping per day.
+ *  - Activity: only `exercise_min` is taken from Withings. Steps, distance,
+ *    active/total calories are owned by Apple Health (sourced from Garmin),
+ *    which is more accurate. Withings sync MUST NOT overwrite those columns.
  *  Returns a Map keyed by YYYY-MM-DD. */
 export function mergeWithingsToRows(
   userId: string,
@@ -77,15 +75,15 @@ export function mergeWithingsToRows(
     }
   }
 
+  // Activity: only exercise minutes. Steps / distance / calories belong to
+  // Apple Health (Garmin) — see source-priority note above.
   for (const a of activities) {
     if (!a.date) continue;
-    const row = ensure(a.date);
-    if (a.steps != null) row.steps = a.steps;
-    if (a.calories != null) row.active_calories = Math.round(a.calories);
-    if (a.totalcalories != null) row.calories = Math.round(a.totalcalories);
-    if (a.distance != null) row.distance_km = +(a.distance / 1000).toFixed(2);
     const exerciseSec = (a.moderate ?? 0) + (a.intense ?? 0);
-    if (exerciseSec > 0) row.exercise_min = Math.round(exerciseSec / 60);
+    if (exerciseSec > 0) {
+      const row = ensure(a.date);
+      row.exercise_min = Math.round(exerciseSec / 60);
+    }
   }
 
   return byDate;

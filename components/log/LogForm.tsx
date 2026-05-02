@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { saveDailyLog } from "@/app/log/actions";
 import type { DailyLog } from "@/lib/data/types";
 
@@ -13,6 +14,7 @@ const SECTIONS: { title: string; color: string; fields: { k: keyof DailyLog; l: 
       { k: "resting_hr", l: "Resting HR", u: "bpm" },
       { k: "spo2", l: "SpO2", u: "%" },
       { k: "skin_temp_c", l: "Skin Temp", u: "C" },
+      { k: "respiratory_rate", l: "Resp Rate", u: "br/min" },
     ],
   },
   {
@@ -29,14 +31,23 @@ const SECTIONS: { title: string; color: string; fields: { k: keyof DailyLog; l: 
     title: "Training",
     color: "#ff9f43",
     fields: [
-      { k: "strain", l: "Strain", u: "/21" },
       { k: "steps", l: "Steps", u: "" },
+      { k: "distance_km", l: "Distance", u: "km" },
+      { k: "active_calories", l: "Active Cal", u: "kcal" },
+      { k: "calories", l: "Total Cal", u: "kcal" },
+      { k: "exercise_min", l: "Exercise", u: "min" },
+      { k: "strain", l: "Strain", u: "/21" },
     ],
   },
   {
     title: "Nutrition",
     color: "#ffd93d",
-    fields: [{ k: "calories", l: "Calories", u: "kcal" }],
+    fields: [
+      { k: "calories_eaten", l: "Eaten", u: "kcal" },
+      { k: "protein_g", l: "Protein", u: "g" },
+      { k: "carbs_g", l: "Carbs", u: "g" },
+      { k: "fat_g", l: "Fat", u: "g" },
+    ],
   },
   {
     title: "Body",
@@ -44,9 +55,16 @@ const SECTIONS: { title: string; color: string; fields: { k: keyof DailyLog; l: 
     fields: [
       { k: "weight_kg", l: "Weight", u: "kg" },
       { k: "body_fat_pct", l: "Body Fat", u: "%" },
+      { k: "fat_mass_kg", l: "Fat Mass", u: "kg" },
+      { k: "fat_free_mass_kg", l: "Lean Mass", u: "kg" },
+      { k: "muscle_mass_kg", l: "Muscle", u: "kg" },
+      { k: "bone_mass_kg", l: "Bone", u: "kg" },
+      { k: "hydration_kg", l: "Hydration", u: "kg" },
     ],
   },
 ];
+
+const TODAY_ISO = () => new Date().toISOString().slice(0, 10);
 
 type Props = {
   date: string;
@@ -61,6 +79,7 @@ type Props = {
 };
 
 export function LogForm({ date, initialLog, initialCheckin }: Props) {
+  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [flash, setFlash] = useState<string | null>(null);
 
@@ -76,15 +95,46 @@ export function LogForm({ date, initialLog, initialCheckin }: Props) {
     });
   }
 
+  function onDateChange(next: string) {
+    if (!next || next === date) return;
+    // Server reload picks up the new ?date= and refetches that day's row.
+    router.push(`/log?date=${next}`);
+  }
+
   function val(k: keyof DailyLog): string {
     const v = initialLog?.[k];
     if (v === null || v === undefined) return "";
     return String(v);
   }
 
+  const sourceLabel = initialLog?.source ?? null;
+
   return (
     <form action={onSubmit} className="flex flex-col gap-4">
       <input type="hidden" name="date" value={date} />
+
+      {/* Date picker — navigate to any day, defaults to today, blocked from the future */}
+      <div
+        className="rounded-[14px] px-4 py-3 flex items-center justify-between gap-3"
+        style={{ background: "rgba(255,255,255,0.025)", border: "1px solid rgba(255,255,255,0.07)" }}
+      >
+        <div className="flex flex-col gap-1">
+          <label className="text-[10px] uppercase tracking-[0.12em] text-white/40">Log date</label>
+          <input
+            type="date"
+            value={date}
+            max={TODAY_ISO()}
+            onChange={(e) => onDateChange(e.target.value)}
+            className="bg-white/5 border border-white/10 rounded-lg px-2.5 py-1.5 text-sm font-mono outline-none focus:border-emerald-300/50 text-white"
+          />
+        </div>
+        {sourceLabel && (
+          <div className="text-right">
+            <div className="text-[9px] uppercase tracking-[0.08em] text-white/35">Source</div>
+            <div className="text-[11px] font-mono text-white/70 mt-0.5">{sourceLabel}</div>
+          </div>
+        )}
+      </div>
 
       {flash && (
         <div

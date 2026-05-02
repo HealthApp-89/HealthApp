@@ -6,14 +6,26 @@ import type { DailyLog } from "@/lib/data/types";
 
 export const dynamic = "force-dynamic";
 
-export default async function LogPage() {
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+function resolveDate(raw: string | string[] | undefined): string {
+  const today = new Date().toISOString().slice(0, 10);
+  if (typeof raw !== "string" || !ISO_DATE.test(raw)) return today;
+  // Disallow future dates — Garmin can't tell us what hasn't happened yet.
+  return raw > today ? today : raw;
+}
+
+export default async function LogPage(props: {
+  searchParams: Promise<{ date?: string | string[] }>;
+}) {
+  const sp = await props.searchParams;
+  const date = resolveDate(sp.date);
+
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
-
-  const today = new Date().toISOString().slice(0, 10);
 
   const [{ data: profile }, { data: tokens }, { data: log }, { data: checkin }] = await Promise.all([
     supabase.from("profiles").select("name").eq("user_id", user.id).maybeSingle(),
@@ -22,13 +34,13 @@ export default async function LogPage() {
       .from("daily_logs")
       .select("*")
       .eq("user_id", user.id)
-      .eq("date", today)
+      .eq("date", date)
       .maybeSingle(),
     supabase
       .from("checkins")
       .select("readiness, energy_label, mood, soreness, feel_notes")
       .eq("user_id", user.id)
-      .eq("date", today)
+      .eq("date", date)
       .maybeSingle(),
   ]);
 
@@ -42,7 +54,7 @@ export default async function LogPage() {
       />
       <div className="px-4 pt-3.5 max-w-3xl mx-auto">
         <LogForm
-          date={today}
+          date={date}
           initialLog={(log ?? null) as Partial<DailyLog> | null}
           initialCheckin={
             checkin

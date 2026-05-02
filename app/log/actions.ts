@@ -30,19 +30,38 @@ export async function saveDailyLog(formData: FormData) {
   const row = {
     user_id: user.id,
     date,
+    // Recovery
     hrv: num(formData.get("hrv")),
     resting_hr: num(formData.get("resting_hr")),
     spo2: num(formData.get("spo2")),
     skin_temp_c: num(formData.get("skin_temp_c")),
+    respiratory_rate: num(formData.get("respiratory_rate")),
+    // Sleep
     sleep_hours: num(formData.get("sleep_hours")),
     sleep_score: num(formData.get("sleep_score")),
     deep_sleep_hours: num(formData.get("deep_sleep_hours")),
     rem_sleep_hours: num(formData.get("rem_sleep_hours")),
+    // Training / activity
     strain: num(formData.get("strain")),
     steps: intOrNull(formData.get("steps")),
+    distance_km: num(formData.get("distance_km")),
+    active_calories: intOrNull(formData.get("active_calories")),
     calories: intOrNull(formData.get("calories")),
+    exercise_min: intOrNull(formData.get("exercise_min")),
+    // Nutrition
+    calories_eaten: intOrNull(formData.get("calories_eaten")),
+    protein_g: num(formData.get("protein_g")),
+    carbs_g: num(formData.get("carbs_g")),
+    fat_g: num(formData.get("fat_g")),
+    // Body composition
     weight_kg: num(formData.get("weight_kg")),
     body_fat_pct: num(formData.get("body_fat_pct")),
+    fat_mass_kg: num(formData.get("fat_mass_kg")),
+    fat_free_mass_kg: num(formData.get("fat_free_mass_kg")),
+    muscle_mass_kg: num(formData.get("muscle_mass_kg")),
+    bone_mass_kg: num(formData.get("bone_mass_kg")),
+    hydration_kg: num(formData.get("hydration_kg")),
+    // Meta
     notes: str(formData.get("notes")),
     source: "manual",
     updated_at: new Date().toISOString(),
