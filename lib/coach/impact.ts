@@ -2,7 +2,15 @@ import type { DailyLog } from "@/lib/data/types";
 
 export type ImpactSign = "positive" | "neutral" | "negative";
 
-export type ImpactKey = "hrv" | "rhr" | "recovery" | "sleep" | "steps" | "strain";
+export type ImpactKey =
+  | "hrv"
+  | "rhr"
+  | "recovery"
+  | "sleep"
+  | "steps"
+  | "strain"
+  | "protein"
+  | "calories";
 
 export type ImpactSegment = {
   key: ImpactKey;
@@ -36,6 +44,8 @@ const COLOR_POSITIVE: Record<ImpactKey, string> = {
   sleep: "#a29bfe",
   steps: "#00f5c4",
   strain: "#ff9f43",
+  protein: "#ff6f91",
+  calories: "#ffd93d",
 };
 
 const COLOR_NEGATIVE = "#ff6b6b";
@@ -48,6 +58,8 @@ const LABELS: Record<ImpactKey, string> = {
   sleep: "Sleep",
   steps: "Steps",
   strain: "Strain",
+  protein: "Protein",
+  calories: "Calories",
 };
 
 /** Clamp x to [lo, hi]. */
@@ -265,6 +277,88 @@ function classifyStrain(strain: number | null, recovery: number | null): ImpactS
   };
 }
 
+function classifyProtein(g: number | null, weightKg: number | null): ImpactSegment {
+  if (g === null) return neutralSegment("protein", "no data");
+  if (weightKg === null) {
+    return {
+      ...neutralSegment("protein", `${Math.round(g)} g — weight unknown`),
+      value: g,
+    };
+  }
+  const target = 1.6 * weightKg;
+  const yellowFloor = target * 0.85;
+  if (g >= target) {
+    return {
+      key: "protein",
+      label: LABELS.protein,
+      sign: "positive",
+      magnitude: clamp((g - target) / target + 0.4, 0.4, 1),
+      color: COLOR_POSITIVE.protein,
+      value: g,
+      reason: `${Math.round(g)} / ${Math.round(target)} g target`,
+    };
+  }
+  if (g >= yellowFloor) {
+    return {
+      ...neutralSegment(
+        "protein",
+        `${Math.round(g)} g — ${Math.round((1 - g / target) * 100)}% under target`,
+      ),
+      value: g,
+    };
+  }
+  return {
+    key: "protein",
+    label: LABELS.protein,
+    sign: "negative",
+    magnitude: clamp((yellowFloor - g) / yellowFloor + 0.4, 0.4, 1),
+    color: COLOR_NEGATIVE,
+    value: g,
+    reason: `${Math.round(g)} g — well under ${Math.round(target)} g target`,
+  };
+}
+
+function classifyCalories(eaten: number | null, target: number | null): ImpactSegment {
+  if (eaten === null) return neutralSegment("calories", "no data");
+  if (target === null) {
+    return {
+      ...neutralSegment("calories", `${Math.round(eaten)} kcal — target unknown`),
+      value: eaten,
+    };
+  }
+  const ratio = eaten / target;
+  // ±10% of target = green; ±10–20% = yellow; beyond ±20% = red.
+  if (ratio >= 0.9 && ratio <= 1.1) {
+    return {
+      key: "calories",
+      label: LABELS.calories,
+      sign: "positive",
+      // Strongest green at ratio=1.0, fades toward edges of the green band.
+      magnitude: clamp(1 - Math.abs(1 - ratio) * 5, 0.4, 1),
+      color: COLOR_POSITIVE.calories,
+      value: eaten,
+      reason: `${Math.round(eaten)} / ${Math.round(target)} kcal target`,
+    };
+  }
+  const offPct = Math.round(Math.abs(ratio - 1) * 100);
+  const dir = ratio < 1 ? "under" : "over";
+  if (ratio >= 0.8 && ratio <= 1.2) {
+    return {
+      ...neutralSegment("calories", `${Math.round(eaten)} kcal — ${offPct}% ${dir}`),
+      value: eaten,
+    };
+  }
+  return {
+    key: "calories",
+    label: LABELS.calories,
+    sign: "negative",
+    magnitude: clamp((Math.abs(ratio - 1) - 0.2) * 3 + 0.4, 0.4, 1),
+    color: COLOR_NEGATIVE,
+    value: eaten,
+    reason: `${Math.round(eaten)} kcal — ${offPct}% ${dir} target`,
+  };
+}
+
 /** Deterministic per-metric impact classification for the dashboard donut.
  *  Pure function — no DB calls — so it can be unit-tested or memoised freely.
  *  Threshold sources are the same constants the rest of the app already uses
@@ -272,7 +366,15 @@ function classifyStrain(strain: number | null, recovery: number | null): ImpactS
  *
  *  Returns segments in stable display order so the donut's ring layout is
  *  consistent across days. */
-export function computeImpact(log: DailyLog | null, hrvBaseline: number): ImpactResult {
+export function computeImpact(
+  log: DailyLog | null,
+  hrvBaseline: number,
+  /** Most recent known weight (kg). Used as the protein-target denominator —
+   *  falls back when today's row is missing weight. */
+  weightKg: number | null = null,
+  /** Daily kcal target (BMR × activity factor). Caller computes from profile. */
+  calorieTarget: number | null = null,
+): ImpactResult {
   const segments: ImpactSegment[] = log
     ? [
         classifyHRV(log.hrv, hrvBaseline),
@@ -281,6 +383,8 @@ export function computeImpact(log: DailyLog | null, hrvBaseline: number): Impact
         classifySleep(log.sleep_score, log.sleep_hours),
         classifySteps(log.steps),
         classifyStrain(log.strain, log.recovery),
+        classifyProtein(log.protein_g, weightKg ?? log.weight_kg),
+        classifyCalories(log.calories_eaten, calorieTarget),
       ]
     : [
         neutralSegment("hrv", "no data"),
@@ -289,6 +393,8 @@ export function computeImpact(log: DailyLog | null, hrvBaseline: number): Impact
         neutralSegment("sleep", "no data"),
         neutralSegment("steps", "no data"),
         neutralSegment("strain", "no data"),
+        neutralSegment("protein", "no data"),
+        neutralSegment("calories", "no data"),
       ];
 
   let positiveCount = 0;
