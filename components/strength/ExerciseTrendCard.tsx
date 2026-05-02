@@ -32,6 +32,8 @@ export function ExerciseTrendCard({ name, points }: Props) {
         <div>
           <SparkLine
             values={points.map((p) => p.est1rm)}
+            labels={points.map((p) => p.date.slice(5))}
+            unit="kg 1RM"
             color="#ff9f43"
             height={48}
             chartId="extrend"
