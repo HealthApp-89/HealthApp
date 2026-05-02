@@ -81,7 +81,7 @@ export function PeriodSelector({ preset, from, to, preserve = {} }: Props) {
       {open && (
         <div
           ref={popRef}
-          className="absolute z-30 mt-2 right-0 w-[280px] rounded-[14px] p-3"
+          className="absolute z-30 mt-2 left-0 sm:left-auto sm:right-0 w-[280px] max-w-[calc(100vw-2rem)] rounded-[14px] p-3"
           style={{
             background: "rgba(13,22,40,0.98)",
             border: "1px solid rgba(255,255,255,0.1)",
