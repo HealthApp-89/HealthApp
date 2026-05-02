@@ -8,7 +8,7 @@ import { MetricBar } from "@/components/ui/MetricBar";
 import { SparkLine } from "@/components/ui/SparkLine";
 import { MorningCheckIn } from "@/components/dashboard/MorningCheckIn";
 import { FIELDS, scoreColor, scoreLabel } from "@/lib/ui/colors";
-import { calcScore, avg, buildWeekWindow } from "@/lib/ui/score";
+import { calcScore, avg, buildWeekWindow, fmtNum } from "@/lib/ui/score";
 import { buildDailyPlan } from "@/lib/coach/readiness";
 import type { DailyLog } from "@/lib/data/types";
 
@@ -254,7 +254,7 @@ export default async function Home() {
             <div className="flex justify-between items-center mb-2.5">
               <span className="text-[10px] uppercase tracking-[0.12em] text-white/35">⚖ WEIGHT TREND</span>
               <span className="text-lg font-bold font-mono" style={{ color: "#4fc3f7" }}>
-                {latestWeightRow ? `${latestWeightRow.weight_kg} kg` : "—"}
+                {latestWeightRow?.weight_kg != null ? `${fmtNum(latestWeightRow.weight_kg)} kg` : "—"}
               </span>
             </div>
             {validWts.length > 1 && (

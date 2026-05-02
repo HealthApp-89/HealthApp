@@ -1,3 +1,5 @@
+import { fmtNum } from "@/lib/ui/score";
+
 type MetricBarProps = {
   label: string;
   value: number | string | null | undefined;
@@ -10,14 +12,15 @@ type MetricBarProps = {
 export function MetricBar({ label, value, unit, max, color }: MetricBarProps) {
   const num = typeof value === "string" ? parseFloat(value) : value ?? 0;
   const pct = Math.min((Number.isFinite(num) ? num : 0) / max * 100, 100);
-  const display = value === null || value === undefined || value === "" ? null : value;
+  const isMissing = value === null || value === undefined || value === "";
+  const display = isMissing ? "—" : typeof value === "number" ? fmtNum(value) : value;
   return (
     <div className="flex flex-col gap-1">
       <div className="flex justify-between">
         <span className="text-[10px] uppercase tracking-[0.06em] text-white/45">{label}</span>
         <span className="text-xs font-bold text-white font-mono">
-          {display ?? "—"}
-          {display !== null && unit && <span className="text-[9px] text-white/35 ml-0.5">{unit}</span>}
+          {display}
+          {!isMissing && unit && <span className="text-[9px] text-white/35 ml-0.5">{unit}</span>}
         </span>
       </div>
       <div className="h-[3px] bg-white/[0.07] rounded-[2px] overflow-hidden">

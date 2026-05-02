@@ -53,20 +53,20 @@ export function LineChart({
   const gid = `grad-${color.replace("#", "")}`;
 
   return (
-    <svg
-      viewBox={`0 0 ${W} ${height}`}
-      preserveAspectRatio="none"
-      style={{ width: "100%", height, overflow: "visible" }}
-    >
-      <defs>
-        <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={color} stopOpacity="0.25" />
-          <stop offset="100%" stopColor={color} stopOpacity="0.02" />
-        </linearGradient>
-      </defs>
-      {fillD && <path d={fillD} fill={`url(#${gid})`} />}
-      {refY !== null && (
-        <>
+    <div style={{ position: "relative", width: "100%", height }}>
+      <svg
+        viewBox={`0 0 ${W} ${height}`}
+        preserveAspectRatio="none"
+        style={{ width: "100%", height, overflow: "visible", display: "block" }}
+      >
+        <defs>
+          <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={color} stopOpacity="0.25" />
+            <stop offset="100%" stopColor={color} stopOpacity="0.02" />
+          </linearGradient>
+        </defs>
+        {fillD && <path d={fillD} fill={`url(#${gid})`} />}
+        {refY !== null && (
           <line
             x1="0"
             y1={refY}
@@ -77,25 +77,37 @@ export function LineChart({
             strokeDasharray="2,2"
             opacity="0.4"
           />
-          {refLabel && (
-            <text x="1" y={refY - 1.5} fontSize="3.5" fill={color} opacity="0.6">
-              {refLabel}
-            </text>
-          )}
-        </>
-      )}
-      <path
-        d={pathD}
-        stroke={color}
-        strokeWidth="1.5"
-        fill="none"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      {showDots &&
-        data.map((v, i) =>
-          v !== null ? <circle key={i} cx={toX(i)} cy={toY(v)} r="1.8" fill={color} opacity="0.9" /> : null,
         )}
-    </svg>
+        <path
+          d={pathD}
+          stroke={color}
+          strokeWidth="1.5"
+          fill="none"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        {showDots &&
+          data.map((v, i) =>
+            v !== null ? <circle key={i} cx={toX(i)} cy={toY(v)} r="1.8" fill={color} opacity="0.9" /> : null,
+          )}
+      </svg>
+      {refY !== null && refLabel && (
+        <span
+          style={{
+            position: "absolute",
+            left: 4,
+            top: Math.max(0, refY - 12),
+            fontSize: 10,
+            lineHeight: 1,
+            color,
+            opacity: 0.6,
+            pointerEvents: "none",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {refLabel}
+        </span>
+      )}
+    </div>
   );
 }
