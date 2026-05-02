@@ -1,5 +1,6 @@
 import { Card, SectionLabel } from "@/components/ui/Card";
 import { PrioBox } from "@/components/ui/PrioBox";
+import type { ReviewMode } from "@/lib/coach/week";
 
 type Item = { label: string; detail: string };
 type Recommendation = {
@@ -10,39 +11,66 @@ type Recommendation = {
 
 export type WeeklyReviewPayload = {
   summary: string;
-  wins: Item[];
-  misses: Item[];
   patterns: Item[];
+  recommendationsHeadline?: string;
   recommendations: Recommendation[];
+  mode?: ReviewMode;
+  /** Legacy fields from earlier prompt versions — render if present. */
+  wins?: Item[];
+  misses?: Item[];
 };
 
 type Props = {
   payload: WeeklyReviewPayload;
   weekStart: string;
   weekEnd: string;
+  mode: ReviewMode;
+  daysRemaining: number;
 };
 
-export function WeeklyReview({ payload, weekStart, weekEnd }: Props) {
+const MODE_HEADLINE: Record<ReviewMode, (args: { start: string; end: string; daysRemaining: number }) => string> = {
+  "monday-recap": ({ start, end }) => `LAST WEEK · ${start} → ${end}`,
+  "in-progress": ({ start, end, daysRemaining }) =>
+    `WEEK SO FAR · ${start} → ${end} · ${daysRemaining} day${daysRemaining === 1 ? "" : "s"} left`,
+  "sunday-full": ({ start, end }) => `FULL WEEK · ${start} → ${end}`,
+};
+
+const DEFAULT_RECS_HEADLINE: Record<ReviewMode, string> = {
+  "monday-recap": "WEEK AHEAD",
+  "in-progress": "FINISH STRONG",
+  "sunday-full": "NEXT WEEK",
+};
+
+export function WeeklyReview({ payload, weekStart, weekEnd, mode, daysRemaining }: Props) {
+  const headlineRange = MODE_HEADLINE[mode]({ start: weekStart, end: weekEnd, daysRemaining });
+  const recsHeadline = (payload.recommendationsHeadline?.trim() || DEFAULT_RECS_HEADLINE[mode]).toUpperCase();
+  const recsFootnote =
+    mode === "sunday-full"
+      ? "Seeded into your Next week list — open that tab to check them off."
+      : "Seeded into your Next week list (this-week scope) — open that tab to check them off as you go.";
+
   return (
     <div className="flex flex-col gap-3.5">
       <Card>
-        <SectionLabel>📅 WEEK · {weekStart} → {weekEnd}</SectionLabel>
-        <p className="text-sm text-white/70 leading-relaxed">{payload.summary}</p>
+        <SectionLabel>📅 {headlineRange}</SectionLabel>
+        <p className="text-sm text-white/75 leading-relaxed whitespace-pre-line">{payload.summary}</p>
       </Card>
 
+      {/* Legacy wins/misses — only render if a cached payload still has them. */}
       {payload.wins?.length ? (
         <ItemBlock title="✅ WINS" items={payload.wins} accent="rgba(74,222,128,0.6)" />
       ) : null}
       {payload.misses?.length ? (
         <ItemBlock title="⚠ MISSES" items={payload.misses} accent="rgba(248,113,113,0.6)" />
       ) : null}
+
       {payload.patterns?.length ? (
         <ItemBlock title="🔍 PATTERNS" items={payload.patterns} accent="rgba(0,245,196,0.6)" />
       ) : null}
 
       {payload.recommendations?.length ? (
         <Card>
-          <SectionLabel>🎯 NEXT WEEK · seeded</SectionLabel>
+          <SectionLabel>🎯 {recsHeadline}</SectionLabel>
           <div className="flex flex-col gap-2">
             {payload.recommendations.map((r, i) => (
               <div key={i} className="flex gap-2 items-start">
@@ -56,9 +84,7 @@ export function WeeklyReview({ payload, weekStart, weekEnd }: Props) {
               </div>
             ))}
           </div>
-          <div className="text-[10px] text-white/25 mt-2.5 italic">
-            These are seeded into your Next week list — open that tab to check them off.
-          </div>
+          <div className="text-[10px] text-white/25 mt-2.5 italic">{recsFootnote}</div>
         </Card>
       ) : null}
     </div>

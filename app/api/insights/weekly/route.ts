@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { createSupabaseServerClient, createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { callClaude, parseClaudeJson } from "@/lib/anthropic/client";
 import { loadWorkouts } from "@/lib/data/workouts";
-import { lastCompleteWeek, nextWeekStart } from "@/lib/coach/week";
+import { reviewWindow, recommendationWeekStart, type ReviewMode } from "@/lib/coach/week";
+import { REVIEW_SYSTEM_PROMPT, REVIEW_RESPONSE_SHAPE, frameFor } from "@/lib/coach/prompts";
 
 export const dynamic = "force-dynamic";
 
@@ -12,17 +13,16 @@ type WeeklyRecommendation = {
   text: string;
 };
 
-type WeeklyReviewPayload = {
+export type WeeklyReviewPayload = {
   summary: string;
-  wins: { label: string; detail: string }[];
-  misses: { label: string; detail: string }[];
   patterns: { label: string; detail: string }[];
+  recommendationsHeadline?: string;
   recommendations: WeeklyRecommendation[];
+  mode?: ReviewMode;
+  /** Legacy fields — older cached payloads may still have these. */
+  wins?: { label: string; detail: string }[];
+  misses?: { label: string; detail: string }[];
 };
-
-const SYSTEM = `You are an elite health and strength coach reviewing the athlete's most recent complete week. \
-Speak in concrete numbers from the data. Be honest about misses. \
-Return ONLY a single valid JSON object — no markdown, no prose, no commentary.`;
 
 /** GET: most recently cached weekly review. */
 export async function GET() {
@@ -44,9 +44,9 @@ export async function GET() {
   return NextResponse.json({ ok: true, cached: data ?? null });
 }
 
-/** POST: generate a fresh weekly review for the most recent complete week,
- *  cache it (keyed on week-end Sunday), and seed recommendations into
- *  coach_recommendations for the next week (replacing prior seeds). */
+/** POST: generate a fresh review for the day-appropriate window
+ *  (see lib/coach/week.ts:reviewWindow), cache it, and seed
+ *  recommendations into coach_recommendations. */
 export async function POST() {
   const supabase = await createSupabaseServerClient();
   const {
@@ -54,8 +54,8 @@ export async function POST() {
   } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ ok: false, reason: "unauthorized" }, { status: 401 });
 
-  const { start, end } = lastCompleteWeek();
-  const targetWeekStart = nextWeekStart();
+  const { start, end, mode, daysRemaining } = reviewWindow();
+  const targetWeekStart = recommendationWeekStart();
 
   const [{ data: profile }, { data: logs }, allWorkouts] = await Promise.all([
     supabase
@@ -66,7 +66,7 @@ export async function POST() {
     supabase
       .from("daily_logs")
       .select(
-        "date, hrv, resting_hr, recovery, sleep_hours, sleep_score, deep_sleep_hours, rem_sleep_hours, strain, steps, calories, calories_eaten, protein_g, carbs_g, fat_g, weight_kg, body_fat_pct",
+        "date, hrv, resting_hr, recovery, sleep_hours, sleep_score, deep_sleep_hours, rem_sleep_hours, strain, steps, calories, calories_eaten, protein_g, carbs_g, fat_g, weight_kg, body_fat_pct, muscle_mass_kg",
       )
       .eq("user_id", user.id)
       .gte("date", start)
@@ -75,7 +75,7 @@ export async function POST() {
     loadWorkouts(user.id),
   ]);
 
-  const weekWorkouts = allWorkouts
+  const windowWorkouts = allWorkouts
     .filter((w) => w.date >= start && w.date <= end)
     .map((w) => ({
       date: w.date,
@@ -90,29 +90,25 @@ export async function POST() {
       })),
     }));
 
+  const frame = frameFor(mode, { start, end, daysRemaining, targetWeekStart });
+
   const userPrompt = `Athlete: ${profile?.name ?? "Athlete"}. Goal: "${profile?.goal ?? "general health"}".
 Baselines: ${JSON.stringify(profile?.whoop_baselines ?? {})}.
 Training plan: ${JSON.stringify(profile?.training_plan ?? {})}.
 
-Week reviewed: ${start} → ${end} (Mon-Sun).
+${frame.windowLine}
+Tone: ${frame.toneHint}
 Daily logs (${(logs ?? []).length} days): ${JSON.stringify(logs ?? [])}.
-Workouts this week: ${JSON.stringify(weekWorkouts)}.
+Workouts in window: ${JSON.stringify(windowWorkouts)}.
 
-Return JSON shaped exactly:
-{
-  "summary": "1 paragraph (3-5 sentences) overall assessment grounded in the numbers",
-  "wins":    [{"label":"short","detail":"one sentence with numbers"}],
-  "misses":  [{"label":"short","detail":"one sentence with numbers"}],
-  "patterns":[{"label":"short","detail":"one sentence — repeated behaviours, correlations"}],
-  "recommendations": [{"category":"training|sleep|nutrition|recovery|habits","priority":"high|medium|low","text":"one specific actionable item for the coming week"}]
-}
-2-4 wins. 2-4 misses. 2-4 patterns. 4-6 recommendations.
-Recommendations must be concrete and measurable (e.g. "hit 8h sleep on at least 5 nights" not "sleep more").`;
+${frame.recsFraming}
+
+${REVIEW_RESPONSE_SHAPE}`;
 
   let payload: WeeklyReviewPayload;
   try {
     const raw = await callClaude([{ role: "user", content: userPrompt }], {
-      system: SYSTEM,
+      system: REVIEW_SYSTEM_PROMPT,
       maxTokens: 2000,
       cacheSystem: true,
     });
@@ -120,6 +116,8 @@ Recommendations must be concrete and measurable (e.g. "hit 8h sleep on at least 
   } catch (e) {
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
   }
+
+  payload.mode = mode;
 
   const sr = createSupabaseServiceRoleClient();
 
@@ -159,7 +157,7 @@ Recommendations must be concrete and measurable (e.g. "hit 8h sleep on at least 
   return NextResponse.json({
     ok: true,
     payload,
-    week: { start, end },
+    window: { start, end, mode, daysRemaining },
     recommendationsWeek: targetWeekStart,
   });
 }

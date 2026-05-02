@@ -1,10 +1,10 @@
 import Link from "next/link";
 
-export type CoachView = "today" | "last-week" | "next-week";
+export type CoachView = "today" | "this-week" | "next-week";
 
 const TABS: { id: CoachView; label: string }[] = [
   { id: "today", label: "Today" },
-  { id: "last-week", label: "Last week" },
+  { id: "this-week", label: "This week" },
   { id: "next-week", label: "Next week" },
 ];
 
