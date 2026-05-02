@@ -82,11 +82,36 @@ export default async function TrendsPage(props: {
     for (let i = s.length - 1; i >= 0; i--) if (s[i].value !== null) return s[i].value;
     return null;
   };
-  const lastHRV = lastVal(aggHRV);
-  const lastRHR = lastVal(aggRHR);
-  const lastSleepH = lastVal(aggSleepH);
+  const avgVal = (s: { value: number | null }[]) => {
+    let sum = 0, n = 0;
+    for (const p of s) if (p.value !== null && Number.isFinite(p.value)) { sum += p.value; n++; }
+    return n > 0 ? sum / n : null;
+  };
+  // Headline numbers: use the period AVERAGE for biometrics + cumulative metrics so
+  // they actually change as the user picks different periods. Weight stays as
+  // "latest" because trend matters more than mean for body weight.
+  const avgHRV = avgVal(aggHRV);
+  const avgRHR = avgVal(aggRHR);
+  const avgSleepH = avgVal(aggSleepH);
+  const avgSleepSc = avgVal(aggSleepSc);
+  const avgSteps = avgVal(aggSteps);
+  const avgCalsEaten = avgVal(aggCals);
+  const avgStrainVal = avgVal(aggStrain);
   const lastWeight = lastVal(aggWeight);
   const firstWeight = aggWeight.find((p) => p.value !== null)?.value ?? null;
+
+  // Build the dates arrays once per granularity — passed to BarChart for axis + tooltip.
+  const datesHRV = aggHRV.map((p) => p.date);
+  const datesRHR = aggRHR.map((p) => p.date);
+  const datesRecov = aggRecov.map((p) => p.date);
+  const datesSleepH = aggSleepH.map((p) => p.date);
+  const datesSleepSc = aggSleepSc.map((p) => p.date);
+  const datesDeep = aggDeep.map((p) => p.date);
+  const datesREM = aggREM.map((p) => p.date);
+  const datesSteps = aggSteps.map((p) => p.date);
+  const datesCals = aggCals.map((p) => p.date);
+  const datesStrain = aggStrain.map((p) => p.date);
+  const datesWeight = aggWeight.map((p) => p.date);
 
   // Filter workouts to the same window for the strength panel.
   const filteredWorkouts = workouts.filter((w) => w.date >= from && w.date <= to);
@@ -139,18 +164,20 @@ export default async function TrendsPage(props: {
               {aggWeight.filter((p) => p.value !== null).length >= 2 && (
                 <BarChart
                   data={aggWeight.map((p) => p.value)}
+                  dates={datesWeight}
                   color="#fbbf24"
                   height={60}
+                  unit="kg"
                 />
               )}
             </MetricCard>
 
             <MetricCard
               title="Heart Rate Variability"
-              current={lastHRV !== null ? Math.round(lastHRV) : null}
-              unit="ms"
-              delta={lastHRV !== null ? Math.round((lastHRV - HRV_BASELINE) * 10) / 10 : null}
-              deltaLabel={`vs ${HRV_BASELINE}ms avg`}
+              current={avgHRV !== null ? Math.round(avgHRV) : null}
+              unit="ms avg"
+              delta={avgHRV !== null ? Math.round((avgHRV - HRV_BASELINE) * 10) / 10 : null}
+              deltaLabel={`vs ${HRV_BASELINE}ms baseline`}
               color="#00f5c4"
               note="Baseline 33ms (6mo). Peak 45ms (Oct 2025). Goal: rebuild toward 40ms+."
             >
@@ -165,10 +192,10 @@ export default async function TrendsPage(props: {
 
             <MetricCard
               title="Resting Heart Rate"
-              current={lastRHR !== null ? Math.round(lastRHR) : null}
-              unit="bpm"
-              delta={lastRHR !== null ? Math.round((lastRHR - RHR_BASELINE) * 10) / 10 : null}
-              deltaLabel={`vs ${RHR_BASELINE}bpm avg`}
+              current={avgRHR !== null ? Math.round(avgRHR) : null}
+              unit="bpm avg"
+              delta={avgRHR !== null ? Math.round((avgRHR - RHR_BASELINE) * 10) / 10 : null}
+              deltaLabel={`vs ${RHR_BASELINE}bpm baseline`}
               positiveIsGood={false}
               color="#f87171"
             >
@@ -199,18 +226,25 @@ export default async function TrendsPage(props: {
           <div>
             <MetricCard
               title="Sleep Hours"
-              current={lastSleepH !== null ? lastSleepH.toFixed(1) : null}
-              unit="hrs"
+              current={avgSleepH !== null ? avgSleepH.toFixed(1) : null}
+              unit="hrs avg"
               color="#a29bfe"
               note="Target 7.5–9 hrs. Dashed line = 7.5h."
             >
-              <BarChart data={aggSleepH.map((p) => p.value)} color="#a29bfe" height={60} goalLine={7.5} />
+              <BarChart
+                data={aggSleepH.map((p) => p.value)}
+                dates={datesSleepH}
+                color="#a29bfe"
+                height={60}
+                goalLine={7.5}
+                unit="hrs"
+              />
             </MetricCard>
 
             <MetricCard
               title="Sleep Score"
-              current={lastVal(aggSleepSc) !== null ? Math.round(lastVal(aggSleepSc)!) : null}
-              unit="/100"
+              current={avgSleepSc !== null ? Math.round(avgSleepSc) : null}
+              unit="/100 avg"
               color="#a29bfe"
             >
               <LineChart
@@ -227,11 +261,23 @@ export default async function TrendsPage(props: {
               <div className="flex flex-col gap-2 mt-1">
                 <div>
                   <div className="text-[10px] text-white/40 mb-1">Deep</div>
-                  <BarChart data={aggDeep.map((p) => p.value)} color="#4fc3f7" height={36} />
+                  <BarChart
+                    data={aggDeep.map((p) => p.value)}
+                    dates={datesDeep}
+                    color="#4fc3f7"
+                    height={36}
+                    unit="hrs"
+                  />
                 </div>
                 <div>
                   <div className="text-[10px] text-white/40 mb-1">REM</div>
-                  <BarChart data={aggREM.map((p) => p.value)} color="#7c6af7" height={36} />
+                  <BarChart
+                    data={aggREM.map((p) => p.value)}
+                    dates={datesREM}
+                    color="#7c6af7"
+                    height={36}
+                    unit="hrs"
+                  />
                 </div>
               </div>
             </Card>
@@ -242,38 +288,48 @@ export default async function TrendsPage(props: {
           <div>
             <MetricCard
               title="Steps"
-              current={lastVal(aggSteps) !== null ? Math.round(lastVal(aggSteps)!).toLocaleString() : null}
-              unit={granularity === "day" ? "/day" : `/${granularity}`}
+              current={avgSteps !== null ? Math.round(avgSteps).toLocaleString() : null}
+              unit={granularity === "day" ? "/day avg" : `/${granularity} avg`}
               color="#00f5c4"
             >
               <BarChart
                 data={aggSteps.map((p) => p.value)}
+                dates={datesSteps}
                 color="#00f5c4"
                 height={60}
                 goalLine={granularity === "day" ? 8000 : undefined}
+                unit="steps"
               />
             </MetricCard>
 
             <MetricCard
               title="Calories Eaten"
-              current={lastVal(aggCals) !== null ? Math.round(lastVal(aggCals)!).toLocaleString() : null}
-              unit="kcal"
+              current={avgCalsEaten !== null ? Math.round(avgCalsEaten).toLocaleString() : null}
+              unit="kcal/day avg"
               color="#ffd93d"
             >
-              <BarChart data={aggCals.map((p) => p.value)} color="#ffd93d" height={60} />
+              <BarChart
+                data={aggCals.map((p) => p.value)}
+                dates={datesCals}
+                color="#ffd93d"
+                height={60}
+                unit="kcal"
+              />
             </MetricCard>
 
             <MetricCard
               title="Strain"
-              current={lastVal(aggStrain) !== null ? lastVal(aggStrain)!.toFixed(1) : null}
-              unit="/21"
+              current={avgStrainVal !== null ? avgStrainVal.toFixed(1) : null}
+              unit="/21 avg"
               color="#ff9f43"
             >
               <BarChart
                 data={aggStrain.map((p) => p.value)}
+                dates={datesStrain}
                 color="#ff9f43"
                 height={60}
                 goalLine={granularity === "day" ? 14 : undefined}
+                unit="/21"
               />
             </MetricCard>
           </div>
