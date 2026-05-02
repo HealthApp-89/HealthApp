@@ -15,7 +15,7 @@ export function VolumeTrendCard({ workouts }: { workouts: WorkoutSession[] }) {
         values={values}
         labels={allLabels}
         unit="kg"
-        color="#4fc3f7"
+        color="#af52de"
         height={48}
         chartId="voltrd"
       />

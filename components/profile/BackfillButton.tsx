@@ -32,9 +32,9 @@ export function BackfillButton() {
         disabled={pending}
         className="rounded-[12px] px-4 py-2.5 text-xs font-bold disabled:opacity-50"
         style={{
-          background: "rgba(0,245,196,0.15)",
-          border: "1px solid #00f5c455",
-          color: "#00f5c4",
+          background: "rgba(10,132,255,0.15)",
+          border: "1px solid #0a84ff55",
+          color: "#0a84ff",
         }}
       >
         {pending ? "Pulling history…" : "🔄 Backfill all WHOOP history"}
@@ -42,7 +42,7 @@ export function BackfillButton() {
       {result && (
         <div
           className="text-[11px] font-mono"
-          style={{ color: result.startsWith("✗") ? "#ff6b6b" : "#00f5c4" }}
+          style={{ color: result.startsWith("✗") ? "#ff453a" : "#0a84ff" }}
         >
           {result}
         </div>

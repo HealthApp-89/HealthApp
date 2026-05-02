@@ -38,17 +38,17 @@ export type ImpactResult = {
 };
 
 const COLOR_POSITIVE: Record<ImpactKey, string> = {
-  hrv: "#00f5c4",
-  rhr: "#00f5c4",
-  recovery: "#6bcb77",
-  sleep: "#a29bfe",
-  steps: "#00f5c4",
-  strain: "#ff9f43",
-  protein: "#ff6f91",
-  calories: "#ffd93d",
+  hrv: "#0a84ff",
+  rhr: "#0a84ff",
+  recovery: "#30d158",
+  sleep: "#5e5ce6",
+  steps: "#0a84ff",
+  strain: "#ff9f0a",
+  protein: "#ff375f",
+  calories: "#ffd60a",
 };
 
-const COLOR_NEGATIVE = "#ff6b6b";
+const COLOR_NEGATIVE = "#ff453a";
 const COLOR_NEUTRAL = "#5a6478";
 
 const LABELS: Record<ImpactKey, string> = {

@@ -53,7 +53,7 @@ export function ImpactDonut({ segments, score, size = 260 }: Props) {
     ? focused.sign === "positive"
       ? focused.color
       : focused.sign === "negative"
-        ? "#ff6b6b"
+        ? "#ff453a"
         : "rgba(255,255,255,0.55)"
     : null;
 
@@ -149,7 +149,7 @@ export function ImpactDonut({ segments, score, size = 260 }: Props) {
               <span
                 key={`p${i}`}
                 className="w-1.5 h-1.5 rounded-full"
-                style={{ background: "#6bcb77", boxShadow: "0 0 4px #6bcb77" }}
+                style={{ background: "#30d158", boxShadow: "0 0 4px #30d158" }}
                 aria-hidden
               />
             ))}
@@ -157,7 +157,7 @@ export function ImpactDonut({ segments, score, size = 260 }: Props) {
               <span
                 key={`n${i}`}
                 className="w-1.5 h-1.5 rounded-full"
-                style={{ background: "#ff6b6b" }}
+                style={{ background: "#ff453a" }}
                 aria-hidden
               />
             ))}
@@ -175,7 +175,7 @@ export function ImpactDonut({ segments, score, size = 260 }: Props) {
               focused.sign === "positive"
                 ? `${focused.color}66`
                 : focused.sign === "negative"
-                  ? "rgba(255,107,107,0.5)"
+                  ? "rgba(255,69,58,0.5)"
                   : "rgba(255,255,255,0.1)"
             }`,
           }}
@@ -240,7 +240,7 @@ export function ImpactDonut({ segments, score, size = 260 }: Props) {
                   s.sign === "positive"
                     ? `${s.color}55`
                     : s.sign === "negative"
-                      ? "rgba(255,107,107,0.4)"
+                      ? "rgba(255,69,58,0.4)"
                       : "rgba(255,255,255,0.06)"
                 }`,
                 opacity: active === null || isActive ? 1 : 0.55,
@@ -268,7 +268,7 @@ export function ImpactDonut({ segments, score, size = 260 }: Props) {
                     s.sign === "positive"
                       ? s.color
                       : s.sign === "negative"
-                        ? "#ff6b6b"
+                        ? "#ff453a"
                         : "rgba(255,255,255,0.55)",
                 }}
               >

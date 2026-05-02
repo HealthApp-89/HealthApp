@@ -15,9 +15,9 @@ type MonitorTileProps = {
 };
 
 const STATUS_TOKENS: Record<Status, { dot: string; label: string; tint: string }> = {
-  ok: { dot: "#6bcb77", label: "In range", tint: "rgba(107,203,119,0.10)" },
-  watch: { dot: "#ffd93d", label: "Watch", tint: "rgba(255,217,61,0.10)" },
-  alert: { dot: "#ff6b6b", label: "Out of range", tint: "rgba(255,107,107,0.10)" },
+  ok: { dot: "#30d158", label: "In range", tint: "rgba(48,209,88,0.10)" },
+  watch: { dot: "#ffd60a", label: "Watch", tint: "rgba(255,214,10,0.10)" },
+  alert: { dot: "#ff453a", label: "Out of range", tint: "rgba(255,69,58,0.10)" },
   muted: { dot: "rgba(255,255,255,0.25)", label: "No data", tint: "rgba(255,255,255,0.03)" },
 };
 

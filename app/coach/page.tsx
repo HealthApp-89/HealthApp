@@ -102,11 +102,11 @@ async function TodayView({ userId }: { userId: string }) {
 
       {payload?.patterns?.length ? (
         <div className="rounded-[14px] px-4 py-3.5 border" style={tintByKey("steps")}>
-          <SectionLabel color="rgba(0,245,196,0.6)">🔍 PATTERNS</SectionLabel>
+          <SectionLabel color="rgba(48,209,88,0.6)">🔍 PATTERNS</SectionLabel>
           <div className="flex flex-col gap-2.5">
             {payload.patterns.map((p, i) => (
               <div key={i} className="flex gap-2.5">
-                <span className="text-base flex-shrink-0" style={{ color: "#00f5c4" }}>
+                <span className="text-base flex-shrink-0" style={{ color: "#30d158" }}>
                   ◈
                 </span>
                 <div>
@@ -123,7 +123,7 @@ async function TodayView({ userId }: { userId: string }) {
 
       {payload?.plan ? (
         <div className="rounded-[14px] px-4 py-3.5 border" style={tintByKey("coach")}>
-          <SectionLabel color="rgba(162,155,254,0.7)">{payload.plan.week ?? "PLAN"}</SectionLabel>
+          <SectionLabel color="rgba(94,92,230,0.7)">{payload.plan.week ?? "PLAN"}</SectionLabel>
           <PlanRow label="Today" text={payload.plan.today} active />
           <PlanRow label="Tomorrow" text={payload.plan.tomorrow} />
           {payload.plan.note && (
@@ -262,7 +262,7 @@ function PlanRow({ label, text, active }: { label: string; text?: string; active
       >
         {label}
       </div>
-      <div className="text-xs font-semibold" style={{ color: active ? "#a29bfe" : "rgba(255,255,255,0.4)" }}>
+      <div className="text-xs font-semibold" style={{ color: active ? "#5e5ce6" : "rgba(255,255,255,0.4)" }}>
         {text}
       </div>
     </div>

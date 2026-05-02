@@ -66,7 +66,7 @@ export function WeeklyReview({ payload, weekStart, weekEnd, mode, daysRemaining 
       ) : null}
 
       {payload.patterns?.length ? (
-        <ItemBlock title="🔍 PATTERNS" items={payload.patterns} accent="rgba(0,245,196,0.6)" tint="steps" />
+        <ItemBlock title="🔍 PATTERNS" items={payload.patterns} accent="rgba(10,132,255,0.6)" tint="steps" />
       ) : null}
 
       {payload.recommendations?.length ? (

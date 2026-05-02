@@ -57,7 +57,7 @@ export function CoachNav({ active }: { active: CoachView }) {
             className="px-3.5 py-1.5 rounded-full text-[11px] font-semibold touch-manipulation select-none transition-[background,color,border-color,transform] active:scale-[0.97]"
             style={
               is
-                ? { background: "rgba(0,245,196,0.18)", color: "#00f5c4", border: "1px solid #00f5c455" }
+                ? { background: "rgba(10,132,255,0.18)", color: "#0a84ff", border: "1px solid #0a84ff55" }
                 : { color: "rgba(255,255,255,0.55)", border: "1px solid transparent" }
             }
           >

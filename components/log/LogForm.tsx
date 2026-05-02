@@ -8,7 +8,7 @@ import type { DailyLog } from "@/lib/data/types";
 const SECTIONS: { title: string; color: string; fields: { k: keyof DailyLog; l: string; u: string }[] }[] = [
   {
     title: "Recovery",
-    color: "#00f5c4",
+    color: "#0a84ff",
     fields: [
       { k: "hrv", l: "HRV", u: "ms" },
       { k: "resting_hr", l: "Resting HR", u: "bpm" },
@@ -19,7 +19,7 @@ const SECTIONS: { title: string; color: string; fields: { k: keyof DailyLog; l: 
   },
   {
     title: "Sleep",
-    color: "#a29bfe",
+    color: "#5e5ce6",
     fields: [
       { k: "sleep_hours", l: "Sleep", u: "hrs" },
       { k: "sleep_score", l: "Sleep Score", u: "/100" },
@@ -29,7 +29,7 @@ const SECTIONS: { title: string; color: string; fields: { k: keyof DailyLog; l: 
   },
   {
     title: "Training",
-    color: "#ff9f43",
+    color: "#ff9f0a",
     fields: [
       { k: "steps", l: "Steps", u: "" },
       { k: "distance_km", l: "Distance", u: "km" },
@@ -41,7 +41,7 @@ const SECTIONS: { title: string; color: string; fields: { k: keyof DailyLog; l: 
   },
   {
     title: "Nutrition",
-    color: "#ffd93d",
+    color: "#ffd60a",
     fields: [
       { k: "calories_eaten", l: "Eaten", u: "kcal" },
       { k: "protein_g", l: "Protein", u: "g" },
@@ -51,7 +51,7 @@ const SECTIONS: { title: string; color: string; fields: { k: keyof DailyLog; l: 
   },
   {
     title: "Body",
-    color: "#4fc3f7",
+    color: "#af52de",
     fields: [
       { k: "weight_kg", l: "Weight", u: "kg" },
       { k: "body_fat_pct", l: "Body Fat", u: "%" },
@@ -129,7 +129,7 @@ export function LogForm({ date, initialLog, initialCheckin }: Props) {
             value={date}
             max={TODAY_ISO()}
             onChange={(e) => onDateChange(e.target.value)}
-            className="bg-white/5 border border-white/10 rounded-lg px-2.5 py-1.5 text-sm font-mono outline-none focus:border-emerald-300/50 text-white"
+            className="bg-white/5 border border-white/10 rounded-lg px-2.5 py-1.5 text-sm font-mono outline-none focus:border-white/30 text-white"
           />
         </div>
         {sourceLabel && (
@@ -144,9 +144,9 @@ export function LogForm({ date, initialLog, initialCheckin }: Props) {
         <div
           className="rounded-[10px] px-3.5 py-2.5 text-xs font-medium"
           style={{
-            background: flash.startsWith("✗") ? "rgba(255,107,107,0.12)" : "rgba(0,245,196,0.1)",
-            border: `1px solid ${flash.startsWith("✗") ? "rgba(255,107,107,0.3)" : "rgba(0,245,196,0.25)"}`,
-            color: flash.startsWith("✗") ? "#ff6b6b" : "#00f5c4",
+            background: flash.startsWith("✗") ? "rgba(255,69,58,0.12)" : "rgba(10,132,255,0.1)",
+            border: `1px solid ${flash.startsWith("✗") ? "rgba(255,69,58,0.3)" : "rgba(10,132,255,0.25)"}`,
+            color: flash.startsWith("✗") ? "#ff453a" : "#0a84ff",
           }}
         >
           {flash}
@@ -176,9 +176,9 @@ export function LogForm({ date, initialLog, initialCheckin }: Props) {
       {/* Morning feel */}
       <div
         className="rounded-[14px] px-4 py-3.5"
-        style={{ background: "rgba(255,255,255,0.025)", border: "1px solid #00f5c418" }}
+        style={{ background: "rgba(255,255,255,0.025)", border: "1px solid #0a84ff18" }}
       >
-        <div className="text-[10px] uppercase tracking-[0.12em] mb-3" style={{ color: "#00f5c4cc" }}>
+        <div className="text-[10px] uppercase tracking-[0.12em] mb-3" style={{ color: "#0a84ffcc" }}>
           🌅 Morning Feel
         </div>
         <div className="grid grid-cols-2 gap-2.5">
@@ -221,7 +221,7 @@ export function LogForm({ date, initialLog, initialCheckin }: Props) {
           defaultValue={initialLog?.notes ?? ""}
           placeholder="Workout details, meals, anything…"
           rows={4}
-          className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs text-white/80 outline-none focus:border-emerald-300/50 resize-y"
+          className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs text-white/80 outline-none focus:border-white/30 resize-y"
         />
       </div>
 
@@ -230,9 +230,9 @@ export function LogForm({ date, initialLog, initialCheckin }: Props) {
         disabled={pending}
         className="self-end rounded-xl px-5 py-3 text-sm font-bold disabled:opacity-50"
         style={{
-          background: "rgba(0,245,196,0.15)",
-          border: "1px solid #00f5c455",
-          color: "#00f5c4",
+          background: "rgba(10,132,255,0.15)",
+          border: "1px solid #0a84ff55",
+          color: "#0a84ff",
         }}
       >
         {pending ? "Saving…" : "Save"}
@@ -266,7 +266,7 @@ function NumField({
         step="any"
         defaultValue={defaultValue}
         placeholder="—"
-        className="bg-white/5 border border-white/10 rounded-lg px-2.5 py-2 text-sm font-mono outline-none focus:border-emerald-300/50"
+        className="bg-white/5 border border-white/10 rounded-lg px-2.5 py-2 text-sm font-mono outline-none focus:border-white/30"
       />
     </div>
   );
@@ -289,7 +289,7 @@ function SelectField({
       <select
         name={name}
         defaultValue={defaultValue}
-        className="bg-white/5 border border-white/10 rounded-lg px-2.5 py-2 text-sm font-mono outline-none focus:border-emerald-300/50"
+        className="bg-white/5 border border-white/10 rounded-lg px-2.5 py-2 text-sm font-mono outline-none focus:border-white/30"
       >
         {options.map((o) => (
           <option key={o || "_"} value={o} className="bg-[#0d1628]">

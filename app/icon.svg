@@ -5,8 +5,8 @@
       <stop offset="100%" stop-color="#080e1a" />
     </radialGradient>
     <linearGradient id="ring" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#00f5c4" />
-      <stop offset="100%" stop-color="#4fc3f7" />
+      <stop offset="0%" stop-color="#0a84ff" />
+      <stop offset="100%" stop-color="#5e5ce6" />
     </linearGradient>
     <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
       <feGaussianBlur stdDeviation="6" result="b" />

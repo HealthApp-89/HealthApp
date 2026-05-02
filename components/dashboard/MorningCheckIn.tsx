@@ -102,9 +102,9 @@ export function MorningCheckIn({ date, plan, initial }: Props) {
                 onClick={() => setFeel((f) => ({ ...f, readiness: n }))}
                 className="flex-1 h-7 rounded text-[11px] font-mono transition-colors"
                 style={{
-                  background: sel ? "rgba(0,245,196,0.2)" : "rgba(255,255,255,0.04)",
-                  border: `1px solid ${sel ? "#00f5c466" : "rgba(255,255,255,0.08)"}`,
-                  color: sel ? "#00f5c4" : "rgba(255,255,255,0.4)",
+                  background: sel ? "rgba(10,132,255,0.2)" : "rgba(255,255,255,0.04)",
+                  border: `1px solid ${sel ? "#0a84ff66" : "rgba(255,255,255,0.08)"}`,
+                  color: sel ? "#0a84ff" : "rgba(255,255,255,0.4)",
                 }}
               >
                 {n}
@@ -126,9 +126,9 @@ export function MorningCheckIn({ date, plan, initial }: Props) {
                     onClick={() => setFeel((f) => ({ ...f, energy: e }))}
                     className="flex-1 h-7 rounded text-[11px] transition-colors"
                     style={{
-                      background: sel ? "rgba(0,245,196,0.2)" : "rgba(255,255,255,0.04)",
-                      border: `1px solid ${sel ? "#00f5c466" : "rgba(255,255,255,0.08)"}`,
-                      color: sel ? "#00f5c4" : "rgba(255,255,255,0.4)",
+                      background: sel ? "rgba(10,132,255,0.2)" : "rgba(255,255,255,0.04)",
+                      border: `1px solid ${sel ? "#0a84ff66" : "rgba(255,255,255,0.08)"}`,
+                      color: sel ? "#0a84ff" : "rgba(255,255,255,0.4)",
                     }}
                   >
                     {e}
@@ -149,8 +149,8 @@ export function MorningCheckIn({ date, plan, initial }: Props) {
                     onClick={() => setFeel((f) => ({ ...f, mood: m }))}
                     className="flex-1 h-7 rounded text-base transition-colors"
                     style={{
-                      background: sel ? "rgba(0,245,196,0.2)" : "rgba(255,255,255,0.04)",
-                      border: `1px solid ${sel ? "#00f5c466" : "rgba(255,255,255,0.08)"}`,
+                      background: sel ? "rgba(10,132,255,0.2)" : "rgba(255,255,255,0.04)",
+                      border: `1px solid ${sel ? "#0a84ff66" : "rgba(255,255,255,0.08)"}`,
                     }}
                   >
                     {m}
@@ -166,7 +166,7 @@ export function MorningCheckIn({ date, plan, initial }: Props) {
           placeholder="Soreness?"
           value={feel.soreness ?? ""}
           onChange={(e) => setFeel((f) => ({ ...f, soreness: e.target.value }))}
-          className="w-full mt-3 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs text-white/80 outline-none focus:border-emerald-300/50"
+          className="w-full mt-3 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs text-white/80 outline-none focus:border-white/30"
         />
 
         <button
@@ -174,9 +174,9 @@ export function MorningCheckIn({ date, plan, initial }: Props) {
           disabled={pending}
           className="mt-3 w-full rounded-lg py-2 text-xs font-bold disabled:opacity-50"
           style={{
-            background: "rgba(0,245,196,0.15)",
-            border: "1px solid #00f5c455",
-            color: "#00f5c4",
+            background: "rgba(10,132,255,0.15)",
+            border: "1px solid #0a84ff55",
+            color: "#0a84ff",
           }}
         >
           {pending ? "Saving…" : "Save check-in"}

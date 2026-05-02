@@ -19,7 +19,7 @@ export function PRList({ prs }: { prs: PR[] }) {
             </div>
           </div>
           <div className="text-right">
-            <div className="text-[20px] font-bold font-mono" style={{ color: "#ffd93d" }}>
+            <div className="text-[20px] font-bold font-mono" style={{ color: "#ffd60a" }}>
               {pr.est1rm}
             </div>
             <div className="text-[9px] text-white/25">kg 1RM</div>

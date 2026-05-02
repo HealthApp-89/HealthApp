@@ -10,6 +10,7 @@ import { TrendsNav } from "@/components/trends/TrendsNav";
 import { PeriodSelector } from "@/components/trends/PeriodSelector";
 import { loadWorkouts, buildPRs } from "@/lib/data/workouts";
 import { avg } from "@/lib/ui/score";
+import { fieldColor } from "@/lib/ui/tints";
 import type { DailyLog } from "@/lib/data/types";
 import {
   resolvePeriod,
@@ -159,13 +160,13 @@ export default async function TrendsPage(props: {
               }
               deltaLabel="since start"
               positiveIsGood={false}
-              color="#fbbf24"
+              color={fieldColor("weight_kg")!}
             >
               {aggWeight.filter((p) => p.value !== null).length >= 2 && (
                 <BarChart
                   data={aggWeight.map((p) => p.value)}
                   dates={datesWeight}
-                  color="#fbbf24"
+                  color={fieldColor("weight_kg")!}
                   height={60}
                   unit="kg"
                 />
@@ -178,13 +179,13 @@ export default async function TrendsPage(props: {
               unit="ms avg"
               delta={avgHRV !== null ? Math.round((avgHRV - HRV_BASELINE) * 10) / 10 : null}
               deltaLabel={`vs ${HRV_BASELINE}ms baseline`}
-              color="#00f5c4"
+              color={fieldColor("hrv")!}
               note="Baseline 33ms (6mo). Peak 45ms (Oct 2025). Goal: rebuild toward 40ms+."
             >
               <LineChart
                 data={aggHRV.map((p) => p.value)}
                 dates={datesHRV}
-                color="#00f5c4"
+                color={fieldColor("hrv")!}
                 height={64}
                 refLine={HRV_BASELINE}
                 refLabel={`${HRV_BASELINE}ms avg`}
@@ -199,12 +200,12 @@ export default async function TrendsPage(props: {
               delta={avgRHR !== null ? Math.round((avgRHR - RHR_BASELINE) * 10) / 10 : null}
               deltaLabel={`vs ${RHR_BASELINE}bpm baseline`}
               positiveIsGood={false}
-              color="#f87171"
+              color={fieldColor("resting_hr")!}
             >
               <LineChart
                 data={aggRHR.map((p) => p.value)}
                 dates={datesRHR}
-                color="#f87171"
+                color={fieldColor("resting_hr")!}
                 height={64}
                 refLine={RHR_BASELINE}
                 refLabel={`${RHR_BASELINE}bpm avg`}
@@ -235,13 +236,13 @@ export default async function TrendsPage(props: {
               title="Sleep Hours"
               current={avgSleepH !== null ? avgSleepH.toFixed(1) : null}
               unit="hrs avg"
-              color="#a29bfe"
+              color={fieldColor("sleep_hours")!}
               note="Target 7.5–9 hrs. Dashed line = 7.5h."
             >
               <BarChart
                 data={aggSleepH.map((p) => p.value)}
                 dates={datesSleepH}
-                color="#a29bfe"
+                color={fieldColor("sleep_hours")!}
                 height={60}
                 goalLine={7.5}
                 unit="hrs"
@@ -252,12 +253,12 @@ export default async function TrendsPage(props: {
               title="Sleep Score"
               current={avgSleepSc !== null ? Math.round(avgSleepSc) : null}
               unit="/100 avg"
-              color="#a29bfe"
+              color={fieldColor("sleep_score")!}
             >
               <LineChart
                 data={aggSleepSc.map((p) => p.value)}
                 dates={datesSleepSc}
-                color="#a29bfe"
+                color={fieldColor("sleep_score")!}
                 height={56}
                 refLine={85}
                 refLabel="85 optimal"
@@ -273,7 +274,7 @@ export default async function TrendsPage(props: {
                   <BarChart
                     data={aggDeep.map((p) => p.value)}
                     dates={datesDeep}
-                    color="#4fc3f7"
+                    color={fieldColor("deep_sleep_hours")!}
                     height={36}
                     unit="hrs"
                   />
@@ -283,7 +284,7 @@ export default async function TrendsPage(props: {
                   <BarChart
                     data={aggREM.map((p) => p.value)}
                     dates={datesREM}
-                    color="#7c6af7"
+                    color={fieldColor("rem_sleep_hours")!}
                     height={36}
                     unit="hrs"
                   />
@@ -299,12 +300,12 @@ export default async function TrendsPage(props: {
               title="Steps"
               current={avgSteps !== null ? Math.round(avgSteps).toLocaleString() : null}
               unit={granularity === "day" ? "/day avg" : `/${granularity} avg`}
-              color="#00f5c4"
+              color={fieldColor("steps")!}
             >
               <BarChart
                 data={aggSteps.map((p) => p.value)}
                 dates={datesSteps}
-                color="#00f5c4"
+                color={fieldColor("steps")!}
                 height={60}
                 goalLine={granularity === "day" ? 8000 : undefined}
                 unit="steps"
@@ -315,12 +316,12 @@ export default async function TrendsPage(props: {
               title="Calories Eaten"
               current={avgCalsEaten !== null ? Math.round(avgCalsEaten).toLocaleString() : null}
               unit="kcal/day avg"
-              color="#ffd93d"
+              color={fieldColor("calories")!}
             >
               <BarChart
                 data={aggCals.map((p) => p.value)}
                 dates={datesCals}
-                color="#ffd93d"
+                color={fieldColor("calories")!}
                 height={60}
                 unit="kcal"
               />
@@ -330,12 +331,12 @@ export default async function TrendsPage(props: {
               title="Strain"
               current={avgStrainVal !== null ? avgStrainVal.toFixed(1) : null}
               unit="/21 avg"
-              color="#ff9f43"
+              color={fieldColor("strain")!}
             >
               <BarChart
                 data={aggStrain.map((p) => p.value)}
                 dates={datesStrain}
-                color="#ff9f43"
+                color={fieldColor("strain")!}
                 height={60}
                 goalLine={granularity === "day" ? 14 : undefined}
                 unit="/21"
@@ -365,7 +366,7 @@ export default async function TrendsPage(props: {
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className="text-[20px] font-bold font-mono" style={{ color: "#ffd93d" }}>
+                    <div className="text-[20px] font-bold font-mono" style={{ color: "#ffd60a" }}>
                       {pr.est1rm}
                     </div>
                     <div className="text-[9px] text-white/25">kg 1RM</div>
@@ -456,11 +457,11 @@ function CompareRow({
       ? "rgba(255,255,255,0.3)"
       : positiveIsGood
         ? diff > 0
-          ? "#4ade80"
-          : "#f87171"
+          ? "#30d158"
+          : "#ff453a"
         : diff < 0
-          ? "#4ade80"
-          : "#f87171";
+          ? "#30d158"
+          : "#ff453a";
   const arrow = diff === null || diff === 0 ? "→" : diff > 0 ? "↑" : "↓";
   return (
     <div className="flex justify-between items-center py-2 border-t border-white/[0.04] first:border-t-0">

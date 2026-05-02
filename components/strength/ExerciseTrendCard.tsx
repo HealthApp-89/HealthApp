@@ -13,10 +13,10 @@ export function ExerciseTrendCard({ name, points }: Props) {
   return (
     <div
       className="rounded-[14px] px-4 py-3.5"
-      style={{ background: "rgba(255,159,67,0.07)", border: "1px solid rgba(255,159,67,0.2)" }}
+      style={{ background: "rgba(255,159,10,0.07)", border: "1px solid rgba(255,159,10,0.2)" }}
     >
       <div className="flex justify-between items-center mb-2.5">
-        <span className="text-[10px] uppercase tracking-[0.1em]" style={{ color: "rgba(255,159,67,0.8)" }}>
+        <span className="text-[10px] uppercase tracking-[0.1em]" style={{ color: "rgba(255,159,10,0.8)" }}>
           📈 {display}
         </span>
         <Link
@@ -34,7 +34,7 @@ export function ExerciseTrendCard({ name, points }: Props) {
             values={points.map((p) => p.est1rm)}
             labels={points.map((p) => p.date.slice(5))}
             unit="kg 1RM"
-            color="#ff9f43"
+            color="#ff9f0a"
             height={48}
             chartId="extrend"
           />
@@ -42,7 +42,7 @@ export function ExerciseTrendCard({ name, points }: Props) {
             {points.map((p) => (
               <div key={p.date} className="text-center">
                 <div className="text-[8px] text-white/20">{p.date.slice(5)}</div>
-                <div className="text-[10px] font-mono" style={{ color: "#ff9f43" }}>
+                <div className="text-[10px] font-mono" style={{ color: "#ff9f0a" }}>
                   {p.est1rm}
                 </div>
               </div>
@@ -52,13 +52,13 @@ export function ExerciseTrendCard({ name, points }: Props) {
             <div className="flex gap-2.5">
               <div className="flex-1 rounded-[10px] px-3 py-2.5" style={{ background: "rgba(0,0,0,0.2)" }}>
                 <div className="text-[9px] text-white/30 mb-0.5">BEST SET</div>
-                <div className="text-lg font-bold font-mono" style={{ color: "#ff9f43" }}>
+                <div className="text-lg font-bold font-mono" style={{ color: "#ff9f0a" }}>
                   {last.kg}kg × {last.reps}
                 </div>
               </div>
               <div className="flex-1 rounded-[10px] px-3 py-2.5" style={{ background: "rgba(0,0,0,0.2)" }}>
                 <div className="text-[9px] text-white/30 mb-0.5">EST. 1RM</div>
-                <div className="text-lg font-bold font-mono" style={{ color: "#ff9f43" }}>
+                <div className="text-lg font-bold font-mono" style={{ color: "#ff9f0a" }}>
                   {last.est1rm} kg
                 </div>
               </div>

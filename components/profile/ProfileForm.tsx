@@ -34,9 +34,9 @@ export function ProfileForm({ initial }: Props) {
         <div
           className="rounded-[10px] px-3.5 py-2.5 text-xs"
           style={{
-            background: flash.startsWith("✗") ? "rgba(255,107,107,0.12)" : "rgba(0,245,196,0.1)",
-            border: `1px solid ${flash.startsWith("✗") ? "rgba(255,107,107,0.3)" : "rgba(0,245,196,0.25)"}`,
-            color: flash.startsWith("✗") ? "#ff6b6b" : "#00f5c4",
+            background: flash.startsWith("✗") ? "rgba(255,69,58,0.12)" : "rgba(10,132,255,0.1)",
+            border: `1px solid ${flash.startsWith("✗") ? "rgba(255,69,58,0.3)" : "rgba(10,132,255,0.25)"}`,
+            color: flash.startsWith("✗") ? "#ff453a" : "#0a84ff",
           }}
         >
           {flash}
@@ -57,7 +57,7 @@ export function ProfileForm({ initial }: Props) {
           name="goal"
           defaultValue={initial.goal ?? ""}
           rows={3}
-          className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-emerald-300/50 resize-y text-white/80"
+          className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-white/30 resize-y text-white/80"
         />
       </div>
       <button
@@ -65,9 +65,9 @@ export function ProfileForm({ initial }: Props) {
         disabled={pending}
         className="self-end rounded-xl px-5 py-2.5 text-xs font-bold disabled:opacity-50"
         style={{
-          background: "rgba(0,245,196,0.15)",
-          border: "1px solid #00f5c455",
-          color: "#00f5c4",
+          background: "rgba(10,132,255,0.15)",
+          border: "1px solid #0a84ff55",
+          color: "#0a84ff",
         }}
       >
         {pending ? "Saving…" : "Save profile"}
@@ -100,7 +100,7 @@ function Field({
         type={type}
         step="any"
         defaultValue={defaultValue}
-        className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm font-mono outline-none focus:border-emerald-300/50"
+        className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm font-mono outline-none focus:border-white/30"
       />
     </div>
   );

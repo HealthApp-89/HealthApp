@@ -39,7 +39,7 @@ export function RecoveryBars({ data, dates }: Props) {
               />
             );
           }
-          const col = v >= 67 ? "#4ade80" : v >= 34 ? "#fbbf24" : "#f87171";
+          const col = v >= 67 ? "#30d158" : v >= 34 ? "#ffd60a" : "#ff453a";
           const h = Math.max(8, (v / 100) * 50);
           return (
             <div
@@ -88,7 +88,7 @@ export function RecoveryBars({ data, dates }: Props) {
             )}
             <span
               style={{
-                color: activeValue >= 67 ? "#4ade80" : activeValue >= 34 ? "#fbbf24" : "#f87171",
+                color: activeValue >= 67 ? "#30d158" : activeValue >= 34 ? "#ffd60a" : "#ff453a",
               }}
             >
               {activeValue}

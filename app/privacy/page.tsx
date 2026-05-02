@@ -54,7 +54,7 @@ export default function Privacy() {
           <h2 className="text-xl font-semibold mb-2">Contact</h2>
           <p className="text-white/70 leading-relaxed">
             For any questions about this policy, contact{" "}
-            <a className="text-emerald-300 underline" href="mailto:abdel2.elbied@gmail.com">
+            <a className="underline" style={{ color: "#0a84ff" }} href="mailto:abdel2.elbied@gmail.com">
               abdel2.elbied@gmail.com
             </a>
             .

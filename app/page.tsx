@@ -150,9 +150,9 @@ export default async function Home() {
                   color: "rgba(255,255,255,0.6)",
                 }}
               >
-                <span style={{ color: "#6bcb77" }}>+{impact.positiveCount}</span>
+                <span style={{ color: "#30d158" }}>+{impact.positiveCount}</span>
                 <span className="text-white/25">·</span>
-                <span style={{ color: "#ff6b6b" }}>−{impact.negativeCount}</span>
+                <span style={{ color: "#ff453a" }}>−{impact.negativeCount}</span>
               </span>
             ) : null
           }
@@ -177,9 +177,9 @@ export default async function Home() {
                 href="/log"
                 className="inline-block rounded-[10px] px-[18px] py-2 text-xs font-semibold"
                 style={{
-                  background: "rgba(0,245,196,0.15)",
-                  border: "1px solid #00f5c455",
-                  color: "#00f5c4",
+                  background: "rgba(10,132,255,0.15)",
+                  border: "1px solid #0a84ff55",
+                  color: "#0a84ff",
                 }}
               >
                 Log Today →
