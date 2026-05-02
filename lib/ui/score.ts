@@ -25,6 +25,13 @@ export function avg(arr: (number | null | undefined)[]): number | null {
   return f.reduce((a, b) => a + b, 0) / f.length;
 }
 
+/** Display a number with at most `maxDecimals` (default 2), trimming trailing zeros.
+ *  25.343897 → "25.34", 78 → "78", 7.50 → "7.5". Returns "—" for null/non-finite. */
+export function fmtNum(v: number | null | undefined, maxDecimals = 2): string {
+  if (v === null || v === undefined || !Number.isFinite(v)) return "—";
+  return Number((v as number).toFixed(maxDecimals)).toString();
+}
+
 /** Build a 7-day window aligned to "today", filling gaps with null and labelling Today / weekday. */
 export function buildWeekWindow<T extends { date: string }>(rows: T[], today: string): {
   dates: string[];

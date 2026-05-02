@@ -1,3 +1,5 @@
+import { fmtNum } from "@/lib/ui/score";
+
 type GaugeProps = {
   value: number | null;
   max?: number;
@@ -38,7 +40,7 @@ export function Gauge({ value, max = 100, size = 76, color, label, sub }: GaugeP
           fontWeight="700"
           fontFamily="var(--font-mono)"
         >
-          {value ?? "–"}
+          {value === null ? "–" : fmtNum(value)}
         </text>
         {sub && (
           <text
