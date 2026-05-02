@@ -10,7 +10,7 @@ import {
   RecommendationsList,
   type Recommendation,
 } from "@/components/coach/RecommendationsList";
-import { thisWeekToDate, recommendationWeekStart } from "@/lib/coach/week";
+import { reviewWindow, recommendationWeekStart, type ReviewMode } from "@/lib/coach/week";
 
 export const dynamic = "force-dynamic";
 
@@ -148,9 +148,20 @@ async function TodayView({ userId }: { userId: string }) {
   );
 }
 
+const MODE_TITLE: Record<ReviewMode, string> = {
+  "monday-recap": "📅 Last week recap",
+  "in-progress": "📅 This week so far",
+  "sunday-full": "📅 Full-week review",
+};
+const MODE_SEED_TARGET: Record<ReviewMode, string> = {
+  "monday-recap": "the week ahead",
+  "in-progress": "the rest of this week",
+  "sunday-full": "next week",
+};
+
 async function ThisWeekView({ userId }: { userId: string }) {
   const supabase = await createSupabaseServerClient();
-  const { start, end, complete, daysRemaining } = thisWeekToDate();
+  const { start, end, mode, daysRemaining } = reviewWindow();
 
   const { data: cached } = await supabase
     .from("ai_insights")
@@ -161,16 +172,18 @@ async function ThisWeekView({ userId }: { userId: string }) {
     .maybeSingle();
 
   const payload = (cached?.payload ?? null) as WeeklyReviewPayload | null;
-  const windowSubtitle = complete
-    ? `${start} → ${end} · full week`
-    : `${start} → ${end} · ${daysRemaining} day${daysRemaining === 1 ? "" : "s"} left`;
-  const seedTarget = complete ? "next week" : "the rest of this week";
+  const windowSubtitle =
+    mode === "in-progress"
+      ? `${start} → ${end} · ${daysRemaining} day${daysRemaining === 1 ? "" : "s"} left`
+      : `${start} → ${end} · full week`;
 
   return (
     <>
       <div className="flex justify-between items-center">
         <div>
-          <div className="text-[10px] uppercase tracking-[0.12em] text-white/35">📅 This week</div>
+          <div className="text-[10px] uppercase tracking-[0.12em] text-white/35">
+            {MODE_TITLE[mode]}
+          </div>
           <div className="text-[10px] text-white/30 mt-0.5">
             {windowSubtitle}
             {cached && " · cached"}
@@ -186,7 +199,7 @@ async function ThisWeekView({ userId }: { userId: string }) {
         <Card>
           <p className="text-sm text-white/40 leading-relaxed">
             No review for {start} → {end} yet. Click <em>Run review</em> to generate one and seed
-            recommendations for {seedTarget}.
+            recommendations for {MODE_SEED_TARGET[mode]}.
           </p>
         </Card>
       )}
@@ -196,7 +209,7 @@ async function ThisWeekView({ userId }: { userId: string }) {
           payload={payload}
           weekStart={start}
           weekEnd={end}
-          complete={complete}
+          mode={mode}
           daysRemaining={daysRemaining}
         />
       )}
