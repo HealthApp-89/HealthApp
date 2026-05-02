@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { createSupabaseServerClient, createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import {
   getValidAccessToken,
@@ -86,6 +87,11 @@ async function syncForUser(userId: string) {
     .from("daily_logs")
     .upsert(Array.from(byDate.values()), { onConflict: "user_id,date" });
   if (error) throw error;
+  // Invalidate ISR caches so the dashboard / trends / coach pick up new
+  // WHOOP data immediately instead of waiting up to 60s for revalidation.
+  revalidatePath("/");
+  revalidatePath("/trends");
+  revalidatePath("/coach");
   return { ok: true, upserted: byDate.size };
 }
 

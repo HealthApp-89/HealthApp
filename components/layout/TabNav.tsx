@@ -22,6 +22,7 @@ export function TabNav() {
           <Link
             key={t.href}
             href={t.href}
+            prefetch={true}
             className="px-3 py-1.5 text-[10px] font-medium uppercase tracking-[0.08em] whitespace-nowrap flex-shrink-0 transition-colors"
             style={{
               color: active ? "#00f5c4" : "rgba(255,255,255,0.3)",

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { createSupabaseServerClient, createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { getValidAccessToken, getMeasures, getActivity } from "@/lib/withings";
 import { mergeWithingsToRows } from "@/lib/withings-merge";
@@ -29,6 +30,10 @@ async function syncForUser(userId: string) {
     .from("daily_logs")
     .upsert(Array.from(byDate.values()), { onConflict: "user_id,date" });
   if (error) throw error;
+  // Invalidate ISR caches so the dashboard / trends pick up new body comp
+  // and exercise minutes immediately.
+  revalidatePath("/");
+  revalidatePath("/trends");
   return {
     ok: true,
     upserted: byDate.size,

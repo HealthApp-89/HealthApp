@@ -8,7 +8,7 @@ import { ConnectionsPanel } from "@/components/profile/ConnectionsPanel";
 import { IngestPanel } from "@/components/profile/IngestPanel";
 import type { DailyLog } from "@/lib/data/types";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 60;
 
 export default async function ProfilePage() {
   const supabase = await createSupabaseServerClient();

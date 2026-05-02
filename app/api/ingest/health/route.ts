@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { extractBearer, resolveIngestToken } from "@/lib/ingest/auth";
 
@@ -171,5 +172,14 @@ export async function POST(request: Request) {
     }
   }
 
+  // Invalidate ISR caches so the dashboard / trends / strength pick up
+  // newly ingested Apple Health / Strong / Yazio data immediately.
+  if (result.days_upserted > 0) {
+    revalidatePath("/");
+    revalidatePath("/trends");
+  }
+  if (result.workouts_upserted > 0) {
+    revalidatePath("/strength");
+  }
   return NextResponse.json({ ok: true, source: sourceParam, ...result });
 }

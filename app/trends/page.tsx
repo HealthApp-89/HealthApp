@@ -19,7 +19,7 @@ import {
   type PeriodPreset,
 } from "@/lib/ui/period";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 60;
 
 const HRV_BASELINE = 33;
 const RHR_BASELINE = 58;

@@ -1,0 +1,245 @@
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { Card, SectionLabel } from "@/components/ui/Card";
+import { SparkLine } from "@/components/ui/SparkLine";
+import { MonitorTile } from "@/components/dashboard/MonitorTile";
+import { DashboardSection } from "@/components/dashboard/DashboardSection";
+import { avg, buildWeekWindow, fmtNum } from "@/lib/ui/score";
+import type { DailyLog } from "@/lib/data/types";
+
+type Status = "ok" | "watch" | "alert" | "muted";
+
+function hrvStatus(v: number | null, baseline: number): Status {
+  if (v === null) return "muted";
+  if (v >= baseline * 0.95) return "ok";
+  if (v >= baseline * 0.8) return "watch";
+  return "alert";
+}
+
+function rhrStatus(v: number | null): Status {
+  if (v === null) return "muted";
+  if (v <= 60) return "ok";
+  if (v <= 70) return "watch";
+  return "alert";
+}
+
+function fmtInt(v: number | null): string {
+  if (v === null) return "—";
+  return Math.round(v).toLocaleString();
+}
+
+type Props = {
+  userId: string;
+  today: string;
+  todayHrv: number | null;
+  todayRhr: number | null;
+  hrvBaseline: number;
+};
+
+/** Renders the Monitors row + the Last-7-days rollup cards. Lives in a
+ *  separate Suspense boundary so the heavier daily_logs window query
+ *  doesn't block first paint of the hero / today's metrics above it. */
+export async function WeeklyRollups({ userId, today, todayHrv, todayRhr, hrvBaseline }: Props) {
+  const supabase = await createSupabaseServerClient();
+  const { data: logsRaw } = await supabase
+    .from("daily_logs")
+    .select(
+      "user_id, date, hrv, resting_hr, steps, calories, weight_kg, source, updated_at",
+    )
+    .eq("user_id", userId)
+    .order("date", { ascending: false })
+    .limit(14);
+
+  const logs: DailyLog[] = (logsRaw ?? []) as DailyLog[];
+  const week = buildWeekWindow(logs, today);
+  const wSteps = week.rows.map((r) => r?.steps ?? null);
+  const wCals = week.rows.map((r) => r?.calories ?? null);
+  const wWgt = week.rows.map((r) => r?.weight_kg ?? null);
+  const latestWeightRow = logs.find((l) => l.weight_kg !== null);
+  const validWts = wWgt.filter((v): v is number => typeof v === "number");
+  const hasSteps = wSteps.some((v) => v !== null);
+  const hasCals = wCals.some((v) => v !== null);
+  const hasWeight = validWts.length > 0;
+  const hrvAvg7 = avg(week.rows.map((r) => r?.hrv ?? null));
+  const rhrAvg7 = avg(week.rows.map((r) => r?.resting_hr ?? null));
+
+  const showMonitors = todayHrv != null || todayRhr != null;
+
+  return (
+    <>
+      {/* MONITORS — current value with 7-day context */}
+      {showMonitors && (
+        <DashboardSection label="Monitors">
+          <div className="grid grid-cols-2 gap-2.5">
+            <MonitorTile
+              label="HRV"
+              value={todayHrv}
+              unit="ms"
+              status={hrvStatus(todayHrv, hrvBaseline)}
+              detail={
+                hrvAvg7 != null
+                  ? `7d avg ${fmtNum(hrvAvg7)} · base ${fmtNum(hrvBaseline)}`
+                  : `Baseline ${fmtNum(hrvBaseline)} ms`
+              }
+              accent="#00f5c4"
+            />
+            <MonitorTile
+              label="Resting HR"
+              value={todayRhr}
+              unit="bpm"
+              status={rhrStatus(todayRhr)}
+              detail={rhrAvg7 != null ? `7d avg ${fmtNum(rhrAvg7)} bpm` : null}
+              accent="#ff6b6b"
+            />
+          </div>
+        </DashboardSection>
+      )}
+
+      {/* WEEKLY ROLLUPS */}
+      {(hasSteps || hasCals || hasWeight) && (
+        <DashboardSection label="Last 7 days">
+          <div className="flex flex-col gap-3">
+            {hasSteps && (
+              <Card>
+                <div className="flex justify-between items-center mb-2.5">
+                  <SectionLabel>Steps</SectionLabel>
+                  <span className="text-lg font-bold font-mono" style={{ color: "#00f5c4" }}>
+                    {wSteps[6] != null ? wSteps[6]!.toLocaleString() : "—"}
+                  </span>
+                </div>
+                <SparkLine values={wSteps} color="#00f5c4" height={40} chartId="stp7" />
+                <div className="flex justify-between mt-1.5">
+                  {week.labels.map((d, i) => (
+                    <span
+                      key={i}
+                      className="text-[8px] uppercase"
+                      style={{ color: d === "Today" ? "#00f5c4" : "rgba(255,255,255,0.2)" }}
+                    >
+                      {d}
+                    </span>
+                  ))}
+                </div>
+                <div className="mt-2.5 flex gap-2">
+                  <StatTile label="7-day avg" value={fmtInt(avg(wSteps))} color="#00f5c4" />
+                  <StatTile
+                    label="Goal"
+                    value="8,000"
+                    color={(wSteps[6] ?? 0) >= 8000 ? "#00f5c4" : "#ffd93d"}
+                  />
+                  <StatTile
+                    label="Best"
+                    value={
+                      wSteps.filter((v): v is number => typeof v === "number").length
+                        ? Math.max(
+                            ...wSteps.filter((v): v is number => typeof v === "number"),
+                          ).toLocaleString()
+                        : "—"
+                    }
+                    color="#00f5c4"
+                  />
+                </div>
+              </Card>
+            )}
+
+            {hasCals && (
+              <Card>
+                <div className="flex justify-between items-center mb-2.5">
+                  <SectionLabel>Calories</SectionLabel>
+                  <span className="text-lg font-bold font-mono" style={{ color: "#ffd93d" }}>
+                    {wCals[6] != null ? wCals[6]!.toLocaleString() : "—"}
+                    <span className="text-[10px] text-white/30 font-normal ml-1">kcal</span>
+                  </span>
+                </div>
+                <SparkLine values={wCals} color="#ffd93d" height={40} chartId="cal7" />
+                <div className="flex justify-between mt-1.5 mb-2.5">
+                  {week.labels.map((d, i) => (
+                    <span
+                      key={i}
+                      className="text-[8px] uppercase"
+                      style={{ color: d === "Today" ? "#ffd93d" : "rgba(255,255,255,0.2)" }}
+                    >
+                      {d}
+                    </span>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <StatTile label="7-day avg" value={fmtInt(avg(wCals))} color="#ffd93d" />
+                </div>
+              </Card>
+            )}
+
+            {hasWeight && (
+              <Card>
+                <div className="flex justify-between items-center mb-2.5">
+                  <SectionLabel>Weight trend</SectionLabel>
+                  <span className="text-lg font-bold font-mono" style={{ color: "#4fc3f7" }}>
+                    {latestWeightRow?.weight_kg != null
+                      ? `${fmtNum(latestWeightRow.weight_kg)} kg`
+                      : "—"}
+                  </span>
+                </div>
+                {validWts.length > 1 && (
+                  <>
+                    <SparkLine values={wWgt} color="#4fc3f7" height={40} chartId="wgt7" />
+                    <div className="flex justify-between mt-1.5 mb-2.5">
+                      {week.labels.map((d, i) => (
+                        <span
+                          key={i}
+                          className="text-[8px] uppercase"
+                          style={{ color: d === "Today" ? "#4fc3f7" : "rgba(255,255,255,0.2)" }}
+                        >
+                          {d}
+                        </span>
+                      ))}
+                    </div>
+                  </>
+                )}
+                <div className="flex gap-2">
+                  <StatTile
+                    label="Low"
+                    value={validWts.length ? `${fmtNum(Math.min(...validWts))} kg` : "—"}
+                    color="#4fc3f7"
+                  />
+                  <StatTile
+                    label="High"
+                    value={validWts.length ? `${fmtNum(Math.max(...validWts))} kg` : "—"}
+                    color="#4fc3f7"
+                  />
+                  <StatTile
+                    label="7d change"
+                    value={
+                      validWts.length > 1
+                        ? `${validWts[validWts.length - 1] - validWts[0] > 0 ? "+" : ""}${fmtNum(
+                            validWts[validWts.length - 1] - validWts[0],
+                          )} kg`
+                        : "—"
+                    }
+                    color={
+                      validWts.length > 1
+                        ? validWts[validWts.length - 1] - validWts[0] < 0
+                          ? "#6bcb77"
+                          : validWts[validWts.length - 1] - validWts[0] > 0
+                          ? "#ff6b6b"
+                          : "#888"
+                        : "#888"
+                    }
+                  />
+                </div>
+              </Card>
+            )}
+          </div>
+        </DashboardSection>
+      )}
+    </>
+  );
+}
+
+function StatTile({ label, value, color }: { label: string; value: string; color: string }) {
+  return (
+    <div className="flex-1 rounded-lg px-2.5 py-2" style={{ background: "rgba(0,0,0,0.15)" }}>
+      <div className="text-[9px] uppercase tracking-[0.08em] text-white/30 mb-0.5">{label}</div>
+      <div className="text-[15px] font-bold font-mono" style={{ color }}>
+        {value}
+      </div>
+    </div>
+  );
+}
