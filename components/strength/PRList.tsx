@@ -4,7 +4,7 @@ import type { PR } from "@/lib/data/workouts";
 export function PRList({ prs }: { prs: PR[] }) {
   if (!prs.length) return null;
   return (
-    <Card>
+    <Card tint="nutrition">
       <SectionLabel>🏆 PERSONAL RECORDS (est. 1RM)</SectionLabel>
       {prs.map((pr) => (
         <div

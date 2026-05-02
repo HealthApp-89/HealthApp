@@ -1,5 +1,6 @@
 import { Card, SectionLabel } from "@/components/ui/Card";
 import { PrioBox } from "@/components/ui/PrioBox";
+import type { TintKey } from "@/lib/ui/tints";
 import type { ReviewMode } from "@/lib/coach/week";
 
 type Item = { label: string; detail: string };
@@ -51,25 +52,25 @@ export function WeeklyReview({ payload, weekStart, weekEnd, mode, daysRemaining 
 
   return (
     <div className="flex flex-col gap-3.5">
-      <Card>
+      <Card tint="coach">
         <SectionLabel>📅 {headlineRange}</SectionLabel>
         <p className="text-sm text-white/75 leading-relaxed whitespace-pre-line">{payload.summary}</p>
       </Card>
 
       {/* Legacy wins/misses — only render if a cached payload still has them. */}
       {payload.wins?.length ? (
-        <ItemBlock title="✅ WINS" items={payload.wins} accent="rgba(74,222,128,0.6)" />
+        <ItemBlock title="✅ WINS" items={payload.wins} accent="rgba(74,222,128,0.6)" tint="recovery" />
       ) : null}
       {payload.misses?.length ? (
-        <ItemBlock title="⚠ MISSES" items={payload.misses} accent="rgba(248,113,113,0.6)" />
+        <ItemBlock title="⚠ MISSES" items={payload.misses} accent="rgba(248,113,113,0.6)" tint="heart" />
       ) : null}
 
       {payload.patterns?.length ? (
-        <ItemBlock title="🔍 PATTERNS" items={payload.patterns} accent="rgba(0,245,196,0.6)" />
+        <ItemBlock title="🔍 PATTERNS" items={payload.patterns} accent="rgba(0,245,196,0.6)" tint="steps" />
       ) : null}
 
       {payload.recommendations?.length ? (
-        <Card>
+        <Card tint="coach">
           <SectionLabel>🎯 {recsHeadline}</SectionLabel>
           <div className="flex flex-col gap-2">
             {payload.recommendations.map((r, i) => (
@@ -95,13 +96,15 @@ function ItemBlock({
   title,
   items,
   accent,
+  tint,
 }: {
   title: string;
   items: Item[];
   accent: string;
+  tint?: TintKey;
 }) {
   return (
-    <Card>
+    <Card tint={tint}>
       <SectionLabel color={accent}>{title}</SectionLabel>
       <div className="flex flex-col gap-2.5">
         {items.map((p, i) => (

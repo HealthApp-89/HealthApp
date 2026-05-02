@@ -8,7 +8,7 @@ export function VolumeTrendCard({ workouts }: { workouts: WorkoutSession[] }) {
   const values = ordered.map((w) => w.vol);
   const labels = ordered.slice(-6).map((w) => w.date.slice(5));
   return (
-    <Card>
+    <Card tint="weight">
       <SectionLabel>SESSION VOLUME TREND</SectionLabel>
       <SparkLine values={values} color="#4fc3f7" height={48} chartId="voltrd" />
       <div className="flex justify-between mt-2">

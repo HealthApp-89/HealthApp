@@ -63,7 +63,7 @@ export default async function ProfilePage() {
         whoopSyncedAt={whoopTokens?.updated_at ?? null}
       />
       <div className="px-4 pt-3.5 max-w-3xl mx-auto flex flex-col gap-3.5">
-        <Card>
+        <Card tint="coach">
           <SectionLabel>⬡ ATHLETE PROFILE</SectionLabel>
           <ProfileForm
             initial={{

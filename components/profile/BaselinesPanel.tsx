@@ -12,7 +12,7 @@ export function BaselinesPanel({ logs }: { logs: DailyLog[] }) {
   const days = recent.length;
   const fmt = (v: number | null, fixed = 1) => (v === null ? "—" : v.toFixed(fixed));
   return (
-    <Card>
+    <Card tint="recovery">
       <SectionLabel>📊 BASELINES (last 180 days)</SectionLabel>
       <div className="grid grid-cols-4 gap-2 font-mono">
         <Stat label="HRV" value={fmt(hrv)} unit="ms" color="#00f5c4" />

@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 
+import { tintStyle } from "@/lib/ui/tints";
+
 type Props = {
   title: string;
   current: number | string | null;
@@ -11,6 +13,8 @@ type Props = {
   color: string;
   note?: string;
   children?: ReactNode;
+  /** Disable the auto-derived gradient tint (defaults on). */
+  tinted?: boolean;
 };
 
 export function MetricCard({
@@ -23,6 +27,7 @@ export function MetricCard({
   color,
   note,
   children,
+  tinted = true,
 }: Props) {
   const arrow = !delta ? "→" : delta > 0 ? "↑" : "↓";
   const dc =
@@ -35,13 +40,13 @@ export function MetricCard({
         : delta < 0
           ? "#4ade80"
           : "#f87171";
+  const tintCss = tinted
+    ? tintStyle(color)
+    : { background: "rgba(255,255,255,0.025)", borderColor: "rgba(255,255,255,0.07)" };
   return (
     <div
-      className="rounded-[14px] px-4 py-3.5 mb-3"
-      style={{
-        background: "rgba(255,255,255,0.025)",
-        border: "1px solid rgba(255,255,255,0.07)",
-      }}
+      className="rounded-[14px] px-4 py-3.5 mb-3 border"
+      style={tintCss}
     >
       <div className="flex justify-between items-start mb-2.5">
         <div>
