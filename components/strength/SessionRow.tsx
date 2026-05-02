@@ -1,4 +1,8 @@
+"use client";
+
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect, useState, useTransition, type MouseEvent } from "react";
 import type { WorkoutSession } from "@/lib/data/workouts";
 import { WCOLORS } from "@/lib/ui/colors";
 
@@ -11,7 +15,19 @@ type Props = {
 /** One row in the Strength tab's recent-sessions list. Tapping an exercise pill
  *  routes to /strength?ex=<name> which re-renders the page with that trend card. */
 export function SessionRow({ session, selectedExercise, isLast }: Props) {
+  const router = useRouter();
   const wc = WCOLORS[session.type ?? "Other"] ?? "#888";
+  const [, startTransition] = useTransition();
+  // Mirror the URL-driven selection so the tapped pill flips its style instantly
+  // without waiting for the RSC payload.
+  const [optimisticSelected, setOptimisticSelected] = useState<string | undefined>(
+    selectedExercise,
+  );
+
+  useEffect(() => {
+    setOptimisticSelected(selectedExercise);
+  }, [selectedExercise]);
+
   return (
     <div
       className="pb-3 mb-3"
@@ -34,14 +50,35 @@ export function SessionRow({ session, selectedExercise, isLast }: Props) {
       </div>
       <div className="flex flex-wrap gap-1.5">
         {session.exercises.map((e) => {
-          const isSelected = selectedExercise === e.name;
+          const isSelected = optimisticSelected === e.name;
           const display = e.name.split("(")[0].trim();
+          const href = isSelected ? "/strength" : `/strength?ex=${encodeURIComponent(e.name)}`;
+
+          const onClick = (ev: MouseEvent<HTMLAnchorElement>) => {
+            if (
+              ev.metaKey ||
+              ev.ctrlKey ||
+              ev.shiftKey ||
+              ev.altKey ||
+              ev.button !== 0
+            ) {
+              return;
+            }
+            ev.preventDefault();
+            setOptimisticSelected(isSelected ? undefined : e.name);
+            startTransition(() => {
+              router.push(href, { scroll: false });
+            });
+          };
+
           return (
             <Link
               key={e.name}
-              href={isSelected ? "/strength" : `/strength?ex=${encodeURIComponent(e.name)}`}
+              href={href}
               scroll={false}
-              className="text-[9px] px-2 py-0.5 rounded-full transition-colors"
+              onClick={onClick}
+              aria-pressed={isSelected}
+              className="text-[10px] px-2.5 py-1 rounded-full touch-manipulation select-none transition-[background,border-color,color,transform] active:scale-[0.97] active:bg-white/10"
               style={{
                 background: isSelected ? `${wc}33` : "rgba(255,255,255,0.05)",
                 border: `1px solid ${isSelected ? wc + "66" : "rgba(255,255,255,0.08)"}`,

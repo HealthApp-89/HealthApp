@@ -19,7 +19,12 @@ export function ExerciseTrendCard({ name, points }: Props) {
         <span className="text-[10px] uppercase tracking-[0.1em]" style={{ color: "rgba(255,159,67,0.8)" }}>
           📈 {display}
         </span>
-        <Link href="/strength" scroll={false} className="text-lg text-white/35 hover:text-white">
+        <Link
+          href="/strength"
+          scroll={false}
+          aria-label="Close exercise trend"
+          className="p-2 -m-2 rounded-full text-lg leading-none text-white/35 hover:text-white touch-manipulation select-none active:bg-white/10"
+        >
           ×
         </Link>
       </div>
