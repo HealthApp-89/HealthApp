@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { Header } from "@/components/layout/Header";
 import { Card, SectionLabel } from "@/components/ui/Card";
+import { tintByKey } from "@/lib/ui/tints";
 import { InsightsList, type Insight } from "@/components/coach/InsightsList";
 import { RefreshButton } from "@/components/coach/RefreshButton";
 import { CoachNav, type CoachView } from "@/components/coach/CoachNav";
@@ -100,10 +101,7 @@ async function TodayView({ userId }: { userId: string }) {
       )}
 
       {payload?.patterns?.length ? (
-        <div
-          className="rounded-[14px] px-4 py-3.5"
-          style={{ background: "rgba(0,245,196,0.05)", border: "1px solid rgba(0,245,196,0.15)" }}
-        >
+        <div className="rounded-[14px] px-4 py-3.5 border" style={tintByKey("steps")}>
           <SectionLabel color="rgba(0,245,196,0.6)">🔍 PATTERNS</SectionLabel>
           <div className="flex flex-col gap-2.5">
             {payload.patterns.map((p, i) => (
@@ -124,13 +122,7 @@ async function TodayView({ userId }: { userId: string }) {
       {payload?.insights?.length ? <InsightsList insights={payload.insights} /> : null}
 
       {payload?.plan ? (
-        <div
-          className="rounded-[14px] px-4 py-3.5"
-          style={{
-            background: "rgba(162,155,254,0.07)",
-            border: "1px solid rgba(162,155,254,0.15)",
-          }}
-        >
+        <div className="rounded-[14px] px-4 py-3.5 border" style={tintByKey("coach")}>
           <SectionLabel color="rgba(162,155,254,0.7)">{payload.plan.week ?? "PLAN"}</SectionLabel>
           <PlanRow label="Today" text={payload.plan.today} active />
           <PlanRow label="Tomorrow" text={payload.plan.tomorrow} />

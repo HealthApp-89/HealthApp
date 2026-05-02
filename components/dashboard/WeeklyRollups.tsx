@@ -99,7 +99,7 @@ export async function WeeklyRollups({ userId, today, todayHrv, todayRhr, hrvBase
         <DashboardSection label="Last 7 days">
           <div className="flex flex-col gap-3">
             {hasSteps && (
-              <Card>
+              <Card tint="steps">
                 <div className="flex justify-between items-center mb-2.5">
                   <SectionLabel>Steps</SectionLabel>
                   <span className="text-lg font-bold font-mono" style={{ color: "#00f5c4" }}>
@@ -141,7 +141,7 @@ export async function WeeklyRollups({ userId, today, todayHrv, todayRhr, hrvBase
             )}
 
             {hasCals && (
-              <Card>
+              <Card tint="nutrition">
                 <div className="flex justify-between items-center mb-2.5">
                   <SectionLabel>Calories</SectionLabel>
                   <span className="text-lg font-bold font-mono" style={{ color: "#ffd93d" }}>
@@ -168,7 +168,7 @@ export async function WeeklyRollups({ userId, today, todayHrv, todayRhr, hrvBase
             )}
 
             {hasWeight && (
-              <Card>
+              <Card tint="weight">
                 <div className="flex justify-between items-center mb-2.5">
                   <SectionLabel>Weight trend</SectionLabel>
                   <span className="text-lg font-bold font-mono" style={{ color: "#4fc3f7" }}>

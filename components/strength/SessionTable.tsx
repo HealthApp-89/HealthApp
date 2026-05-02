@@ -15,7 +15,7 @@ export function SessionTable({ session }: Props) {
   const workingSets = session.sets;
 
   return (
-    <Card>
+    <Card tintColor={wc}>
       {/* Session header — type pill + date + volume + working set count */}
       <div className="flex justify-between items-baseline mb-3 flex-wrap gap-2">
         <div className="flex gap-2 items-center">

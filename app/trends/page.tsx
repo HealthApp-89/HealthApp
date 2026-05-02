@@ -208,7 +208,7 @@ export default async function TrendsPage(props: {
               />
             </MetricCard>
 
-            <Card>
+            <Card tint="recovery">
               <SectionLabel>Recovery % — {granularityLabel}</SectionLabel>
               <RecoveryBars data={aggRecov.map((p) => (p.value !== null ? Math.round(p.value) : null))} />
               <div className="flex gap-3 mt-2.5">
@@ -256,7 +256,7 @@ export default async function TrendsPage(props: {
               />
             </MetricCard>
 
-            <Card>
+            <Card tint="sleep">
               <SectionLabel>DEEP + REM (hrs)</SectionLabel>
               <div className="flex flex-col gap-2 mt-1">
                 <div>
@@ -337,7 +337,7 @@ export default async function TrendsPage(props: {
 
         {section === "strength" && (
           <div>
-            <Card>
+            <Card tint="nutrition">
               <SectionLabel>🏆 PRs in window · est. 1RM</SectionLabel>
               {prs.length === 0 && (
                 <p className="text-xs text-white/30 py-3 text-center">

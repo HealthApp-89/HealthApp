@@ -1,5 +1,6 @@
 import { priorityColor } from "@/lib/ui/colors";
 import { SectionLabel } from "@/components/ui/Card";
+import { tintByKey } from "@/lib/ui/tints";
 
 type ExerciseAdvice = {
   category: string;
@@ -30,8 +31,8 @@ export function CoachCards({ payload }: { payload: Payload }) {
 
   return (
     <div
-      className="rounded-[14px] px-4 py-3.5"
-      style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)" }}
+      className="rounded-[14px] px-4 py-3.5 border"
+      style={tintByKey("coach")}
     >
       <SectionLabel color="rgba(0,245,196,0.6)">🎯 STRENGTH COACH</SectionLabel>
       <div className="text-[11px] text-white/35 mb-3 leading-relaxed">

@@ -18,7 +18,7 @@ export function ConnectionsPanel({
   withingsUpdatedAt,
 }: Props) {
   return (
-    <Card>
+    <Card tint="steps">
       <SectionLabel>🔗 CONNECTIONS</SectionLabel>
       <div className="flex flex-col gap-2.5">
         <ProviderRow

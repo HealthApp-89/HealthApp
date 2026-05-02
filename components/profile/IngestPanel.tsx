@@ -60,7 +60,7 @@ export function IngestPanel({
   const ingestUrl = `${appUrl}/api/ingest/health`;
 
   return (
-    <Card>
+    <Card tint="nutrition">
       <SectionLabel>📲 APPLE HEALTH / STRONG / YAZIO</SectionLabel>
       <p className="text-xs text-white/40 leading-relaxed mb-3">
         Generate a personal ingest token, then point an iOS Shortcut at the

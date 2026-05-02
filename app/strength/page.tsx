@@ -99,7 +99,7 @@ export default async function StrengthPage(props: {
               </>
             ) : (
               <>
-                <Card>
+                <Card tint="strain">
                   <SectionLabel>RECENT SESSIONS · tap exercise to see trend</SectionLabel>
                   {workouts.slice(0, 5).map((w, i, arr) => (
                     <SessionRow
