@@ -7,13 +7,14 @@ import { InstallHint } from "@/components/layout/InstallHint";
 import { Card } from "@/components/ui/Card";
 import { MetricBar } from "@/components/ui/MetricBar";
 import { MorningCheckIn } from "@/components/dashboard/MorningCheckIn";
-import { HeroGauge } from "@/components/dashboard/HeroGauge";
+import { ImpactDonut } from "@/components/dashboard/ImpactDonut";
 import { DashboardSection } from "@/components/dashboard/DashboardSection";
 import { WeeklyRollups } from "@/components/dashboard/WeeklyRollups";
 import { SkeletonCard } from "@/components/dashboard/SkeletonCard";
-import { FIELDS, scoreColor, scoreLabel } from "@/lib/ui/colors";
-import { calcScore, fmtNum } from "@/lib/ui/score";
+import { FIELDS } from "@/lib/ui/colors";
+import { calcScore } from "@/lib/ui/score";
 import { buildDailyPlan } from "@/lib/coach/readiness";
+import { computeImpact } from "@/lib/coach/impact";
 import type { DailyLog } from "@/lib/data/types";
 
 // 60s ISR — sync routes call revalidatePath() so new WHOOP/Withings/AH data
@@ -57,9 +58,8 @@ export default async function Home() {
 
   const todayLog = (todayRow ?? null) as DailyLog | null;
   const score = calcScore(todayLog);
-  const sc = scoreColor(score);
-  const sl = scoreLabel(score);
   const hasToday = !!todayLog;
+  const impact = hasToday ? computeImpact(todayLog, hrvBaseline) : null;
 
   const feelInput = checkin
     ? {
@@ -99,68 +99,35 @@ export default async function Home() {
           }
         />
 
-        {/* HERO — 3 big rings */}
+        {/* HERO — impact donut: per-metric +/- contribution to today's readiness */}
         <DashboardSection
           label="Today"
           trailing={
-            score !== null ? (
+            hasToday && impact ? (
               <span
-                className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full font-mono"
+                className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full font-mono text-[10px]"
                 style={{
-                  background: `${sc}1a`,
-                  border: `1px solid ${sc}40`,
-                  color: sc,
+                  background: "rgba(255,255,255,0.04)",
+                  border: "1px solid rgba(255,255,255,0.08)",
+                  color: "rgba(255,255,255,0.6)",
                 }}
               >
-                <span
-                  className="w-1.5 h-1.5 rounded-full"
-                  style={{ background: sc, boxShadow: `0 0 6px ${sc}` }}
-                />
-                {fmtNum(score)} · {sl}
+                <span style={{ color: "#6bcb77" }}>+{impact.positiveCount}</span>
+                <span className="text-white/25">·</span>
+                <span style={{ color: "#ff6b6b" }}>−{impact.negativeCount}</span>
               </span>
             ) : null
           }
         >
-          {hasToday ? (
+          {hasToday && impact ? (
             <div
-              className="rounded-[18px] border border-white/[0.06] px-4 py-5"
+              className="rounded-[18px] border border-white/[0.06] px-4 py-5 flex justify-center"
               style={{
                 background:
                   "linear-gradient(135deg, rgba(255,255,255,0.025), rgba(255,255,255,0.005))",
               }}
             >
-              <div className="grid grid-cols-3 gap-2 sm:gap-4">
-                <HeroGauge
-                  value={todayLog!.sleep_score}
-                  max={100}
-                  label="Sleep"
-                  unit="score"
-                  color="#a29bfe"
-                  caption={
-                    todayLog!.sleep_hours != null ? `${fmtNum(todayLog!.sleep_hours)} h` : null
-                  }
-                />
-                <HeroGauge
-                  value={todayLog!.recovery}
-                  max={100}
-                  label="Recovery"
-                  unit="%"
-                  color="#6bcb77"
-                  caption={todayLog!.hrv != null ? `HRV ${fmtNum(todayLog!.hrv)} ms` : null}
-                />
-                <HeroGauge
-                  value={todayLog!.strain}
-                  max={21}
-                  label="Strain"
-                  unit="/21"
-                  color="#ff9f43"
-                  caption={
-                    todayLog!.calories != null
-                      ? `${todayLog!.calories.toLocaleString()} kcal`
-                      : null
-                  }
-                />
-              </div>
+              <ImpactDonut segments={impact.segments} score={score} />
             </div>
           ) : (
             <div className="rounded-[18px] border border-white/[0.06] bg-white/[0.02] text-center px-4 py-8">
