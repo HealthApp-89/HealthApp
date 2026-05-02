@@ -12,7 +12,7 @@ import { DashboardSection } from "@/components/dashboard/DashboardSection";
 import { WeeklyRollups } from "@/components/dashboard/WeeklyRollups";
 import { SkeletonCard } from "@/components/dashboard/SkeletonCard";
 import { FIELDS } from "@/lib/ui/colors";
-import { calcScore } from "@/lib/ui/score";
+import { calcReadinessScore } from "@/lib/ui/score";
 import { buildDailyPlan } from "@/lib/coach/readiness";
 import { computeImpact } from "@/lib/coach/impact";
 import type { DailyLog } from "@/lib/data/types";
@@ -75,7 +75,6 @@ export default async function Home() {
     typeof baselines?.hrv_6mo_avg === "number" ? (baselines.hrv_6mo_avg as number) : 33;
 
   const todayLog = (todayRow ?? null) as DailyLog | null;
-  const score = calcScore(todayLog);
   const hasToday = !!todayLog;
 
   // Resolve the freshest weight available — today's log first, otherwise the
@@ -94,6 +93,14 @@ export default async function Home() {
     typeof profile?.height_cm === "number"
       ? (10 * effectiveWeightKg + 6.25 * profile.height_cm - 5 * profile.age + 5) * 1.55
       : null;
+
+  const score = calcReadinessScore({
+    log: todayLog,
+    checkin: checkin ?? null,
+    hrvBaseline,
+    weightKg: effectiveWeightKg,
+    calorieTarget,
+  });
 
   const impact = hasToday
     ? computeImpact(todayLog, hrvBaseline, effectiveWeightKg, calorieTarget)
