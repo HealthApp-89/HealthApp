@@ -50,7 +50,7 @@ export default function LoginPage() {
             onChange={(e) => setEmail(e.target.value)}
             required
             placeholder="you@example.com"
-            className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm font-mono outline-none focus:border-emerald-300/50"
+            className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm font-mono outline-none focus:border-white/30"
           />
           <label className="text-[10px] uppercase tracking-[0.08em] text-white/40 mt-2">
             Password
@@ -62,12 +62,17 @@ export default function LoginPage() {
             required
             minLength={6}
             placeholder="••••••••"
-            className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm font-mono outline-none focus:border-emerald-300/50"
+            className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm font-mono outline-none focus:border-white/30"
           />
           <button
             type="submit"
             disabled={busy}
-            className="mt-2 rounded-xl bg-emerald-300/20 border border-emerald-300/40 text-emerald-300 px-4 py-3 text-sm font-bold disabled:opacity-50"
+            className="mt-2 rounded-xl px-4 py-3 text-sm font-bold disabled:opacity-50 border"
+            style={{
+              background: "rgba(10,132,255,0.2)",
+              borderColor: "rgba(10,132,255,0.4)",
+              color: "#0a84ff",
+            }}
           >
             {busy ? "…" : mode === "signin" ? "Sign in" : "Create account"}
           </button>

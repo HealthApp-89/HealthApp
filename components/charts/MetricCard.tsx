@@ -35,11 +35,11 @@ export function MetricCard({
       ? "rgba(255,255,255,0.3)"
       : positiveIsGood
         ? delta > 0
-          ? "#4ade80"
-          : "#f87171"
+          ? "#30d158"
+          : "#ff453a"
         : delta < 0
-          ? "#4ade80"
-          : "#f87171";
+          ? "#30d158"
+          : "#ff453a";
   const tintCss = tinted
     ? tintStyle(color)
     : { background: "rgba(255,255,255,0.025)", borderColor: "rgba(255,255,255,0.07)" };

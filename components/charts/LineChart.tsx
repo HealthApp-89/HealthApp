@@ -36,7 +36,7 @@ function defaultFormat(v: number): string {
 export function LineChart({
   data,
   dates,
-  color = "#00f5c4",
+  color = "#0a84ff",
   height = 60,
   refLine = null,
   refLabel = "",

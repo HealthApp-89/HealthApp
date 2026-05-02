@@ -29,7 +29,7 @@ export function ConnectionsPanel({
           authUrl="/api/whoop/auth"
           syncUrl="/api/whoop/sync"
           backfillUrl="/api/whoop/backfill"
-          color="#00f5c4"
+          color="#0a84ff"
         />
         <ProviderRow
           name="Withings"
@@ -40,7 +40,7 @@ export function ConnectionsPanel({
           syncUrl="/api/withings/sync"
           backfillUrl="/api/withings/backfill"
           disconnectUrl="/api/withings/disconnect"
-          color="#4fc3f7"
+          color="#af52de"
         />
       </div>
     </Card>
@@ -150,7 +150,7 @@ function ProviderRow({
       {flash && (
         <div
           className="text-[11px] font-mono"
-          style={{ color: flash.startsWith("✗") ? "#ff6b6b" : color }}
+          style={{ color: flash.startsWith("✗") ? "#ff453a" : color }}
         >
           {flash}
         </div>

@@ -36,7 +36,7 @@ export function DateNavigator({ date, min, max }: Props) {
           min={min}
           max={max}
           onChange={(e) => onChange(e.target.value)}
-          className="bg-white/5 border border-white/10 rounded-lg px-2.5 py-1.5 text-sm font-mono outline-none focus:border-emerald-300/50 text-white"
+          className="bg-white/5 border border-white/10 rounded-lg px-2.5 py-1.5 text-sm font-mono outline-none focus:border-white/30 text-white"
         />
       </div>
     </div>

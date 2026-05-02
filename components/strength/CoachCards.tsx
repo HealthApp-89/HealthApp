@@ -34,7 +34,7 @@ export function CoachCards({ payload }: { payload: Payload }) {
       className="rounded-[14px] px-4 py-3.5 border"
       style={tintByKey("coach")}
     >
-      <SectionLabel color="rgba(0,245,196,0.6)">🎯 STRENGTH COACH</SectionLabel>
+      <SectionLabel color="rgba(10,132,255,0.6)">🎯 STRENGTH COACH</SectionLabel>
       <div className="text-[11px] text-white/35 mb-3 leading-relaxed">
         Based on {payload.summary?.total_exercises_tracked ?? 0} tracked exercises across{" "}
         {payload.summary?.total_sessions ?? 0} sessions.
@@ -65,7 +65,7 @@ export function CoachCards({ payload }: { payload: Payload }) {
                   </div>
                 </div>
                 {ex.next_target && (
-                  <div className="text-[11px] font-semibold mb-2" style={{ color: "#4ade80" }}>
+                  <div className="text-[11px] font-semibold mb-2" style={{ color: "#30d158" }}>
                     → {ex.next_target}
                   </div>
                 )}

@@ -29,11 +29,11 @@ export default function AppleIcon() {
             height: 110,
             borderRadius: "50%",
             border: "10px solid transparent",
-            borderTopColor: "#00f5c4",
-            borderRightColor: "#00f5c4",
-            borderBottomColor: "#4fc3f7",
+            borderTopColor: "#0a84ff",
+            borderRightColor: "#0a84ff",
+            borderBottomColor: "#5e5ce6",
             transform: "rotate(135deg)",
-            boxShadow: "0 0 22px #00f5c466",
+            boxShadow: "0 0 22px #0a84ff66",
           }}
         />
         {/* Pulse line */}

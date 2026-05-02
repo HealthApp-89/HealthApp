@@ -103,7 +103,7 @@ export function SessionTable({ session }: Props) {
                               {s.failure && (
                                 <span
                                   className="text-[9px] px-1 rounded ml-1"
-                                  style={{ background: "rgba(255,107,107,0.12)", color: "#ff6b6b" }}
+                                  style={{ background: "rgba(255,69,58,0.12)", color: "#ff453a" }}
                                   title="trained to failure"
                                 >
                                   F

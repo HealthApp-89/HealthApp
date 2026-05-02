@@ -109,7 +109,7 @@ export function IngestPanel({
           disabled={pending}
           onClick={rotate}
           className="rounded-[12px] px-4 py-2.5 text-xs font-bold mb-3 disabled:opacity-50"
-          style={{ background: "rgba(0,245,196,0.15)", border: "1px solid #00f5c455", color: "#00f5c4" }}
+          style={{ background: "rgba(10,132,255,0.15)", border: "1px solid #0a84ff55", color: "#0a84ff" }}
         >
           {pending ? "Generating…" : "🔑 Generate ingest token"}
         </button>
@@ -118,9 +118,9 @@ export function IngestPanel({
       {rawToken && (
         <div
           className="rounded-[12px] px-3.5 py-3 mb-3"
-          style={{ background: "rgba(0,245,196,0.08)", border: "1px solid #00f5c455" }}
+          style={{ background: "rgba(10,132,255,0.08)", border: "1px solid #0a84ff55" }}
         >
-          <div className="text-[10px] uppercase tracking-[0.12em] text-[#00f5c4] mb-1.5">
+          <div className="text-[10px] uppercase tracking-[0.12em] text-[#0a84ff] mb-1.5">
             Copy this now — won&apos;t be shown again
           </div>
           <code className="text-[11px] break-all text-white/85 font-mono">{rawToken}</code>
@@ -136,7 +136,7 @@ export function IngestPanel({
       )}
 
       {error && (
-        <div className="text-[11px] font-mono mb-3" style={{ color: "#ff6b6b" }}>
+        <div className="text-[11px] font-mono mb-3" style={{ color: "#ff453a" }}>
           ✗ {error}
         </div>
       )}
@@ -168,7 +168,7 @@ export function IngestPanel({
       {strongResult && (
         <div
           className="text-[11px] font-mono mt-2"
-          style={{ color: strongResult.startsWith("✗") ? "#ff6b6b" : "#00f5c4" }}
+          style={{ color: strongResult.startsWith("✗") ? "#ff453a" : "#0a84ff" }}
         >
           {strongResult}
         </div>

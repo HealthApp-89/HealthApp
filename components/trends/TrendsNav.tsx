@@ -71,9 +71,9 @@ export function TrendsNav({ active, preserve = {} }: Props) {
             aria-busy={isPending && isActive}
             className="flex-none px-3.5 py-1.5 rounded-full text-xs whitespace-nowrap touch-manipulation select-none transition-[background,border-color,color,transform] active:scale-[0.97]"
             style={{
-              background: isActive ? "rgba(0,245,196,0.15)" : "transparent",
-              border: `1px solid ${isActive ? "rgba(0,245,196,0.5)" : "rgba(255,255,255,0.1)"}`,
-              color: isActive ? "#00f5c4" : "rgba(255,255,255,0.4)",
+              background: isActive ? "rgba(10,132,255,0.15)" : "transparent",
+              border: `1px solid ${isActive ? "rgba(10,132,255,0.5)" : "rgba(255,255,255,0.1)"}`,
+              color: isActive ? "#0a84ff" : "rgba(255,255,255,0.4)",
               fontWeight: isActive ? 700 : 400,
             }}
           >

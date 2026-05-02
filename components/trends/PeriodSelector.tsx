@@ -98,8 +98,8 @@ export function PeriodSelector({ preset, from, to, preserve = {} }: Props) {
                   onClick={() => navigate(p.id)}
                   className="text-left px-2.5 py-1.5 rounded text-xs transition-colors"
                   style={{
-                    background: active ? "rgba(0,245,196,0.15)" : "transparent",
-                    color: active ? "#00f5c4" : "rgba(255,255,255,0.6)",
+                    background: active ? "rgba(10,132,255,0.15)" : "transparent",
+                    color: active ? "#0a84ff" : "rgba(255,255,255,0.6)",
                   }}
                 >
                   {p.label}
@@ -111,8 +111,8 @@ export function PeriodSelector({ preset, from, to, preserve = {} }: Props) {
           <div
             className="rounded-[10px] p-2.5"
             style={{
-              background: preset === "custom" ? "rgba(0,245,196,0.05)" : "rgba(255,255,255,0.03)",
-              border: `1px solid ${preset === "custom" ? "rgba(0,245,196,0.25)" : "rgba(255,255,255,0.08)"}`,
+              background: preset === "custom" ? "rgba(10,132,255,0.05)" : "rgba(255,255,255,0.03)",
+              border: `1px solid ${preset === "custom" ? "rgba(10,132,255,0.25)" : "rgba(255,255,255,0.08)"}`,
             }}
           >
             <div className="text-[9px] uppercase tracking-[0.1em] text-white/35 mb-2">Custom range</div>
@@ -121,14 +121,14 @@ export function PeriodSelector({ preset, from, to, preserve = {} }: Props) {
                 type="date"
                 value={customFrom}
                 onChange={(e) => setCustomFrom(e.target.value)}
-                className="flex-1 bg-white/5 border border-white/10 rounded px-2 py-1.5 text-[11px] font-mono outline-none focus:border-emerald-300/50"
+                className="flex-1 bg-white/5 border border-white/10 rounded px-2 py-1.5 text-[11px] font-mono outline-none focus:border-white/30"
               />
               <span className="text-white/30">→</span>
               <input
                 type="date"
                 value={customTo}
                 onChange={(e) => setCustomTo(e.target.value)}
-                className="flex-1 bg-white/5 border border-white/10 rounded px-2 py-1.5 text-[11px] font-mono outline-none focus:border-emerald-300/50"
+                className="flex-1 bg-white/5 border border-white/10 rounded px-2 py-1.5 text-[11px] font-mono outline-none focus:border-white/30"
               />
             </div>
             <button
@@ -137,9 +137,9 @@ export function PeriodSelector({ preset, from, to, preserve = {} }: Props) {
               disabled={!customFrom || !customTo}
               className="w-full rounded-md py-1.5 text-[11px] font-bold disabled:opacity-50"
               style={{
-                background: "rgba(0,245,196,0.15)",
-                border: "1px solid #00f5c455",
-                color: "#00f5c4",
+                background: "rgba(10,132,255,0.15)",
+                border: "1px solid #0a84ff55",
+                color: "#0a84ff",
               }}
             >
               Apply

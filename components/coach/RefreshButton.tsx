@@ -29,9 +29,9 @@ export function RefreshButton({ endpoint, label = "Run pattern analysis" }: Prop
       disabled={pending}
       className="rounded-[12px] px-4 py-2.5 text-xs font-bold disabled:opacity-50"
       style={{
-        background: "rgba(0,245,196,0.15)",
-        border: "1px solid #00f5c455",
-        color: "#00f5c4",
+        background: "rgba(10,132,255,0.15)",
+        border: "1px solid #0a84ff55",
+        color: "#0a84ff",
       }}
     >
       {pending ? "Analysing…" : `🧠 ${label}`}

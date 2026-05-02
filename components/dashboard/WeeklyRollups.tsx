@@ -80,7 +80,7 @@ export async function WeeklyRollups({ userId, today, todayHrv, todayRhr, hrvBase
                   ? `7d avg ${fmtNum(hrvAvg7)} · base ${fmtNum(hrvBaseline)}`
                   : `Baseline ${fmtNum(hrvBaseline)} ms`
               }
-              accent="#00f5c4"
+              accent="#ff375f"
             />
             <MonitorTile
               label="Resting HR"
@@ -88,7 +88,7 @@ export async function WeeklyRollups({ userId, today, todayHrv, todayRhr, hrvBase
               unit="bpm"
               status={rhrStatus(todayRhr)}
               detail={rhrAvg7 != null ? `7d avg ${fmtNum(rhrAvg7)} bpm` : null}
-              accent="#ff6b6b"
+              accent="#ff453a"
             />
           </div>
         </DashboardSection>
@@ -102,7 +102,7 @@ export async function WeeklyRollups({ userId, today, todayHrv, todayRhr, hrvBase
               <Card tint="steps">
                 <div className="flex justify-between items-center mb-2.5">
                   <SectionLabel>Steps</SectionLabel>
-                  <span className="text-lg font-bold font-mono" style={{ color: "#00f5c4" }}>
+                  <span className="text-lg font-bold font-mono" style={{ color: "#30d158" }}>
                     {wSteps[6] != null ? wSteps[6]!.toLocaleString() : "—"}
                   </span>
                 </div>
@@ -110,7 +110,7 @@ export async function WeeklyRollups({ userId, today, todayHrv, todayRhr, hrvBase
                   values={wSteps}
                   labels={week.labels}
                   unit="steps"
-                  color="#00f5c4"
+                  color="#30d158"
                   height={40}
                   chartId="stp7"
                 />
@@ -119,18 +119,18 @@ export async function WeeklyRollups({ userId, today, todayHrv, todayRhr, hrvBase
                     <span
                       key={i}
                       className="text-[8px] uppercase"
-                      style={{ color: d === "Today" ? "#00f5c4" : "rgba(255,255,255,0.2)" }}
+                      style={{ color: d === "Today" ? "#30d158" : "rgba(255,255,255,0.2)" }}
                     >
                       {d}
                     </span>
                   ))}
                 </div>
                 <div className="mt-2.5 flex gap-2">
-                  <StatTile label="7-day avg" value={fmtInt(avg(wSteps))} color="#00f5c4" />
+                  <StatTile label="7-day avg" value={fmtInt(avg(wSteps))} color="#30d158" />
                   <StatTile
                     label="Goal"
                     value="8,000"
-                    color={(wSteps[6] ?? 0) >= 8000 ? "#00f5c4" : "#ffd93d"}
+                    color={(wSteps[6] ?? 0) >= 8000 ? "#30d158" : "#ffd60a"}
                   />
                   <StatTile
                     label="Best"
@@ -141,7 +141,7 @@ export async function WeeklyRollups({ userId, today, todayHrv, todayRhr, hrvBase
                           ).toLocaleString()
                         : "—"
                     }
-                    color="#00f5c4"
+                    color="#30d158"
                   />
                 </div>
               </Card>
@@ -151,7 +151,7 @@ export async function WeeklyRollups({ userId, today, todayHrv, todayRhr, hrvBase
               <Card tint="nutrition">
                 <div className="flex justify-between items-center mb-2.5">
                   <SectionLabel>Calories</SectionLabel>
-                  <span className="text-lg font-bold font-mono" style={{ color: "#ffd93d" }}>
+                  <span className="text-lg font-bold font-mono" style={{ color: "#ffd60a" }}>
                     {wCals[6] != null ? wCals[6]!.toLocaleString() : "—"}
                     <span className="text-[10px] text-white/30 font-normal ml-1">kcal</span>
                   </span>
@@ -160,7 +160,7 @@ export async function WeeklyRollups({ userId, today, todayHrv, todayRhr, hrvBase
                   values={wCals}
                   labels={week.labels}
                   unit="kcal"
-                  color="#ffd93d"
+                  color="#ffd60a"
                   height={40}
                   chartId="cal7"
                 />
@@ -169,14 +169,14 @@ export async function WeeklyRollups({ userId, today, todayHrv, todayRhr, hrvBase
                     <span
                       key={i}
                       className="text-[8px] uppercase"
-                      style={{ color: d === "Today" ? "#ffd93d" : "rgba(255,255,255,0.2)" }}
+                      style={{ color: d === "Today" ? "#ffd60a" : "rgba(255,255,255,0.2)" }}
                     >
                       {d}
                     </span>
                   ))}
                 </div>
                 <div className="flex gap-2">
-                  <StatTile label="7-day avg" value={fmtInt(avg(wCals))} color="#ffd93d" />
+                  <StatTile label="7-day avg" value={fmtInt(avg(wCals))} color="#ffd60a" />
                 </div>
               </Card>
             )}
@@ -185,7 +185,7 @@ export async function WeeklyRollups({ userId, today, todayHrv, todayRhr, hrvBase
               <Card tint="weight">
                 <div className="flex justify-between items-center mb-2.5">
                   <SectionLabel>Weight trend</SectionLabel>
-                  <span className="text-lg font-bold font-mono" style={{ color: "#4fc3f7" }}>
+                  <span className="text-lg font-bold font-mono" style={{ color: "#af52de" }}>
                     {latestWeightRow?.weight_kg != null
                       ? `${fmtNum(latestWeightRow.weight_kg)} kg`
                       : "—"}
@@ -197,7 +197,7 @@ export async function WeeklyRollups({ userId, today, todayHrv, todayRhr, hrvBase
                       values={wWgt}
                       labels={week.labels}
                       unit="kg"
-                      color="#4fc3f7"
+                      color="#af52de"
                       height={40}
                       chartId="wgt7"
                     />
@@ -206,7 +206,7 @@ export async function WeeklyRollups({ userId, today, todayHrv, todayRhr, hrvBase
                         <span
                           key={i}
                           className="text-[8px] uppercase"
-                          style={{ color: d === "Today" ? "#4fc3f7" : "rgba(255,255,255,0.2)" }}
+                          style={{ color: d === "Today" ? "#af52de" : "rgba(255,255,255,0.2)" }}
                         >
                           {d}
                         </span>
@@ -218,12 +218,12 @@ export async function WeeklyRollups({ userId, today, todayHrv, todayRhr, hrvBase
                   <StatTile
                     label="Low"
                     value={validWts.length ? `${fmtNum(Math.min(...validWts))} kg` : "—"}
-                    color="#4fc3f7"
+                    color="#af52de"
                   />
                   <StatTile
                     label="High"
                     value={validWts.length ? `${fmtNum(Math.max(...validWts))} kg` : "—"}
-                    color="#4fc3f7"
+                    color="#af52de"
                   />
                   <StatTile
                     label="7d change"
@@ -237,9 +237,9 @@ export async function WeeklyRollups({ userId, today, todayHrv, todayRhr, hrvBase
                     color={
                       validWts.length > 1
                         ? validWts[validWts.length - 1] - validWts[0] < 0
-                          ? "#6bcb77"
+                          ? "#30d158"
                           : validWts[validWts.length - 1] - validWts[0] > 0
-                          ? "#ff6b6b"
+                          ? "#ff453a"
                           : "#888"
                         : "#888"
                     }

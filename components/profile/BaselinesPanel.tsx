@@ -15,10 +15,10 @@ export function BaselinesPanel({ logs }: { logs: DailyLog[] }) {
     <Card tint="recovery">
       <SectionLabel>📊 BASELINES (last 180 days)</SectionLabel>
       <div className="grid grid-cols-4 gap-2 font-mono">
-        <Stat label="HRV" value={fmt(hrv)} unit="ms" color="#00f5c4" />
-        <Stat label="RHR" value={fmt(rhr, 0)} unit="bpm" color="#ff6b6b" />
-        <Stat label="Recov" value={fmt(rec, 0)} unit="%" color="#6bcb77" />
-        <Stat label="Sleep" value={fmt(slp, 0)} unit="/100" color="#a29bfe" />
+        <Stat label="HRV" value={fmt(hrv)} unit="ms" color="#ff375f" />
+        <Stat label="RHR" value={fmt(rhr, 0)} unit="bpm" color="#ff453a" />
+        <Stat label="Recov" value={fmt(rec, 0)} unit="%" color="#30d158" />
+        <Stat label="Sleep" value={fmt(slp, 0)} unit="/100" color="#5e5ce6" />
       </div>
       <div className="text-[10px] text-white/30 mt-2.5">based on {days} log days</div>
     </Card>

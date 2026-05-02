@@ -48,17 +48,17 @@ export function tintStyle(
 }
 
 const TINT_COLORS: Record<TintKey, string> = {
-  recovery: "#6bcb77",
-  strain: "#ff9f43",
-  sleep: "#a29bfe",
-  deep_sleep: "#4fc3f7",
-  rem_sleep: "#7c6af7",
-  nutrition: "#ffd93d",
-  steps: "#00f5c4",
-  heart: "#ff6b6b",
-  weight: "#4fc3f7",
-  body_fat: "#ff9f43",
-  coach: "#a29bfe",
+  recovery: "#30d158",
+  strain: "#ff9f0a",
+  sleep: "#5e5ce6",
+  deep_sleep: "#0a84ff",
+  rem_sleep: "#bf5af2",
+  nutrition: "#ffd60a",
+  steps: "#30d158",
+  heart: "#ff453a",
+  weight: "#af52de",
+  body_fat: "#ff9500",
+  coach: "#5e5ce6",
   neutral: "#ffffff",
 };
 
@@ -67,7 +67,7 @@ export function tintByKey(key: TintKey, opts?: { strength?: number; border?: boo
   return tintStyle(TINT_COLORS[key], opts);
 }
 
-/** Resolve the canonical color for a daily-log field key, e.g. "hrv" → "#00f5c4". */
+/** Resolve the canonical color for a daily-log field key, e.g. "hrv" → "#0a84ff". */
 export function fieldColor(key: string): string | undefined {
   return FIELDS.find((f) => f.k === key)?.c;
 }

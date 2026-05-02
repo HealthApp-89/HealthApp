@@ -77,7 +77,7 @@ export function getIntensityMode(readiness: ReadinessSummary, feel: FeelInput | 
   if (s >= 80 && !hasMuscleWarning) {
     return {
       label: "⚡ PUSH HARD",
-      color: "#4ade80",
+      color: "#30d158",
       multiplier: 1.0,
       desc: "Peak readiness — go for PRs on your primary lifts today.",
     };
@@ -93,7 +93,7 @@ export function getIntensityMode(readiness: ReadinessSummary, feel: FeelInput | 
   if (s >= 50) {
     return {
       label: "🟡 MODERATE",
-      color: "#fbbf24",
+      color: "#ffd60a",
       multiplier: 0.85,
       desc: "Moderate readiness — reduce working weight by 10–15%, focus on form.",
     };
@@ -101,7 +101,7 @@ export function getIntensityMode(readiness: ReadinessSummary, feel: FeelInput | 
   if (s >= 35) {
     return {
       label: "🔴 LIGHT / RECOVERY",
-      color: "#f87171",
+      color: "#ff453a",
       multiplier: 0.7,
       desc: "Low readiness — keep it light, high reps, no failure. Mobility priority.",
     };

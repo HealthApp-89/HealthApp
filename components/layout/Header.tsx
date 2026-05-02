@@ -36,7 +36,7 @@ export function Header({ email, name, score, whoopSyncedAt }: HeaderProps) {
           <div className="text-[10px] text-white/30 mt-px">{dateStr}</div>
           <div className="mt-1 flex items-center gap-1.5">
             {whoopSyncedAt ? (
-              <span className="text-[9px] tracking-[0.05em]" style={{ color: "#00f5c4" }}>
+              <span className="text-[9px] tracking-[0.05em]" style={{ color: "#0a84ff" }}>
                 ● WHOOP synced {formatRelative(whoopSyncedAt)}
               </span>
             ) : (
