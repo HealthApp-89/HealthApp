@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient, createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { extractBearer, resolveIngestToken } from "@/lib/ingest/auth";
+import { looksLikeStrongText, parseStrongText } from "@/lib/strong-text";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -115,6 +116,12 @@ export async function POST(request: Request) {
     csv = await file.text();
   } else {
     csv = await request.text();
+  }
+
+  // Detect Strong's per-workout "Share as Text" format and dispatch to the
+  // text importer. The full Settings → Export to CSV flow falls through.
+  if (looksLikeStrongText(csv)) {
+    return importStrongText(csv, userId);
   }
 
   const grid = parseCsv(csv);
@@ -255,4 +262,73 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({ ok: true, workouts: workoutCount, sets: setCount });
+}
+
+/** Import a single workout from Strong's "Share as Text" output.
+ *  Idempotent on (user_id, external_id = strong-<date>-<slug>) — re-sharing the
+ *  same workout (or a CSV containing it later) replaces the prior row. */
+async function importStrongText(text: string, userId: string): Promise<NextResponse> {
+  const parsed = parseStrongText(text);
+  if (!parsed) {
+    return NextResponse.json({ ok: false, error: "unparseable_text" }, { status: 400 });
+  }
+  const { workoutName, date, exercises } = parsed;
+
+  const sr = createSupabaseServiceRoleClient();
+  const externalId = `strong-${date}-${slug(workoutName)}`;
+
+  // Evict any HK-stub for this date and any prior import of this workout.
+  await sr.from("workouts").delete().eq("user_id", userId).like("external_id", `strong-hk-${date}%`);
+  await sr.from("workouts").delete().eq("user_id", userId).eq("external_id", externalId);
+
+  const { data: workoutInsert, error: wErr } = await sr
+    .from("workouts")
+    .insert({
+      user_id: userId,
+      external_id: externalId,
+      date,
+      type: workoutName,
+      duration_min: null,
+      notes: null,
+      source: "strong",
+    })
+    .select("id")
+    .single();
+  if (wErr || !workoutInsert) {
+    return NextResponse.json({ ok: false, error: wErr?.message ?? "workout_insert_failed" }, { status: 500 });
+  }
+
+  let setCount = 0;
+  for (let pos = 0; pos < exercises.length; pos++) {
+    const ex = exercises[pos];
+    const { data: exIns, error: eErr } = await sr
+      .from("exercises")
+      .insert({ workout_id: workoutInsert.id, name: ex.name, position: pos })
+      .select("id")
+      .single();
+    if (eErr || !exIns) {
+      return NextResponse.json({ ok: false, error: eErr?.message ?? "exercise_insert_failed" }, { status: 500 });
+    }
+    if (ex.sets.length === 0) continue;
+    const setRows = ex.sets.map((s) => ({
+      exercise_id: exIns.id,
+      set_index: s.index,
+      kg: s.kg,
+      reps: s.reps,
+      duration_seconds: s.durationSeconds,
+      warmup: s.warmup,
+      failure: false,
+    }));
+    const { error: sErr } = await sr.from("exercise_sets").insert(setRows);
+    if (sErr) return NextResponse.json({ ok: false, error: sErr.message }, { status: 500 });
+    setCount += setRows.length;
+  }
+
+  return NextResponse.json({
+    ok: true,
+    format: "text",
+    workouts: 1,
+    sets: setCount,
+    workout: { date, name: workoutName, exercises: exercises.length },
+  });
 }
