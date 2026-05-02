@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createSupabaseServerClient, createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { callClaude, parseClaudeJson } from "@/lib/anthropic/client";
 import { loadWorkouts } from "@/lib/data/workouts";
-import { lastCompleteWeek, nextWeekStart } from "@/lib/coach/week";
+import { thisWeekToDate, recommendationWeekStart } from "@/lib/coach/week";
 
 export const dynamic = "force-dynamic";
 
@@ -20,8 +20,9 @@ type WeeklyReviewPayload = {
   recommendations: WeeklyRecommendation[];
 };
 
-const SYSTEM = `You are an elite health and strength coach reviewing the athlete's most recent complete week. \
-Speak in concrete numbers from the data. Be honest about misses. \
+const SYSTEM = `You are an elite health and strength coach reviewing the athlete's CURRENT week so far. \
+Speak in concrete numbers from the data. Be honest about misses. When the week is still in progress, \
+frame recommendations as "finish-strong" actions for the remaining days. \
 Return ONLY a single valid JSON object — no markdown, no prose, no commentary.`;
 
 /** GET: most recently cached weekly review. */
@@ -44,9 +45,10 @@ export async function GET() {
   return NextResponse.json({ ok: true, cached: data ?? null });
 }
 
-/** POST: generate a fresh weekly review for the most recent complete week,
- *  cache it (keyed on week-end Sunday), and seed recommendations into
- *  coach_recommendations for the next week (replacing prior seeds). */
+/** POST: generate a fresh review for the current week so far (Mon → today)
+ *  and cache it (keyed on `end`, which is today). Mid-week, recommendations
+ *  target the remaining days of this week; on Sunday they target the
+ *  upcoming Monday. */
 export async function POST() {
   const supabase = await createSupabaseServerClient();
   const {
@@ -54,8 +56,8 @@ export async function POST() {
   } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ ok: false, reason: "unauthorized" }, { status: 401 });
 
-  const { start, end } = lastCompleteWeek();
-  const targetWeekStart = nextWeekStart();
+  const { start, end, complete, daysRemaining } = thisWeekToDate();
+  const targetWeekStart = recommendationWeekStart();
 
   const [{ data: profile }, { data: logs }, allWorkouts] = await Promise.all([
     supabase
@@ -90,13 +92,22 @@ export async function POST() {
       })),
     }));
 
+  const windowLine = complete
+    ? `Window reviewed: ${start} → ${end} (Mon-Sun, COMPLETE week).`
+    : `Window reviewed: ${start} → ${end} (Mon → today, week in progress; ${daysRemaining} day${daysRemaining === 1 ? "" : "s"} left until Sunday).`;
+  const recsFraming = complete
+    ? `Recommendations target NEXT week (Mon-Sun). Set the tone for the upcoming 7 days.`
+    : `Recommendations target the REMAINING ${daysRemaining} day${daysRemaining === 1 ? "" : "s"} of this week — concrete "finish-strong" actions for ${daysRemaining === 1 ? "tomorrow" : "the next " + daysRemaining + " days"}.`;
+
   const userPrompt = `Athlete: ${profile?.name ?? "Athlete"}. Goal: "${profile?.goal ?? "general health"}".
 Baselines: ${JSON.stringify(profile?.whoop_baselines ?? {})}.
 Training plan: ${JSON.stringify(profile?.training_plan ?? {})}.
 
-Week reviewed: ${start} → ${end} (Mon-Sun).
+${windowLine}
 Daily logs (${(logs ?? []).length} days): ${JSON.stringify(logs ?? [])}.
-Workouts this week: ${JSON.stringify(weekWorkouts)}.
+Workouts in window: ${JSON.stringify(weekWorkouts)}.
+
+${recsFraming}
 
 Return JSON shaped exactly:
 {
@@ -104,7 +115,7 @@ Return JSON shaped exactly:
   "wins":    [{"label":"short","detail":"one sentence with numbers"}],
   "misses":  [{"label":"short","detail":"one sentence with numbers"}],
   "patterns":[{"label":"short","detail":"one sentence — repeated behaviours, correlations"}],
-  "recommendations": [{"category":"training|sleep|nutrition|recovery|habits","priority":"high|medium|low","text":"one specific actionable item for the coming week"}]
+  "recommendations": [{"category":"training|sleep|nutrition|recovery|habits","priority":"high|medium|low","text":"one specific actionable item"}]
 }
 2-4 wins. 2-4 misses. 2-4 patterns. 4-6 recommendations.
 Recommendations must be concrete and measurable (e.g. "hit 8h sleep on at least 5 nights" not "sleep more").`;
@@ -159,7 +170,7 @@ Recommendations must be concrete and measurable (e.g. "hit 8h sleep on at least 
   return NextResponse.json({
     ok: true,
     payload,
-    week: { start, end },
+    window: { start, end, complete, daysRemaining },
     recommendationsWeek: targetWeekStart,
   });
 }

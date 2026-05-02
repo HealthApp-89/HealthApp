@@ -10,7 +10,7 @@ import {
   RecommendationsList,
   type Recommendation,
 } from "@/components/coach/RecommendationsList";
-import { lastCompleteWeek, nextWeekStart } from "@/lib/coach/week";
+import { thisWeekToDate, recommendationWeekStart } from "@/lib/coach/week";
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +22,7 @@ export default async function CoachPage(props: {
   searchParams: Promise<{ view?: string }>;
 }) {
   const sp = await props.searchParams;
-  const view: CoachView = (["today", "last-week", "next-week"] as const).includes(
+  const view: CoachView = (["today", "this-week", "next-week"] as const).includes(
     sp.view as CoachView,
   )
     ? (sp.view as CoachView)
@@ -53,7 +53,7 @@ export default async function CoachPage(props: {
         </div>
 
         {view === "today" && <TodayView userId={user.id} />}
-        {view === "last-week" && <LastWeekView userId={user.id} />}
+        {view === "this-week" && <ThisWeekView userId={user.id} />}
         {view === "next-week" && <NextWeekView userId={user.id} />}
       </div>
     </main>
@@ -148,9 +148,9 @@ async function TodayView({ userId }: { userId: string }) {
   );
 }
 
-async function LastWeekView({ userId }: { userId: string }) {
+async function ThisWeekView({ userId }: { userId: string }) {
   const supabase = await createSupabaseServerClient();
-  const { start, end } = lastCompleteWeek();
+  const { start, end, complete, daysRemaining } = thisWeekToDate();
 
   const { data: cached } = await supabase
     .from("ai_insights")
@@ -161,14 +161,18 @@ async function LastWeekView({ userId }: { userId: string }) {
     .maybeSingle();
 
   const payload = (cached?.payload ?? null) as WeeklyReviewPayload | null;
+  const windowSubtitle = complete
+    ? `${start} → ${end} · full week`
+    : `${start} → ${end} · ${daysRemaining} day${daysRemaining === 1 ? "" : "s"} left`;
+  const seedTarget = complete ? "next week" : "the rest of this week";
 
   return (
     <>
       <div className="flex justify-between items-center">
         <div>
-          <div className="text-[10px] uppercase tracking-[0.12em] text-white/35">📅 Weekly review</div>
+          <div className="text-[10px] uppercase tracking-[0.12em] text-white/35">📅 This week</div>
           <div className="text-[10px] text-white/30 mt-0.5">
-            {start} → {end}
+            {windowSubtitle}
             {cached && " · cached"}
           </div>
         </div>
@@ -182,19 +186,27 @@ async function LastWeekView({ userId }: { userId: string }) {
         <Card>
           <p className="text-sm text-white/40 leading-relaxed">
             No review for {start} → {end} yet. Click <em>Run review</em> to generate one and seed
-            recommendations into Next week.
+            recommendations for {seedTarget}.
           </p>
         </Card>
       )}
 
-      {payload && <WeeklyReview payload={payload} weekStart={start} weekEnd={end} />}
+      {payload && (
+        <WeeklyReview
+          payload={payload}
+          weekStart={start}
+          weekEnd={end}
+          complete={complete}
+          daysRemaining={daysRemaining}
+        />
+      )}
     </>
   );
 }
 
 async function NextWeekView({ userId }: { userId: string }) {
   const supabase = await createSupabaseServerClient();
-  const targetWeek = nextWeekStart();
+  const targetWeek = recommendationWeekStart();
 
   // Prefer the targeted upcoming week; fall back to the most recent week with rows.
   let { data: items } = await supabase

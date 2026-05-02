@@ -20,13 +20,33 @@ type Props = {
   payload: WeeklyReviewPayload;
   weekStart: string;
   weekEnd: string;
+  /** Whether the review covers a full Mon-Sun week. */
+  complete?: boolean;
+  /** Days remaining in the current week if mid-week. */
+  daysRemaining?: number;
 };
 
-export function WeeklyReview({ payload, weekStart, weekEnd }: Props) {
+export function WeeklyReview({
+  payload,
+  weekStart,
+  weekEnd,
+  complete = true,
+  daysRemaining = 0,
+}: Props) {
+  const headlineRange = complete
+    ? `WEEK · ${weekStart} → ${weekEnd}`
+    : `WEEK SO FAR · ${weekStart} → ${weekEnd}`;
+  const recsHeading = complete
+    ? "🎯 NEXT WEEK · seeded"
+    : `🎯 FINISH STRONG · ${daysRemaining} day${daysRemaining === 1 ? "" : "s"} left`;
+  const recsFootnote = complete
+    ? "These are seeded into your Next week list — open that tab to check them off."
+    : "These are seeded into your Next week list (this-week scope) — open that tab to check them off as you go.";
+
   return (
     <div className="flex flex-col gap-3.5">
       <Card>
-        <SectionLabel>📅 WEEK · {weekStart} → {weekEnd}</SectionLabel>
+        <SectionLabel>📅 {headlineRange}</SectionLabel>
         <p className="text-sm text-white/70 leading-relaxed">{payload.summary}</p>
       </Card>
 
@@ -42,7 +62,7 @@ export function WeeklyReview({ payload, weekStart, weekEnd }: Props) {
 
       {payload.recommendations?.length ? (
         <Card>
-          <SectionLabel>🎯 NEXT WEEK · seeded</SectionLabel>
+          <SectionLabel>{recsHeading}</SectionLabel>
           <div className="flex flex-col gap-2">
             {payload.recommendations.map((r, i) => (
               <div key={i} className="flex gap-2 items-start">
@@ -56,9 +76,7 @@ export function WeeklyReview({ payload, weekStart, weekEnd }: Props) {
               </div>
             ))}
           </div>
-          <div className="text-[10px] text-white/25 mt-2.5 italic">
-            These are seeded into your Next week list — open that tab to check them off.
-          </div>
+          <div className="text-[10px] text-white/25 mt-2.5 italic">{recsFootnote}</div>
         </Card>
       ) : null}
     </div>
