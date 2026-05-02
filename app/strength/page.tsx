@@ -13,7 +13,7 @@ import { loadWorkouts, buildPRs, buildExerciseTrend } from "@/lib/data/workouts"
 import { CoachCards } from "@/components/strength/CoachCards";
 import { RefreshButton } from "@/components/coach/RefreshButton";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 60;
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 

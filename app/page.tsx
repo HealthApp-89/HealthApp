@@ -1,36 +1,24 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { Header } from "@/components/layout/Header";
-import { Card, SectionLabel } from "@/components/ui/Card";
+import { InstallHint } from "@/components/layout/InstallHint";
+import { Card } from "@/components/ui/Card";
 import { MetricBar } from "@/components/ui/MetricBar";
-import { SparkLine } from "@/components/ui/SparkLine";
 import { MorningCheckIn } from "@/components/dashboard/MorningCheckIn";
 import { HeroGauge } from "@/components/dashboard/HeroGauge";
-import { MonitorTile } from "@/components/dashboard/MonitorTile";
 import { DashboardSection } from "@/components/dashboard/DashboardSection";
+import { WeeklyRollups } from "@/components/dashboard/WeeklyRollups";
+import { SkeletonCard } from "@/components/dashboard/SkeletonCard";
 import { FIELDS, scoreColor, scoreLabel } from "@/lib/ui/colors";
-import { calcScore, avg, buildWeekWindow, fmtNum } from "@/lib/ui/score";
+import { calcScore, fmtNum } from "@/lib/ui/score";
 import { buildDailyPlan } from "@/lib/coach/readiness";
 import type { DailyLog } from "@/lib/data/types";
 
-export const dynamic = "force-dynamic";
-
-type Status = "ok" | "watch" | "alert" | "muted";
-
-function hrvStatus(v: number | null, baseline: number): Status {
-  if (v === null) return "muted";
-  if (v >= baseline * 0.95) return "ok";
-  if (v >= baseline * 0.8) return "watch";
-  return "alert";
-}
-
-function rhrStatus(v: number | null): Status {
-  if (v === null) return "muted";
-  if (v <= 60) return "ok";
-  if (v <= 70) return "watch";
-  return "alert";
-}
+// 60s ISR — sync routes call revalidatePath() so new WHOOP/Withings/AH data
+// invalidates immediately. Auth gating still works (middleware runs first).
+export const revalidate = 60;
 
 export default async function Home() {
   const supabase = await createSupabaseServerClient();
@@ -41,45 +29,37 @@ export default async function Home() {
 
   const today = new Date().toISOString().slice(0, 10);
 
-  const [{ data: profile }, { data: tokens }, { data: logsRaw }, { data: checkin }] = await Promise.all([
-    supabase.from("profiles").select("name, whoop_baselines").eq("user_id", user.id).maybeSingle(),
-    supabase.from("whoop_tokens").select("updated_at").eq("user_id", user.id).maybeSingle(),
-    supabase
-      .from("daily_logs")
-      .select(
-        "user_id, date, hrv, resting_hr, recovery, spo2, skin_temp_c, strain, sleep_hours, sleep_score, deep_sleep_hours, rem_sleep_hours, weight_kg, body_fat_pct, steps, calories, notes, source, updated_at",
-      )
-      .eq("user_id", user.id)
-      .order("date", { ascending: false })
-      .limit(30),
-    supabase
-      .from("checkins")
-      .select("readiness, energy_label, mood, soreness, feel_notes")
-      .eq("user_id", user.id)
-      .eq("date", new Date().toISOString().slice(0, 10))
-      .maybeSingle(),
-  ]);
+  // Fast queries only — these gate first paint. The 14-day window for the
+  // weekly rollups loads inside <Suspense> below so it doesn't block the hero.
+  const [{ data: profile }, { data: tokens }, { data: todayRow }, { data: checkin }] =
+    await Promise.all([
+      supabase.from("profiles").select("name, whoop_baselines").eq("user_id", user.id).maybeSingle(),
+      supabase.from("whoop_tokens").select("updated_at").eq("user_id", user.id).maybeSingle(),
+      supabase
+        .from("daily_logs")
+        .select(
+          "user_id, date, hrv, resting_hr, recovery, spo2, skin_temp_c, strain, sleep_hours, sleep_score, deep_sleep_hours, rem_sleep_hours, weight_kg, body_fat_pct, steps, calories, notes, source, updated_at",
+        )
+        .eq("user_id", user.id)
+        .eq("date", today)
+        .maybeSingle(),
+      supabase
+        .from("checkins")
+        .select("readiness, energy_label, mood, soreness, feel_notes")
+        .eq("user_id", user.id)
+        .eq("date", today)
+        .maybeSingle(),
+    ]);
+
   const baselines = (profile?.whoop_baselines as Record<string, unknown> | null) ?? null;
   const hrvBaseline =
     typeof baselines?.hrv_6mo_avg === "number" ? (baselines.hrv_6mo_avg as number) : 33;
 
-  const logs: DailyLog[] = (logsRaw ?? []) as DailyLog[];
-  const todayLog = logs.find((l) => l.date === today) ?? null;
+  const todayLog = (todayRow ?? null) as DailyLog | null;
   const score = calcScore(todayLog);
   const sc = scoreColor(score);
   const sl = scoreLabel(score);
-
-  const week = buildWeekWindow(logs, today);
-  const wSteps = week.rows.map((r) => r?.steps ?? null);
-  const wCals = week.rows.map((r) => r?.calories ?? null);
-  const wWgt = week.rows.map((r) => r?.weight_kg ?? null);
-  const latestWeightRow = logs.find((l) => l.weight_kg !== null);
-  const validWts = wWgt.filter((v): v is number => typeof v === "number");
-
   const hasToday = !!todayLog;
-  const hasSteps = wSteps.some((v) => v !== null);
-  const hasCals = wCals.some((v) => v !== null);
-  const hasWeight = validWts.length > 0;
 
   const feelInput = checkin
     ? {
@@ -92,9 +72,6 @@ export default async function Home() {
     : null;
   const dailyPlan = buildDailyPlan(todayLog, feelInput, hrvBaseline);
 
-  const hrvAvg7 = avg(week.rows.map((r) => r?.hrv ?? null));
-  const rhrAvg7 = avg(week.rows.map((r) => r?.resting_hr ?? null));
-
   return (
     <main>
       <Header
@@ -103,6 +80,7 @@ export default async function Home() {
         score={score}
         whoopSyncedAt={tokens?.updated_at ?? null}
       />
+      <InstallHint />
 
       <div className="px-4 pt-3.5 max-w-3xl mx-auto flex flex-col gap-5">
         <MorningCheckIn
@@ -185,9 +163,7 @@ export default async function Home() {
               </div>
             </div>
           ) : (
-            <div
-              className="rounded-[18px] border border-white/[0.06] bg-white/[0.02] text-center px-4 py-8"
-            >
+            <div className="rounded-[18px] border border-white/[0.06] bg-white/[0.02] text-center px-4 py-8">
               <div className="text-sm text-white/55 mb-1">No data today</div>
               <div className="text-xs text-white/30 mb-3.5">
                 Sync WHOOP or fill the daily log
@@ -207,35 +183,7 @@ export default async function Home() {
           )}
         </DashboardSection>
 
-        {/* MONITORS */}
-        {hasToday && (todayLog!.hrv != null || todayLog!.resting_hr != null) && (
-          <DashboardSection label="Monitors">
-            <div className="grid grid-cols-2 gap-2.5">
-              <MonitorTile
-                label="HRV"
-                value={todayLog!.hrv}
-                unit="ms"
-                status={hrvStatus(todayLog!.hrv, hrvBaseline)}
-                detail={
-                  hrvAvg7 != null
-                    ? `7d avg ${fmtNum(hrvAvg7)} · base ${fmtNum(hrvBaseline)}`
-                    : `Baseline ${fmtNum(hrvBaseline)} ms`
-                }
-                accent="#00f5c4"
-              />
-              <MonitorTile
-                label="Resting HR"
-                value={todayLog!.resting_hr}
-                unit="bpm"
-                status={rhrStatus(todayLog!.resting_hr)}
-                detail={rhrAvg7 != null ? `7d avg ${fmtNum(rhrAvg7)} bpm` : null}
-                accent="#ff6b6b"
-              />
-            </div>
-          </DashboardSection>
-        )}
-
-        {/* TODAY'S METRICS */}
+        {/* TODAY'S METRICS — renders synchronously from the small today-row query */}
         {hasToday && (
           <DashboardSection label="Today's metrics">
             <Card>
@@ -255,150 +203,16 @@ export default async function Home() {
           </DashboardSection>
         )}
 
-        {/* WEEKLY ROLLUPS */}
-        {(hasSteps || hasCals || hasWeight) && (
-          <DashboardSection label="Last 7 days">
-            <div className="flex flex-col gap-3">
-              {hasSteps && (
-                <Card>
-                  <div className="flex justify-between items-center mb-2.5">
-                    <SectionLabel>Steps</SectionLabel>
-                    <span className="text-lg font-bold font-mono" style={{ color: "#00f5c4" }}>
-                      {wSteps[6] != null ? wSteps[6]!.toLocaleString() : "—"}
-                    </span>
-                  </div>
-                  <SparkLine values={wSteps} color="#00f5c4" height={40} chartId="stp7" />
-                  <div className="flex justify-between mt-1.5">
-                    {week.labels.map((d, i) => (
-                      <span
-                        key={i}
-                        className="text-[8px] uppercase"
-                        style={{ color: d === "Today" ? "#00f5c4" : "rgba(255,255,255,0.2)" }}
-                      >
-                        {d}
-                      </span>
-                    ))}
-                  </div>
-                  <div className="mt-2.5 flex gap-2">
-                    <StatTile label="7-day avg" value={fmtInt(avg(wSteps))} color="#00f5c4" />
-                    <StatTile
-                      label="Goal"
-                      value="8,000"
-                      color={(wSteps[6] ?? 0) >= 8000 ? "#00f5c4" : "#ffd93d"}
-                    />
-                    <StatTile
-                      label="Best"
-                      value={
-                        wSteps.filter((v): v is number => typeof v === "number").length
-                          ? Math.max(
-                              ...wSteps.filter((v): v is number => typeof v === "number"),
-                            ).toLocaleString()
-                          : "—"
-                      }
-                      color="#00f5c4"
-                    />
-                  </div>
-                </Card>
-              )}
-
-              {hasCals && (
-                <Card>
-                  <div className="flex justify-between items-center mb-2.5">
-                    <SectionLabel>Calories</SectionLabel>
-                    <span className="text-lg font-bold font-mono" style={{ color: "#ffd93d" }}>
-                      {wCals[6] != null ? wCals[6]!.toLocaleString() : "—"}
-                      <span className="text-[10px] text-white/30 font-normal ml-1">kcal</span>
-                    </span>
-                  </div>
-                  <SparkLine values={wCals} color="#ffd93d" height={40} chartId="cal7" />
-                  <div className="flex justify-between mt-1.5 mb-2.5">
-                    {week.labels.map((d, i) => (
-                      <span
-                        key={i}
-                        className="text-[8px] uppercase"
-                        style={{ color: d === "Today" ? "#ffd93d" : "rgba(255,255,255,0.2)" }}
-                      >
-                        {d}
-                      </span>
-                    ))}
-                  </div>
-                  <div className="flex gap-2">
-                    <StatTile label="7-day avg" value={fmtInt(avg(wCals))} color="#ffd93d" />
-                  </div>
-                </Card>
-              )}
-
-              {hasWeight && (
-                <Card>
-                  <div className="flex justify-between items-center mb-2.5">
-                    <SectionLabel>Weight trend</SectionLabel>
-                    <span className="text-lg font-bold font-mono" style={{ color: "#4fc3f7" }}>
-                      {latestWeightRow?.weight_kg != null
-                        ? `${fmtNum(latestWeightRow.weight_kg)} kg`
-                        : "—"}
-                    </span>
-                  </div>
-                  {validWts.length > 1 && (
-                    <>
-                      <SparkLine values={wWgt} color="#4fc3f7" height={40} chartId="wgt7" />
-                      <div className="flex justify-between mt-1.5 mb-2.5">
-                        {week.labels.map((d, i) => (
-                          <span
-                            key={i}
-                            className="text-[8px] uppercase"
-                            style={{ color: d === "Today" ? "#4fc3f7" : "rgba(255,255,255,0.2)" }}
-                          >
-                            {d}
-                          </span>
-                        ))}
-                      </div>
-                    </>
-                  )}
-                  <div className="flex gap-2">
-                    <StatTile
-                      label="Low"
-                      value={validWts.length ? `${fmtNum(Math.min(...validWts))} kg` : "—"}
-                      color="#4fc3f7"
-                    />
-                    <StatTile
-                      label="High"
-                      value={validWts.length ? `${fmtNum(Math.max(...validWts))} kg` : "—"}
-                      color="#4fc3f7"
-                    />
-                    <StatTile
-                      label="7d change"
-                      value={
-                        validWts.length > 1
-                          ? `${validWts[validWts.length - 1] - validWts[0] > 0 ? "+" : ""}${fmtNum(
-                              validWts[validWts.length - 1] - validWts[0],
-                            )} kg`
-                          : "—"
-                      }
-                      color={
-                        validWts.length > 1
-                          ? validWts[validWts.length - 1] - validWts[0] < 0
-                            ? "#6bcb77"
-                            : validWts[validWts.length - 1] - validWts[0] > 0
-                            ? "#ff6b6b"
-                            : "#888"
-                          : "#888"
-                      }
-                    />
-                  </div>
-                </Card>
-              )}
-            </div>
-          </DashboardSection>
-        )}
-
-        {!hasToday && !hasSteps && !hasCals && !hasWeight && (
-          <Card>
-            <p className="text-sm text-white/40 text-center py-4">
-              No data yet. Connect WHOOP from the chip in the header, or click <em>Sync now</em> if
-              already connected.
-            </p>
-          </Card>
-        )}
+        {/* MONITORS + WEEKLY ROLLUPS — heavier 14-day query, streamed in */}
+        <Suspense fallback={<SkeletonCard height={420} label="Monitors · last 7 days" />}>
+          <WeeklyRollups
+            userId={user.id}
+            today={today}
+            todayHrv={todayLog?.hrv ?? null}
+            todayRhr={todayLog?.resting_hr ?? null}
+            hrvBaseline={hrvBaseline}
+          />
+        </Suspense>
 
         <form action="/api/auth/signout" method="post" className="flex justify-end pt-4">
           <button className="text-[10px] text-white/30 hover:text-white" type="submit">
@@ -407,21 +221,5 @@ export default async function Home() {
         </form>
       </div>
     </main>
-  );
-}
-
-function fmtInt(v: number | null): string {
-  if (v === null) return "—";
-  return Math.round(v).toLocaleString();
-}
-
-function StatTile({ label, value, color }: { label: string; value: string; color: string }) {
-  return (
-    <div className="flex-1 rounded-lg px-2.5 py-2" style={{ background: "rgba(0,0,0,0.15)" }}>
-      <div className="text-[9px] uppercase tracking-[0.08em] text-white/30 mb-0.5">{label}</div>
-      <div className="text-[15px] font-bold font-mono" style={{ color }}>
-        {value}
-      </div>
-    </div>
   );
 }

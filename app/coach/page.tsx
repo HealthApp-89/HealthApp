@@ -12,7 +12,7 @@ import {
 } from "@/components/coach/RecommendationsList";
 import { reviewWindow, recommendationWeekStart, type ReviewMode } from "@/lib/coach/week";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 60;
 
 type Pattern = { label: string; detail: string };
 type Plan = { week: string; today: string; tomorrow: string; note: string };
