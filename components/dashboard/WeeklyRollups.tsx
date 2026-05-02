@@ -106,7 +106,14 @@ export async function WeeklyRollups({ userId, today, todayHrv, todayRhr, hrvBase
                     {wSteps[6] != null ? wSteps[6]!.toLocaleString() : "—"}
                   </span>
                 </div>
-                <SparkLine values={wSteps} color="#00f5c4" height={40} chartId="stp7" />
+                <SparkLine
+                  values={wSteps}
+                  labels={week.labels}
+                  unit="steps"
+                  color="#00f5c4"
+                  height={40}
+                  chartId="stp7"
+                />
                 <div className="flex justify-between mt-1.5">
                   {week.labels.map((d, i) => (
                     <span
@@ -149,7 +156,14 @@ export async function WeeklyRollups({ userId, today, todayHrv, todayRhr, hrvBase
                     <span className="text-[10px] text-white/30 font-normal ml-1">kcal</span>
                   </span>
                 </div>
-                <SparkLine values={wCals} color="#ffd93d" height={40} chartId="cal7" />
+                <SparkLine
+                  values={wCals}
+                  labels={week.labels}
+                  unit="kcal"
+                  color="#ffd93d"
+                  height={40}
+                  chartId="cal7"
+                />
                 <div className="flex justify-between mt-1.5 mb-2.5">
                   {week.labels.map((d, i) => (
                     <span
@@ -179,7 +193,14 @@ export async function WeeklyRollups({ userId, today, todayHrv, todayRhr, hrvBase
                 </div>
                 {validWts.length > 1 && (
                   <>
-                    <SparkLine values={wWgt} color="#4fc3f7" height={40} chartId="wgt7" />
+                    <SparkLine
+                      values={wWgt}
+                      labels={week.labels}
+                      unit="kg"
+                      color="#4fc3f7"
+                      height={40}
+                      chartId="wgt7"
+                    />
                     <div className="flex justify-between mt-1.5 mb-2.5">
                       {week.labels.map((d, i) => (
                         <span

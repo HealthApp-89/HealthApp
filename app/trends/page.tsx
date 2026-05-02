@@ -183,10 +183,12 @@ export default async function TrendsPage(props: {
             >
               <LineChart
                 data={aggHRV.map((p) => p.value)}
+                dates={datesHRV}
                 color="#00f5c4"
                 height={64}
                 refLine={HRV_BASELINE}
                 refLabel={`${HRV_BASELINE}ms avg`}
+                unit="ms"
               />
             </MetricCard>
 
@@ -201,16 +203,21 @@ export default async function TrendsPage(props: {
             >
               <LineChart
                 data={aggRHR.map((p) => p.value)}
+                dates={datesRHR}
                 color="#f87171"
                 height={64}
                 refLine={RHR_BASELINE}
                 refLabel={`${RHR_BASELINE}bpm avg`}
+                unit="bpm"
               />
             </MetricCard>
 
             <Card>
               <SectionLabel>Recovery % — {granularityLabel}</SectionLabel>
-              <RecoveryBars data={aggRecov.map((p) => (p.value !== null ? Math.round(p.value) : null))} />
+              <RecoveryBars
+                data={aggRecov.map((p) => (p.value !== null ? Math.round(p.value) : null))}
+                dates={datesRecov}
+              />
               <div className="flex gap-3 mt-2.5">
                 {(["🟢 Green ≥67%", "🟡 Yellow 34-66%", "🔴 Red <34%"]).map((l) => (
                   <span key={l} className="text-[10px] text-white/40">
@@ -249,10 +256,12 @@ export default async function TrendsPage(props: {
             >
               <LineChart
                 data={aggSleepSc.map((p) => p.value)}
+                dates={datesSleepSc}
                 color="#a29bfe"
                 height={56}
                 refLine={85}
                 refLabel="85 optimal"
+                unit="/100"
               />
             </MetricCard>
 

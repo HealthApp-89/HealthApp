@@ -1,21 +1,51 @@
+"use client";
+
+import { useState } from "react";
+
 type Props = {
   data: (number | null)[];
+  /** Optional ISO dates parallel to data — enables tooltip on tap/hover. */
+  dates?: string[];
   color?: string;
   height?: number;
   refLine?: number | null;
   refLabel?: string;
   showDots?: boolean;
+  /** Unit shown in the tooltip (e.g. "ms", "bpm"). */
+  unit?: string;
+  /** Format the tooltip number. */
+  valueFormat?: (v: number) => string;
 };
 
-/** Server-safe SVG line chart with optional dashed reference line and gradient fill. */
+const MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function formatDateShort(iso: string): string {
+  const [, m, d] = iso.split("-");
+  if (!m || !d) return iso;
+  const monthIdx = parseInt(m, 10) - 1;
+  return `${parseInt(d, 10)} ${MONTHS_SHORT[monthIdx] ?? m}`;
+}
+
+function defaultFormat(v: number): string {
+  if (Math.abs(v) >= 100 || Number.isInteger(v)) return Math.round(v).toLocaleString();
+  return v.toFixed(1);
+}
+
+/** SVG line chart with gradient fill, optional reference line, and a
+ *  tap/hover tooltip when `dates` are provided. */
 export function LineChart({
   data,
+  dates,
   color = "#00f5c4",
   height = 60,
   refLine = null,
   refLabel = "",
   showDots = true,
+  unit = "",
+  valueFormat,
 }: Props) {
+  const [active, setActive] = useState<number | null>(null);
+
   const pts = data.filter((d): d is number => d !== null && Number.isFinite(d));
   if (pts.length < 2) {
     return (
@@ -51,6 +81,12 @@ export function LineChart({
     firstI >= 0 ? `${pathParts.join(" ")} L ${toX(lastI)} ${height} L ${toX(firstI)} ${height} Z` : "";
   const refY = refLine !== null && refLine !== undefined ? toY(refLine) : null;
   const gid = `grad-${color.replace("#", "")}`;
+
+  const fmt = valueFormat ?? defaultFormat;
+  const activeValue = active != null ? data[active] : null;
+  const activeDate = active != null && dates ? dates[active] : null;
+  // Width of each invisible hit slot (full width / number of data points).
+  const hitW = W / data.length;
 
   return (
     <div style={{ position: "relative", width: "100%", height }}>
@@ -88,8 +124,46 @@ export function LineChart({
         />
         {showDots &&
           data.map((v, i) =>
-            v !== null ? <circle key={i} cx={toX(i)} cy={toY(v)} r="1.8" fill={color} opacity="0.9" /> : null,
+            v !== null ? (
+              <circle
+                key={i}
+                cx={toX(i)}
+                cy={toY(v)}
+                r={active === i ? 2.6 : 1.8}
+                fill={color}
+                opacity={active === null || active === i ? 0.95 : 0.5}
+              />
+            ) : null,
           )}
+
+        {/* Vertical guide on the active slot */}
+        {active !== null && data[active] !== null && (
+          <line
+            x1={toX(active)}
+            y1={0}
+            x2={toX(active)}
+            y2={height}
+            stroke={color}
+            strokeWidth="0.4"
+            opacity="0.4"
+          />
+        )}
+
+        {/* Invisible tap targets — full slot width, full chart height */}
+        {data.map((_, i) => (
+          <rect
+            key={`hit-${i}`}
+            x={i * hitW - hitW / 2}
+            y={0}
+            width={hitW}
+            height={height}
+            fill="transparent"
+            style={{ cursor: "pointer" }}
+            onPointerEnter={() => setActive(i)}
+            onPointerLeave={() => setActive((cur) => (cur === i ? null : cur))}
+            onClick={() => setActive((cur) => (cur === i ? null : i))}
+          />
+        ))}
       </svg>
       {refY !== null && refLabel && (
         <span
@@ -107,6 +181,36 @@ export function LineChart({
         >
           {refLabel}
         </span>
+      )}
+
+      {/* Tooltip overlay */}
+      {active !== null && activeValue !== null && (
+        <div
+          className="pointer-events-none absolute z-10"
+          style={{
+            left: `${(active / Math.max(data.length - 1, 1)) * 100}%`,
+            top: -28,
+            transform: "translateX(-50%)",
+          }}
+        >
+          <div
+            className="rounded-md px-2 py-1 text-[10px] font-mono whitespace-nowrap"
+            style={{
+              background: "rgba(13, 22, 40, 0.95)",
+              border: `1px solid ${color}55`,
+              color: "white",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.4)",
+            }}
+          >
+            {activeDate && (
+              <span className="text-white/50 mr-1.5">{formatDateShort(activeDate)}</span>
+            )}
+            <span style={{ color }}>
+              {fmt(activeValue)}
+              {unit && <span className="text-white/40 ml-0.5">{unit}</span>}
+            </span>
+          </div>
+        </div>
       )}
     </div>
   );
