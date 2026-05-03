@@ -29,6 +29,10 @@ export default async function Home() {
   if (!user) redirect("/login");
 
   const today = new Date().toISOString().slice(0, 10);
+  const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+
+  const DAILY_LOG_COLS =
+    "user_id, date, hrv, resting_hr, recovery, spo2, skin_temp_c, strain, sleep_hours, sleep_score, deep_sleep_hours, rem_sleep_hours, weight_kg, body_fat_pct, steps, calories, calories_eaten, protein_g, carbs_g, fat_g, notes, source, updated_at";
 
   // Fast queries only — these gate first paint. The 14-day window for the
   // weekly rollups loads inside <Suspense> below so it doesn't block the hero.
@@ -36,6 +40,7 @@ export default async function Home() {
     { data: profile },
     { data: tokens },
     { data: todayRow },
+    { data: yesterdayRow },
     { data: checkin },
     { data: latestWeightRow },
   ] = await Promise.all([
@@ -47,11 +52,15 @@ export default async function Home() {
     supabase.from("whoop_tokens").select("updated_at").eq("user_id", user.id).maybeSingle(),
     supabase
       .from("daily_logs")
-      .select(
-        "user_id, date, hrv, resting_hr, recovery, spo2, skin_temp_c, strain, sleep_hours, sleep_score, deep_sleep_hours, rem_sleep_hours, weight_kg, body_fat_pct, steps, calories, calories_eaten, protein_g, carbs_g, fat_g, notes, source, updated_at",
-      )
+      .select(DAILY_LOG_COLS)
       .eq("user_id", user.id)
       .eq("date", today)
+      .maybeSingle(),
+    supabase
+      .from("daily_logs")
+      .select(DAILY_LOG_COLS)
+      .eq("user_id", user.id)
+      .eq("date", yesterday)
       .maybeSingle(),
     supabase
       .from("checkins")
@@ -75,6 +84,7 @@ export default async function Home() {
     typeof baselines?.hrv_6mo_avg === "number" ? (baselines.hrv_6mo_avg as number) : 33;
 
   const todayLog = (todayRow ?? null) as DailyLog | null;
+  const yesterdayLog = (yesterdayRow ?? null) as DailyLog | null;
   const hasToday = !!todayLog;
 
   // Resolve the freshest weight available — today's log first, otherwise the
@@ -94,16 +104,46 @@ export default async function Home() {
       ? (10 * effectiveWeightKg + 6.25 * profile.height_cm - 5 * profile.age + 5) * 1.55
       : null;
 
+  // Donut readiness reflects: today's recovery (HRV / RHR / sleep / deep sleep
+  // / morning check-in) PLUS yesterday's training & nutrition load (steps,
+  // strain, calories, protein, carbs). Rationale: at 9am you don't yet have
+  // today's steps/protein, but yesterday's load is what actually drives how
+  // ready/tired you feel right now.
+  const scoreLog: DailyLog | null = todayLog
+    ? {
+        ...todayLog,
+        steps: yesterdayLog?.steps ?? null,
+        strain: yesterdayLog?.strain ?? null,
+        calories_eaten: yesterdayLog?.calories_eaten ?? null,
+        protein_g: yesterdayLog?.protein_g ?? null,
+        carbs_g: yesterdayLog?.carbs_g ?? null,
+      }
+    : null;
+
   const score = calcReadinessScore({
-    log: todayLog,
+    log: scoreLog,
     checkin: checkin ?? null,
     hrvBaseline,
     weightKg: effectiveWeightKg,
     calorieTarget,
   });
 
-  const impact = hasToday
-    ? computeImpact(todayLog, hrvBaseline, effectiveWeightKg, calorieTarget)
+  const rawImpact = hasToday
+    ? computeImpact(scoreLog, hrvBaseline, effectiveWeightKg, calorieTarget)
+    : null;
+  // Tag the load-from-yesterday segments so the chip "reason" line makes the
+  // source explicit ("yest. — 165g / 128g target"). Keeps the donut UI honest
+  // without needing a schema change on ImpactSegment.
+  const YESTERDAY_KEYS = new Set(["steps", "strain", "protein", "calories"]);
+  const impact = rawImpact
+    ? {
+        ...rawImpact,
+        segments: rawImpact.segments.map((s) =>
+          YESTERDAY_KEYS.has(s.key) && s.value !== null
+            ? { ...s, reason: `yest. — ${s.reason}` }
+            : s,
+        ),
+      }
     : null;
 
   const feelInput = checkin
