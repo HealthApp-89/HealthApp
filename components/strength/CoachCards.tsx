@@ -15,19 +15,72 @@ type Payload = {
   exercises: Record<string, ExerciseAdvice>;
 };
 
+/** Safely coerce any LLM-returned value to a renderable string. Objects /
+ *  arrays get JSON-stringified so they show as text instead of crashing
+ *  React with "Objects are not valid as a React child". */
+function asText(v: unknown): string {
+  if (v === null || v === undefined) return "";
+  if (typeof v === "string") return v;
+  if (typeof v === "number" || typeof v === "boolean") return String(v);
+  try {
+    return JSON.stringify(v);
+  } catch {
+    return "";
+  }
+}
+
+function asInt(v: unknown): number {
+  if (typeof v === "number" && Number.isFinite(v)) return Math.round(v);
+  if (typeof v === "string") {
+    const n = parseInt(v, 10);
+    if (Number.isFinite(n)) return n;
+  }
+  return 0;
+}
+
 export function CoachCards({ payload }: { payload: Payload }) {
-  // Group by category
+  // Tolerate any shape Claude may have hallucinated. We never throw — if the
+  // payload is unusable, we render a friendly placeholder instead.
+  const exercisesObj =
+    payload?.exercises && typeof payload.exercises === "object" && !Array.isArray(payload.exercises)
+      ? (payload.exercises as Record<string, unknown>)
+      : {};
+
   const byCat = new Map<string, [string, ExerciseAdvice][]>();
-  for (const [name, ex] of Object.entries(payload.exercises ?? {})) {
-    const cat = ex.category ?? "Other";
+  for (const [name, raw] of Object.entries(exercisesObj)) {
+    const ex = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+    const advice: ExerciseAdvice = {
+      category: asText(ex.category) || "Other",
+      priority: asText(ex.priority) || "medium",
+      sessions: asInt(ex.sessions),
+      next_target: asText(ex.next_target),
+      recommendation: asText(ex.recommendation),
+    };
+    const cat = advice.category;
     const arr = byCat.get(cat) ?? [];
-    arr.push([name, ex]);
+    arr.push([asText(name) || "Exercise", advice]);
     byCat.set(cat, arr);
   }
   const order = ["Chest", "Shoulders", "Back", "Legs", "Arms", "Core", "Cardio", "Other"];
   const cats = [...byCat.keys()].sort(
     (a, b) => (order.indexOf(a) === -1 ? 99 : order.indexOf(a)) - (order.indexOf(b) === -1 ? 99 : order.indexOf(b)),
   );
+
+  const totalExercises = asInt(payload?.summary?.total_exercises_tracked);
+  const totalSessions = asInt(payload?.summary?.total_sessions);
+
+  if (cats.length === 0) {
+    return (
+      <div className="rounded-[14px] px-4 py-3.5 border" style={tintByKey("coach")}>
+        <SectionLabel color="rgba(10,132,255,0.6)">🎯 STRENGTH COACH</SectionLabel>
+        <div className="text-[11px] text-white/45 leading-relaxed">
+          The coach didn&apos;t return any exercise advice this run. Try{" "}
+          <em>Refresh strength coach</em> in a moment — the model occasionally
+          returns an unparseable response.
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -36,8 +89,7 @@ export function CoachCards({ payload }: { payload: Payload }) {
     >
       <SectionLabel color="rgba(10,132,255,0.6)">🎯 STRENGTH COACH</SectionLabel>
       <div className="text-[11px] text-white/35 mb-3 leading-relaxed">
-        Based on {payload.summary?.total_exercises_tracked ?? 0} tracked exercises across{" "}
-        {payload.summary?.total_sessions ?? 0} sessions.
+        Based on {totalExercises} tracked exercises across {totalSessions} sessions.
       </div>
       {cats.map((cat) => (
         <section key={cat}>
@@ -69,7 +121,11 @@ export function CoachCards({ payload }: { payload: Payload }) {
                     → {ex.next_target}
                   </div>
                 )}
-                <div className="text-[11px] text-white/55 leading-relaxed">{ex.recommendation}</div>
+                {ex.recommendation && (
+                  <div className="text-[11px] text-white/55 leading-relaxed">
+                    {ex.recommendation}
+                  </div>
+                )}
               </div>
             );
           })}
