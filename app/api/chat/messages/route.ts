@@ -213,14 +213,15 @@ export async function POST(req: Request) {
   // Build the cache-aware Anthropic message structure.
   const snapshot = await buildSnapshotText({ userId: user.id });
 
-  // Pull the rolling window: last N messages BEFORE the just-inserted assistant
-  // stub. We exclude the streaming row itself (it has empty content).
+  // Pull the rolling window: last N messages BEFORE the just-inserted user
+  // turn and the streaming assistant stub (both are appended explicitly below).
   type WindowRow = { id: string; role: string; content: string; created_at: string };
   const { data: windowRows } = await sr
     .from("chat_messages")
     .select("id, role, content, created_at")
     .eq("user_id", user.id)
     .neq("status", "streaming")
+    .neq("id", rpcTyped.user_message_id)
     .order("created_at", { ascending: false })
     .limit(ROLLING_WINDOW);
   const windowAsc: WindowRow[] = ((windowRows ?? []) as WindowRow[]).slice().reverse();
