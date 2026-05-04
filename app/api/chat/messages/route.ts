@@ -53,26 +53,32 @@ export async function GET(req: Request) {
     images = imgRows ?? [];
   }
 
-  // Mint signed URLs in one batch via service-role (storage RLS would also
+  // Mint signed URLs in parallel via service-role (storage RLS would also
   // permit user-scoped client, but this avoids per-image round trips).
   const sr = createSupabaseServiceRoleClient();
+  const signedImages: ChatMessageImage[] = await Promise.all(
+    images.map(async (img) => {
+      const { data: signed } = await sr.storage
+        .from("chat-images")
+        .createSignedUrl(img.storage_path, SIGNED_URL_TTL_SECONDS);
+      return {
+        id: img.id,
+        storage_path: img.storage_path,
+        mime: img.mime,
+        bytes: img.bytes,
+        width: img.width,
+        height: img.height,
+        signed_url: signed?.signedUrl ?? "",
+      };
+    }),
+  );
+
   const imagesByMsg = new Map<string, ChatMessageImage[]>();
-  for (const img of images) {
-    const { data: signed } = await sr.storage
-      .from("chat-images")
-      .createSignedUrl(img.storage_path, SIGNED_URL_TTL_SECONDS);
+  images.forEach((img, i) => {
     const arr = imagesByMsg.get(img.message_id) ?? [];
-    arr.push({
-      id: img.id,
-      storage_path: img.storage_path,
-      mime: img.mime,
-      bytes: img.bytes,
-      width: img.width,
-      height: img.height,
-      signed_url: signed?.signedUrl ?? "",
-    });
+    arr.push(signedImages[i]);
     imagesByMsg.set(img.message_id, arr);
-  }
+  });
 
   const messages: ChatMessage[] = (rows ?? []).map((r) => ({
     id: r.id,
