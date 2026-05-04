@@ -89,6 +89,14 @@ create policy "chat-images self delete" on storage.objects
 -- assistant stub. Runs as security definer to bypass RLS on the
 -- unattached-image UPDATE. The 23505 from the partial unique index on
 -- streaming rows propagates to the caller as a Postgres error.
+--
+-- TRUST BOUNDARY: caller (service-role Route Handler) MUST pass the verified
+-- auth.getUser().id as p_user_id. This function does not (and cannot) validate
+-- p_user_id against auth.uid() — auth.uid() is null under the service role.
+--
+-- updated_at: this repo has no trigger pattern. All UPDATEs to chat_messages
+-- (e.g. when finalising the assistant stub) MUST set updated_at = now()
+-- explicitly in the application layer.
 create or replace function public.chat_send_user_message(
   p_user_id uuid,
   p_content text,
@@ -108,10 +116,14 @@ begin
     returning id into v_user_id;
 
   if p_image_ids is not null and array_length(p_image_ids, 1) > 0 then
+    -- Defense-in-depth: only attach images whose storage_path is under the
+    -- caller's user_id prefix. The API layer already validates this, but
+    -- enforcing it here closes the latent privilege-escalation path.
     update public.chat_message_images
        set message_id = v_user_id
      where id = any(p_image_ids)
-       and message_id is null;
+       and message_id is null
+       and storage_path like p_user_id::text || '/%';
   end if;
 
   insert into public.chat_messages (user_id, role, content, status, model)
