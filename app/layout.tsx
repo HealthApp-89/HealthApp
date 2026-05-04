@@ -1,4 +1,4 @@
-import type { Metadata, Viewport } from "next";
+import type { Metadata } from "next";
 import { DM_Sans, DM_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -30,20 +30,22 @@ export const metadata: Metadata = {
   },
 };
 
-// `maximumScale: 1` blocks iOS double-tap zoom on inputs — biggest perceived-
-// speed win on phone. `viewportFit: cover` lets the dashboard paint under the
-// notch when the PWA launches in standalone mode.
-export const viewport: Viewport = {
-  width: "device-width",
-  initialScale: 1,
-  maximumScale: 1,
-  viewportFit: "cover",
-  themeColor: "#080e1a",
-};
-
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${dmSans.variable} ${dmMono.variable}`}>
+      <head>
+        {/*
+          The Next.js Viewport export does not currently support the
+          `interactive-widget` field, which iOS PWA standalone mode requires
+          to fire visualViewport.resize reliably. The chat panel's keyboard
+          handler depends on that event. We use a manual <meta> tag to include
+          interactive-widget=resizes-content alongside the standard fields.
+        */}
+        <meta
+          name="viewport"
+          content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, interactive-widget=resizes-content"
+        />
+      </head>
       <body className="min-h-[100dvh] pt-[env(safe-area-inset-top)] pb-[calc(env(safe-area-inset-bottom)+48px)]">
         {children}
       </body>
