@@ -75,9 +75,14 @@ export async function POST(request: Request) {
     return row;
   };
 
+  // Build a sleep_id → wake-up date index so recovery lands on the day it's
+  // actually about, not the day WHOOP happened to write the record.
+  const sleepIdToDate = new Map<string, string>();
+  for (const s of sleep) sleepIdToDate.set(s.id, s.end.slice(0, 10));
+
   for (const r of recovery) {
     if (!r.score) continue;
-    const date = r.created_at.slice(0, 10);
+    const date = sleepIdToDate.get(r.sleep_id) ?? r.created_at.slice(0, 10);
     const row = ensure(date);
     row.hrv = r.score.hrv_rmssd_milli;
     row.resting_hr = r.score.resting_heart_rate;
@@ -97,8 +102,13 @@ export async function POST(request: Request) {
     const row = ensure(date);
     const stages = s.score.stage_summary;
     if (stages) {
-      const inBed = stages.total_in_bed_time_milli - stages.total_awake_time_milli;
-      row.sleep_hours = +(inBed / 3_600_000).toFixed(2);
+      // "Asleep" excludes both `awake` AND `no_data` (sensor-gap) windows —
+      // earlier code subtracted only awake, silently inflating the total.
+      const asleepMs =
+        stages.total_light_sleep_time_milli +
+        stages.total_slow_wave_sleep_time_milli +
+        stages.total_rem_sleep_time_milli;
+      row.sleep_hours = +(asleepMs / 3_600_000).toFixed(2);
       row.deep_sleep_hours = +(stages.total_slow_wave_sleep_time_milli / 3_600_000).toFixed(2);
       row.rem_sleep_hours = +(stages.total_rem_sleep_time_milli / 3_600_000).toFixed(2);
     }

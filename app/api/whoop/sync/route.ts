@@ -11,6 +11,18 @@ import {
 
 const MS_PER_DAY = 86_400_000;
 
+type SyncCounts = {
+  recovery_seen: number;
+  recovery_scored: number;
+  recovery_pending: number;
+  recovery_unscorable: number;
+  cycles_seen: number;
+  cycles_scored: number;
+  sleep_seen: number;
+  sleep_scored: number;
+  upserted: number;
+};
+
 async function syncForUser(userId: string) {
   const accessToken = await getValidAccessToken(userId);
   if (!accessToken) return { ok: false, reason: "no_tokens" };
@@ -50,9 +62,33 @@ async function syncForUser(userId: string) {
     return row;
   };
 
+  const counts: SyncCounts = {
+    recovery_seen: recovery.records.length,
+    recovery_scored: 0,
+    recovery_pending: 0,
+    recovery_unscorable: 0,
+    cycles_seen: cycles.records.length,
+    cycles_scored: 0,
+    sleep_seen: sleep.records.length,
+    sleep_scored: 0,
+    upserted: 0,
+  };
+
+  // Build a sleep_id → wake-up date index so recovery rows land on the day
+  // they're actually about, not the day WHOOP happened to write the record.
+  const sleepIdToDate = new Map<string, string>();
+  for (const s of sleep.records) {
+    sleepIdToDate.set(s.id, s.end.slice(0, 10));
+  }
+
   for (const r of recovery.records) {
+    if (r.score_state === "PENDING_SCORE") counts.recovery_pending += 1;
+    else if (r.score_state === "UNSCORABLE") counts.recovery_unscorable += 1;
     if (!r.score) continue;
-    const date = r.created_at.slice(0, 10);
+    counts.recovery_scored += 1;
+    // Prefer the linked sleep's end-date; fall back to created_at if WHOOP
+    // hasn't returned the matching sleep in this window.
+    const date = sleepIdToDate.get(r.sleep_id) ?? r.created_at.slice(0, 10);
     const row = ensure(date);
     row.hrv = r.score.hrv_rmssd_milli;
     row.resting_hr = r.score.resting_heart_rate;
@@ -62,37 +98,46 @@ async function syncForUser(userId: string) {
   }
   for (const c of cycles.records) {
     if (!c.score) continue;
+    counts.cycles_scored += 1;
     const date = c.start.slice(0, 10);
     const row = ensure(date);
     row.strain = c.score.strain;
   }
   for (const s of sleep.records) {
     if (!s.score) continue;
+    counts.sleep_scored += 1;
     const date = s.end.slice(0, 10);
     const row = ensure(date);
     const stages = s.score.stage_summary;
     if (stages) {
-      const inBed = stages.total_in_bed_time_milli - stages.total_awake_time_milli;
-      row.sleep_hours = +(inBed / 3600_000).toFixed(2);
-      row.deep_sleep_hours = +(stages.total_slow_wave_sleep_time_milli / 3600_000).toFixed(2);
-      row.rem_sleep_hours = +(stages.total_rem_sleep_time_milli / 3600_000).toFixed(2);
+      // "Asleep" excludes both `awake` AND `no_data` (sensor-gap) windows.
+      // Earlier code subtracted only awake, which silently inflated the total
+      // by the no-data minutes (typically 1-5 min/night).
+      const asleepMs =
+        stages.total_light_sleep_time_milli +
+        stages.total_slow_wave_sleep_time_milli +
+        stages.total_rem_sleep_time_milli;
+      row.sleep_hours = +(asleepMs / 3_600_000).toFixed(2);
+      row.deep_sleep_hours = +(stages.total_slow_wave_sleep_time_milli / 3_600_000).toFixed(2);
+      row.rem_sleep_hours = +(stages.total_rem_sleep_time_milli / 3_600_000).toFixed(2);
     }
     if (s.score.sleep_performance_percentage != null) row.sleep_score = s.score.sleep_performance_percentage;
   }
 
-  if (byDate.size === 0) return { ok: true, upserted: 0 };
+  if (byDate.size === 0) return { ok: true, ...counts };
 
   const supabase = createSupabaseServiceRoleClient();
   const { error } = await supabase
     .from("daily_logs")
     .upsert(Array.from(byDate.values()), { onConflict: "user_id,date" });
   if (error) throw error;
+  counts.upserted = byDate.size;
   // Invalidate ISR caches so the dashboard / trends / coach pick up new
   // WHOOP data immediately instead of waiting up to 60s for revalidation.
   revalidatePath("/");
   revalidatePath("/trends");
   revalidatePath("/coach");
-  return { ok: true, upserted: byDate.size };
+  return { ok: true, ...counts };
 }
 
 export async function GET(request: Request) {
