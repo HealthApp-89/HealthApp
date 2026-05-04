@@ -42,3 +42,6 @@ _prototype.jsx
 
 # worktrees (isolated workspaces — never tracked)
 .worktrees/
+
+# supabase CLI tooling state
+supabase/.temp/
