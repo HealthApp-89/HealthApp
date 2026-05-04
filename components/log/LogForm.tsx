@@ -58,7 +58,7 @@ const SECTIONS: { title: string; color: string; fields: { k: keyof DailyLog; l: 
       { k: "fat_mass_kg", l: "Fat Mass", u: "kg" },
       { k: "fat_free_mass_kg", l: "Lean Mass", u: "kg" },
       { k: "muscle_mass_kg", l: "Muscle", u: "kg" },
-      { k: "bone_mass_kg", l: "Bone", u: "kg" },
+      { k: "bone_mass_kg", l: "Bone", u: "%" },
       { k: "hydration_kg", l: "Hydration", u: "kg" },
     ],
   },
