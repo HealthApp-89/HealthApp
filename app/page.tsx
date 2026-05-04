@@ -142,21 +142,36 @@ export default async function Home(props: {
       : null;
 
   // Donut readiness reflects: selected day's recovery (HRV / RHR / sleep / deep
-  // sleep / morning check-in) PLUS the prior day's training & nutrition load
-  // (steps, strain, calories, protein, carbs). Rationale: at 9am you don't yet
-  // have today's steps/protein, but yesterday's load is what actually drives how
-  // ready/tired you feel right now. For historical views the same logic applies
-  // — yesterday relative to the *selected* date.
+  // sleep / morning check-in) PLUS load metrics (steps, strain, calories,
+  // protein, carbs). For load: prefer the selected day's value when present —
+  // a workout already logged today should count toward today's strain. Fall
+  // back to the prior day only when the selected day has no value yet (e.g.
+  // 9am, no movement logged), so the donut still reflects how you feel rather
+  // than a blank.
   const scoreLog: DailyLog | null = selectedLog
     ? {
         ...selectedLog,
-        steps: prevLog?.steps ?? null,
-        strain: prevLog?.strain ?? null,
-        calories_eaten: prevLog?.calories_eaten ?? null,
-        protein_g: prevLog?.protein_g ?? null,
-        carbs_g: prevLog?.carbs_g ?? null,
+        steps: selectedLog.steps ?? prevLog?.steps ?? null,
+        strain: selectedLog.strain ?? prevLog?.strain ?? null,
+        calories_eaten: selectedLog.calories_eaten ?? prevLog?.calories_eaten ?? null,
+        protein_g: selectedLog.protein_g ?? prevLog?.protein_g ?? null,
+        carbs_g: selectedLog.carbs_g ?? prevLog?.carbs_g ?? null,
       }
     : null;
+
+  // Track which load fields had to fall back to the prior day. Used to drive
+  // the "yest. —" prefix in the donut chip reason line so the source of each
+  // value is honest.
+  const fellBackToPrior = new Set<string>();
+  if (selectedLog) {
+    if (selectedLog.steps == null && prevLog?.steps != null) fellBackToPrior.add("steps");
+    if (selectedLog.strain == null && prevLog?.strain != null) fellBackToPrior.add("strain");
+    if (selectedLog.calories_eaten == null && prevLog?.calories_eaten != null)
+      fellBackToPrior.add("calories");
+    if (selectedLog.protein_g == null && prevLog?.protein_g != null)
+      fellBackToPrior.add("protein");
+    if (selectedLog.carbs_g == null && prevLog?.carbs_g != null) fellBackToPrior.add("carbs");
+  }
 
   const score = calcReadinessScore({
     log: scoreLog,
@@ -169,15 +184,14 @@ export default async function Home(props: {
   const rawImpact = hasData
     ? computeImpact(scoreLog, hrvBaseline, effectiveWeightKg, calorieTarget)
     : null;
-  // Tag the load-from-prior-day segments so the chip "reason" line makes the
-  // source explicit ("yest. — 165g / 128g target"). Keeps the donut UI honest
-  // without needing a schema change on ImpactSegment.
-  const PRIOR_DAY_KEYS = new Set(["steps", "strain", "protein", "calories"]);
+  // Prefix only the segments whose value actually fell back to the prior day,
+  // so a strength session logged today shows as today's strain (no "yest." tag)
+  // but a still-blank steps count for the morning falls back and is labeled.
   const impact = rawImpact
     ? {
         ...rawImpact,
         segments: rawImpact.segments.map((s) =>
-          PRIOR_DAY_KEYS.has(s.key) && s.value !== null
+          fellBackToPrior.has(s.key) && s.value !== null
             ? { ...s, reason: `yest. — ${s.reason}` }
             : s,
         ),
