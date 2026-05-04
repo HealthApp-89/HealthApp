@@ -138,13 +138,14 @@ export default function ChatPanel({ onClose }: { onClose: () => void }) {
   }, []);
 
   const loadOlder = useCallback(async (beforeIso: string) => {
+    if (!state.hasMoreOlder) return { added: 0 };
     const res = await fetch(`/api/chat/messages?limit=50&before=${encodeURIComponent(beforeIso)}`);
     const json = (await res.json()) as { ok: boolean; messages?: ChatMessage[] };
     if (!json.ok || !json.messages) return { added: 0 };
     const older = json.messages.slice().reverse();
     dispatch({ type: "prepend", messages: older, hasMore: older.length >= 50 });
     return { added: older.length };
-  }, []);
+  }, [state.hasMoreOlder]);
 
   const send = useCallback(
     async (content: string, imageIds: string[]) => {
@@ -168,6 +169,7 @@ export default function ChatPanel({ onClose }: { onClose: () => void }) {
 
       let assistantStubAdded = false;
       let assistantId: string | null = null;
+      let currentId: string | null = null;
       try {
         for await (const ev of postSse(
           "/api/chat/messages",
@@ -179,6 +181,7 @@ export default function ChatPanel({ onClose }: { onClose: () => void }) {
               // The server already created a stub on its side. We mirror that
               // locally on first delta so streaming visualisation works.
               assistantId = `stub-${crypto.randomUUID()}`;
+              currentId = assistantId;
               dispatch({ type: "append_assistant_stub", id: assistantId });
               assistantStubAdded = true;
             }
@@ -187,11 +190,13 @@ export default function ChatPanel({ onClose }: { onClose: () => void }) {
             if (!assistantStubAdded) {
               // No deltas (extremely short reply or aborted before first delta).
               assistantId = `stub-${crypto.randomUUID()}`;
+              currentId = assistantId;
               dispatch({ type: "append_assistant_stub", id: assistantId });
               assistantStubAdded = true;
             }
             // Swap to server id and finalize.
             dispatch({ type: "replace_id", tempId: assistantId!, serverId: ev.message_id });
+            currentId = ev.message_id;
             dispatch({
               type: "finalize_assistant",
               id: ev.message_id,
@@ -212,10 +217,10 @@ export default function ChatPanel({ onClose }: { onClose: () => void }) {
               // Recursive retry once.
               return send(content, imageIds);
             }
-            if (assistantStubAdded && assistantId) {
+            if (assistantStubAdded && currentId) {
               dispatch({
                 type: "finalize_assistant",
-                id: assistantId,
+                id: currentId,
                 status: "error",
                 error: ev.message,
               });
@@ -223,10 +228,10 @@ export default function ChatPanel({ onClose }: { onClose: () => void }) {
           }
         }
       } catch (e) {
-        if ((e as Error).name !== "AbortError" && assistantStubAdded && assistantId) {
+        if ((e as Error).name !== "AbortError" && assistantStubAdded && currentId) {
           dispatch({
             type: "finalize_assistant",
-            id: assistantId,
+            id: currentId,
             status: "error",
             error: (e as Error).message,
           });
