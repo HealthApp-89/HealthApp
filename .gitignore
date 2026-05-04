@@ -39,3 +39,9 @@ yarn-error.log*
 # prototype (kept locally for reference, never committed)
 _prototype.jsx
 .claude/
+
+# worktrees (isolated workspaces — never tracked)
+.worktrees/
+
+# supabase CLI tooling state
+supabase/.temp/

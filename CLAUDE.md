@@ -25,6 +25,9 @@ Apply in order via Supabase Dashboard → SQL Editor:
 2. [supabase/migrations/0002_extras.sql](supabase/migrations/0002_extras.sql)
 3. [supabase/migrations/0003_integrations.sql](supabase/migrations/0003_integrations.sql)
 4. [supabase/migrations/0004_coach_v2.sql](supabase/migrations/0004_coach_v2.sql)
+5. [supabase/migrations/0005_chat.sql](supabase/migrations/0005_chat.sql) — also requires the `chat-images` private Storage bucket created beforehand (Storage RLS policies attach to it)
+
+`supabase` CLI is now linked (`supabase link --project-ref eopfwwergisvskxqvsqe`); future migrations apply via `supabase db push` after `repair --status applied <history>` if needed.
 
 Row shapes mirrored in [lib/data/types.ts](lib/data/types.ts). Schema is snake_case; keep DB columns and TS types in sync.
 
