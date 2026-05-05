@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { TabNav } from "./TabNav";
 import { scoreColor, scoreLabel } from "@/lib/ui/colors";
+import { formatHeaderDate } from "@/lib/time";
 
 type HeaderProps = {
   email: string | null;
@@ -12,11 +13,7 @@ type HeaderProps = {
 export function Header({ email, name, score, whoopSyncedAt }: HeaderProps) {
   const sc = scoreColor(score);
   const sl = scoreLabel(score);
-  const dateStr = new Date().toLocaleDateString("en-US", {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-  });
+  const dateStr = formatHeaderDate();
   const display = name?.trim() || email?.split("@")[0] || "Athlete";
   return (
     <header

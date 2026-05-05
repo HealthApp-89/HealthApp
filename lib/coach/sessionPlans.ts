@@ -1,6 +1,8 @@
 // Static training-plan constants — ported from the prototype.
 // Stage 5 will move these into profiles.training_plan if you want per-week edits.
 
+import { weekdayInUserTz } from "@/lib/time";
+
 export type PlannedExercise = {
   name: string;
   warmup?: boolean;
@@ -62,6 +64,5 @@ export const WEEKLY_SESSIONS: Record<string, string> = {
 };
 
 export function getTodaySession(): string {
-  const day = new Date().toLocaleDateString("en-US", { weekday: "long" });
-  return WEEKLY_SESSIONS[day] ?? "REST";
+  return WEEKLY_SESSIONS[weekdayInUserTz()] ?? "REST";
 }
