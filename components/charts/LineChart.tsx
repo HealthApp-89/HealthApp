@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useMemo, useState } from "react";
+import { useId, useMemo, useRef, useState } from "react";
 import { COLOR } from "@/lib/ui/theme";
 import { fmtNum } from "@/lib/ui/score";
 
@@ -26,9 +26,16 @@ type LineChartProps = {
 
 /**
  * Smooth cubic-Bézier line chart with gradient area fill.
+ *
  * Smoothing uses horizontal-control approximation (a.k.a. "monotone-x"):
  * for each segment from P0 to P1, control points sit half-way along x at
  * the y of P0 and P1 respectively. Cheap, looks like proper monotone.
+ *
+ * Y-axis is padded by 12% of the data range so an extreme value (a 0-strain
+ * rest day, an outlier weigh-in) never slams into the top/bottom edges.
+ *
+ * The tooltip lives outside the SVG as an HTML overlay so its text isn't
+ * horizontally stretched by `preserveAspectRatio="none"`.
  */
 export function LineChart({
   data,
@@ -40,19 +47,24 @@ export function LineChart({
 }: LineChartProps) {
   const h = height ?? (variant === "mini" ? 80 : 140);
   const w = width;
-  const pad = variant === "mini" ? 6 : 10;
+  const pad = variant === "mini" ? 8 : 12;
   const gradId = useId();
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
 
-  const { linePath, areaPath, points, valMin, valMax } = useMemo(() => {
+  const { linePath, areaPath, points } = useMemo(() => {
     const present = data.filter((d): d is LinePoint & { y: number } => d.y !== null);
     if (present.length === 0) {
-      return { linePath: "", areaPath: "", points: [], valMin: 0, valMax: 1 };
+      return { linePath: "", areaPath: "", points: [] };
     }
     const ys = present.map((d) => d.y);
-    const valMin = Math.min(...ys);
-    const valMax = Math.max(...ys);
-    const range = valMax - valMin || 1;
+    const dataMin = Math.min(...ys);
+    const dataMax = Math.max(...ys);
+    const dataRange = dataMax - dataMin || 1;
+    // Pad the y-range so the line breathes inside the chart.
+    const yPad = dataRange * 0.12;
+    const valMin = dataMin - yPad;
+    const range = dataRange + 2 * yPad;
 
     const usableW = w;
     const usableH = h - pad * 2;
@@ -97,7 +109,7 @@ export function LineChart({
       }
     }
 
-    return { linePath: line, areaPath: area, points, valMin, valMax };
+    return { linePath: line, areaPath: area, points };
   }, [data, h, w, pad]);
 
   const lastPoint = useMemo(() => {
@@ -145,14 +157,25 @@ export function LineChart({
 
   const hover = hoverIndex !== null ? points[hoverIndex] : null;
 
+  // Compute tooltip position in CSS pixels (relative to wrapper div).
+  // x: hover point's x-fraction of the SVG width. y: same fraction of SVG height.
+  const tooltipPos = hover
+    ? {
+        leftPct: (hover.x / w) * 100,
+        topPx: (hover.y / h) * h,
+      }
+    : null;
+
+  const hoverDate = hoverIndex !== null ? data[hoverIndex].x : undefined;
+
   return (
-    <div style={{ width: "100%" }}>
+    <div ref={wrapperRef} style={{ width: "100%", position: "relative" }}>
       <svg
         viewBox={`0 0 ${w} ${h}`}
         preserveAspectRatio="none"
         width="100%"
         height={h}
-        style={{ display: "block", touchAction: "none" }}
+        style={{ display: "block", touchAction: "none", overflow: "visible" }}
         onPointerMove={onPointerMove}
         onPointerLeave={() => setHoverIndex(null)}
       >
@@ -204,19 +227,45 @@ export function LineChart({
               strokeDasharray="3,3"
               strokeWidth="1"
             />
-            <circle cx={hover.x} cy={hover.y} r={5} fill="#fff" stroke={color} strokeWidth={2.5} />
-            <g transform={`translate(${Math.min(Math.max(hover.x - 46, 4), w - 96)}, 4)`}>
-              <rect width="92" height="34" rx="8" fill={COLOR.textStrong} />
-              <text x="46" y="14" textAnchor="middle" fontSize="9" fill={COLOR.textFaint} fontWeight="600">
-                {data[hoverIndex!].x ?? ""}
-              </text>
-              <text x="46" y="27" textAnchor="middle" fontSize="13" fill="#fff" fontWeight="700">
-                {fmtNum(hover.raw)}
-              </text>
-            </g>
+            <circle cx={hover.x} cy={hover.y} r={4} fill="#fff" stroke={color} strokeWidth={2.5} />
           </>
         )}
       </svg>
+
+      {/* HTML tooltip overlay — positioned over the SVG, not stretched by preserveAspectRatio. */}
+      {hover && hover.raw !== null && tooltipPos && (
+        <div
+          style={{
+            position: "absolute",
+            left: `${tooltipPos.leftPct}%`,
+            top: 0,
+            transform: "translate(-50%, -100%)",
+            marginTop: "-4px",
+            background: COLOR.textStrong,
+            color: "#fff",
+            padding: "4px 8px",
+            borderRadius: "8px",
+            fontSize: "11px",
+            fontWeight: 700,
+            lineHeight: 1.2,
+            whiteSpace: "nowrap",
+            pointerEvents: "none",
+            boxShadow: "0 4px 10px rgba(20,30,80,0.18)",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: "1px",
+            zIndex: 5,
+          }}
+        >
+          {hoverDate && (
+            <span style={{ fontSize: "9px", fontWeight: 600, color: COLOR.textFaint }}>
+              {hoverDate}
+            </span>
+          )}
+          <span data-tnum>{fmtNum(hover.raw)}</span>
+        </div>
+      )}
 
       {variant === "detail" && xAxisLabels && (
         <div
