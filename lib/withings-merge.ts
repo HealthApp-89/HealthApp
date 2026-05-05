@@ -4,6 +4,7 @@ import {
   type WithingsActivity,
   type WithingsMeasureGroup,
 } from "./withings";
+import { ymdInUserTz } from "@/lib/time";
 
 export type DayRow = {
   user_id: string;
@@ -45,7 +46,7 @@ export function mergeWithingsToRows(
   // Group by date, pick latest measurement per type
   const sorted = [...measureGroups].sort((a, b) => a.date - b.date);
   for (const grp of sorted) {
-    const date = new Date(grp.date * 1000).toISOString().slice(0, 10);
+    const date = ymdInUserTz(new Date(grp.date * 1000));
     const row = ensure(date);
     for (const m of grp.measures) {
       const v = toReal(m.value, m.unit);

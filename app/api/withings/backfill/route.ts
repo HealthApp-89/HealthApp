@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createSupabaseServerClient, createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { getValidAccessToken, getMeasures, getActivity } from "@/lib/withings";
 import { mergeWithingsToRows } from "@/lib/withings-merge";
+import { todayInUserTz } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -28,7 +29,7 @@ export async function POST(request: Request) {
   const startEpoch = Math.floor(since.getTime() / 1000);
   const endEpoch = Math.floor(Date.now() / 1000);
   const startYmd = since.toISOString().slice(0, 10);
-  const endYmd = new Date().toISOString().slice(0, 10);
+  const endYmd = todayInUserTz();
 
   let measureGroups, activities;
   try {
