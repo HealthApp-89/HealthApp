@@ -2,6 +2,7 @@
 
 import { useId, useMemo, useState } from "react";
 import { COLOR } from "@/lib/ui/theme";
+import { fmtNum } from "@/lib/ui/score";
 
 export type LinePoint = {
   /** X-axis label (date string, e.g. "2026-04-25"). Optional for `mini`. */
@@ -126,7 +127,6 @@ export function LineChart({
   }
 
   const onPointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
-    if (variant !== "detail") return;
     const svg = e.currentTarget;
     const rect = svg.getBoundingClientRect();
     const x = ((e.clientX - rect.left) / rect.width) * w;
@@ -211,7 +211,7 @@ export function LineChart({
                 {data[hoverIndex!].x ?? ""}
               </text>
               <text x="46" y="27" textAnchor="middle" fontSize="13" fill="#fff" fontWeight="700">
-                {hover.raw}
+                {fmtNum(hover.raw)}
               </text>
             </g>
           </>

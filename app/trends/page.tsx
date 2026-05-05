@@ -55,10 +55,6 @@ function halfDelta(points: LinePoint[]): number | null {
   return Math.round((a2 - a1) * 100) / 100;
 }
 
-function hasData(points: LinePoint[]): boolean {
-  return points.some((p) => p.y !== null);
-}
-
 export default async function TrendsPage(props: {
   searchParams: Promise<{
     period?: string;
@@ -153,89 +149,77 @@ export default async function TrendsPage(props: {
 
         {/* Compact metric stack */}
         <div style={{ display: "flex", flexDirection: "column", gap: "10px", padding: "0 8px" }}>
-          {hasData(hrvTrend) && (
-            <MetricCard
-              color={METRIC_COLOR.hrv}
-              icon="♥"
-              label="HRV"
-              value={hrvAvg !== null ? Math.round(hrvAvg) : null}
-              unit="ms"
-              delta={hrvDelta}
-              deltaUnit="ms"
-              compact
-              trend={hrvTrend}
-              href="/trends/hrv"
-            />
-          )}
-          {hasData(rhrTrend) && (
-            <MetricCard
-              color={METRIC_COLOR.resting_hr}
-              icon="♥"
-              label="Resting HR"
-              value={rhrAvg !== null ? Math.round(rhrAvg) : null}
-              unit="bpm"
-              delta={rhrDelta}
-              deltaUnit="bpm"
-              inverted
-              compact
-              trend={rhrTrend}
-              href="/trends/resting_hr"
-            />
-          )}
-          {hasData(sleepTrend) && (
-            <MetricCard
-              color={METRIC_COLOR.sleep_hours}
-              icon="☾"
-              label="Sleep"
-              value={sleepAvg}
-              unit="h"
-              delta={sleepDelta}
-              deltaUnit="h"
-              compact
-              trend={sleepTrend}
-              href="/trends/sleep_hours"
-            />
-          )}
-          {hasData(strainTrend) && (
-            <MetricCard
-              color={METRIC_COLOR.strain}
-              icon="⚡"
-              label="Strain"
-              value={strainAvg}
-              delta={strainDelta}
-              compact
-              trend={strainTrend}
-              href="/trends/strain"
-            />
-          )}
-          {hasData(weightTrend) && (
-            <MetricCard
-              color={METRIC_COLOR.weight_kg}
-              icon="⚖"
-              label="Weight"
-              value={weightAvg}
-              unit="kg"
-              delta={weightDelta}
-              deltaUnit="kg"
-              compact
-              trend={weightTrend}
-              href="/trends/weight_kg"
-            />
-          )}
-          {hasData(bfTrend) && (
-            <MetricCard
-              color={METRIC_COLOR.body_fat_pct}
-              icon="%"
-              label="Body Fat"
-              value={bfAvg}
-              unit="%"
-              delta={bfDelta}
-              deltaUnit="%"
-              compact
-              trend={bfTrend}
-              href="/trends/body_fat_pct"
-            />
-          )}
+          <MetricCard
+            color={METRIC_COLOR.hrv}
+            icon="♥"
+            label="HRV"
+            value={hrvAvg}
+            unit="ms"
+            delta={hrvDelta}
+            deltaUnit="ms"
+            compact
+            trend={hrvTrend}
+            href="/trends/hrv"
+          />
+          <MetricCard
+            color={METRIC_COLOR.resting_hr}
+            icon="♥"
+            label="Resting HR"
+            value={rhrAvg}
+            unit="bpm"
+            delta={rhrDelta}
+            deltaUnit="bpm"
+            inverted
+            compact
+            trend={rhrTrend}
+            href="/trends/resting_hr"
+          />
+          <MetricCard
+            color={METRIC_COLOR.sleep_hours}
+            icon="☾"
+            label="Sleep"
+            value={sleepAvg}
+            unit="h"
+            delta={sleepDelta}
+            deltaUnit="h"
+            compact
+            trend={sleepTrend}
+            href="/trends/sleep_hours"
+          />
+          <MetricCard
+            color={METRIC_COLOR.strain}
+            icon="⚡"
+            label="Strain"
+            value={strainAvg}
+            delta={strainDelta}
+            compact
+            trend={strainTrend}
+            href="/trends/strain"
+          />
+          <MetricCard
+            color={METRIC_COLOR.weight_kg}
+            icon="⚖"
+            label="Weight"
+            value={weightAvg}
+            unit="kg"
+            delta={weightDelta}
+            deltaUnit="kg"
+            compact
+            trend={weightTrend}
+            href="/trends/weight_kg"
+          />
+          <MetricCard
+            color={METRIC_COLOR.body_fat_pct}
+            icon="%"
+            label="Body Fat"
+            value={bfAvg}
+            unit="%"
+            delta={bfDelta}
+            deltaUnit="%"
+            compact
+            trend={bfTrend}
+            href="/trends/body_fat_pct"
+          />
         </div>
       </div>
     </main>
