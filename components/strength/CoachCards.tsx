@@ -1,6 +1,6 @@
 import { priorityColor } from "@/lib/ui/colors";
-import { SectionLabel } from "@/components/ui/Card";
-import { tintByKey } from "@/lib/ui/tints";
+import { Card, SectionLabel } from "@/components/ui/Card";
+import { COLOR } from "@/lib/ui/theme";
 
 type ExerciseAdvice = {
   category: string;
@@ -71,31 +71,28 @@ export function CoachCards({ payload }: { payload: Payload }) {
 
   if (cats.length === 0) {
     return (
-      <div className="rounded-[14px] px-4 py-3.5 border" style={tintByKey("coach")}>
-        <SectionLabel color="rgba(10,132,255,0.6)">🎯 STRENGTH COACH</SectionLabel>
-        <div className="text-[11px] text-white/45 leading-relaxed">
+      <Card tint="coach">
+        <SectionLabel>🎯 STRENGTH COACH</SectionLabel>
+        <div className="text-[11px] leading-relaxed" style={{ color: COLOR.textMid }}>
           The coach didn&apos;t return any exercise advice this run. Try{" "}
           <em>Refresh strength coach</em> in a moment — the model occasionally
           returns an unparseable response.
         </div>
-      </div>
+      </Card>
     );
   }
 
   return (
-    <div
-      className="rounded-[14px] px-4 py-3.5 border"
-      style={tintByKey("coach")}
-    >
-      <SectionLabel color="rgba(10,132,255,0.6)">🎯 STRENGTH COACH</SectionLabel>
-      <div className="text-[11px] text-white/35 mb-3 leading-relaxed">
+    <Card tint="coach">
+      <SectionLabel>🎯 STRENGTH COACH</SectionLabel>
+      <div className="text-[11px] mb-3 leading-relaxed" style={{ color: COLOR.textMuted }}>
         Based on {totalExercises} tracked exercises across {totalSessions} sessions.
       </div>
       {cats.map((cat) => (
         <section key={cat}>
           <div
             className="text-[11px] font-bold tracking-[0.1em] uppercase mt-3 pt-3 mb-2"
-            style={{ color: "rgba(255,255,255,0.3)", borderTop: "1px solid rgba(255,255,255,0.05)" }}
+            style={{ color: COLOR.textFaint, borderTop: `1px solid ${COLOR.divider}` }}
           >
             {cat}
           </div>
@@ -106,23 +103,23 @@ export function CoachCards({ payload }: { payload: Payload }) {
                 key={name}
                 className="rounded-[10px] px-3.5 py-3 mb-2"
                 style={{
-                  background: "rgba(0,0,0,0.3)",
+                  background: COLOR.surfaceAlt,
                   borderLeft: `3px solid ${pc}`,
                 }}
               >
                 <div className="flex justify-between items-start mb-1.5">
-                  <div className="text-xs font-semibold text-white flex-1">{name}</div>
-                  <div className="text-[10px] text-white/30 whitespace-nowrap ml-2">
+                  <div className="text-xs font-semibold flex-1" style={{ color: COLOR.textStrong }}>{name}</div>
+                  <div className="text-[10px] whitespace-nowrap ml-2" style={{ color: COLOR.textFaint }}>
                     {ex.sessions} session{ex.sessions === 1 ? "" : "s"}
                   </div>
                 </div>
                 {ex.next_target && (
-                  <div className="text-[11px] font-semibold mb-2" style={{ color: "#30d158" }}>
+                  <div className="text-[11px] font-semibold mb-2" style={{ color: COLOR.success }}>
                     → {ex.next_target}
                   </div>
                 )}
                 {ex.recommendation && (
-                  <div className="text-[11px] text-white/55 leading-relaxed">
+                  <div className="text-[11px] leading-relaxed" style={{ color: COLOR.textMid }}>
                     {ex.recommendation}
                   </div>
                 )}
@@ -131,6 +128,6 @@ export function CoachCards({ payload }: { payload: Payload }) {
           })}
         </section>
       ))}
-    </div>
+    </Card>
   );
 }

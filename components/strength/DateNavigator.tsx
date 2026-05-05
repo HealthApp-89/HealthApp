@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { COLOR } from "@/lib/ui/theme";
 
 type Props = {
   /** Currently selected ISO date (YYYY-MM-DD). */
@@ -24,10 +25,10 @@ export function DateNavigator({ date, min, max }: Props) {
   return (
     <div
       className="rounded-[14px] px-4 py-3 flex items-center justify-between gap-3"
-      style={{ background: "rgba(255,255,255,0.025)", border: "1px solid rgba(255,255,255,0.07)" }}
+      style={{ background: COLOR.surface, border: `1px solid ${COLOR.divider}`, boxShadow: "0 2px 8px rgba(20,30,80,0.05)" }}
     >
       <div className="flex flex-col gap-1">
-        <label className="text-[10px] uppercase tracking-[0.12em] text-white/40">
+        <label className="text-[10px] uppercase tracking-[0.12em]" style={{ color: COLOR.textMuted }}>
           Workout date
         </label>
         <input
@@ -36,7 +37,12 @@ export function DateNavigator({ date, min, max }: Props) {
           min={min}
           max={max}
           onChange={(e) => onChange(e.target.value)}
-          className="bg-white/5 border border-white/10 rounded-lg px-2.5 py-1.5 text-sm font-mono outline-none focus:border-white/30 text-white"
+          className="rounded-lg px-2.5 py-1.5 text-sm font-mono outline-none"
+          style={{
+            background: COLOR.surfaceAlt,
+            border: `1px solid ${COLOR.divider}`,
+            color: COLOR.textStrong,
+          }}
         />
       </div>
     </div>
