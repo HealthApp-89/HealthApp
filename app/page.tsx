@@ -6,7 +6,6 @@ import { Header } from "@/components/layout/Header";
 import { InstallHint } from "@/components/layout/InstallHint";
 import { Card } from "@/components/ui/Card";
 import { MetricBar } from "@/components/ui/MetricBar";
-import { MorningCheckIn } from "@/components/dashboard/MorningCheckIn";
 import { ImpactDonut } from "@/components/dashboard/ImpactDonut";
 import { DashboardSection } from "@/components/dashboard/DashboardSection";
 import { DashboardDatePager } from "@/components/dashboard/DashboardDatePager";
@@ -228,24 +227,6 @@ export default async function Home(props: {
           today={today}
           minDate={minDate}
         />
-
-        {isToday && (
-          <MorningCheckIn
-            date={today}
-            plan={dailyPlan}
-            initial={
-              checkin
-                ? {
-                    readiness: checkin.readiness,
-                    energy_label: checkin.energy_label,
-                    mood: checkin.mood,
-                    soreness: checkin.soreness,
-                    feel_notes: checkin.feel_notes,
-                  }
-                : null
-            }
-          />
-        )}
 
         {/* HERO — impact donut: per-metric +/- contribution to selected day's readiness */}
         <DashboardSection
