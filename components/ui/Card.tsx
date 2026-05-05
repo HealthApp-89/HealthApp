@@ -73,7 +73,7 @@ export function SectionLabel({ children, color }: { children: ReactNode; color?:
   return (
     <div
       className="text-[10px] uppercase tracking-[0.12em] mb-2.5"
-      style={{ color: color ?? "rgba(255,255,255,0.35)" }}
+      style={{ color: color ?? COLOR.textMuted }}
     >
       {children}
     </div>
