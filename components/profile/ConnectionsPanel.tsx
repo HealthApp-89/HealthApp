@@ -3,6 +3,8 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Card, SectionLabel } from "@/components/ui/Card";
+import { IntegrationRow } from "./IntegrationRow";
+import { COLOR } from "@/lib/ui/theme";
 
 type Props = {
   whoopConnected: boolean;
@@ -17,55 +19,82 @@ export function ConnectionsPanel({
   withingsConnected,
   withingsUpdatedAt,
 }: Props) {
+  function syncedText(updatedAt: string | null): string {
+    if (!updatedAt) return "Not synced yet";
+    const diff = Date.now() - new Date(updatedAt).getTime();
+    const mins = Math.floor(diff / 60_000);
+    if (mins < 1) return "Synced just now";
+    if (mins < 60) return `Synced ${mins} min ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `Synced ${hrs} hr ago`;
+    return `Synced ${new Date(updatedAt).toLocaleDateString()}`;
+  }
+
+  const whoopStatus = whoopConnected
+    ? `Connected · ${syncedText(whoopUpdatedAt)}`
+    : "Not connected";
+
+  const withingsStatus = withingsConnected
+    ? `Connected · ${syncedText(withingsUpdatedAt)}`
+    : "Not connected";
+
   return (
-    <Card tint="steps">
-      <SectionLabel>🔗 CONNECTIONS</SectionLabel>
-      <div className="flex flex-col gap-2.5">
-        <ProviderRow
+    <Card>
+      <SectionLabel>CONNECTIONS</SectionLabel>
+      <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+        <IntegrationRow
+          brandColor="#1a1a1a"
+          brandFg="#16ff7a"
+          chip="W"
           name="WHOOP"
-          desc="Recovery, sleep, strain"
-          connected={whoopConnected}
-          updatedAt={whoopUpdatedAt}
-          authUrl="/api/whoop/auth"
-          syncUrl="/api/whoop/sync"
-          backfillUrl="/api/whoop/backfill"
-          color="#0a84ff"
+          status={whoopStatus}
+          statusTone={whoopConnected ? "success" : "muted"}
+          ctaLabel={whoopConnected ? "Manage" : "Connect"}
+          ctaHref="/api/whoop/auth"
         />
-        <ProviderRow
+        {whoopConnected && (
+          <ProviderActions
+            syncUrl="/api/whoop/sync"
+            backfillUrl="/api/whoop/backfill"
+            color={COLOR.accent}
+          />
+        )}
+
+        <IntegrationRow
+          brandColor="#00aef0"
+          brandFg="#fff"
+          chip="W"
           name="Withings"
-          desc="Weight, body fat, steps"
-          connected={withingsConnected}
-          updatedAt={withingsUpdatedAt}
-          authUrl="/api/withings/auth"
-          syncUrl="/api/withings/sync"
-          backfillUrl="/api/withings/backfill"
-          disconnectUrl="/api/withings/disconnect"
-          color="#af52de"
+          status={withingsStatus}
+          statusTone={withingsConnected ? "success" : "muted"}
+          ctaLabel={withingsConnected ? "Manage" : "Connect"}
+          ctaHref="/api/withings/auth"
         />
+        {withingsConnected && (
+          <ProviderActions
+            syncUrl="/api/withings/sync"
+            backfillUrl="/api/withings/backfill"
+            disconnectUrl="/api/withings/disconnect"
+            disconnectName="Withings"
+            color={COLOR.accent}
+          />
+        )}
       </div>
     </Card>
   );
 }
 
-function ProviderRow({
-  name,
-  desc,
-  connected,
-  updatedAt,
-  authUrl,
+function ProviderActions({
   syncUrl,
   backfillUrl,
   disconnectUrl,
+  disconnectName,
   color,
 }: {
-  name: string;
-  desc: string;
-  connected: boolean;
-  updatedAt: string | null;
-  authUrl: string;
   syncUrl: string;
   backfillUrl?: string;
   disconnectUrl?: string;
+  disconnectName?: string;
   color: string;
 }) {
   const [pending, startTransition] = useTransition();
@@ -86,71 +115,83 @@ function ProviderRow({
 
   return (
     <div
-      className="rounded-[12px] px-3.5 py-3 flex flex-col gap-2"
-      style={{ background: "rgba(255,255,255,0.02)", border: `1px solid ${color}1c` }}
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: "6px",
+        paddingLeft: "4px",
+      }}
     >
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="text-sm font-bold" style={{ color }}>{name}</div>
-          <div className="text-[10px] text-white/40 mt-0.5">{desc}</div>
-          {connected && updatedAt && (
-            <div className="text-[10px] font-mono text-white/30 mt-1">
-              Last sync · {new Date(updatedAt).toLocaleString()}
-            </div>
-          )}
-        </div>
-        <div className="flex items-center gap-1.5">
-          {!connected ? (
-            <a
-              href={authUrl}
-              className="rounded-[10px] px-3 py-1.5 text-[11px] font-bold"
-              style={{ background: `${color}22`, border: `1px solid ${color}55`, color }}
-            >
-              Connect
-            </a>
-          ) : (
-            <>
-              <button
-                type="button"
-                disabled={pending}
-                onClick={() => callJson(syncUrl, "GET", "Sync")}
-                className="rounded-[10px] px-2.5 py-1.5 text-[11px] disabled:opacity-50"
-                style={{ background: `${color}18`, border: `1px solid ${color}44`, color }}
-              >
-                {pending ? "…" : "Sync"}
-              </button>
-              {backfillUrl && (
-                <button
-                  type="button"
-                  disabled={pending}
-                  onClick={() => callJson(backfillUrl, "POST", "Backfill")}
-                  className="rounded-[10px] px-2.5 py-1.5 text-[11px] disabled:opacity-50"
-                  style={{ background: `${color}10`, border: `1px solid ${color}33`, color }}
-                >
-                  Backfill
-                </button>
-              )}
-              {disconnectUrl && (
-                <button
-                  type="button"
-                  disabled={pending}
-                  onClick={() => {
-                    if (confirm(`Disconnect ${name}?`)) callJson(disconnectUrl, "POST", "Disconnected");
-                  }}
-                  className="rounded-[10px] px-2.5 py-1.5 text-[11px] text-white/40 hover:text-white/70"
-                  style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)" }}
-                >
-                  ✕
-                </button>
-              )}
-            </>
-          )}
-        </div>
+      <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() => callJson(syncUrl, "GET", "Sync")}
+          style={{
+            background: COLOR.accentSoft,
+            border: "none",
+            borderRadius: "8px",
+            padding: "6px 12px",
+            fontSize: "11px",
+            fontWeight: 700,
+            color: COLOR.accent,
+            cursor: "pointer",
+            opacity: pending ? 0.5 : 1,
+          }}
+        >
+          {pending ? "…" : "Sync"}
+        </button>
+        {backfillUrl && (
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => callJson(backfillUrl, "POST", "Backfill")}
+            style={{
+              background: COLOR.surfaceAlt,
+              border: `1px solid ${COLOR.divider}`,
+              borderRadius: "8px",
+              padding: "6px 12px",
+              fontSize: "11px",
+              fontWeight: 700,
+              color: COLOR.textMid,
+              cursor: "pointer",
+              opacity: pending ? 0.5 : 1,
+            }}
+          >
+            Backfill
+          </button>
+        )}
+        {disconnectUrl && (
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => {
+              if (confirm(`Disconnect ${disconnectName ?? ""}?`))
+                callJson(disconnectUrl, "POST", "Disconnected");
+            }}
+            style={{
+              background: COLOR.dangerSoft,
+              border: "none",
+              borderRadius: "8px",
+              padding: "6px 12px",
+              fontSize: "11px",
+              fontWeight: 700,
+              color: COLOR.danger,
+              cursor: "pointer",
+              opacity: pending ? 0.5 : 1,
+            }}
+          >
+            Disconnect
+          </button>
+        )}
       </div>
       {flash && (
         <div
-          className="text-[11px] font-mono"
-          style={{ color: flash.startsWith("✗") ? "#ff453a" : color }}
+          style={{
+            fontSize: "11px",
+            fontFamily: "monospace",
+            color: flash.startsWith("✗") ? COLOR.danger : color,
+          }}
         >
           {flash}
         </div>

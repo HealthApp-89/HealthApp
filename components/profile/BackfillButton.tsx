@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { COLOR, RADIUS } from "@/lib/ui/theme";
 
 export function BackfillButton() {
   const [pending, startTransition] = useTransition();
@@ -25,24 +26,32 @@ export function BackfillButton() {
   }
 
   return (
-    <div className="flex flex-col gap-2">
+    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
       <button
         type="button"
         onClick={go}
         disabled={pending}
-        className="rounded-[12px] px-4 py-2.5 text-xs font-bold disabled:opacity-50"
         style={{
-          background: "rgba(10,132,255,0.15)",
-          border: "1px solid #0a84ff55",
-          color: "#0a84ff",
+          background: COLOR.accent,
+          color: "#fff",
+          border: "none",
+          padding: "10px 14px",
+          borderRadius: RADIUS.pill,
+          fontSize: "12px",
+          fontWeight: 700,
+          cursor: "pointer",
+          opacity: pending ? 0.5 : 1,
         }}
       >
-        {pending ? "Pulling history…" : "🔄 Backfill all WHOOP history"}
+        {pending ? "Pulling history…" : "Backfill all WHOOP history"}
       </button>
       {result && (
         <div
-          className="text-[11px] font-mono"
-          style={{ color: result.startsWith("✗") ? "#ff453a" : "#0a84ff" }}
+          style={{
+            fontSize: "11px",
+            fontFamily: "monospace",
+            color: result.startsWith("✗") ? COLOR.danger : COLOR.accent,
+          }}
         >
           {result}
         </div>
