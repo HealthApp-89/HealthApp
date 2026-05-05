@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { TabNav } from "./TabNav";
 import { scoreColor, scoreLabel } from "@/lib/ui/colors";
 import { formatHeaderDate } from "@/lib/time";
 
@@ -57,7 +56,6 @@ export function Header({ email, name, score, whoopSyncedAt }: HeaderProps) {
           </div>
         )}
       </div>
-      <TabNav />
     </header>
   );
 }
