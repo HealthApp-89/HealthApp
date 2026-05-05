@@ -29,6 +29,7 @@ export const metadata: Metadata = {
     statusBarStyle: "black-translucent",
     title: "Apex",
   },
+  themeColor: "#f1f2f6",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -47,7 +48,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, interactive-widget=resizes-content"
         />
       </head>
-      <body className="min-h-[100dvh] pt-[env(safe-area-inset-top)] pb-[calc(env(safe-area-inset-bottom)+48px)]">
+      <body className="min-h-[100dvh] bg-bg pt-[env(safe-area-inset-top)] pb-[calc(env(safe-area-inset-bottom)+76px)] md:pb-[env(safe-area-inset-bottom)]">
         {children}
         <ChatBubbleGate />
       </body>

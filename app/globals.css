@@ -1,31 +1,65 @@
 @import "tailwindcss";
 
 @theme {
-  --color-bg: #080e1a;
-  --color-bg-2: #0d1628;
-  --color-accent: #0a84ff;
-  --color-warn: #ffd60a;
-  --color-bad: #ff453a;
-  --color-good: #30d158;
-  --color-purple: #bf5af2;
-  --color-blue: #0a84ff;
-  --color-orange: #ff9f0a;
-  --color-pink: #ff375f;
-  --font-sans: var(--font-dm-sans), "DM Sans", system-ui, sans-serif;
-  --font-mono: var(--font-dm-mono), "DM Mono", ui-monospace, monospace;
+  /* Surfaces */
+  --color-bg:          #f1f2f6;
+  --color-surface:     #ffffff;
+  --color-surface-alt: #f5f6fa;
+
+  /* Content */
+  --color-strong:      #0f1430;
+  --color-mid:         #4a4d62;
+  --color-muted:       #7a7e95;
+  --color-faint:       #9094a8;
+
+  /* Accent */
+  --color-accent:      #4f5dff;
+  --color-accent-soft: #e7eaff;
+  --color-accent-deep: #3a47e8;
+
+  /* Semantic */
+  --color-success:      #14b870;
+  --color-success-soft: #d1fae5;
+  --color-warning:      #f59e0b;
+  --color-warning-soft: #fef3c7;
+  --color-danger:       #ef4444;
+  --color-danger-soft:  #fee2e2;
+
+  --color-divider:      #e8eaf3;
+
+  /* Radii */
+  --radius-chip:       6px;
+  --radius-pill:       10px;
+  --radius-input:      10px;
+  --radius-card-sm:    14px;
+  --radius-card-mid:   16px;
+  --radius-card:       20px;
+  --radius-card-hero:  24px;
+
+  /* Fonts */
+  --font-sans: var(--font-dm-sans), system-ui, -apple-system, sans-serif;
+  --font-mono: var(--font-dm-mono), ui-monospace, monospace;
 }
 
-html, body {
-  background: linear-gradient(160deg, #080e1a 0%, #0d1628 50%, #091420 100%);
-  color: white;
+html {
+  background: var(--color-bg);
+  color: var(--color-strong);
   font-family: var(--font-sans);
-  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-* { box-sizing: border-box; }
-input::placeholder, textarea::placeholder { color: rgba(255, 255, 255, 0.2); }
-input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
+body {
+  background: var(--color-bg);
+}
 
-::-webkit-scrollbar { width: 0; height: 0; }
-.scrollbar-none { scrollbar-width: none; -ms-overflow-style: none; }
+/* Tabular numerics for any element with .tnum or [data-tnum] */
+.tnum, [data-tnum] {
+  font-feature-settings: "tnum" 1;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Hide scrollbars on horizontal-scroll utility containers (week strip,
+   sub-tab pill rows). Visual cleanliness; scroll still works. */
 .scrollbar-none::-webkit-scrollbar { display: none; }
+.scrollbar-none { scrollbar-width: none; }
