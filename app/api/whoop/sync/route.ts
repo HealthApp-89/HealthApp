@@ -8,6 +8,7 @@ import {
   type WhoopCycle,
   type WhoopSleep,
 } from "@/lib/whoop";
+import { buildWhoopDayRows } from "@/lib/whoop-day-rows";
 
 const MS_PER_DAY = 86_400_000;
 
@@ -36,32 +37,6 @@ async function syncForUser(userId: string) {
     whoopGet<{ records: WhoopSleep[] }>(accessToken, `/v2/activity/sleep${qs}`),
   ]);
 
-  type DayRow = {
-    user_id: string;
-    date: string;
-    hrv?: number | null;
-    resting_hr?: number | null;
-    recovery?: number | null;
-    spo2?: number | null;
-    skin_temp_c?: number | null;
-    strain?: number | null;
-    sleep_hours?: number | null;
-    sleep_score?: number | null;
-    deep_sleep_hours?: number | null;
-    rem_sleep_hours?: number | null;
-    source: string;
-    updated_at: string;
-  };
-  const byDate = new Map<string, DayRow>();
-  const ensure = (date: string): DayRow => {
-    let row = byDate.get(date);
-    if (!row) {
-      row = { user_id: userId, date, source: "whoop", updated_at: new Date().toISOString() };
-      byDate.set(date, row);
-    }
-    return row;
-  };
-
   const counts: SyncCounts = {
     recovery_seen: recovery.records.length,
     recovery_scored: 0,
@@ -74,64 +49,30 @@ async function syncForUser(userId: string) {
     upserted: 0,
   };
 
-  // Build a sleep_id → wake-up date index so recovery rows land on the day
-  // they're actually about, not the day WHOOP happened to write the record.
-  const sleepIdToDate = new Map<string, string>();
-  for (const s of sleep.records) {
-    sleepIdToDate.set(s.id, s.end.slice(0, 10));
-  }
-
+  // Counts are computed before delegating to the shared builder, since the
+  // response shape includes them and the builder is a pure row-constructor.
   for (const r of recovery.records) {
     if (r.score_state === "PENDING_SCORE") counts.recovery_pending += 1;
     else if (r.score_state === "UNSCORABLE") counts.recovery_unscorable += 1;
-    if (!r.score) continue;
-    counts.recovery_scored += 1;
-    // Prefer the linked sleep's end-date; fall back to created_at if WHOOP
-    // hasn't returned the matching sleep in this window.
-    const date = sleepIdToDate.get(r.sleep_id) ?? r.created_at.slice(0, 10);
-    const row = ensure(date);
-    row.hrv = r.score.hrv_rmssd_milli;
-    row.resting_hr = r.score.resting_heart_rate;
-    row.recovery = r.score.recovery_score;
-    row.spo2 = r.score.spo2_percentage ?? null;
-    row.skin_temp_c = r.score.skin_temp_celsius ?? null;
+    if (r.score) counts.recovery_scored += 1;
   }
   for (const c of cycles.records) {
-    if (!c.score) continue;
-    counts.cycles_scored += 1;
-    const date = c.start.slice(0, 10);
-    const row = ensure(date);
-    row.strain = c.score.strain;
+    if (c.score) counts.cycles_scored += 1;
   }
   for (const s of sleep.records) {
-    if (!s.score) continue;
-    counts.sleep_scored += 1;
-    const date = s.end.slice(0, 10);
-    const row = ensure(date);
-    const stages = s.score.stage_summary;
-    if (stages) {
-      // "Asleep" excludes both `awake` AND `no_data` (sensor-gap) windows.
-      // Earlier code subtracted only awake, which silently inflated the total
-      // by the no-data minutes (typically 1-5 min/night).
-      const asleepMs =
-        stages.total_light_sleep_time_milli +
-        stages.total_slow_wave_sleep_time_milli +
-        stages.total_rem_sleep_time_milli;
-      row.sleep_hours = +(asleepMs / 3_600_000).toFixed(2);
-      row.deep_sleep_hours = +(stages.total_slow_wave_sleep_time_milli / 3_600_000).toFixed(2);
-      row.rem_sleep_hours = +(stages.total_rem_sleep_time_milli / 3_600_000).toFixed(2);
-    }
-    if (s.score.sleep_performance_percentage != null) row.sleep_score = s.score.sleep_performance_percentage;
+    if (s.score) counts.sleep_scored += 1;
   }
 
-  if (byDate.size === 0) return { ok: true, ...counts };
+  const rows = buildWhoopDayRows(userId, recovery.records, cycles.records, sleep.records);
+
+  if (rows.length === 0) return { ok: true, ...counts };
 
   const supabase = createSupabaseServiceRoleClient();
   const { error } = await supabase
     .from("daily_logs")
-    .upsert(Array.from(byDate.values()), { onConflict: "user_id,date" });
+    .upsert(rows, { onConflict: "user_id,date" });
   if (error) throw error;
-  counts.upserted = byDate.size;
+  counts.upserted = rows.length;
   // Invalidate ISR caches so the dashboard / trends / coach pick up new
   // WHOOP data immediately instead of waiting up to 60s for revalidation.
   revalidatePath("/");
