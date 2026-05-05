@@ -1,39 +1,68 @@
-import type { CSSProperties, ReactNode } from "react";
-
+import type { ReactNode, HTMLAttributes, CSSProperties } from "react";
+import { COLOR, RADIUS, SHADOW } from "@/lib/ui/theme";
 import { tintByKey, tintStyle, type TintKey } from "@/lib/ui/tints";
 
-type CardProps = {
+type CardVariant = "standard" | "compact" | "nested";
+
+type CardProps = HTMLAttributes<HTMLDivElement> & {
+  variant?: CardVariant;
+  /** Override the surface color (e.g. accent-tinted hero cards). */
+  background?: string;
+  /** Override the shadow (e.g. hero accent shadow). */
+  shadow?: string;
   children: ReactNode;
-  className?: string;
-  style?: CSSProperties;
-  /** Semantic tint (recovery, strain, sleep …) — paints a soft gradient + matching border. */
+  /** DEPRECATED: Old API — semantic tint (recovery, strain, sleep …) — paints a soft gradient + matching border. */
   tint?: TintKey;
-  /** Custom hex tint, used when no semantic key fits. Ignored if `tint` is set. */
+  /** DEPRECATED: Old API — custom hex tint, used when no semantic key fits. Ignored if `tint` is set. */
   tintColor?: string;
-  /** Multiplier on tint opacity (default 1). Use <1 for very subtle, >1 to push. */
+  /** DEPRECATED: Old API — multiplier on tint opacity (default 1). Use <1 for very subtle, >1 to push. */
   tintStrength?: number;
 };
 
-/** Standard prototype card: subtle white wash, hairline border, 14px radius. */
+const VARIANT_RADIUS: Record<CardVariant, string> = {
+  standard: RADIUS.card,
+  compact:  RADIUS.cardMid,
+  nested:   RADIUS.cardSmall,
+};
+
+const VARIANT_PADDING: Record<CardVariant, string> = {
+  standard: "16px",
+  compact:  "12px 14px",
+  nested:   "12px 14px",
+};
+
 export function Card({
-  children,
-  className = "",
+  variant = "standard",
+  background,
+  shadow,
   style,
+  children,
   tint,
   tintColor,
   tintStrength,
+  ...rest
 }: CardProps) {
-  const tinted: CSSProperties = tint
-    ? tintByKey(tint, { strength: tintStrength })
-    : tintColor
-      ? tintStyle(tintColor, { strength: tintStrength })
-      : {};
-  const isTinted = !!tint || !!tintColor;
-  const baseClasses = isTinted
-    ? "rounded-[14px] border px-4 py-3.5"
-    : "rounded-[14px] border border-white/[0.06] bg-white/[0.025] px-4 py-3.5";
+  // Support deprecated tint API for backward compatibility with old callers
+  let finalStyle: CSSProperties = {
+    background: background ?? COLOR.surface,
+    borderRadius: VARIANT_RADIUS[variant],
+    padding: VARIANT_PADDING[variant],
+    boxShadow: shadow ?? SHADOW.card,
+    ...style,
+  };
+
+  if (tint || tintColor) {
+    const tinted: CSSProperties = tint
+      ? tintByKey(tint, { strength: tintStrength })
+      : tintStyle(tintColor!, { strength: tintStrength });
+    finalStyle = { ...finalStyle, ...tinted };
+  }
+
   return (
-    <div className={`${baseClasses} ${className}`} style={{ ...tinted, ...style }}>
+    <div
+      {...rest}
+      style={finalStyle}
+    >
       {children}
     </div>
   );
