@@ -4,11 +4,13 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { saveDailyLog } from "@/app/log/actions";
 import type { DailyLog } from "@/lib/data/types";
+import { Card, SectionLabel } from "@/components/ui/Card";
+import { COLOR, SHADOW } from "@/lib/ui/theme";
 
 const SECTIONS: { title: string; color: string; fields: { k: keyof DailyLog; l: string; u: string }[] }[] = [
   {
     title: "Recovery",
-    color: "#0a84ff",
+    color: "#4f5dff",
     fields: [
       { k: "hrv", l: "HRV", u: "ms" },
       { k: "resting_hr", l: "Resting HR", u: "bpm" },
@@ -19,7 +21,7 @@ const SECTIONS: { title: string; color: string; fields: { k: keyof DailyLog; l: 
   },
   {
     title: "Sleep",
-    color: "#5e5ce6",
+    color: "#a855f7",
     fields: [
       { k: "sleep_hours", l: "Sleep", u: "hrs" },
       { k: "sleep_score", l: "Sleep Score", u: "/100" },
@@ -29,7 +31,7 @@ const SECTIONS: { title: string; color: string; fields: { k: keyof DailyLog; l: 
   },
   {
     title: "Training",
-    color: "#ff9f0a",
+    color: "#f59e0b",
     fields: [
       { k: "steps", l: "Steps", u: "" },
       { k: "distance_km", l: "Distance", u: "km" },
@@ -41,7 +43,7 @@ const SECTIONS: { title: string; color: string; fields: { k: keyof DailyLog; l: 
   },
   {
     title: "Nutrition",
-    color: "#ffd60a",
+    color: "#ca8a04",
     fields: [
       { k: "calories_eaten", l: "Eaten", u: "kcal" },
       { k: "protein_g", l: "Protein", u: "g" },
@@ -51,7 +53,7 @@ const SECTIONS: { title: string; color: string; fields: { k: keyof DailyLog; l: 
   },
   {
     title: "Body",
-    color: "#af52de",
+    color: "#8b5cf6",
     fields: [
       { k: "weight_kg", l: "Weight", u: "kg" },
       { k: "body_fat_pct", l: "Body Fat", u: "%" },
@@ -64,7 +66,19 @@ const SECTIONS: { title: string; color: string; fields: { k: keyof DailyLog; l: 
   },
 ];
 
+const ENERGY_OPTIONS = ["Low", "Medium", "High"] as const;
+const MOOD_OPTIONS = ["😔", "😐", "😊", "🔥"] as const;
+const READINESS_NUMS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
+
 const TODAY_ISO = () => new Date().toISOString().slice(0, 10);
+
+type CheckinState = {
+  readiness: number | null;
+  energy_label: string;
+  mood: string;
+  soreness: string;
+  feel_notes: string;
+};
 
 type Props = {
   date: string;
@@ -83,7 +97,16 @@ export function LogForm({ date, initialLog, initialCheckin }: Props) {
   const [pending, startTransition] = useTransition();
   const [flash, setFlash] = useState<string | null>(null);
 
+  const [feel, setFeel] = useState<CheckinState>({
+    readiness: initialCheckin?.readiness ?? null,
+    energy_label: initialCheckin?.energy_label ?? "",
+    mood: initialCheckin?.mood ?? "",
+    soreness: initialCheckin?.soreness ?? "",
+    feel_notes: initialCheckin?.feel_notes ?? "",
+  });
+
   function onSubmit(formData: FormData) {
+    // feel_* values are injected via hidden inputs in the DOM; no manual injection needed.
     setFlash(null);
     startTransition(async () => {
       try {
@@ -97,7 +120,6 @@ export function LogForm({ date, initialLog, initialCheckin }: Props) {
 
   function onDateChange(next: string) {
     if (!next || next === date) return;
-    // Server reload picks up the new ?date= and refetches that day's row.
     router.push(`/log?date=${next}`);
   }
 
@@ -109,130 +131,299 @@ export function LogForm({ date, initialLog, initialCheckin }: Props) {
 
   const sourceLabel = initialLog?.source ?? null;
 
+  const inputStyle: React.CSSProperties = {
+    width: "100%",
+    background: COLOR.surfaceAlt,
+    border: "none",
+    borderRadius: "10px",
+    padding: "9px 10px",
+    fontSize: "13px",
+    color: COLOR.textStrong,
+    fontFamily: "inherit",
+    boxSizing: "border-box",
+    outline: "none",
+    fontVariantNumeric: "tabular-nums",
+  };
+
   return (
     // key={date} forces React to remount the form on every date navigation.
     // Inputs use uncontrolled `defaultValue`, which only reads on mount — without
     // the key, switching dates would leave every field showing the previous day's
     // values even though the page has already fetched fresh data.
-    <form key={date} action={onSubmit} className="flex flex-col gap-4">
+    <form key={date} action={onSubmit} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
       <input type="hidden" name="date" value={date} />
 
-      {/* Date picker — navigate to any day, defaults to today, blocked from the future */}
-      <div
-        className="rounded-[14px] px-4 py-3 flex items-center justify-between gap-3"
-        style={{ background: "rgba(255,255,255,0.025)", border: "1px solid rgba(255,255,255,0.07)" }}
-      >
-        <div className="flex flex-col gap-1">
-          <label className="text-[10px] uppercase tracking-[0.12em] text-white/40">Log date</label>
-          <input
-            type="date"
-            value={date}
-            max={TODAY_ISO()}
-            onChange={(e) => onDateChange(e.target.value)}
-            className="bg-white/5 border border-white/10 rounded-lg px-2.5 py-1.5 text-sm font-mono outline-none focus:border-white/30 text-white"
-          />
-        </div>
-        {sourceLabel && (
-          <div className="text-right">
-            <div className="text-[9px] uppercase tracking-[0.08em] text-white/35">Source</div>
-            <div className="text-[11px] font-mono text-white/70 mt-0.5">{sourceLabel}</div>
+      {/* Date picker */}
+      <Card variant="standard">
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+            <label
+              style={{
+                fontSize: "10px",
+                textTransform: "uppercase",
+                letterSpacing: "0.12em",
+                fontWeight: 600,
+                color: COLOR.textMuted,
+              }}
+            >
+              Log date
+            </label>
+            <input
+              type="date"
+              value={date}
+              max={TODAY_ISO()}
+              onChange={(e) => onDateChange(e.target.value)}
+              style={{
+                ...inputStyle,
+                width: "auto",
+                padding: "7px 10px",
+                fontSize: "12px",
+              }}
+            />
           </div>
-        )}
-      </div>
+          {sourceLabel && (
+            <div style={{ textAlign: "right" }}>
+              <div
+                style={{
+                  fontSize: "9px",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.08em",
+                  color: COLOR.textFaint,
+                }}
+              >
+                Source
+              </div>
+              <div
+                style={{
+                  fontSize: "11px",
+                  fontFamily: "var(--font-dm-mono, monospace)",
+                  color: COLOR.textMid,
+                  marginTop: "2px",
+                }}
+              >
+                {sourceLabel}
+              </div>
+            </div>
+          )}
+        </div>
+      </Card>
 
       {flash && (
         <div
-          className="rounded-[10px] px-3.5 py-2.5 text-xs font-medium"
           style={{
-            background: flash.startsWith("✗") ? "rgba(255,69,58,0.12)" : "rgba(10,132,255,0.1)",
-            border: `1px solid ${flash.startsWith("✗") ? "rgba(255,69,58,0.3)" : "rgba(10,132,255,0.25)"}`,
-            color: flash.startsWith("✗") ? "#ff453a" : "#0a84ff",
+            borderRadius: "10px",
+            padding: "10px 14px",
+            fontSize: "12px",
+            fontWeight: 600,
+            background: flash.startsWith("✗") ? COLOR.dangerSoft : COLOR.accentSoft,
+            color: flash.startsWith("✗") ? COLOR.danger : COLOR.accent,
           }}
         >
           {flash}
         </div>
       )}
 
+      {/* Metric sections */}
       {SECTIONS.map((s) => (
-        <div
-          key={s.title}
-          className="rounded-[14px] px-4 py-3.5"
-          style={{ background: "rgba(255,255,255,0.025)", border: `1px solid ${s.color}18` }}
-        >
-          <div
-            className="text-[10px] uppercase tracking-[0.12em] mb-3"
-            style={{ color: `${s.color}cc` }}
-          >
-            {s.title}
-          </div>
-          <div className="grid grid-cols-2 gap-2.5">
+        <Card key={s.title} variant="standard">
+          <SectionLabel color={s.color}>{s.title}</SectionLabel>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
             {s.fields.map((f) => (
               <NumField key={f.k as string} name={String(f.k)} label={f.l} unit={f.u} defaultValue={val(f.k)} />
             ))}
           </div>
-        </div>
+        </Card>
       ))}
 
-      {/* Morning feel */}
-      <div
-        className="rounded-[14px] px-4 py-3.5"
-        style={{ background: "rgba(255,255,255,0.025)", border: "1px solid #0a84ff18" }}
-      >
-        <div className="text-[10px] uppercase tracking-[0.12em] mb-3" style={{ color: "#0a84ffcc" }}>
-          🌅 Morning Feel
+      {/* Morning Feel */}
+      <Card variant="standard">
+        <SectionLabel color={COLOR.accent}>🌅 Morning Feel</SectionLabel>
+
+        {/* Readiness 1–10 grid */}
+        <div style={{ marginBottom: "14px" }}>
+          <div
+            style={{
+              fontSize: "10px",
+              textTransform: "uppercase",
+              letterSpacing: "0.08em",
+              color: COLOR.textMuted,
+              fontWeight: 600,
+              marginBottom: "6px",
+            }}
+          >
+            Readiness
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(10, 1fr)", gap: "4px" }}>
+            {READINESS_NUMS.map((n) => (
+              <button
+                key={n}
+                type="button"
+                onClick={() => setFeel((f) => ({ ...f, readiness: n }))}
+                style={{
+                  aspectRatio: "1",
+                  background: feel.readiness === n ? COLOR.accent : COLOR.surfaceAlt,
+                  color: feel.readiness === n ? "#fff" : COLOR.textMuted,
+                  borderRadius: "7px",
+                  border: "none",
+                  fontSize: "11px",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                {n}
+              </button>
+            ))}
+          </div>
+          {/* Hidden input so the value is in formData on the first render too */}
+          <input type="hidden" name="feel_readiness" value={feel.readiness ?? ""} />
         </div>
-        <div className="grid grid-cols-2 gap-2.5">
-          <NumField
-            name="feel_readiness"
-            label="Readiness"
-            unit="/10"
-            defaultValue={initialCheckin?.readiness?.toString() ?? ""}
-          />
-          <SelectField
-            name="feel_energy"
-            label="Energy"
-            options={["", "Low", "Medium", "High"]}
-            defaultValue={initialCheckin?.energy_label ?? ""}
-          />
-          <SelectField
-            name="feel_mood"
-            label="Mood"
-            options={["", "😔", "😐", "😊", "🔥"]}
-            defaultValue={initialCheckin?.mood ?? ""}
-          />
-          <NumField
+
+        {/* Energy */}
+        <div style={{ marginBottom: "14px" }}>
+          <div
+            style={{
+              fontSize: "10px",
+              textTransform: "uppercase",
+              letterSpacing: "0.08em",
+              color: COLOR.textMuted,
+              fontWeight: 600,
+              marginBottom: "6px",
+            }}
+          >
+            Energy
+          </div>
+          <div style={{ display: "flex", gap: "6px" }}>
+            {ENERGY_OPTIONS.map((opt) => (
+              <button
+                key={opt}
+                type="button"
+                onClick={() => setFeel((f) => ({ ...f, energy_label: f.energy_label === opt ? "" : opt }))}
+                style={{
+                  flex: 1,
+                  background: feel.energy_label === opt ? COLOR.accent : COLOR.surfaceAlt,
+                  color: feel.energy_label === opt ? "#fff" : COLOR.textMuted,
+                  borderRadius: "8px",
+                  border: "none",
+                  padding: "8px 0",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                {opt}
+              </button>
+            ))}
+          </div>
+          <input type="hidden" name="feel_energy" value={feel.energy_label} />
+        </div>
+
+        {/* Mood */}
+        <div style={{ marginBottom: "14px" }}>
+          <div
+            style={{
+              fontSize: "10px",
+              textTransform: "uppercase",
+              letterSpacing: "0.08em",
+              color: COLOR.textMuted,
+              fontWeight: 600,
+              marginBottom: "6px",
+            }}
+          >
+            Mood
+          </div>
+          <div style={{ display: "flex", gap: "6px" }}>
+            {MOOD_OPTIONS.map((opt) => (
+              <button
+                key={opt}
+                type="button"
+                onClick={() => setFeel((f) => ({ ...f, mood: f.mood === opt ? "" : opt }))}
+                style={{
+                  flex: 1,
+                  background: feel.mood === opt ? COLOR.accent : COLOR.surfaceAlt,
+                  color: feel.mood === opt ? "#fff" : COLOR.textMuted,
+                  borderRadius: "8px",
+                  border: "none",
+                  padding: "8px 0",
+                  fontSize: "16px",
+                  cursor: "pointer",
+                }}
+              >
+                {opt}
+              </button>
+            ))}
+          </div>
+          <input type="hidden" name="feel_mood" value={feel.mood} />
+        </div>
+
+        {/* Soreness */}
+        <div>
+          <label
+            style={{
+              fontSize: "10px",
+              textTransform: "uppercase",
+              letterSpacing: "0.08em",
+              color: COLOR.textMuted,
+              fontWeight: 600,
+              display: "block",
+              marginBottom: "6px",
+            }}
+          >
+            Soreness
+          </label>
+          <input
             name="feel_soreness"
-            label="Soreness"
-            unit=""
-            defaultValue={initialCheckin?.soreness ?? ""}
             type="text"
+            value={feel.soreness}
+            onChange={(e) => setFeel((f) => ({ ...f, soreness: e.target.value }))}
+            placeholder="Legs, lower back…"
+            style={inputStyle}
           />
         </div>
-      </div>
+      </Card>
 
       {/* Notes */}
-      <div
-        className="rounded-[14px] px-4 py-3.5"
-        style={{ background: "rgba(255,255,255,0.025)", border: "1px solid rgba(255,255,255,0.07)" }}
-      >
-        <label className="text-[10px] uppercase tracking-[0.12em] text-white/35 block mb-2">Notes</label>
+      <Card variant="standard">
+        <label
+          style={{
+            fontSize: "10px",
+            textTransform: "uppercase",
+            letterSpacing: "0.12em",
+            fontWeight: 600,
+            color: COLOR.textMuted,
+            display: "block",
+            marginBottom: "8px",
+          }}
+        >
+          Notes
+        </label>
         <textarea
           name="notes"
           defaultValue={initialLog?.notes ?? ""}
           placeholder="Workout details, meals, anything…"
           rows={4}
-          className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs text-white/80 outline-none focus:border-white/30 resize-y"
+          style={{
+            ...inputStyle,
+            resize: "vertical",
+          }}
         />
-      </div>
+      </Card>
 
       <button
         type="submit"
         disabled={pending}
-        className="self-end rounded-xl px-5 py-3 text-sm font-bold disabled:opacity-50"
         style={{
-          background: "rgba(10,132,255,0.15)",
-          border: "1px solid #0a84ff55",
-          color: "#0a84ff",
+          width: "100%",
+          marginTop: "4px",
+          padding: "11px",
+          background: COLOR.accent,
+          color: "#fff",
+          border: "none",
+          borderRadius: "12px",
+          fontSize: "13px",
+          fontWeight: 700,
+          boxShadow: SHADOW.heroAccent,
+          opacity: pending ? 0.5 : 1,
+          cursor: pending ? "default" : "pointer",
         }}
       >
         {pending ? "Saving…" : "Save"}
@@ -255,10 +446,20 @@ function NumField({
   type?: "number" | "text";
 }) {
   return (
-    <div className="flex flex-col gap-1">
-      <label className="text-[10px] uppercase tracking-[0.08em] text-white/40">
+    <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+      <label
+        style={{
+          fontSize: "10px",
+          textTransform: "uppercase",
+          letterSpacing: "0.08em",
+          fontWeight: 600,
+          color: COLOR.textMuted,
+        }}
+      >
         {label}
-        {unit && <span className="text-white/20 ml-0.5">{unit}</span>}
+        {unit && (
+          <span style={{ color: COLOR.textFaint, marginLeft: "2px" }}>{unit}</span>
+        )}
       </label>
       <input
         name={name}
@@ -266,37 +467,20 @@ function NumField({
         step="any"
         defaultValue={defaultValue}
         placeholder="—"
-        className="bg-white/5 border border-white/10 rounded-lg px-2.5 py-2 text-sm font-mono outline-none focus:border-white/30"
+        style={{
+          background: COLOR.surfaceAlt,
+          border: "none",
+          borderRadius: "10px",
+          padding: "9px 10px",
+          fontSize: "13px",
+          color: COLOR.textStrong,
+          fontFamily: "inherit",
+          fontVariantNumeric: "tabular-nums",
+          outline: "none",
+          width: "100%",
+          boxSizing: "border-box",
+        }}
       />
-    </div>
-  );
-}
-
-function SelectField({
-  name,
-  label,
-  options,
-  defaultValue,
-}: {
-  name: string;
-  label: string;
-  options: string[];
-  defaultValue: string;
-}) {
-  return (
-    <div className="flex flex-col gap-1">
-      <label className="text-[10px] uppercase tracking-[0.08em] text-white/40">{label}</label>
-      <select
-        name={name}
-        defaultValue={defaultValue}
-        className="bg-white/5 border border-white/10 rounded-lg px-2.5 py-2 text-sm font-mono outline-none focus:border-white/30"
-      >
-        {options.map((o) => (
-          <option key={o || "_"} value={o} className="bg-[#0d1628]">
-            {o || "—"}
-          </option>
-        ))}
-      </select>
     </div>
   );
 }
