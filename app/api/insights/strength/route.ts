@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createSupabaseServerClient, createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { callClaude, parseClaudeJson } from "@/lib/anthropic/client";
 import { loadWorkouts } from "@/lib/data/workouts";
+import { todayInUserTz } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
 
@@ -105,7 +106,7 @@ Categorise compound barbell lifts as priority high. Isolation accessories medium
     );
   }
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayInUserTz();
   const sr = createSupabaseServiceRoleClient();
   const { error } = await sr.from("ai_insights").upsert(
     {

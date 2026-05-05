@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createSupabaseServerClient, createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { callClaude, parseClaudeJson } from "@/lib/anthropic/client";
 import { buildSnapshotText } from "@/lib/coach/snapshot";
+import { todayInUserTz } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
 
@@ -35,7 +36,7 @@ export async function POST() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ ok: false, reason: "unauthorized" }, { status: 401 });
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayInUserTz();
   const snapshot = await buildSnapshotText({ userId: user.id });
 
   const userPrompt = `${snapshot}
