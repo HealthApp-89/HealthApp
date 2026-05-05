@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition, type MouseEvent } from "react";
 
 const VIEWS = [
+  { id: "today", label: "Today" },
   { id: "recent", label: "Recent" },
   { id: "date", label: "By date" },
 ] as const;
@@ -29,7 +30,8 @@ export function StrengthNav({ active }: Props) {
     <div className="flex gap-1 overflow-x-auto pb-0.5 scrollbar-none">
       {VIEWS.map((v) => {
         const isActive = optimisticActive === v.id;
-        const href = v.id === "recent" ? "/strength" : `/strength?view=${v.id}`;
+        const href =
+          v.id === "recent" ? "/strength" : `/strength?view=${v.id}`;
 
         const onClick = (e: MouseEvent<HTMLAnchorElement>) => {
           if (
