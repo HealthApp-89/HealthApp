@@ -19,16 +19,23 @@ function resolveDate(raw: string | string[] | undefined): string {
 export default async function LogPage(props: {
   searchParams: Promise<{ date?: string | string[] }>;
 }) {
-  const sp = await props.searchParams;
-  const date = resolveDate(sp.date);
+  let phase = "init";
+  try {
+    phase = "searchParams";
+    const sp = await props.searchParams;
+    phase = "resolveDate";
+    const date = resolveDate(sp.date);
 
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+    phase = "createSupabaseServerClient";
+    const supabase = await createSupabaseServerClient();
+    phase = "getUser";
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) redirect("/login");
 
-  const [{ data: profile }, { data: tokens }, { data: log }, { data: checkin }] = await Promise.all([
+    phase = "Promise.all-queries";
+    const [{ data: profile }, { data: tokens }, { data: log }, { data: checkin }] = await Promise.all([
     supabase.from("profiles").select("name").eq("user_id", user.id).maybeSingle(),
     supabase.from("whoop_tokens").select("updated_at").eq("user_id", user.id).maybeSingle(),
     supabase
@@ -45,31 +52,41 @@ export default async function LogPage(props: {
       .maybeSingle(),
   ]);
 
-  return (
-    <main>
-      <Header
-        email={user.email ?? null}
-        name={profile?.name ?? null}
-        score={null}
-        whoopSyncedAt={tokens?.updated_at ?? null}
-      />
-      <div className="px-4 pt-3.5 max-w-3xl mx-auto">
-        <LogForm
-          date={date}
-          initialLog={(log ?? null) as Partial<DailyLog> | null}
-          initialCheckin={
-            checkin
-              ? {
-                  readiness: checkin.readiness,
-                  energy_label: checkin.energy_label,
-                  mood: checkin.mood,
-                  soreness: checkin.soreness,
-                  feel_notes: checkin.feel_notes,
-                }
-              : null
-          }
+    phase = "render";
+    return (
+      <main>
+        <Header
+          email={user.email ?? null}
+          name={profile?.name ?? null}
+          score={null}
+          whoopSyncedAt={tokens?.updated_at ?? null}
         />
-      </div>
-    </main>
-  );
+        <div className="px-4 pt-3.5 max-w-3xl mx-auto">
+          <LogForm
+            date={date}
+            initialLog={(log ?? null) as Partial<DailyLog> | null}
+            initialCheckin={
+              checkin
+                ? {
+                    readiness: checkin.readiness,
+                    energy_label: checkin.energy_label,
+                    mood: checkin.mood,
+                    soreness: checkin.soreness,
+                    feel_notes: checkin.feel_notes,
+                  }
+                : null
+            }
+          />
+        </div>
+      </main>
+    );
+  } catch (e: unknown) {
+    const err = e as { message?: string; digest?: string; stack?: string };
+    if (err?.digest?.startsWith("NEXT_REDIRECT")) throw e;
+    return (
+      <pre style={{ padding: 16, fontSize: 12, whiteSpace: "pre-wrap", color: "#fff", background: "#000" }}>
+        {`PHASE: ${phase}\nMESSAGE: ${err?.message ?? String(e)}\nSTACK: ${err?.stack ?? "no stack"}`}
+      </pre>
+    );
+  }
 }
