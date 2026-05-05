@@ -1,84 +1,161 @@
 import type { ReactNode } from "react";
+import Link from "next/link";
+import { Card } from "@/components/ui/Card";
+import { LineChart, type LinePoint } from "@/components/charts/LineChart";
+import { COLOR } from "@/lib/ui/theme";
+import { fmtNum } from "@/lib/ui/score";
 
-import { tintStyle } from "@/lib/ui/tints";
-
-type Props = {
-  title: string;
-  current: number | string | null;
-  unit: string;
-  delta?: number | null;
-  deltaLabel?: string;
-  /** Whether a positive delta is "good" (default true). RHR and weight invert this. */
-  positiveIsGood?: boolean;
+type MetricCardProps = {
+  /** Per-metric color from METRIC_COLOR. Tints the icon chip and chart line. */
   color: string;
-  note?: string;
-  children?: ReactNode;
-  /** Disable the auto-derived gradient tint (defaults on). */
-  tinted?: boolean;
+  /** Glyph or emoji rendered inside the icon chip. */
+  icon: ReactNode;
+  label: string;
+  value: number | string | null;
+  unit?: string;
+  /** Numeric delta vs prior; sign drives color. */
+  delta?: number | null;
+  deltaUnit?: string;
+  /** Reverse semantic — for resting HR, lower is better. Affects delta color. */
+  inverted?: boolean;
+  /** Compact card variant (16px radius, tighter). */
+  compact?: boolean;
+  /** Optional sparkline. Renders a `mini` LineChart below value. */
+  trend?: LinePoint[];
+  /** Optional href — wraps in a Link with chevron affordance. */
+  href?: string;
 };
 
 export function MetricCard({
-  title,
-  current,
+  color,
+  icon,
+  label,
+  value,
   unit,
   delta,
-  deltaLabel,
-  positiveIsGood = true,
-  color,
-  note,
-  children,
-  tinted = true,
-}: Props) {
-  const arrow = !delta ? "→" : delta > 0 ? "↑" : "↓";
-  const dc =
-    delta === undefined || delta === null || delta === 0
-      ? "rgba(255,255,255,0.3)"
-      : positiveIsGood
-        ? delta > 0
-          ? "#30d158"
-          : "#ff453a"
-        : delta < 0
-          ? "#30d158"
-          : "#ff453a";
-  const tintCss = tinted
-    ? tintStyle(color)
-    : { background: "rgba(255,255,255,0.025)", borderColor: "rgba(255,255,255,0.07)" };
-  return (
-    <div
-      className="rounded-[14px] px-4 py-3.5 mb-3 border"
-      style={tintCss}
-    >
-      <div className="flex justify-between items-start mb-2.5">
-        <div>
-          <div className="text-[9px] uppercase tracking-[0.12em] text-white/35 mb-1">{title}</div>
-          <div className="flex items-baseline gap-1">
-            <span className="text-[26px] font-bold font-mono" style={{ color }}>
-              {current ?? "—"}
-            </span>
-            <span className="text-[11px] text-white/30">{unit}</span>
+  deltaUnit,
+  inverted,
+  compact,
+  trend,
+  href,
+}: MetricCardProps) {
+  const goodWhenPositive = !inverted;
+  const deltaColor =
+    delta == null
+      ? COLOR.textFaint
+      : delta === 0
+      ? COLOR.textFaint
+      : (delta > 0) === goodWhenPositive
+      ? COLOR.success
+      : COLOR.danger;
+
+  const valueDisplay =
+    value == null
+      ? "—"
+      : typeof value === "number"
+      ? fmtNum(value)
+      : value;
+
+  const inner = (
+    <Card variant={compact ? "compact" : "standard"}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <div
+            style={{
+              width: compact ? "24px" : "28px",
+              height: compact ? "24px" : "28px",
+              borderRadius: compact ? "7px" : "8px",
+              background: hexToBgChip(color),
+              color,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: compact ? "12px" : "14px",
+              fontWeight: 700,
+              flexShrink: 0,
+            }}
+          >
+            {icon}
           </div>
+          <span
+            style={{
+              fontSize: compact ? "12px" : "11px",
+              fontWeight: 600,
+              color: COLOR.textMid,
+              letterSpacing: "0.02em",
+            }}
+          >
+            {label}
+          </span>
         </div>
-        {delta !== undefined && delta !== null && (
-          <div className="text-right">
-            <div className="text-[13px] font-bold" style={{ color: dc }}>
-              {arrow} {Math.abs(delta)}
-              {unit}
-            </div>
-            {deltaLabel && (
-              <div className="text-[9px] text-white/25 mt-0.5">{deltaLabel}</div>
-            )}
-          </div>
+        {delta != null && (
+          <span
+            data-tnum
+            style={{
+              fontSize: "11px",
+              fontWeight: 700,
+              color: deltaColor,
+            }}
+          >
+            {delta > 0 ? "+" : ""}
+            {fmtNum(delta)}
+            {deltaUnit ? ` ${deltaUnit}` : ""}
+          </span>
         )}
       </div>
-      {children}
-      {note && (
-        <div
-          className="text-[10px] text-white/25 italic mt-2 pt-2"
-          style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}
-        >
-          {note}
+
+      <div
+        data-tnum
+        style={{
+          fontSize: compact ? "20px" : "24px",
+          fontWeight: 800,
+          letterSpacing: "-0.02em",
+          marginTop: "4px",
+          color: COLOR.textStrong,
+        }}
+      >
+        {valueDisplay}
+        {unit ? (
+          <span
+            style={{
+              fontSize: "11px",
+              fontWeight: 500,
+              color: COLOR.textFaint,
+              marginLeft: "4px",
+            }}
+          >
+            {unit}
+          </span>
+        ) : null}
+      </div>
+
+      {trend && trend.length > 0 && (
+        <div style={{ marginTop: "6px" }}>
+          <LineChart data={trend} color={color} variant="mini" />
         </div>
       )}
-    </div>
+    </Card>
   );
+
+  if (href) {
+    return (
+      <Link href={href} style={{ display: "block", textDecoration: "none", color: "inherit" }}>
+        {inner}
+      </Link>
+    );
+  }
+  return inner;
+}
+
+/**
+ * Lighten a #rrggbb to a soft chip background. Linearly mixes 18% color into
+ * white. Ad-hoc but keeps the chip in the same hue family as the icon.
+ */
+function hexToBgChip(hex: string): string {
+  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
+  if (!m) return "#f5f6fa";
+  const [r, g, b] = [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)];
+  const blend = 0.82; // 82% white, 18% color
+  const mix = (v: number) => Math.round(v * (1 - blend) + 255 * blend);
+  return `rgb(${mix(r)}, ${mix(g)}, ${mix(b)})`;
 }
