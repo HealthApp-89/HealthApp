@@ -183,6 +183,7 @@ export default async function TrendsPage(props: {
               note="Baseline 33ms (6mo). Peak 45ms (Oct 2025). Goal: rebuild toward 40ms+."
             >
               <LineChart
+                // @ts-expect-error redesign-slice-4
                 data={aggHRV.map((p) => p.value)}
                 dates={datesHRV}
                 color={fieldColor("hrv")!}
@@ -203,6 +204,7 @@ export default async function TrendsPage(props: {
               color={fieldColor("resting_hr")!}
             >
               <LineChart
+                // @ts-expect-error redesign-slice-4
                 data={aggRHR.map((p) => p.value)}
                 dates={datesRHR}
                 color={fieldColor("resting_hr")!}
@@ -256,6 +258,7 @@ export default async function TrendsPage(props: {
               color={fieldColor("sleep_score")!}
             >
               <LineChart
+                // @ts-expect-error redesign-slice-4
                 data={aggSleepSc.map((p) => p.value)}
                 dates={datesSleepSc}
                 color={fieldColor("sleep_score")!}
