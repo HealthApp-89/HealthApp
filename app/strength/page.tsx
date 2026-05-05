@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { Header } from "@/components/layout/Header";
+import { COLOR } from "@/lib/ui/theme";
 import { Card, SectionLabel } from "@/components/ui/Card";
 import { SessionRow } from "@/components/strength/SessionRow";
 import { ExerciseTrendCard } from "@/components/strength/ExerciseTrendCard";
@@ -94,17 +94,19 @@ export default async function StrengthPage(props: {
   );
 
   return (
-    <main>
-      <Header
-        email={user.email ?? null}
-        name={profile?.name ?? null}
-        score={null}
-        whoopSyncedAt={tokens?.updated_at ?? null}
-      />
+    <div style={{ maxWidth: "640px", margin: "0 auto", padding: "12px 8px 16px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 12px 14px" }}>
+        <div>
+          <div style={{ fontSize: "12px", color: COLOR.textMuted, fontWeight: 500 }}>{subtitleByView(activeView)}</div>
+          <h1 style={{ fontSize: "22px", fontWeight: 700, letterSpacing: "-0.02em", marginTop: "2px" }}>Strength</h1>
+        </div>
+      </div>
 
-      <div className="px-4 pt-3.5 max-w-3xl mx-auto flex flex-col gap-3.5">
+      <div style={{ padding: "0 8px 14px" }}>
         <StrengthNav active={activeView} />
+      </div>
 
+      <div style={{ padding: "0 8px", display: "flex", flexDirection: "column", gap: "10px" }}>
         {activeView === "today" ? (
           <TodayPlanCard plan={dailyPlan} />
         ) : !workouts.length ? (
@@ -165,6 +167,12 @@ export default async function StrengthPage(props: {
           </>
         )}
       </div>
-    </main>
+    </div>
   );
+}
+
+function subtitleByView(v: string): string {
+  if (v === "today") return "Today's plan";
+  if (v === "date") return "Pick a date";
+  return "Last 30 days";
 }
