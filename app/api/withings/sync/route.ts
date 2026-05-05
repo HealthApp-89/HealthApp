@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { createSupabaseServerClient, createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { getValidAccessToken, getMeasures, getActivity } from "@/lib/withings";
 import { mergeWithingsToRows } from "@/lib/withings-merge";
+import { todayInUserTz, ymdInUserTz } from "@/lib/time";
 
 const MS_PER_DAY = 86_400_000;
 
@@ -14,8 +15,8 @@ async function syncForUser(userId: string) {
   const startMs = now - 14 * MS_PER_DAY;
   const startEpoch = Math.floor(startMs / 1000);
   const endEpoch = Math.floor(now / 1000);
-  const startYmd = new Date(startMs).toISOString().slice(0, 10);
-  const endYmd = new Date(now).toISOString().slice(0, 10);
+  const startYmd = ymdInUserTz(new Date(startMs));
+  const endYmd = todayInUserTz();
 
   const [measureGroups, activities] = await Promise.all([
     getMeasures(accessToken, startEpoch, endEpoch),
