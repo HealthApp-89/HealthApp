@@ -3,13 +3,14 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { Header } from "@/components/layout/Header";
 import { LogForm } from "@/components/log/LogForm";
 import type { DailyLog } from "@/lib/data/types";
+import { todayInUserTz } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 function resolveDate(raw: string | string[] | undefined): string {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayInUserTz();
   if (typeof raw !== "string" || !ISO_DATE.test(raw)) return today;
   // Disallow future dates — Garmin can't tell us what hasn't happened yet.
   return raw > today ? today : raw;

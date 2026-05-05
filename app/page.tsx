@@ -17,6 +17,7 @@ import { calcReadinessScore } from "@/lib/ui/score";
 import { buildDailyPlan } from "@/lib/coach/readiness";
 import { computeImpact } from "@/lib/coach/impact";
 import type { DailyLog } from "@/lib/data/types";
+import { todayInUserTz } from "@/lib/time";
 
 // 60s ISR — sync routes call revalidatePath() so new WHOOP/Withings/AH data
 // invalidates immediately. Auth gating still works (middleware runs first).
@@ -49,7 +50,7 @@ export default async function Home(props: {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayInUserTz();
   const sp = await props.searchParams;
   // Validate the date query param: ISO YYYY-MM-DD and not in the future. Anything
   // bogus falls back to today, so a hand-edited URL can't break the page.

@@ -12,6 +12,7 @@ import { DateNavigator } from "@/components/strength/DateNavigator";
 import { loadWorkouts, buildPRs, buildExerciseTrend } from "@/lib/data/workouts";
 import { CoachCards } from "@/components/strength/CoachCards";
 import { RefreshButton } from "@/components/coach/RefreshButton";
+import { todayInUserTz } from "@/lib/time";
 
 export const revalidate = 60;
 
@@ -49,7 +50,7 @@ export default async function StrengthPage(props: {
 
   // For "By date" view: clamp the picker to the user's actual workout window.
   // workouts is sorted newest-first by loadWorkouts.
-  const todayIso = new Date().toISOString().slice(0, 10);
+  const todayIso = todayInUserTz();
   const latestWorkout = workouts[0]?.date ?? todayIso;
   const earliestWorkout = workouts[workouts.length - 1]?.date ?? todayIso;
   const selectedDate =

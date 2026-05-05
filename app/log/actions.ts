@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { todayInUserTz } from "@/lib/time";
 
 function num(v: FormDataEntryValue | null): number | null {
   if (typeof v !== "string" || v.trim() === "") return null;
@@ -25,7 +26,7 @@ export async function saveDailyLog(formData: FormData) {
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 
-  const date = (formData.get("date") as string) || new Date().toISOString().slice(0, 10);
+  const date = (formData.get("date") as string) || todayInUserTz();
 
   const row = {
     user_id: user.id,
@@ -101,7 +102,7 @@ export async function saveCheckin(formData: FormData) {
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 
-  const date = (formData.get("date") as string) || new Date().toISOString().slice(0, 10);
+  const date = (formData.get("date") as string) || todayInUserTz();
   const row = {
     user_id: user.id,
     date,
