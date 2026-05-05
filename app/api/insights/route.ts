@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient, createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { callClaude, parseClaudeJson } from "@/lib/anthropic/client";
-import { buildSnapshotText } from "@/lib/coach/snapshot";
+import { buildSnapshot, withDayReferenceInstruction } from "@/lib/coach/snapshot";
 import { todayInUserTz } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
@@ -11,8 +11,9 @@ type Pattern = { label: string; detail: string };
 type Plan = { week: string; today: string; tomorrow: string; note: string };
 type CoachPayload = { insights: Insight[]; patterns: Pattern[]; plan: Plan };
 
-const SYSTEM = `You are an elite health and strength coach. You speak in concrete numbers. \
-Return ONLY a single valid JSON object — no markdown, no prose, no commentary.`;
+const SYSTEM = withDayReferenceInstruction(
+  `You are an elite health and strength coach. You speak in concrete numbers. Return ONLY a single valid JSON object — no markdown, no prose, no commentary.`,
+);
 
 export async function GET() {
   const supabase = await createSupabaseServerClient();
@@ -37,9 +38,18 @@ export async function POST() {
   if (!user) return NextResponse.json({ ok: false, reason: "unauthorized" }, { status: 401 });
 
   const today = todayInUserTz();
-  const snapshot = await buildSnapshotText({ userId: user.id });
+  const since = new Date(Date.now() - 14 * 86_400_000).toISOString().slice(0, 10);
 
-  const userPrompt = `${snapshot}
+  const { nowLine, body: snapshotBody } = await buildSnapshot({
+    supabase,
+    userId: user.id,
+    since,
+    workoutLimit: 5,
+  });
+
+  const userPrompt = `${nowLine}
+
+${snapshotBody}
 
 Return JSON shaped exactly:
 {
