@@ -2,6 +2,7 @@
 
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { COLOR, RADIUS } from "@/lib/ui/theme";
 
 type Props = {
   endpoint: string;
@@ -27,11 +28,17 @@ export function RefreshButton({ endpoint, label = "Run pattern analysis" }: Prop
       type="button"
       onClick={go}
       disabled={pending}
-      className="rounded-[12px] px-4 py-2.5 text-xs font-bold disabled:opacity-50"
       style={{
-        background: "rgba(10,132,255,0.15)",
-        border: "1px solid #0a84ff55",
-        color: "#0a84ff",
+        background: COLOR.surface,
+        color: COLOR.accent,
+        border: `1px solid ${COLOR.divider}`,
+        padding: "8px 14px",
+        borderRadius: RADIUS.pill,
+        fontSize: "12px",
+        fontWeight: 700,
+        cursor: "pointer",
+        opacity: pending ? 0.5 : 1,
+        transition: "opacity 120ms",
       }}
     >
       {pending ? "Analysing…" : `🧠 ${label}`}

@@ -1,5 +1,6 @@
 import { Card, SectionLabel } from "@/components/ui/Card";
-import { PrioBox } from "@/components/ui/PrioBox";
+import { Pill } from "@/components/ui/Pill";
+import { COLOR } from "@/lib/ui/theme";
 import type { TintKey } from "@/lib/ui/tints";
 import type { ReviewMode } from "@/lib/coach/week";
 
@@ -42,6 +43,13 @@ const DEFAULT_RECS_HEADLINE: Record<ReviewMode, string> = {
   "sunday-full": "NEXT WEEK",
 };
 
+function priorityToTone(p: string): "danger" | "warning" | "success" | "neutral" {
+  if (p === "high")   return "danger";
+  if (p === "medium") return "warning";
+  if (p === "low")    return "success";
+  return "neutral";
+}
+
 export function WeeklyReview({ payload, weekStart, weekEnd, mode, daysRemaining }: Props) {
   const headlineRange = MODE_HEADLINE[mode]({ start: weekStart, end: weekEnd, daysRemaining });
   const recsHeadline = (payload.recommendationsHeadline?.trim() || DEFAULT_RECS_HEADLINE[mode]).toUpperCase();
@@ -51,10 +59,12 @@ export function WeeklyReview({ payload, weekStart, weekEnd, mode, daysRemaining 
       : "Seeded into your Next week list (this-week scope) — open that tab to check them off as you go.";
 
   return (
-    <div className="flex flex-col gap-3.5">
+    <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
       <Card tint="coach">
         <SectionLabel>📅 {headlineRange}</SectionLabel>
-        <p className="text-sm text-white/75 leading-relaxed whitespace-pre-line">{payload.summary}</p>
+        <p style={{ fontSize: "14px", color: COLOR.textMid, lineHeight: 1.6, whiteSpace: "pre-line" }}>
+          {payload.summary}
+        </p>
       </Card>
 
       {/* Legacy wins/misses — only render if a cached payload still has them. */}
@@ -72,20 +82,39 @@ export function WeeklyReview({ payload, weekStart, weekEnd, mode, daysRemaining 
       {payload.recommendations?.length ? (
         <Card tint="coach">
           <SectionLabel>🎯 {recsHeadline}</SectionLabel>
-          <div className="flex flex-col gap-2">
+          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
             {payload.recommendations.map((r, i) => (
-              <div key={i} className="flex gap-2 items-start">
-                <PrioBox level={r.priority} />
-                <div className="flex-1">
-                  <span className="text-[9px] uppercase tracking-[0.1em] text-white/30 mr-1.5">
+              <div key={i} style={{ display: "flex", gap: "10px", alignItems: "flex-start" }}>
+                <Pill tone={priorityToTone(r.priority)}>
+                  {r.priority.toUpperCase()}
+                </Pill>
+                <div style={{ flex: 1 }}>
+                  <span
+                    style={{
+                      fontSize: "10px",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.1em",
+                      color: COLOR.textFaint,
+                      marginRight: "6px",
+                    }}
+                  >
                     {r.category}
                   </span>
-                  <span className="text-xs text-white/70">{r.text}</span>
+                  <span style={{ fontSize: "12px", color: COLOR.textMid }}>{r.text}</span>
                 </div>
               </div>
             ))}
           </div>
-          <div className="text-[10px] text-white/25 mt-2.5 italic">{recsFootnote}</div>
+          <div
+            style={{
+              fontSize: "10px",
+              color: COLOR.textFaint,
+              marginTop: "10px",
+              fontStyle: "italic",
+            }}
+          >
+            {recsFootnote}
+          </div>
         </Card>
       ) : null}
     </div>
@@ -106,15 +135,15 @@ function ItemBlock({
   return (
     <Card tint={tint}>
       <SectionLabel color={accent}>{title}</SectionLabel>
-      <div className="flex flex-col gap-2.5">
+      <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
         {items.map((p, i) => (
-          <div key={i} className="flex gap-2.5">
-            <span className="text-base flex-shrink-0" style={{ color: accent }}>
-              ◈
-            </span>
+          <div key={i} style={{ display: "flex", gap: "10px" }}>
+            <span style={{ fontSize: "16px", flexShrink: 0, color: accent }}>◈</span>
             <div>
-              <div className="text-xs font-semibold text-white/80">{p.label}</div>
-              <div className="text-[11px] text-white/40 mt-0.5 leading-relaxed">{p.detail}</div>
+              <div style={{ fontSize: "12px", fontWeight: 600, color: COLOR.textMid }}>{p.label}</div>
+              <div style={{ fontSize: "11px", color: COLOR.textFaint, marginTop: "2px", lineHeight: 1.5 }}>
+                {p.detail}
+              </div>
             </div>
           </div>
         ))}
