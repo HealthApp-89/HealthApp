@@ -13,7 +13,6 @@ import { WeeklyRollups } from "@/components/dashboard/WeeklyRollups";
 import { SkeletonCard } from "@/components/dashboard/SkeletonCard";
 import { FIELDS } from "@/lib/ui/colors";
 import { calcReadinessScore } from "@/lib/ui/score";
-import { buildDailyPlan } from "@/lib/coach/readiness";
 import { computeImpact } from "@/lib/coach/impact";
 import type { DailyLog } from "@/lib/data/types";
 import { todayInUserTz } from "@/lib/time";
@@ -197,17 +196,6 @@ export default async function Home(props: {
         ),
       }
     : null;
-
-  const feelInput = checkin
-    ? {
-        readiness: checkin.readiness,
-        energyLabel: checkin.energy_label,
-        mood: checkin.mood,
-        soreness: checkin.soreness,
-        notes: checkin.feel_notes,
-      }
-    : null;
-  const dailyPlan = buildDailyPlan(selectedLog, feelInput, hrvBaseline);
 
   const sectionLabel = dateLabel(selectedDate, today);
 
