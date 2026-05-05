@@ -52,11 +52,19 @@ function partsInUserTz(now: Date): Parts {
   };
 }
 
-/** YYYY-MM-DD in the user's timezone. Replaces every server-side
- *  `new Date().toISOString().slice(0, 10)`. */
-export function todayInUserTz(now: Date = new Date()): string {
-  const p = partsInUserTz(now);
+/** YYYY-MM-DD in the user's timezone for any moment. This is the canonical
+ *  user-tz date formatter; `todayInUserTz()` is a thin wrapper for the
+ *  no-arg "right now" case. Use this when keying historical timestamps
+ *  (WHOOP/Withings sync, etc.). */
+export function ymdInUserTz(when: Date): string {
+  const p = partsInUserTz(when);
   return `${p.year}-${p.month}-${p.day}`;
+}
+
+/** YYYY-MM-DD for "right now" in the user's timezone. Replaces every
+ *  server-side `new Date().toISOString().slice(0, 10)`. Thin wrapper. */
+export function todayInUserTz(now: Date = new Date()): string {
+  return ymdInUserTz(now);
 }
 
 /** Day of week in user's tz: "Monday" | "Tuesday" | ... */
@@ -132,6 +140,17 @@ export function relativeDateLabel(
   });
   if (diffDays < 0) return `${weekday} (${-diffDays}d ago)`;
   return `${weekday} (in ${diffDays}d)`;
+}
+
+/** YYYY-MM-DD for a given UTC moment in a fixed-offset zone like "+04:00"
+ *  or "-05:00". Used for WHOOP per-record `timezone_offset` (travel mode L1).
+ *  Handles non-integer offsets like "+05:45" (Nepal) and "-04:30" (Newfoundland)
+ *  correctly because hours and minutes are parsed independently. */
+export function ymdInZoneOffset(when: Date, offset: string): string {
+  const sign = offset[0] === "-" ? -1 : 1;
+  const [hh, mm] = offset.slice(1).split(":").map(Number);
+  const offsetMs = sign * (hh * 3_600_000 + mm * 60_000);
+  return new Date(when.getTime() + offsetMs).toISOString().slice(0, 10);
 }
 
 /** "Tuesday, May 5" — for the dashboard Header. */
