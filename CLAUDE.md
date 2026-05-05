@@ -11,10 +11,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `npm run dev` — Next dev server on http://localhost:3000
 - `npm run build` — production build (Next 15)
 - `npm run start` — serve the production build
-- `npm run lint` — `next lint`
 - `npm run typecheck` — `tsc --noEmit` (strict)
 
-There is no test suite. Verify changes with `typecheck` + `lint` and exercise affected pages locally.
+There is no test suite and no working linter (`npm run lint` invokes `next lint`, which is unconfigured and hangs on first-run interactive setup — treat it as a no-op). Verify changes with `typecheck` and exercise affected pages locally.
 
 Path alias: `@/*` → repo root (see [tsconfig.json](tsconfig.json)). Use it instead of relative climbs.
 
