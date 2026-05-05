@@ -13,6 +13,9 @@ import { loadWorkouts, buildPRs, buildExerciseTrend } from "@/lib/data/workouts"
 import { CoachCards } from "@/components/strength/CoachCards";
 import { RefreshButton } from "@/components/coach/RefreshButton";
 import { todayInUserTz } from "@/lib/time";
+import { TodayPlanCard } from "@/components/strength/TodayPlanCard";
+import { buildDailyPlan } from "@/lib/coach/readiness";
+import type { DailyLog } from "@/lib/data/types";
 
 export const revalidate = 60;
 
@@ -22,7 +25,8 @@ export default async function StrengthPage(props: {
   searchParams: Promise<{ ex?: string; view?: string; date?: string }>;
 }) {
   const { ex: selectedExercise, view, date: rawDate } = await props.searchParams;
-  const activeView: "recent" | "date" = view === "date" ? "date" : "recent";
+  const activeView: "today" | "recent" | "date" =
+    view === "today" ? "today" : view === "date" ? "date" : "recent";
 
   const supabase = await createSupabaseServerClient();
   const {
@@ -30,8 +34,16 @@ export default async function StrengthPage(props: {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const [{ data: profile }, { data: tokens }, workouts, { data: cached }] = await Promise.all([
-    supabase.from("profiles").select("name").eq("user_id", user.id).maybeSingle(),
+  const todayIso = todayInUserTz();
+  const [
+    { data: profile },
+    { data: tokens },
+    workouts,
+    { data: cached },
+    { data: todayLog },
+    { data: todayCheckin },
+  ] = await Promise.all([
+    supabase.from("profiles").select("name, whoop_baselines").eq("user_id", user.id).maybeSingle(),
     supabase.from("whoop_tokens").select("updated_at").eq("user_id", user.id).maybeSingle(),
     loadWorkouts(user.id),
     supabase
@@ -42,20 +54,44 @@ export default async function StrengthPage(props: {
       .order("generated_for_date", { ascending: false })
       .limit(1)
       .maybeSingle(),
+    supabase
+      .from("daily_logs")
+      .select("hrv, sleep_score, recovery")
+      .eq("user_id", user.id)
+      .eq("date", todayIso)
+      .maybeSingle(),
+    supabase
+      .from("checkins")
+      .select("readiness, energy_label, mood, soreness, feel_notes")
+      .eq("user_id", user.id)
+      .eq("date", todayIso)
+      .maybeSingle(),
   ]);
   const strengthCoach = (cached?.payload ?? null) as Parameters<typeof CoachCards>[0]["payload"] | null;
 
   const prs = buildPRs(workouts);
   const trend = selectedExercise ? buildExerciseTrend(workouts, selectedExercise) : [];
-
-  // For "By date" view: clamp the picker to the user's actual workout window.
-  // workouts is sorted newest-first by loadWorkouts.
-  const todayIso = todayInUserTz();
   const latestWorkout = workouts[0]?.date ?? todayIso;
   const earliestWorkout = workouts[workouts.length - 1]?.date ?? todayIso;
   const selectedDate =
     rawDate && ISO_DATE.test(rawDate) && rawDate <= todayIso ? rawDate : latestWorkout;
   const sessionsOnDate = workouts.filter((w) => w.date === selectedDate);
+
+  const hrvBaseline = (profile?.whoop_baselines as { hrv?: number } | null)?.hrv;
+  const feel = todayCheckin
+    ? {
+        readiness: todayCheckin.readiness,
+        energyLabel: todayCheckin.energy_label,
+        mood: todayCheckin.mood,
+        soreness: todayCheckin.soreness,
+        notes: todayCheckin.feel_notes,
+      }
+    : null;
+  const dailyPlan = buildDailyPlan(
+    (todayLog as Pick<DailyLog, "hrv" | "sleep_score" | "recovery"> | null) ?? null,
+    feel,
+    hrvBaseline,
+  );
 
   return (
     <main>
@@ -67,7 +103,11 @@ export default async function StrengthPage(props: {
       />
 
       <div className="px-4 pt-3.5 max-w-3xl mx-auto flex flex-col gap-3.5">
-        {!workouts.length ? (
+        <StrengthNav active={activeView} />
+
+        {activeView === "today" ? (
+          <TodayPlanCard plan={dailyPlan} />
+        ) : !workouts.length ? (
           <Card>
             <div className="text-center py-12">
               <div className="text-3xl mb-3">💪</div>
@@ -77,57 +117,51 @@ export default async function StrengthPage(props: {
               </div>
             </div>
           </Card>
+        ) : activeView === "date" ? (
+          <>
+            <DateNavigator date={selectedDate} min={earliestWorkout} max={todayIso} />
+
+            {sessionsOnDate.length === 0 ? (
+              <Card>
+                <div className="text-center py-10">
+                  <div className="text-sm text-white/45">No workouts logged on {selectedDate}</div>
+                  <div className="text-[11px] text-white/25 mt-1">
+                    Pick another date — your earliest is {earliestWorkout}.
+                  </div>
+                </div>
+              </Card>
+            ) : (
+              sessionsOnDate.map((s) => <SessionTable key={s.id} session={s} />)
+            )}
+          </>
         ) : (
           <>
-            <StrengthNav active={activeView} />
+            <Card tint="strain">
+              <SectionLabel>RECENT SESSIONS · tap exercise to see trend</SectionLabel>
+              {workouts.slice(0, 5).map((w, i, arr) => (
+                <SessionRow
+                  key={w.id}
+                  session={w}
+                  selectedExercise={selectedExercise}
+                  isLast={i === arr.length - 1}
+                />
+              ))}
+            </Card>
 
-            {activeView === "date" ? (
-              <>
-                <DateNavigator date={selectedDate} min={earliestWorkout} max={todayIso} />
+            {selectedExercise && <ExerciseTrendCard name={selectedExercise} points={trend} />}
 
-                {sessionsOnDate.length === 0 ? (
-                  <Card>
-                    <div className="text-center py-10">
-                      <div className="text-sm text-white/45">No workouts logged on {selectedDate}</div>
-                      <div className="text-[11px] text-white/25 mt-1">
-                        Pick another date — your earliest is {earliestWorkout}.
-                      </div>
-                    </div>
-                  </Card>
-                ) : (
-                  sessionsOnDate.map((s) => <SessionTable key={s.id} session={s} />)
-                )}
-              </>
-            ) : (
-              <>
-                <Card tint="strain">
-                  <SectionLabel>RECENT SESSIONS · tap exercise to see trend</SectionLabel>
-                  {workouts.slice(0, 5).map((w, i, arr) => (
-                    <SessionRow
-                      key={w.id}
-                      session={w}
-                      selectedExercise={selectedExercise}
-                      isLast={i === arr.length - 1}
-                    />
-                  ))}
-                </Card>
+            <PRList prs={prs} />
 
-                {selectedExercise && <ExerciseTrendCard name={selectedExercise} points={trend} />}
+            <VolumeTrendCard workouts={workouts} />
 
-                <PRList prs={prs} />
+            <div className="flex justify-end">
+              <RefreshButton
+                endpoint="/api/insights/strength"
+                label={strengthCoach ? "Refresh strength coach" : "Run strength coach"}
+              />
+            </div>
 
-                <VolumeTrendCard workouts={workouts} />
-
-                <div className="flex justify-end">
-                  <RefreshButton
-                    endpoint="/api/insights/strength"
-                    label={strengthCoach ? "Refresh strength coach" : "Run strength coach"}
-                  />
-                </div>
-
-                {strengthCoach && <CoachCards payload={strengthCoach} />}
-              </>
-            )}
+            {strengthCoach && <CoachCards payload={strengthCoach} />}
           </>
         )}
       </div>
