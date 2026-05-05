@@ -55,8 +55,8 @@ export function ImpactDonut({ segments, score, size = 260 }: Props) {
     ? focused.sign === "positive"
       ? focused.color
       : focused.sign === "negative"
-        ? "#ff453a"
-        : "rgba(255,255,255,0.55)"
+        ? COLOR.danger
+        : COLOR.textMid
     : null;
 
   return (
