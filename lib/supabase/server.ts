@@ -1,9 +1,11 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
-import { cookies } from "next/headers";
 
 type CookieToSet = { name: string; value: string; options?: CookieOptions };
 
 export async function createSupabaseServerClient() {
+  // Lazy-imported so this module is loadable from non-Next contexts (scripts).
+  // The dynamic import is cached by Node's ESM loader after the first call.
+  const { cookies } = await import("next/headers");
   const cookieStore = await cookies();
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
