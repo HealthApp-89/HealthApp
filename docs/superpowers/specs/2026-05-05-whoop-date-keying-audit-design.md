@@ -8,7 +8,9 @@
 
 Three coordinated changes in one design.
 
-**A. Forward fix.** Every server-side date-keying call site that derives a `daily_logs.date` from a Z-suffixed ISO timestamp by string-slicing UTC is patched to produce a user-local YYYY-MM-DD. Affects WHOOP sync (3 sites), WHOOP backfill (3 sites), Withings merge (1 site), Withings backfill (1 site).
+**A. Forward fix.** Every server-side date-keying call site that derives a `daily_logs.date` from a Z-suffixed ISO timestamp by string-slicing UTC is patched to produce a user-local YYYY-MM-DD. Affects WHOOP sync (4 slice calls covering 3 logical keying paths), WHOOP backfill (same 4), Withings merge (1), Withings backfill (1) — **10 distinct slice calls total**, enumerated in the Sweep map below.
+
+**Note on Withings activities:** `WithingsActivity.date` is already a YYYY-MM-DD string from the Withings API ([lib/withings.ts:44](../../../lib/withings.ts#L44)) — never UTC-sliced from a timestamp. So `exercise_min` is NOT a bug site and is NOT touched by the rekey. Only Withings *measurement groups* (body comp) need correcting.
 
 **B. WHOOP travel mode (L1).** WHOOP returns a `timezone_offset` field on cycle and workout records. The patched sync uses each cycle's own offset for cycle keying, and a small cycle-tz lookup so sleep and recovery records inherit the tz of the cycle that contains them. While at home in Dubai this is identical to using `USER_TIMEZONE`; while traveling, rows land on travel-local calendar days. Withings stays on `USER_TIMEZONE` — no per-record tz available; weighing yourself abroad keys to home tz (acceptable for L1).
 
@@ -77,14 +79,25 @@ The fix preserves the existing date-keying *rule* (sleep keyed on wake-up, cycle
 
 ```ts
 /** YYYY-MM-DD for a given UTC moment, in the user's configured timezone.
- *  Use for syncs that don't carry per-record tz info (Withings, fallbacks). */
+ *  Use for syncs that don't carry per-record tz info (Withings, fallbacks).
+ *  This is the canonical implementation; `todayInUserTz` becomes a thin wrapper. */
 export function ymdInUserTz(when: Date): string {
-  return todayInUserTz(when);
+  // (Body: same logic the previous spec put in todayInUserTz — partsInUserTz()
+  // formatted via Intl.DateTimeFormat with USER_TIMEZONE.)
+  ...
+}
+
+/** Refactored to call ymdInUserTz; existing callers across the codebase don't
+ *  need to change since the no-arg behavior is preserved. */
+export function todayInUserTz(now: Date = new Date()): string {
+  return ymdInUserTz(now);
 }
 
 /** YYYY-MM-DD for a given UTC moment, in a specific fixed-offset zone like
  *  "+04:00" or "-05:00". Used by WHOOP keying — WHOOP returns a per-record
- *  `timezone_offset` on cycles/workouts that we honor for travel mode. */
+ *  `timezone_offset` on cycles/workouts that we honor for travel mode.
+ *  Handles non-integer offsets like "+05:45" (Nepal) and "-04:30" (Newfoundland)
+ *  correctly because hours and minutes are parsed independently. */
 export function ymdInZoneOffset(when: Date, offset: string): string {
   const sign = offset[0] === "-" ? -1 : 1;
   const [hh, mm] = offset.slice(1).split(":").map(Number);
@@ -93,17 +106,17 @@ export function ymdInZoneOffset(when: Date, offset: string): string {
 }
 ```
 
-`ymdInUserTz` is a renamed alias of the existing `todayInUserTz` for read clarity at the call site (`todayInUserTz(new Date(s.end))` reads "what's today of this past moment?" — confusing; `ymdInUserTz(new Date(s.end))` reads cleanly). Same function under the hood.
+`ymdInUserTz(when)` reads cleanly at the call site for arbitrary moments (`ymdInUserTz(new Date(s.end))`); `todayInUserTz()` reads cleanly for the no-arg "right now" case (matches the previous spec's call sites). Inverting which function holds the implementation prevents drift — there's exactly one implementation, and `todayInUserTz` is a one-line wrapper.
 
 `ymdInZoneOffset` works for fixed-offset jurisdictions. WHOOP's `timezone_offset` is a per-record fixed offset for that moment — DST is implicitly handled by WHOOP recording the offset at the time the record was generated, so we don't need an Intl-based DST-aware path.
 
 ## Sweep map (Slice 2: forward fix)
 
-**`app/api/whoop/sync/route.ts`** — 3 sites:
+**[app/api/whoop/sync/route.ts](../../../app/api/whoop/sync/route.ts)** — 4 distinct slice calls (3 logical keying paths):
 
-- `s.end.slice(0, 10)` (sleep wake-up keying, used in `sleepIdToDate` and the sleep loop): replaced with cycle-tz lookup → `ymdInZoneOffset(new Date(s.end), cycleTz)`, fallback `ymdInUserTz(new Date(s.end))`.
-- `c.start.slice(0, 10)` (cycle keying): replaced with `ymdInZoneOffset(new Date(c.start), c.timezone_offset)`.
-- `r.created_at.slice(0, 10)` (recovery fallback): replaced with `ymdInUserTz(new Date(r.created_at))`. The primary recovery path uses `sleepIdToDate.get(r.sleep_id)` which already inherits the corrected sleep keying.
+- **Line 81** (`s.end.slice(0, 10)` building `sleepIdToDate`) AND **Line 109** (`s.end.slice(0, 10)` in the sleep-row loop) — both are sleep wake-up keying. Both replaced with: cycle-tz lookup → `ymdInZoneOffset(new Date(s.end), cycleTz)`, fallback `ymdInUserTz(new Date(s.end))`. **Both** lines must be patched; they're the same logical operation but appear twice in the file.
+- **Line 91** (`r.created_at.slice(0, 10)`) — recovery fallback, replaced with `ymdInUserTz(new Date(r.created_at))`. Primary recovery path uses `sleepIdToDate.get(r.sleep_id)` which inherits the corrected sleep keying.
+- **Line 102** (`c.start.slice(0, 10)`) — cycle keying, replaced with `ymdInZoneOffset(new Date(c.start), c.timezone_offset)`.
 
 **Order within the sync handler** must change. Today's handler does: build sleep-id→date map (UTC slice) → process recoveries → process cycles → process sleeps. The new handler needs cycle data available before sleep/recovery keying, since both depend on the cycle-tz lookup. New order:
 
@@ -111,7 +124,9 @@ export function ymdInZoneOffset(when: Date, offset: string): string {
 2. Process sleeps using the lookup. This loop builds `sleepIdToDate` AND writes `sleep_*` row data (today's two sleep loops collapse into one).
 3. Process recoveries using `sleepIdToDate.get(r.sleep_id)` (correct dates) with `ymdInUserTz(new Date(r.created_at))` fallback.
 
-**`app/api/whoop/backfill/route.ts`** — same 3 patterns repeated. The backfill route paginates over a larger window via `whoopGetAll`; the keying logic at the bottom of the route is the same shape. Apply the identical patches.
+**[app/api/whoop/backfill/route.ts](../../../app/api/whoop/backfill/route.ts)** — 4 slice calls at lines 81, 85, 95, 101 (same logical structure as sync). Apply the identical patches.
+
+**Column-set alignment.** The backfill route writes `respiratory_rate` ([line 118](../../../app/api/whoop/backfill/route.ts#L118)) but the sync route does NOT — its `DayRow` type omits the field. This is a pre-existing inconsistency. The rekey assumes sync and backfill write the same set, so this design **adds `respiratory_rate` to the sync route's `DayRow` type and keying logic** (mirroring backfill's lines 117-119) so both write the same columns. Without this alignment, the rekey could leave stale `respiratory_rate` values from a previous backfill untouched.
 
 **`lib/withings-merge.ts:48`** — 1 site:
 
@@ -146,12 +161,20 @@ import type { WhoopCycle } from "@/lib/whoop";
 export function buildCycleTzLookup(
   cycles: WhoopCycle[],
 ): (when: Date) => string | null {
+  // Sort by start descending so the most recent open cycle wins for in-progress
+  // sleeps without leaking onto historical sleeps. Critical during a 2-year
+  // backfill where stale open cycles (data gaps, dropped end records) could
+  // otherwise match arbitrary historical moments via an unbounded "now+24h"
+  // fallback.
+  const sorted = [...cycles].sort((a, b) => b.start.localeCompare(a.start));
   return (when: Date) => {
     const t = when.toISOString();
-    for (const c of cycles) {
-      // Open cycles (no `end`) are ongoing — treat as extending to "now+24h"
-      // so any in-progress sleep is still matchable.
-      const cycleEnd = c.end ?? new Date(Date.now() + 86_400_000).toISOString();
+    for (const c of sorted) {
+      // Open cycles (no `end`) get a 36-hour cap from their start — physical
+      // upper bound for one wake-to-wake interval. Beyond that, fall through.
+      const cycleEnd =
+        c.end ??
+        new Date(new Date(c.start).getTime() + 36 * 3_600_000).toISOString();
       if (c.start <= t && t <= cycleEnd) return c.timezone_offset;
     }
     return null;
@@ -181,7 +204,7 @@ node scripts/rekey-whoop.mjs --since 2026-04-05 --yes
 1. Parse `--since YYYY-MM-DD` (default: 30 days ago using `todayInUserTz()`-derived math) and optional `--yes`.
 2. Resolve `userId`. Single-user app: read `whoop_tokens.user_id` (the only row). If multiple rows somehow exist, abort with an explicit error.
 3. Compute `until = todayInUserTz()`. Window is `[since, until]` inclusive.
-4. Snapshot the row count: `SELECT count(*) FROM daily_logs WHERE user_id=$1 AND date BETWEEN $2 AND $3 AND (hrv IS NOT NULL OR sleep_hours IS NOT NULL OR strain IS NOT NULL)`. Print:
+4. Snapshot the row count using a narrow filter (avoid counting Apple-Health-set `sleep_hours` as WHOOP data): `SELECT count(*) FROM daily_logs WHERE user_id=$1 AND date BETWEEN $2 AND $3 AND (hrv IS NOT NULL OR strain IS NOT NULL OR recovery IS NOT NULL)`. Print:
    ```
    About to rekey WHOOP data for user <abc...123>:
      window: 2026-04-05 → 2026-05-05 (31 days)
@@ -192,37 +215,42 @@ node scripts/rekey-whoop.mjs --since 2026-04-05 --yes
    ```
 5. Read stdin for confirmation (skipped if `--yes`).
 6. Snapshot the *current* date keying: `SELECT date, hrv, sleep_hours, strain FROM daily_logs ...`. Build `oldKeying: Map<recordSignature, date>` so the diff can detect moves.
-7. UPDATE: NULL out the WHOOP-owned columns:
+7. **Snapshot before-state** for the diff: `SELECT date, hrv, resting_hr, recovery, sleep_hours, sleep_score, deep_sleep_hours, rem_sleep_hours, strain, spo2, skin_temp_c, respiratory_rate FROM daily_logs WHERE user_id=$1 AND date BETWEEN $2 AND $3`. Store as `before: Map<date, columnTuple>`.
+8. **Re-fetch from WHOOP first, BEFORE clearing.** Call WHOOP's API via the same paginated logic the backfill uses. If the call fails or returns zero records, abort WITHOUT having cleared anything. (See Risks: a partial WHOOP outage during rekey could otherwise leave the user with cleared columns and no data.)
+9. **Wrap the clear + repopulation in a Postgres transaction.** Inside a single transaction:
    ```sql
    UPDATE daily_logs
      SET hrv = NULL, resting_hr = NULL, recovery = NULL,
          sleep_hours = NULL, sleep_score = NULL,
          deep_sleep_hours = NULL, rem_sleep_hours = NULL,
          strain = NULL, spo2 = NULL, skin_temp_c = NULL,
+         respiratory_rate = NULL,
          updated_at = NOW()
      WHERE user_id = $1 AND date >= $2 AND date <= $3;
    ```
-8. Call the patched WHOOP sync logic directly (imported as a function from the route's underlying lib — DRY; no HTTP roundtrip). The sync uses the patched keying, so re-population lands on correct dates.
-9. After repopulation, query the same columns again. Build `newKeying: Map<recordSignature, date>`. Compute the diff:
-   - `cleared`: rows whose owned columns went from non-NULL to NULL and stayed NULL (mis-keyed historical row whose data moved elsewhere)
-   - `moved`: signature appearing on a different date than before
-   - `repopulated`: rows newly populated
-10. Print:
+   Then upsert the patched, correctly-keyed rows from the WHOOP fetch. Commit. If anything errors mid-transaction, the clear rolls back automatically.
+10. **Snapshot after-state** with the same SELECT. Store as `after: Map<date, columnTuple>`.
+11. Compute the diff at the **date level** (not per-WHOOP-record, which is harder — `daily_logs` doesn't store WHOOP IDs):
+    - `changed`: dates where `before.get(date) !== after.get(date)` — values differ.
+    - For each changed date, classify: `repopulated` (was empty/NULL, now has data), `cleared` (had data, now NULL — WHOOP no longer returns this record OR it moved to a different date), `mutated` (had data, still has data, but values differ — likely a re-keyed record with corrected data).
+12. Print:
     ```
     Rekey complete:
-      rows cleared (historical mis-keyed):  3
-      rows repopulated:                     28
-      records that moved date:              3
-        2026-04-15 → 2026-04-16 (sleep)
-        2026-04-22 → 2026-04-23 (sleep, strain)
-        2026-05-01 → 2026-05-02 (sleep, strain, recovery)
+      window:                    2026-04-05 → 2026-05-05 (31 days)
+      dates inspected:           31
+      dates with changed values: 4
+        2026-04-15  cleared (data may have moved to 2026-04-16)
+        2026-04-16  repopulated (new sleep data: hrv 52, sleep 7.4h, strain 12.1)
+        2026-04-22  mutated (was: sleep 6.8h; now: sleep 7.1h)
+        2026-05-01  cleared (no longer in WHOOP API window)
     ```
-    If "records that moved date" is 0, the bug never bit you for this window — the rekey was a no-op data-wise.
+    If `dates with changed values` is 0, the bug never bit you for this window — the rekey was a no-op data-wise.
 
 **`scripts/rekey-withings.mjs`** — identical flow with these substitutions:
-- Owned columns cleared: `weight_kg, body_fat_pct, fat_mass_kg, fat_free_mass_kg, muscle_mass_kg, bone_mass_kg, hydration_kg, exercise_min`
-- Sync logic: `getMeasures` + `getActivity` + `mergeWithingsToRows` from `lib/withings*.ts`
-- Diff signatures keyed on (measurement type, original epoch) instead of WHOOP IDs
+- Owned columns cleared: `weight_kg, body_fat_pct, fat_mass_kg, fat_free_mass_kg, muscle_mass_kg, bone_mass_kg, hydration_kg`. **`exercise_min` is deliberately excluded** — it comes from `WithingsActivity.date` (already a YYYY-MM-DD string from the API, never UTC-sliced) and is also written by Apple Health ingest. Clearing it would either lose Apple Health data or destroy correctly-keyed Withings activity data; either way it doesn't fix any bug. Withings activity merging is unchanged by this design.
+- Sync logic: `getMeasures` + `mergeWithingsToRows` from `lib/withings*.ts` (skip `getActivity` since activity isn't in scope).
+- Same transactional safety: re-fetch first, then clear+upsert in one transaction.
+- Same date-level diff format.
 
 ### Manual-data preservation
 
@@ -273,7 +301,8 @@ Three slices; recommended order for minimal coupling:
 - **Open cycles (in-progress sleep, no `c.end`).** Treated as extending to `now + 24h` so the lookup still resolves. If a sleep ends before the cycle does (impossible by WHOOP semantics) the fallback `ymdInUserTz` kicks in.
 - **WHOOP records returned with `timezone_offset = "+00:00"`.** Treat as legitimate UTC — `ymdInZoneOffset` handles `+00:00` correctly. (We've never observed this in practice for a Dubai-resident user, but the path is correct.)
 - **Service role client in scripts.** Both rekey scripts use `createSupabaseServiceRoleClient()`, which bypasses RLS. The scripts only run from the dev box where `.env.local` has the service role key. The same pattern as the existing `scripts/backfill-whoop.mjs`. If the service role key leaks, rekey is the least of your problems.
-- **Concurrent sync during a rekey.** If the Vercel cron `/api/whoop/sync` fires at 08:00 UTC during a rekey, both processes write to `daily_logs`. The cron sync uses upsert on `(user_id, date)`, so it'll write to dates the rekey is also writing to. Worst case: a few rows get the cron's data instead of the script's, but both use the same patched keying, so values are still correct. Acceptable given the rekey runs once and takes seconds.
+- **Concurrent sync during a rekey.** If the Vercel cron `/api/whoop/sync` fires at 08:00 UTC during a rekey, both processes write to `daily_logs`. With the transaction in step 9, the rekey's clear+upsert is atomic, so the cron can't observe a half-cleared state — but a cron sync that completes between the rekey's snapshot read and its transactional upsert could write data that the upsert then immediately overwrites with whatever WHOOP returned at the rekey's fetch time. Both writes use the patched keying, so final values are correct, but the cron's update_at is lost. **Mitigation:** run the rekey scripts during the 23-hour window between cron firings (any time other than ~08:00 UTC). The scripts complete in seconds; aligning around the cron is trivial.
+- **Partial WHOOP outage during rekey.** If `whoopGetAll` errors mid-pagination, the script's pre-clear fetch at step 8 will throw before any clear happens. The transaction never opens. Existing data preserved.
 
 ## Out of scope (parked)
 
