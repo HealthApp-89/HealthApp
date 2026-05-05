@@ -4,7 +4,9 @@
 // Server-side only; uses platform Intl APIs (no Luxon, no date-fns-tz).
 // USER_TIMEZONE env var, default Asia/Dubai.
 
-const USER_TZ = process.env.USER_TIMEZONE || "Asia/Dubai";
+// Trim whitespace — Vercel env-var inputs can pick up stray spaces around the
+// value, which Intl.DateTimeFormat rejects with "Invalid time zone specified".
+const USER_TZ = (process.env.USER_TIMEZONE || "Asia/Dubai").trim();
 
 let _logged = false;
 function logOnce(): void {
