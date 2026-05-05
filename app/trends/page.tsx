@@ -1,16 +1,9 @@
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { Header } from "@/components/layout/Header";
-import { Card, SectionLabel } from "@/components/ui/Card";
-import { LineChart } from "@/components/charts/LineChart";
-import { BarChart } from "@/components/charts/BarChart";
-import { RecoveryBars } from "@/components/charts/RecoveryBars";
+import { RangePills } from "@/components/ui/RangePills";
 import { MetricCard } from "@/components/charts/MetricCard";
-import { TrendsNav } from "@/components/trends/TrendsNav";
-import { PeriodSelector } from "@/components/trends/PeriodSelector";
-import { loadWorkouts, buildPRs } from "@/lib/data/workouts";
-import { avg } from "@/lib/ui/score";
-import { fieldColor } from "@/lib/ui/tints";
+import type { LinePoint } from "@/components/charts/LineChart";
+import { COLOR, METRIC_COLOR } from "@/lib/ui/theme";
 import type { DailyLog } from "@/lib/data/types";
 import {
   resolvePeriod,
@@ -22,26 +15,70 @@ import {
 
 export const revalidate = 60;
 
-const HRV_BASELINE = 33;
-const RHR_BASELINE = 58;
+// Range pills — map to existing PeriodPreset ids so deep links keep working.
+const RANGE_OPTIONS = [
+  { id: "7d",  label: "7D",   href: "/trends?period=7d"  },
+  { id: "30d", label: "30D",  href: "/trends?period=30d" },
+  { id: "ytd", label: "YTD",  href: "/trends?period=ytd" },
+  { id: "ly",  label: "1Y",   href: "/trends?period=ly"  },
+] as const;
+
+const RANGE_LABEL: Partial<Record<PeriodPreset, string>> = {
+  "7d":  "7 days",
+  "30d": "30 days",
+  "ytd": "year to date",
+  "ly":  "last year",
+};
+
+// Small helpers ---------------------------------------------------------------
+
+function toPoints(series: { date: string; value: number | null }[]): LinePoint[] {
+  return series.map((p) => ({ x: p.date, y: p.value }));
+}
+
+function avg(points: LinePoint[]): number | null {
+  let sum = 0, n = 0;
+  for (const p of points) {
+    if (p.y !== null && Number.isFinite(p.y)) { sum += p.y; n++; }
+  }
+  return n > 0 ? sum / n : null;
+}
+
+/** Delta: second-half average minus first-half average. */
+function halfDelta(points: LinePoint[]): number | null {
+  const mid = Math.floor(points.length / 2);
+  const w1 = points.slice(0, mid);
+  const w2 = points.slice(mid);
+  const a1 = avg(w1);
+  const a2 = avg(w2);
+  if (a1 === null || a2 === null) return null;
+  return Math.round((a2 - a1) * 100) / 100;
+}
+
+function hasData(points: LinePoint[]): boolean {
+  return points.some((p) => p.y !== null);
+}
 
 export default async function TrendsPage(props: {
   searchParams: Promise<{
-    section?: string;
     period?: string;
     start?: string;
     end?: string;
   }>;
 }) {
   const sp = await props.searchParams;
-  const section = ["body", "sleep", "training", "strength", "compare"].includes(sp.section ?? "")
-    ? (sp.section as string)
-    : "body";
 
-  // Default period = today; "all" if user wants the full backfilled history.
-  const { from, to, preset } = resolvePeriod(sp.period as PeriodPreset, sp.start, sp.end);
+  // Default to 30d when no period or an unrecognised period is given.
+  const rawPeriod = sp.period ?? "30d";
+  const { from, to, preset } = resolvePeriod(rawPeriod as PeriodPreset, sp.start, sp.end);
   const days = periodLengthDays(from, to);
   const granularity = pickGranularity(days);
+
+  // Active pill: prefer the four pill ids; fall back to the preset string.
+  const activePill = RANGE_OPTIONS.some((o) => o.id === preset)
+    ? preset
+    : "30d";
+  const rangeLabel = RANGE_LABEL[preset] ?? `${days} days`;
 
   const supabase = await createSupabaseServerClient();
   const {
@@ -49,9 +86,7 @@ export default async function TrendsPage(props: {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const [{ data: profile }, { data: tokens }, { data: logsRaw }, workouts] = await Promise.all([
-    supabase.from("profiles").select("name").eq("user_id", user.id).maybeSingle(),
-    supabase.from("whoop_tokens").select("updated_at").eq("user_id", user.id).maybeSingle(),
+  const [{ data: logsRaw }] = await Promise.all([
     supabase
       .from("daily_logs")
       .select(
@@ -61,438 +96,149 @@ export default async function TrendsPage(props: {
       .gte("date", from)
       .lte("date", to)
       .order("date", { ascending: true }),
-    loadWorkouts(user.id),
   ]);
 
   const sorted = (logsRaw ?? []) as DailyLog[];
 
   // Aggregate each metric to the picked granularity (day/week/month).
-  const aggHRV = aggregateSeries(sorted, (l) => l.hrv, granularity);
-  const aggRHR = aggregateSeries(sorted, (l) => l.resting_hr, granularity);
-  const aggRecov = aggregateSeries(sorted, (l) => l.recovery, granularity);
-  const aggSleepH = aggregateSeries(sorted, (l) => l.sleep_hours, granularity);
-  const aggSleepSc = aggregateSeries(sorted, (l) => l.sleep_score, granularity);
-  const aggDeep = aggregateSeries(sorted, (l) => l.deep_sleep_hours, granularity);
-  const aggREM = aggregateSeries(sorted, (l) => l.rem_sleep_hours, granularity);
-  const aggSteps = aggregateSeries(sorted, (l) => l.steps, granularity);
-  const aggCals = aggregateSeries(sorted, (l) => l.calories, granularity);
-  const aggStrain = aggregateSeries(sorted, (l) => l.strain, granularity);
-  const aggWeight = aggregateSeries(sorted, (l) => l.weight_kg, granularity);
+  const aggHRV      = aggregateSeries(sorted, (l) => l.hrv,          granularity);
+  const aggRHR      = aggregateSeries(sorted, (l) => l.resting_hr,   granularity);
+  const aggSleepH   = aggregateSeries(sorted, (l) => l.sleep_hours,  granularity);
+  const aggStrain   = aggregateSeries(sorted, (l) => l.strain,       granularity);
+  const aggWeight   = aggregateSeries(sorted, (l) => l.weight_kg,    granularity);
+  const aggBodyFat  = aggregateSeries(sorted, (l) => l.body_fat_pct, granularity);
 
-  const lastVal = (s: { value: number | null }[]) => {
-    for (let i = s.length - 1; i >= 0; i--) if (s[i].value !== null) return s[i].value;
-    return null;
-  };
-  const avgVal = (s: { value: number | null }[]) => {
-    let sum = 0, n = 0;
-    for (const p of s) if (p.value !== null && Number.isFinite(p.value)) { sum += p.value; n++; }
-    return n > 0 ? sum / n : null;
-  };
-  // Headline numbers: use the period AVERAGE for biometrics + cumulative metrics so
-  // they actually change as the user picks different periods. Weight stays as
-  // "latest" because trend matters more than mean for body weight.
-  const avgHRV = avgVal(aggHRV);
-  const avgRHR = avgVal(aggRHR);
-  const avgSleepH = avgVal(aggSleepH);
-  const avgSleepSc = avgVal(aggSleepSc);
-  const avgSteps = avgVal(aggSteps);
-  const avgCalsEaten = avgVal(aggCals);
-  const avgStrainVal = avgVal(aggStrain);
-  const lastWeight = lastVal(aggWeight);
-  const firstWeight = aggWeight.find((p) => p.value !== null)?.value ?? null;
+  // LinePoint arrays for sparklines
+  const hrvTrend     = toPoints(aggHRV);
+  const rhrTrend     = toPoints(aggRHR);
+  const sleepTrend   = toPoints(aggSleepH);
+  const strainTrend  = toPoints(aggStrain);
+  const weightTrend  = toPoints(aggWeight);
+  const bfTrend      = toPoints(aggBodyFat);
 
-  // Build the dates arrays once per granularity — passed to BarChart for axis + tooltip.
-  const datesHRV = aggHRV.map((p) => p.date);
-  const datesRHR = aggRHR.map((p) => p.date);
-  const datesRecov = aggRecov.map((p) => p.date);
-  const datesSleepH = aggSleepH.map((p) => p.date);
-  const datesSleepSc = aggSleepSc.map((p) => p.date);
-  const datesDeep = aggDeep.map((p) => p.date);
-  const datesREM = aggREM.map((p) => p.date);
-  const datesSteps = aggSteps.map((p) => p.date);
-  const datesCals = aggCals.map((p) => p.date);
-  const datesStrain = aggStrain.map((p) => p.date);
-  const datesWeight = aggWeight.map((p) => p.date);
+  // Averages
+  const hrvAvg    = avg(hrvTrend);
+  const rhrAvg    = avg(rhrTrend);
+  const sleepAvg  = avg(sleepTrend);
+  const strainAvg = avg(strainTrend);
+  const weightAvg = avg(weightTrend);
+  const bfAvg     = avg(bfTrend);
 
-  // Filter workouts to the same window for the strength panel.
-  const filteredWorkouts = workouts.filter((w) => w.date >= from && w.date <= to);
-
-  // Compare: split the window in half (W1 = first half, W2 = second half).
-  const mid = Math.floor(sorted.length / 2);
-  const w1 = sorted.slice(0, mid);
-  const w2 = sorted.slice(mid);
-
-  const prs = buildPRs(filteredWorkouts);
-  const granularityLabel = granularity === "day" ? "daily" : granularity === "week" ? "weekly avg" : "monthly avg";
-
-  const preserve = { section, period: preset, start: from, end: to };
+  // Deltas: second-half avg minus first-half avg of the current window.
+  const hrvDelta    = halfDelta(hrvTrend);
+  const rhrDelta    = halfDelta(rhrTrend);
+  const sleepDelta  = halfDelta(sleepTrend);
+  const strainDelta = halfDelta(strainTrend);
+  const weightDelta = halfDelta(weightTrend);
+  const bfDelta     = halfDelta(bfTrend);
 
   return (
-    <main>
-      <Header
-        email={user.email ?? null}
-        name={profile?.name ?? null}
-        score={null}
-        whoopSyncedAt={tokens?.updated_at ?? null}
-      />
-
-      <div className="px-4 pt-3.5 max-w-3xl mx-auto">
-        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-          <TrendsNav active={section} preserve={{ period: preset, start: from, end: to }} />
-          <PeriodSelector preset={preset} from={from} to={to} preserve={{ section }} />
-        </div>
-
-        <div className="text-[10px] uppercase tracking-[0.1em] text-white/30 mb-3 font-mono">
-          {from} → {to} · {days} day{days === 1 ? "" : "s"} · {granularityLabel}
-          {sorted.length === 0 && <span className="text-white/40 ml-2">· no data in range</span>}
-        </div>
-
-        {section === "body" && (
+    <main style={{ background: COLOR.bg, minHeight: "100dvh" }}>
+      <div style={{ maxWidth: "640px", margin: "0 auto", padding: "12px 8px 16px" }}>
+        {/* Page header */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 12px 14px" }}>
           <div>
-            {/* @ts-expect-error redesign-slice-3-or-4 */}
+            <div style={{ fontSize: "12px", color: COLOR.textMuted, fontWeight: 500 }}>Last {rangeLabel}</div>
+            <h1 style={{ fontSize: "22px", fontWeight: 700, letterSpacing: "-0.02em", marginTop: "2px", color: COLOR.textStrong }}>Trends</h1>
+          </div>
+        </div>
+
+        {/* Range pills */}
+        <div style={{ padding: "0 8px 14px" }}>
+          <RangePills
+            options={RANGE_OPTIONS.map((o) => ({ ...o }))}
+            active={activePill}
+          />
+        </div>
+
+        {/* Compact metric stack */}
+        <div style={{ display: "flex", flexDirection: "column", gap: "10px", padding: "0 8px" }}>
+          {hasData(hrvTrend) && (
             <MetricCard
-              title="Body Weight"
-              current={lastWeight !== null ? lastWeight.toFixed(1) : null}
+              color={METRIC_COLOR.hrv}
+              icon="♥"
+              label="HRV"
+              value={hrvAvg !== null ? Math.round(hrvAvg) : null}
+              unit="ms"
+              delta={hrvDelta}
+              deltaUnit="ms"
+              compact
+              trend={hrvTrend}
+              href="/trends/hrv"
+            />
+          )}
+          {hasData(rhrTrend) && (
+            <MetricCard
+              color={METRIC_COLOR.resting_hr}
+              icon="♥"
+              label="Resting HR"
+              value={rhrAvg !== null ? Math.round(rhrAvg) : null}
+              unit="bpm"
+              delta={rhrDelta}
+              deltaUnit="bpm"
+              inverted
+              compact
+              trend={rhrTrend}
+              href="/trends/resting_hr"
+            />
+          )}
+          {hasData(sleepTrend) && (
+            <MetricCard
+              color={METRIC_COLOR.sleep_hours}
+              icon="☾"
+              label="Sleep"
+              value={sleepAvg}
+              unit="h"
+              delta={sleepDelta}
+              deltaUnit="h"
+              compact
+              trend={sleepTrend}
+              href="/trends/sleep_hours"
+            />
+          )}
+          {hasData(strainTrend) && (
+            <MetricCard
+              color={METRIC_COLOR.strain}
+              icon="⚡"
+              label="Strain"
+              value={strainAvg}
+              delta={strainDelta}
+              compact
+              trend={strainTrend}
+              href="/trends/strain"
+            />
+          )}
+          {hasData(weightTrend) && (
+            <MetricCard
+              color={METRIC_COLOR.weight_kg}
+              icon="⚖"
+              label="Weight"
+              value={weightAvg}
               unit="kg"
-              delta={
-                firstWeight !== null && lastWeight !== null
-                  ? Math.round((lastWeight - firstWeight) * 10) / 10
-                  : null
-              }
-              deltaLabel="since start"
-              positiveIsGood={false}
-              color={fieldColor("weight_kg")!}
-            >
-              {aggWeight.filter((p) => p.value !== null).length >= 2 && (
-                <BarChart
-                  data={aggWeight.map((p) => p.value)}
-                  dates={datesWeight}
-                  color={fieldColor("weight_kg")!}
-                  height={60}
-                  unit="kg"
-                />
-              )}
-            </MetricCard>
-
-            {/* @ts-expect-error redesign-slice-3-or-4 */}
+              delta={weightDelta}
+              deltaUnit="kg"
+              compact
+              trend={weightTrend}
+              href="/trends/weight_kg"
+            />
+          )}
+          {hasData(bfTrend) && (
             <MetricCard
-              title="Heart Rate Variability"
-              current={avgHRV !== null ? Math.round(avgHRV) : null}
-              unit="ms avg"
-              delta={avgHRV !== null ? Math.round((avgHRV - HRV_BASELINE) * 10) / 10 : null}
-              deltaLabel={`vs ${HRV_BASELINE}ms baseline`}
-              color={fieldColor("hrv")!}
-              note="Baseline 33ms (6mo). Peak 45ms (Oct 2025). Goal: rebuild toward 40ms+."
-            >
-              <LineChart
-                // @ts-expect-error redesign-slice-4
-                data={aggHRV.map((p) => p.value)}
-                dates={datesHRV}
-                color={fieldColor("hrv")!}
-                height={64}
-                refLine={HRV_BASELINE}
-                refLabel={`${HRV_BASELINE}ms avg`}
-                unit="ms"
-              />
-            </MetricCard>
-
-            {/* @ts-expect-error redesign-slice-3-or-4 */}
-            <MetricCard
-              title="Resting Heart Rate"
-              current={avgRHR !== null ? Math.round(avgRHR) : null}
-              unit="bpm avg"
-              delta={avgRHR !== null ? Math.round((avgRHR - RHR_BASELINE) * 10) / 10 : null}
-              deltaLabel={`vs ${RHR_BASELINE}bpm baseline`}
-              positiveIsGood={false}
-              color={fieldColor("resting_hr")!}
-            >
-              <LineChart
-                // @ts-expect-error redesign-slice-4
-                data={aggRHR.map((p) => p.value)}
-                dates={datesRHR}
-                color={fieldColor("resting_hr")!}
-                height={64}
-                refLine={RHR_BASELINE}
-                refLabel={`${RHR_BASELINE}bpm avg`}
-                unit="bpm"
-              />
-            </MetricCard>
-
-            <Card tint="recovery">
-              <SectionLabel>Recovery % — {granularityLabel}</SectionLabel>
-              <RecoveryBars
-                data={aggRecov.map((p) => (p.value !== null ? Math.round(p.value) : null))}
-                dates={datesRecov}
-              />
-              <div className="flex gap-3 mt-2.5">
-                {(["🟢 Green ≥67%", "🟡 Yellow 34-66%", "🔴 Red <34%"]).map((l) => (
-                  <span key={l} className="text-[10px] text-white/40">
-                    {l}
-                  </span>
-                ))}
-              </div>
-            </Card>
-          </div>
-        )}
-
-        {section === "sleep" && (
-          <div>
-            {/* @ts-expect-error redesign-slice-3-or-4 */}
-            <MetricCard
-              title="Sleep Hours"
-              current={avgSleepH !== null ? avgSleepH.toFixed(1) : null}
-              unit="hrs avg"
-              color={fieldColor("sleep_hours")!}
-              note="Target 7.5–9 hrs. Dashed line = 7.5h."
-            >
-              <BarChart
-                data={aggSleepH.map((p) => p.value)}
-                dates={datesSleepH}
-                color={fieldColor("sleep_hours")!}
-                height={60}
-                goalLine={7.5}
-                unit="hrs"
-              />
-            </MetricCard>
-
-            {/* @ts-expect-error redesign-slice-3-or-4 */}
-            <MetricCard
-              title="Sleep Score"
-              current={avgSleepSc !== null ? Math.round(avgSleepSc) : null}
-              unit="/100 avg"
-              color={fieldColor("sleep_score")!}
-            >
-              <LineChart
-                // @ts-expect-error redesign-slice-4
-                data={aggSleepSc.map((p) => p.value)}
-                dates={datesSleepSc}
-                color={fieldColor("sleep_score")!}
-                height={56}
-                refLine={85}
-                refLabel="85 optimal"
-                unit="/100"
-              />
-            </MetricCard>
-
-            <Card tint="sleep">
-              <SectionLabel>DEEP + REM (hrs)</SectionLabel>
-              <div className="flex flex-col gap-2 mt-1">
-                <div>
-                  <div className="text-[10px] text-white/40 mb-1">Deep</div>
-                  <BarChart
-                    data={aggDeep.map((p) => p.value)}
-                    dates={datesDeep}
-                    color={fieldColor("deep_sleep_hours")!}
-                    height={36}
-                    unit="hrs"
-                  />
-                </div>
-                <div>
-                  <div className="text-[10px] text-white/40 mb-1">REM</div>
-                  <BarChart
-                    data={aggREM.map((p) => p.value)}
-                    dates={datesREM}
-                    color={fieldColor("rem_sleep_hours")!}
-                    height={36}
-                    unit="hrs"
-                  />
-                </div>
-              </div>
-            </Card>
-          </div>
-        )}
-
-        {section === "training" && (
-          <div>
-            {/* @ts-expect-error redesign-slice-3-or-4 */}
-            <MetricCard
-              title="Steps"
-              current={avgSteps !== null ? Math.round(avgSteps).toLocaleString() : null}
-              unit={granularity === "day" ? "/day avg" : `/${granularity} avg`}
-              color={fieldColor("steps")!}
-            >
-              <BarChart
-                data={aggSteps.map((p) => p.value)}
-                dates={datesSteps}
-                color={fieldColor("steps")!}
-                height={60}
-                goalLine={granularity === "day" ? 8000 : undefined}
-                unit="steps"
-              />
-            </MetricCard>
-
-            {/* @ts-expect-error redesign-slice-3-or-4 */}
-            <MetricCard
-              title="Calories Eaten"
-              current={avgCalsEaten !== null ? Math.round(avgCalsEaten).toLocaleString() : null}
-              unit="kcal/day avg"
-              color={fieldColor("calories")!}
-            >
-              <BarChart
-                data={aggCals.map((p) => p.value)}
-                dates={datesCals}
-                color={fieldColor("calories")!}
-                height={60}
-                unit="kcal"
-              />
-            </MetricCard>
-
-            {/* @ts-expect-error redesign-slice-3-or-4 */}
-            <MetricCard
-              title="Strain"
-              current={avgStrainVal !== null ? avgStrainVal.toFixed(1) : null}
-              unit="/21 avg"
-              color={fieldColor("strain")!}
-            >
-              <BarChart
-                data={aggStrain.map((p) => p.value)}
-                dates={datesStrain}
-                color={fieldColor("strain")!}
-                height={60}
-                goalLine={granularity === "day" ? 14 : undefined}
-                unit="/21"
-              />
-            </MetricCard>
-          </div>
-        )}
-
-        {section === "strength" && (
-          <div>
-            <Card tint="nutrition">
-              <SectionLabel>🏆 PRs in window · est. 1RM</SectionLabel>
-              {prs.length === 0 && (
-                <p className="text-xs text-white/30 py-3 text-center">
-                  No workouts in this period.
-                </p>
-              )}
-              {prs.slice(0, 12).map((pr) => (
-                <div
-                  key={pr.name}
-                  className="flex justify-between items-center py-2 border-t border-white/[0.04] first:border-t-0"
-                >
-                  <div>
-                    <div className="text-xs text-white/75">{pr.name.split("(")[0].trim()}</div>
-                    <div className="text-[10px] text-white/30 mt-px">
-                      {pr.kg}kg × {pr.reps} · {pr.date}
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-[20px] font-bold font-mono" style={{ color: "#ffd60a" }}>
-                      {pr.est1rm}
-                    </div>
-                    <div className="text-[9px] text-white/25">kg 1RM</div>
-                  </div>
-                </div>
-              ))}
-            </Card>
-          </div>
-        )}
-
-        {section === "compare" && (
-          <div>
-            <Card>
-              <SectionLabel>FIRST HALF vs SECOND HALF · 7-day window split</SectionLabel>
-              <CompareRow
-                label="HRV"
-                w1={avg(w1.map((l) => l.hrv))}
-                w2={avg(w2.map((l) => l.hrv))}
-                unit="ms"
-                positiveIsGood
-              />
-              <CompareRow
-                label="RHR"
-                w1={avg(w1.map((l) => l.resting_hr))}
-                w2={avg(w2.map((l) => l.resting_hr))}
-                unit="bpm"
-                positiveIsGood={false}
-              />
-              <CompareRow
-                label="Sleep"
-                w1={avg(w1.map((l) => l.sleep_hours))}
-                w2={avg(w2.map((l) => l.sleep_hours))}
-                unit="hrs"
-                positiveIsGood
-                fixed={1}
-              />
-              <CompareRow
-                label="Recovery"
-                w1={avg(w1.map((l) => l.recovery))}
-                w2={avg(w2.map((l) => l.recovery))}
-                unit="%"
-                positiveIsGood
-              />
-              <CompareRow
-                label="Steps"
-                w1={avg(w1.map((l) => l.steps))}
-                w2={avg(w2.map((l) => l.steps))}
-                unit=""
-                positiveIsGood
-              />
-              <CompareRow
-                label="Calories"
-                w1={avg(w1.map((l) => l.calories))}
-                w2={avg(w2.map((l) => l.calories))}
-                unit="kcal"
-                positiveIsGood
-              />
-            </Card>
-            <p className="text-[10px] text-white/30 mt-2">
-              Splits the selected period in half and averages each metric.
-            </p>
-          </div>
-        )}
+              color={METRIC_COLOR.body_fat_pct}
+              icon="%"
+              label="Body Fat"
+              value={bfAvg}
+              unit="%"
+              delta={bfDelta}
+              deltaUnit="%"
+              compact
+              trend={bfTrend}
+              href="/trends/body_fat_pct"
+            />
+          )}
+        </div>
       </div>
     </main>
   );
 }
 
-function CompareRow({
-  label,
-  w1,
-  w2,
-  unit,
-  positiveIsGood,
-  fixed = 0,
-}: {
-  label: string;
-  w1: number | null;
-  w2: number | null;
-  unit: string;
-  positiveIsGood: boolean;
-  fixed?: number;
-}) {
-  const fmt = (v: number | null) => (v === null ? "—" : v.toFixed(fixed));
-  const diff = w1 !== null && w2 !== null ? w2 - w1 : null;
-  const dc =
-    diff === null || diff === 0
-      ? "rgba(255,255,255,0.3)"
-      : positiveIsGood
-        ? diff > 0
-          ? "#30d158"
-          : "#ff453a"
-        : diff < 0
-          ? "#30d158"
-          : "#ff453a";
-  const arrow = diff === null || diff === 0 ? "→" : diff > 0 ? "↑" : "↓";
-  return (
-    <div className="flex justify-between items-center py-2 border-t border-white/[0.04] first:border-t-0">
-      <span className="text-[10px] uppercase tracking-[0.08em] text-white/40 w-20">{label}</span>
-      <div className="flex gap-3 font-mono text-sm">
-        <span className="text-white/60 w-16 text-right">
-          {fmt(w1)}
-          <span className="text-[10px] text-white/30 ml-0.5">{unit}</span>
-        </span>
-        <span className="text-white/85 w-16 text-right">
-          {fmt(w2)}
-          <span className="text-[10px] text-white/30 ml-0.5">{unit}</span>
-        </span>
-        <span className="w-16 text-right" style={{ color: dc }}>
-          {arrow}{" "}
-          {diff === null
-            ? "—"
-            : Math.abs(diff).toFixed(fixed === 0 && Math.abs(diff) >= 100 ? 0 : fixed)}
-        </span>
-      </div>
-    </div>
-  );
-}
