@@ -30,6 +30,19 @@ export async function resolve(specifier, context, nextResolve) {
     // Return the first candidate — Node will throw if the file doesn't exist
     return { url: pathToFileURL(candidates[0]).href, shortCircuit: true };
   }
+
+  // Resolve extensionless relative imports (e.g. "./withings") to .ts files
+  // so that lib/*.ts files imported by scripts work when they use bare relative
+  // specifiers without explicit .ts extensions.
+  if ((specifier.startsWith("./") || specifier.startsWith("../")) && !specifier.match(/\\.[a-z]+$/i)) {
+    const parentUrl = context.parentURL ?? pathToFileURL(ROOT + "/x").href;
+    // Decode URL-encoded characters (e.g. %20 for spaces) before resolving the path
+    const parentPath = decodeURIComponent(new URL(parentUrl).pathname);
+    const parentDir = parentPath.replace(/\\/[^\\/]*$/, "");
+    const resolved = resolvePath(parentDir, specifier + ".ts");
+    return { url: pathToFileURL(resolved).href, shortCircuit: true };
+  }
+
   return nextResolve(specifier, context);
 }
 `;
