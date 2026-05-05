@@ -45,3 +45,6 @@ _prototype.jsx
 
 # supabase CLI tooling state
 supabase/.temp/
+
+# superpowers brainstorm session files
+.superpowers/
