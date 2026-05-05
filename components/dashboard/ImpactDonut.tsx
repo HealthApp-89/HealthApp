@@ -4,6 +4,8 @@ import { useState } from "react";
 import type { ImpactSegment } from "@/lib/coach/impact";
 import { scoreColor, scoreLabel } from "@/lib/ui/colors";
 import { fmtNum } from "@/lib/ui/score";
+import { COLOR, METRIC_COLOR } from "@/lib/ui/theme";
+import { Card } from "@/components/ui/Card";
 
 type Props = {
   segments: ImpactSegment[];
@@ -53,8 +55,8 @@ export function ImpactDonut({ segments, score, size = 260 }: Props) {
     ? focused.sign === "positive"
       ? focused.color
       : focused.sign === "negative"
-        ? "#ff453a"
-        : "rgba(255,255,255,0.55)"
+        ? COLOR.danger
+        : COLOR.textMid
     : null;
 
   return (
@@ -140,7 +142,7 @@ export function ImpactDonut({ segments, score, size = 260 }: Props) {
           </div>
           <div
             className="text-[10px] uppercase tracking-[0.12em] mt-1"
-            style={{ color: score !== null ? sc : "rgba(255,255,255,0.3)" }}
+            style={{ color: score !== null ? sc : COLOR.textFaint }}
           >
             {score !== null ? sl : "no data"}
           </div>
@@ -149,7 +151,7 @@ export function ImpactDonut({ segments, score, size = 260 }: Props) {
               <span
                 key={`p${i}`}
                 className="w-1.5 h-1.5 rounded-full"
-                style={{ background: "#30d158", boxShadow: "0 0 4px #30d158" }}
+                style={{ background: COLOR.success, boxShadow: `0 0 4px ${COLOR.success}` }}
                 aria-hidden
               />
             ))}
@@ -157,7 +159,7 @@ export function ImpactDonut({ segments, score, size = 260 }: Props) {
               <span
                 key={`n${i}`}
                 className="w-1.5 h-1.5 rounded-full"
-                style={{ background: "#ff453a" }}
+                style={{ background: COLOR.danger }}
                 aria-hidden
               />
             ))}
@@ -167,16 +169,15 @@ export function ImpactDonut({ segments, score, size = 260 }: Props) {
 
       {/* Focused detail panel — visible when a slice or chip is active. */}
       {focused && focusColor && (
-        <div
-          className="rounded-[12px] px-3 py-2 w-full"
+        <Card
+          variant="compact"
           style={{
-            background: "rgba(255,255,255,0.04)",
             border: `1px solid ${
               focused.sign === "positive"
                 ? `${focused.color}66`
                 : focused.sign === "negative"
-                  ? "rgba(255,69,58,0.5)"
-                  : "rgba(255,255,255,0.1)"
+                  ? `${COLOR.danger}66`
+                  : COLOR.divider
             }`,
           }}
         >
@@ -193,7 +194,7 @@ export function ImpactDonut({ segments, score, size = 260 }: Props) {
                 }}
                 aria-hidden
               />
-              <span className="text-[11px] uppercase tracking-[0.1em] text-white/70">
+              <span className="text-[11px] uppercase tracking-[0.1em]" style={{ color: COLOR.textMuted }}>
                 {focused.label}
               </span>
               <span
@@ -214,8 +215,8 @@ export function ImpactDonut({ segments, score, size = 260 }: Props) {
               {focused.value !== null ? fmtNum(focused.value) : "—"}
             </span>
           </div>
-          <div className="text-[11px] text-white/60 mt-1">{focused.reason}</div>
-        </div>
+          <div className="text-[11px] mt-1" style={{ color: COLOR.textMuted }}>{focused.reason}</div>
+        </Card>
       )}
 
       {/* Legend — six metric chips, color-coded by sign, with raw value */}
@@ -233,15 +234,13 @@ export function ImpactDonut({ segments, score, size = 260 }: Props) {
               }
               className="rounded-lg px-2 py-1.5 text-left transition-opacity"
               style={{
-                background: isActive
-                  ? "rgba(255,255,255,0.06)"
-                  : "rgba(255,255,255,0.025)",
+                background: isActive ? COLOR.surfaceAlt : COLOR.surface,
                 border: `1px solid ${
                   s.sign === "positive"
                     ? `${s.color}55`
                     : s.sign === "negative"
-                      ? "rgba(255,69,58,0.4)"
-                      : "rgba(255,255,255,0.06)"
+                      ? `${COLOR.danger}55`
+                      : COLOR.divider
                 }`,
                 opacity: active === null || isActive ? 1 : 0.55,
                 cursor: "pointer",
@@ -257,7 +256,7 @@ export function ImpactDonut({ segments, score, size = 260 }: Props) {
                   }}
                   aria-hidden
                 />
-                <span className="text-[9px] uppercase tracking-[0.08em] text-white/55">
+                <span className="text-[9px] uppercase tracking-[0.08em]" style={{ color: COLOR.textMuted }}>
                   {s.label}
                 </span>
               </div>
@@ -268,13 +267,13 @@ export function ImpactDonut({ segments, score, size = 260 }: Props) {
                     s.sign === "positive"
                       ? s.color
                       : s.sign === "negative"
-                        ? "#ff453a"
-                        : "rgba(255,255,255,0.55)",
+                        ? COLOR.danger
+                        : COLOR.textMid,
                 }}
               >
                 {s.value !== null ? fmtNum(s.value) : "—"}
               </div>
-              <div className="text-[9px] text-white/35 mt-0.5 leading-tight">
+              <div className="text-[9px] mt-0.5 leading-tight" style={{ color: COLOR.textFaint }}>
                 {s.reason}
               </div>
             </button>

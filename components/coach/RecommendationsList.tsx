@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { PrioBox } from "@/components/ui/PrioBox";
+import { Card } from "@/components/ui/Card";
+import { Pill } from "@/components/ui/Pill";
+import { COLOR } from "@/lib/ui/theme";
 
 export type Recommendation = {
   id: string;
@@ -17,6 +19,13 @@ type Props = {
   initial: Recommendation[];
   weekStart: string | null;
 };
+
+function priorityToTone(p: string): "danger" | "warning" | "success" | "neutral" {
+  if (p === "high")   return "danger";
+  if (p === "medium") return "warning";
+  if (p === "low")    return "success";
+  return "neutral";
+}
 
 export function RecommendationsList({ initial, weekStart }: Props) {
   const [items, setItems] = useState<Recommendation[]>(initial);
@@ -42,30 +51,26 @@ export function RecommendationsList({ initial, weekStart }: Props) {
 
   if (!items.length) {
     return (
-      <div
-        className="rounded-[14px] px-4 py-5 text-center"
-        style={{
-          background: "rgba(255,255,255,0.025)",
-          border: "1px dashed rgba(255,255,255,0.1)",
-        }}
-      >
-        <p className="text-sm text-white/40">No recommendations for this week yet.</p>
-        <p className="text-[11px] text-white/25 mt-1.5">
+      <Card variant="compact">
+        <p style={{ fontSize: "14px", color: COLOR.textMuted, textAlign: "center", margin: "8px 0 4px" }}>
+          No recommendations for this week yet.
+        </p>
+        <p style={{ fontSize: "11px", color: COLOR.textFaint, textAlign: "center", marginTop: "6px" }}>
           Run a weekly review on the Last week tab to seed them.
         </p>
-      </div>
+      </Card>
     );
   }
 
   const doneCount = items.filter((i) => i.done).length;
 
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex justify-between items-center px-1">
-        <span className="text-[10px] uppercase tracking-[0.1em] text-white/35">
+    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0 4px" }}>
+        <span style={{ fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.1em", color: COLOR.textMuted }}>
           Week of {weekStart}
         </span>
-        <span className="text-[10px] text-white/40 font-mono">
+        <span style={{ fontSize: "10px", color: COLOR.textFaint, fontFamily: "var(--font-mono, monospace)" }}>
           {doneCount} / {items.length}
         </span>
       </div>
@@ -74,11 +79,18 @@ export function RecommendationsList({ initial, weekStart }: Props) {
         return (
           <label
             key={r.id}
-            className="flex gap-3 items-start rounded-[12px] px-3.5 py-3 cursor-pointer transition-colors"
             style={{
-              background: r.done ? "rgba(74,222,128,0.06)" : "rgba(255,255,255,0.025)",
-              border: `1px solid ${r.done ? "rgba(74,222,128,0.2)" : "rgba(255,255,255,0.07)"}`,
+              display: "flex",
+              gap: "12px",
+              alignItems: "flex-start",
+              borderRadius: "16px",
+              padding: "12px 14px",
+              cursor: "pointer",
+              background: r.done ? COLOR.successSoft : COLOR.surface,
+              border: `1px solid ${r.done ? COLOR.success + "44" : COLOR.divider}`,
+              boxShadow: "0 2px 8px rgba(20,30,80,0.05)",
               opacity: rowPending ? 0.6 : 1,
+              transition: "opacity 120ms",
             }}
           >
             <input
@@ -86,21 +98,35 @@ export function RecommendationsList({ initial, weekStart }: Props) {
               checked={r.done}
               disabled={rowPending}
               onChange={(e) => toggle(r.id, e.target.checked)}
-              className="mt-1 accent-emerald-400"
+              style={{ marginTop: "2px", accentColor: COLOR.success, cursor: "pointer" }}
             />
-            <div className="flex-1">
-              <div className="flex gap-2 items-center mb-1">
-                {r.priority && <PrioBox level={r.priority} />}
-                {r.category && (
-                  <span className="text-[9px] uppercase tracking-[0.1em] text-white/30">
-                    {r.category}
-                  </span>
-                )}
-              </div>
+            <div style={{ flex: 1 }}>
+              {(r.priority || r.category) && (
+                <div style={{ display: "flex", gap: "8px", alignItems: "center", marginBottom: "6px" }}>
+                  {r.priority && (
+                    <Pill tone={priorityToTone(r.priority)}>
+                      {r.priority.toUpperCase()}
+                    </Pill>
+                  )}
+                  {r.category && (
+                    <span
+                      style={{
+                        fontSize: "10px",
+                        textTransform: "uppercase",
+                        letterSpacing: "0.1em",
+                        color: COLOR.textFaint,
+                      }}
+                    >
+                      {r.category}
+                    </span>
+                  )}
+                </div>
+              )}
               <div
-                className="text-[13px] leading-relaxed"
                 style={{
-                  color: r.done ? "rgba(255,255,255,0.4)" : "rgba(255,255,255,0.85)",
+                  fontSize: "13px",
+                  lineHeight: 1.5,
+                  color: r.done ? COLOR.textMuted : COLOR.textStrong,
                   textDecoration: r.done ? "line-through" : "none",
                 }}
               >

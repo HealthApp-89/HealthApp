@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { COLOR } from "@/lib/ui/theme";
 
 type DashboardSectionProps = {
   label?: string;
@@ -14,11 +15,11 @@ export function DashboardSection({ label, trailing, children, className = "" }: 
       {(label || trailing) && (
         <div className="flex items-end justify-between px-1">
           {label && (
-            <h2 className="text-[10px] uppercase tracking-[0.18em] text-white/35 font-medium">
+            <h2 className="text-[10px] uppercase tracking-[0.18em] font-medium" style={{ color: COLOR.textMuted }}>
               {label}
             </h2>
           )}
-          {trailing && <div className="text-[10px] text-white/30">{trailing}</div>}
+          {trailing && <div className="text-[10px]" style={{ color: COLOR.textFaint }}>{trailing}</div>}
         </div>
       )}
       {children}

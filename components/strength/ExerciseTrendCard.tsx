@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { SparkLine } from "@/components/ui/SparkLine";
+import { LineChart, type LinePoint } from "@/components/charts/LineChart";
 import type { ExerciseTrendPoint } from "@/lib/data/workouts";
+import { COLOR, METRIC_COLOR } from "@/lib/ui/theme";
 
 type Props = {
   name: string;
@@ -10,39 +11,40 @@ type Props = {
 export function ExerciseTrendCard({ name, points }: Props) {
   const last = points[points.length - 1];
   const display = name.split("(")[0].trim();
+  const chartData: LinePoint[] = points.map((p) => ({ x: p.date.slice(5), y: p.est1rm }));
+  const accentColor = METRIC_COLOR.strain; // amber — fits strength/1RM trend
   return (
     <div
       className="rounded-[14px] px-4 py-3.5"
-      style={{ background: "rgba(255,159,10,0.07)", border: "1px solid rgba(255,159,10,0.2)" }}
+      style={{ background: COLOR.surface, border: `1px solid ${COLOR.divider}`, boxShadow: "0 2px 8px rgba(20,30,80,0.05)" }}
     >
       <div className="flex justify-between items-center mb-2.5">
-        <span className="text-[10px] uppercase tracking-[0.1em]" style={{ color: "rgba(255,159,10,0.8)" }}>
+        <span className="text-[10px] uppercase tracking-[0.1em]" style={{ color: accentColor }}>
           📈 {display}
         </span>
         <Link
           href="/strength"
           scroll={false}
           aria-label="Close exercise trend"
-          className="p-2 -m-2 rounded-full text-lg leading-none text-white/35 hover:text-white touch-manipulation select-none active:bg-white/10"
+          className="p-2 -m-2 rounded-full text-lg leading-none touch-manipulation select-none"
+          style={{ color: COLOR.textFaint }}
         >
           ×
         </Link>
       </div>
       {points.length >= 2 ? (
         <div>
-          <SparkLine
-            values={points.map((p) => p.est1rm)}
-            labels={points.map((p) => p.date.slice(5))}
-            unit="kg 1RM"
-            color="#ff9f0a"
+          <LineChart
+            data={chartData}
+            color={accentColor}
+            variant="mini"
             height={48}
-            chartId="extrend"
           />
           <div className="flex justify-between mt-1.5 mb-3">
             {points.map((p) => (
               <div key={p.date} className="text-center">
-                <div className="text-[8px] text-white/20">{p.date.slice(5)}</div>
-                <div className="text-[10px] font-mono" style={{ color: "#ff9f0a" }}>
+                <div className="text-[8px]" style={{ color: COLOR.textFaint }}>{p.date.slice(5)}</div>
+                <div className="text-[10px] font-mono" style={{ color: accentColor }}>
                   {p.est1rm}
                 </div>
               </div>
@@ -50,15 +52,15 @@ export function ExerciseTrendCard({ name, points }: Props) {
           </div>
           {last && (
             <div className="flex gap-2.5">
-              <div className="flex-1 rounded-[10px] px-3 py-2.5" style={{ background: "rgba(0,0,0,0.2)" }}>
-                <div className="text-[9px] text-white/30 mb-0.5">BEST SET</div>
-                <div className="text-lg font-bold font-mono" style={{ color: "#ff9f0a" }}>
+              <div className="flex-1 rounded-[10px] px-3 py-2.5" style={{ background: COLOR.surfaceAlt }}>
+                <div className="text-[9px] mb-0.5" style={{ color: COLOR.textFaint }}>BEST SET</div>
+                <div className="text-lg font-bold font-mono" style={{ color: accentColor }}>
                   {last.kg}kg × {last.reps}
                 </div>
               </div>
-              <div className="flex-1 rounded-[10px] px-3 py-2.5" style={{ background: "rgba(0,0,0,0.2)" }}>
-                <div className="text-[9px] text-white/30 mb-0.5">EST. 1RM</div>
-                <div className="text-lg font-bold font-mono" style={{ color: "#ff9f0a" }}>
+              <div className="flex-1 rounded-[10px] px-3 py-2.5" style={{ background: COLOR.surfaceAlt }}>
+                <div className="text-[9px] mb-0.5" style={{ color: COLOR.textFaint }}>EST. 1RM</div>
+                <div className="text-lg font-bold font-mono" style={{ color: accentColor }}>
                   {last.est1rm} kg
                 </div>
               </div>
@@ -66,7 +68,7 @@ export function ExerciseTrendCard({ name, points }: Props) {
           )}
         </div>
       ) : (
-        <div className="text-xs text-white/30 text-center py-3">
+        <div className="text-xs text-center py-3" style={{ color: COLOR.textFaint }}>
           Only 1 session — log more to see progression
         </div>
       )}

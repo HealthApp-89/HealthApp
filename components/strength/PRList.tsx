@@ -1,5 +1,7 @@
 import { Card, SectionLabel } from "@/components/ui/Card";
+import { Pill } from "@/components/ui/Pill";
 import type { PR } from "@/lib/data/workouts";
+import { COLOR } from "@/lib/ui/theme";
 
 export function PRList({ prs }: { prs: PR[] }) {
   if (!prs.length) return null;
@@ -10,19 +12,17 @@ export function PRList({ prs }: { prs: PR[] }) {
         <div
           key={pr.name}
           className="flex justify-between items-center py-2"
-          style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}
+          style={{ borderBottom: `1px solid ${COLOR.divider}` }}
         >
           <div>
-            <div className="text-xs text-white/75">{pr.name.split("(")[0].trim()}</div>
-            <div className="text-[10px] text-white/30 mt-px">
+            <div className="text-xs" style={{ color: COLOR.textStrong }}>{pr.name.split("(")[0].trim()}</div>
+            <div className="text-[10px] mt-px" style={{ color: COLOR.textFaint }}>
               {pr.kg}kg × {pr.reps} · {pr.date}
             </div>
           </div>
-          <div className="text-right">
-            <div className="text-[20px] font-bold font-mono" style={{ color: "#ffd60a" }}>
-              {pr.est1rm}
-            </div>
-            <div className="text-[9px] text-white/25">kg 1RM</div>
+          <div className="text-right flex flex-col items-end gap-1">
+            <Pill tone="warning">{pr.est1rm} kg 1RM</Pill>
+            <div className="text-[9px]" style={{ color: COLOR.textFaint }}>est. 1RM</div>
           </div>
         </div>
       ))}

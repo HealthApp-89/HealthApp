@@ -1,21 +1,20 @@
 import { Suspense } from "react";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { Header } from "@/components/layout/Header";
-import { InstallHint } from "@/components/layout/InstallHint";
-import { Card } from "@/components/ui/Card";
-import { MetricBar } from "@/components/ui/MetricBar";
+import { WeekStrip } from "@/components/layout/WeekStrip";
+import { ReadinessHero } from "@/components/dashboard/ReadinessHero";
+import { CoachEntryCard } from "@/components/dashboard/CoachEntryCard";
+import { RecentLiftsCard, type RecentSession } from "@/components/dashboard/RecentLiftsCard";
+import { MetricCard } from "@/components/charts/MetricCard";
 import { ImpactDonut } from "@/components/dashboard/ImpactDonut";
-import { DashboardSection } from "@/components/dashboard/DashboardSection";
-import { DashboardDatePager } from "@/components/dashboard/DashboardDatePager";
 import { WeeklyRollups } from "@/components/dashboard/WeeklyRollups";
-import { SkeletonCard } from "@/components/dashboard/SkeletonCard";
-import { FIELDS } from "@/lib/ui/colors";
+import { InstallHint } from "@/components/layout/InstallHint";
+import { COLOR, METRIC_COLOR, modeColorLight } from "@/lib/ui/theme";
 import { calcReadinessScore } from "@/lib/ui/score";
 import { computeImpact } from "@/lib/coach/impact";
+import { buildDailyPlan, getIntensityMode } from "@/lib/coach/readiness";
+import { todayInUserTz, formatHeaderDate } from "@/lib/time";
 import type { DailyLog } from "@/lib/data/types";
-import { todayInUserTz } from "@/lib/time";
 
 // 60s ISR — sync routes call revalidatePath() so new WHOOP/Withings/AH data
 // invalidates immediately. Auth gating still works (middleware runs first).
@@ -28,15 +27,17 @@ function shiftIso(iso: string, deltaDays: number): string {
   return new Date(t + deltaDays * 86_400_000).toISOString().slice(0, 10);
 }
 
-function dateLabel(selected: string, today: string): string {
-  if (selected === today) return "Today";
-  if (selected === shiftIso(today, -1)) return "Yesterday";
-  return new Date(selected + "T00:00:00Z").toLocaleDateString("en-US", {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    timeZone: "UTC",
-  });
+function rollingAvg(values: (number | null | undefined)[]): number | null {
+  const present = values.filter((v): v is number => typeof v === "number" && !isNaN(v));
+  if (present.length === 0) return null;
+  return present.reduce((a, b) => a + b, 0) / present.length;
+}
+
+function formatShortDate(iso: string): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  const day = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"][dt.getUTCDay()];
+  return `${day} ${dt.getUTCDate()}`;
 }
 
 export default async function Home(props: {
@@ -56,6 +57,7 @@ export default async function Home(props: {
     sp.date && ISO_DATE.test(sp.date) && sp.date <= today ? sp.date : today;
   const selectedYesterday = shiftIso(selectedDate, -1);
   const isToday = selectedDate === today;
+  const sevenDaysBefore = shiftIso(selectedDate, -7);
 
   const DAILY_LOG_COLS =
     "user_id, date, hrv, resting_hr, recovery, spo2, skin_temp_c, strain, sleep_hours, sleep_score, deep_sleep_hours, rem_sleep_hours, weight_kg, body_fat_pct, steps, calories, calories_eaten, protein_g, carbs_g, fat_g, notes, source, updated_at";
@@ -69,7 +71,8 @@ export default async function Home(props: {
     { data: prevRow },
     { data: checkin },
     { data: latestWeightRow },
-    { data: earliestRow },
+    { data: last7Rows },
+    { data: recentWorkoutsRaw },
   ] = await Promise.all([
     supabase
       .from("profiles")
@@ -104,14 +107,27 @@ export default async function Home(props: {
       .order("date", { ascending: false })
       .limit(1)
       .maybeSingle(),
-    // Earliest log date — caps the date pager's prev button.
+    // Rolling 7-day window for delta computations (excludes selected day itself)
     supabase
       .from("daily_logs")
-      .select("date")
+      .select("date, hrv, resting_hr, sleep_hours, strain")
       .eq("user_id", user.id)
-      .order("date", { ascending: true })
-      .limit(1)
-      .maybeSingle(),
+      .gte("date", sevenDaysBefore)
+      .lt("date", selectedDate)
+      .order("date", { ascending: false }),
+    // Recent workouts — last 14 days, up to 5 rows (we only render 2)
+    supabase
+      .from("workouts")
+      .select(
+        `id, date, type,
+         exercises(name, position,
+           exercise_sets(kg, reps, warmup, set_index))`,
+      )
+      .eq("user_id", user.id)
+      .gte("date", shiftIso(selectedDate, -14))
+      .lte("date", selectedDate)
+      .order("date", { ascending: false })
+      .limit(5),
   ]);
 
   const baselines = (profile?.whoop_baselines as Record<string, unknown> | null) ?? null;
@@ -121,18 +137,14 @@ export default async function Home(props: {
   const selectedLog = (selectedRow ?? null) as DailyLog | null;
   const prevLog = (prevRow ?? null) as DailyLog | null;
   const hasData = !!selectedLog;
-  const minDate = (earliestRow?.date as string | undefined) ?? null;
 
   // Resolve the freshest weight available — selected day's log first, otherwise
-  // the most recent prior log with a weight reading. Used as the protein-target
-  // denominator and as the BMR weight input.
+  // the most recent prior log with a weight reading.
   const effectiveWeightKg =
     selectedLog?.weight_kg ??
     (typeof latestWeightRow?.weight_kg === "number" ? latestWeightRow.weight_kg : null);
 
-  // Mifflin-St Jeor (male) × 1.55 activity factor. Returns null if any input is
-  // missing — the calorie segment falls back to "target unknown" in that case.
-  // TODO: read sex from profile once a column exists; hardcoded male for now.
+  // Mifflin-St Jeor (male) × 1.55 activity factor.
   const calorieTarget =
     effectiveWeightKg !== null &&
     typeof profile?.age === "number" &&
@@ -140,13 +152,7 @@ export default async function Home(props: {
       ? (10 * effectiveWeightKg + 6.25 * profile.height_cm - 5 * profile.age + 5) * 1.55
       : null;
 
-  // Donut readiness reflects: selected day's recovery (HRV / RHR / sleep / deep
-  // sleep / morning check-in) PLUS load metrics (steps, strain, calories,
-  // protein, carbs). For load: prefer the selected day's value when present —
-  // a workout already logged today should count toward today's strain. Fall
-  // back to the prior day only when the selected day has no value yet (e.g.
-  // 9am, no movement logged), so the donut still reflects how you feel rather
-  // than a blank.
+  // Donut readiness: selected day's recovery + load metrics, falling back to prev day
   const scoreLog: DailyLog | null = selectedLog
     ? {
         ...selectedLog,
@@ -158,9 +164,7 @@ export default async function Home(props: {
       }
     : null;
 
-  // Track which load fields had to fall back to the prior day. Used to drive
-  // the "yest. —" prefix in the donut chip reason line so the source of each
-  // value is honest.
+  // Track which load fields had to fall back to the prior day.
   const fellBackToPrior = new Set<string>();
   if (selectedLog) {
     if (selectedLog.steps == null && prevLog?.steps != null) fellBackToPrior.add("steps");
@@ -183,9 +187,6 @@ export default async function Home(props: {
   const rawImpact = hasData
     ? computeImpact(scoreLog, hrvBaseline, effectiveWeightKg, calorieTarget)
     : null;
-  // Prefix only the segments whose value actually fell back to the prior day,
-  // so a strength session logged today shows as today's strain (no "yest." tag)
-  // but a still-blank steps count for the morning falls back and is labeled.
   const impact = rawImpact
     ? {
         ...rawImpact,
@@ -197,102 +198,129 @@ export default async function Home(props: {
       }
     : null;
 
-  const sectionLabel = dateLabel(selectedDate, today);
+  // buildDailyPlan / getIntensityMode for CoachEntryCard
+  const feelInput = checkin
+    ? {
+        readiness: checkin.readiness ?? null,
+        energyLabel: checkin.energy_label ?? null,
+        mood: checkin.mood ?? null,
+        soreness: checkin.soreness ?? null,
+        notes: checkin.feel_notes ?? null,
+      }
+    : null;
+  const dailyPlan = buildDailyPlan(selectedLog, feelInput, hrvBaseline);
+  const mode = getIntensityMode(dailyPlan.readiness, feelInput);
+
+  // Delta computations: today vs 7-day rolling average
+  const last7 = last7Rows ?? [];
+  const hrvAvg = rollingAvg(last7.map((r) => r.hrv));
+  const rhrAvg = rollingAvg(last7.map((r) => r.resting_hr));
+  const sleepAvg = rollingAvg(last7.map((r) => r.sleep_hours));
+  const strainAvg = rollingAvg(last7.map((r) => r.strain));
+
+  const hrvDelta = selectedLog?.hrv != null && hrvAvg != null ? selectedLog.hrv - hrvAvg : null;
+  const rhrDelta = selectedLog?.resting_hr != null && rhrAvg != null ? selectedLog.resting_hr - rhrAvg : null;
+  const sleepDelta = selectedLog?.sleep_hours != null && sleepAvg != null ? selectedLog.sleep_hours - sleepAvg : null;
+  const strainDelta = selectedLog?.strain != null && strainAvg != null ? selectedLog.strain - strainAvg : null;
+
+  // Build RecentSession[] from recent workouts (compute volume from sets)
+  type RawWorkout = {
+    id: string;
+    date: string;
+    type: string | null;
+    exercises: {
+      name: string;
+      position: number | null;
+      exercise_sets: { kg: number | null; reps: number | null; warmup: boolean; set_index: number }[];
+    }[] | null;
+  };
+  const recentSessions: RecentSession[] = (recentWorkoutsRaw as RawWorkout[] | null ?? []).map((w) => {
+    let vol = 0;
+    for (const e of w.exercises ?? []) {
+      for (const s of e.exercise_sets ?? []) {
+        if (!s.warmup && s.kg && s.reps) vol += s.kg * s.reps;
+      }
+    }
+    const firstName = (w.exercises ?? [])
+      .slice()
+      .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))[0]?.name;
+    const title = w.type
+      ? firstName
+        ? `${w.type} · ${firstName}`
+        : w.type
+      : firstName ?? "Workout";
+    return {
+      date: formatShortDate(w.date),
+      title,
+      volumeKg: vol,
+    };
+  });
 
   return (
-    <main>
-      <Header
-        email={user.email ?? null}
-        name={profile?.name ?? null}
-        score={score}
-        whoopSyncedAt={tokens?.updated_at ?? null}
-      />
+    <div style={{ maxWidth: "640px", margin: "0 auto", padding: "12px 8px 16px" }}>
+      {/* Page header */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 12px 14px" }}>
+        <div>
+          <div style={{ fontSize: "12px", color: COLOR.textMuted, fontWeight: 500 }}>{formatHeaderDate()}</div>
+          <h1 style={{ fontSize: "22px", fontWeight: 700, letterSpacing: "-0.02em", marginTop: "2px" }}>Today</h1>
+        </div>
+        <div
+          style={{
+            width: "40px",
+            height: "40px",
+            borderRadius: "50%",
+            background: `linear-gradient(135deg, ${COLOR.accent}, ${COLOR.accentDeep})`,
+            color: "#fff",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: "14px",
+            fontWeight: 700,
+          }}
+        >
+          {(profile?.name ?? user.email ?? "A")[0].toUpperCase()}
+        </div>
+      </div>
+
       {isToday && <InstallHint />}
 
-      <div className="px-4 pt-3.5 max-w-3xl mx-auto flex flex-col gap-5">
-        <DashboardDatePager
-          selectedDate={selectedDate}
-          today={today}
-          minDate={minDate}
+      <WeekStrip selected={selectedDate} today={today} />
+
+      <div style={{ display: "flex", flexDirection: "column", gap: "10px", padding: "0 8px" }}>
+        <ReadinessHero
+          score={score ?? null}
+          status={mode.label.replace(/^[^\s]+\s/, "")}
+          subtitle={mode.desc}
         />
 
-        {/* HERO — impact donut: per-metric +/- contribution to selected day's readiness */}
-        <DashboardSection
-          label={sectionLabel}
-          trailing={
-            hasData && impact ? (
-              <span
-                className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full font-mono text-[10px]"
-                style={{
-                  background: "rgba(255,255,255,0.04)",
-                  border: "1px solid rgba(255,255,255,0.08)",
-                  color: "rgba(255,255,255,0.6)",
-                }}
-              >
-                <span style={{ color: "#30d158" }}>+{impact.positiveCount}</span>
-                <span className="text-white/25">·</span>
-                <span style={{ color: "#ff453a" }}>−{impact.negativeCount}</span>
-              </span>
-            ) : null
-          }
-        >
-          {hasData && impact ? (
-            <div
-              className="rounded-[18px] border border-white/[0.06] px-4 py-5 flex justify-center"
-              style={{
-                background:
-                  "linear-gradient(135deg, rgba(255,255,255,0.025), rgba(255,255,255,0.005))",
-              }}
-            >
-              <ImpactDonut segments={impact.segments} score={score} />
-            </div>
-          ) : (
-            <div className="rounded-[18px] border border-white/[0.06] bg-white/[0.02] text-center px-4 py-8">
-              <div className="text-sm text-white/55 mb-1">
-                No data {isToday ? "today" : `for ${sectionLabel.toLowerCase()}`}
-              </div>
-              <div className="text-xs text-white/30 mb-3.5">
-                {isToday
-                  ? "Sync WHOOP or fill the daily log"
-                  : "Nothing was logged on this day"}
-              </div>
-              <Link
-                href={isToday ? "/log" : `/log?date=${selectedDate}`}
-                className="inline-block rounded-[10px] px-[18px] py-2 text-xs font-semibold"
-                style={{
-                  background: "rgba(10,132,255,0.15)",
-                  border: "1px solid #0a84ff55",
-                  color: "#0a84ff",
-                }}
-              >
-                Log {isToday ? "Today" : sectionLabel} →
-              </Link>
-            </div>
-          )}
-        </DashboardSection>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+          <MetricCard color={METRIC_COLOR.hrv}        icon="♥" label="HRV"        value={selectedLog?.hrv ?? null}        unit="ms"  delta={hrvDelta}   deltaUnit="ms" />
+          <MetricCard color={METRIC_COLOR.resting_hr} icon="♥" label="Resting HR" value={selectedLog?.resting_hr ?? null} unit="bpm" delta={rhrDelta}   deltaUnit="bpm" inverted />
+          <MetricCard color={METRIC_COLOR.sleep_hours} icon="☾" label="Sleep"     value={selectedLog?.sleep_hours ?? null} unit="h"  delta={sleepDelta} deltaUnit="h" />
+          <MetricCard color={METRIC_COLOR.strain}     icon="⚡" label="Strain"    value={selectedLog?.strain ?? null}                delta={strainDelta} />
+        </div>
 
-        {/* SELECTED DAY'S METRICS — renders synchronously from the small day-row query */}
-        {hasData && (
-          <DashboardSection label={`${sectionLabel}'s metrics`}>
-            <Card>
-              <div className="flex flex-col gap-2.5">
-                {FIELDS.filter((f) => selectedLog![f.k] != null).map((f) => (
-                  <MetricBar
-                    key={f.k}
-                    label={f.l}
-                    value={selectedLog![f.k]}
-                    unit={f.u}
-                    max={f.m}
-                    color={f.c}
-                  />
-                ))}
-              </div>
-            </Card>
-          </DashboardSection>
+        {(selectedLog?.weight_kg != null || selectedLog?.body_fat_pct != null) && (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+            <MetricCard color={METRIC_COLOR.weight_kg}    icon="⚖" label="Weight"   value={selectedLog?.weight_kg ?? null}    unit="kg" />
+            <MetricCard color={METRIC_COLOR.body_fat_pct} icon="%" label="Body Fat" value={selectedLog?.body_fat_pct ?? null} unit="%" />
+          </div>
         )}
 
-        {/* MONITORS + WEEKLY ROLLUPS — heavier 14-day query, streamed in */}
-        <Suspense fallback={<SkeletonCard height={420} label="Monitors · last 7 days" />}>
+        {hasData && impact ? (
+          <ImpactDonut segments={impact.segments} score={score} />
+        ) : null}
+
+        <CoachEntryCard
+          headline={mode.desc}
+          thumbnailColor={modeColorLight(mode.color)}
+          thumbnailGlyph={"▲"}
+          meta="Coach · 2 min read"
+        />
+
+        <RecentLiftsCard sessions={recentSessions} />
+
+        <Suspense fallback={null}>
           <WeeklyRollups
             userId={user.id}
             today={selectedDate}
@@ -301,13 +329,7 @@ export default async function Home(props: {
             hrvBaseline={hrvBaseline}
           />
         </Suspense>
-
-        <form action="/api/auth/signout" method="post" className="flex justify-end pt-4">
-          <button className="text-[10px] text-white/30 hover:text-white" type="submit">
-            Sign out
-          </button>
-        </form>
       </div>
-    </main>
+    </div>
   );
 }

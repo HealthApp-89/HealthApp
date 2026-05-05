@@ -1,54 +1,78 @@
 import type { DailyPlan } from "@/lib/coach/readiness";
+import { Card } from "@/components/ui/Card";
+import { RADIUS, modeColorLight } from "@/lib/ui/theme";
 
 type Props = {
   plan: DailyPlan;
 };
 
-/** Read-only relocation of the dashboard's old session plan card.
- *  Drop the prior 6-exercise cap; show the full session. */
+/** Light-theme session plan card for the strength page.
+ *  Shows session type, mode intensity, description, and full exercise list. */
 export function TodayPlanCard({ plan }: Props) {
-  const { readiness, mode, sessionType, exercises } = plan;
+  const accent = modeColorLight(plan.mode.color);
 
   return (
-    <div
-      className="rounded-[14px] p-4"
-      style={{
-        background: `linear-gradient(135deg, ${mode.color}12, rgba(0,0,0,0.3))`,
-        border: `1px solid ${mode.color}30`,
-      }}
+    <Card
+      background={accent}
+      shadow={`0 12px 24px -8px ${accent}55`}
+      style={{ color: "#fff", borderRadius: RADIUS.cardHero, padding: "16px 18px" }}
     >
-      <div className="flex justify-between items-center mb-2">
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
         <div>
-          <div className="text-[10px] uppercase tracking-[0.1em] text-white/40">
-            Today&apos;s Session
+          <div
+            style={{
+              fontSize: "10px",
+              opacity: 0.85,
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
+              fontWeight: 600,
+            }}
+          >
+            Today&apos;s session
           </div>
-          <div className="text-lg font-bold text-white mt-0.5">
-            {sessionType === "REST" ? "Rest Day 🏠" : `💪 ${sessionType}`}
+          <div style={{ fontSize: "18px", fontWeight: 700, marginTop: "2px" }}>
+            {plan.sessionType === "REST" ? "Rest day" : `💪 ${plan.sessionType}`}
           </div>
         </div>
-        <div className="text-right">
-          <div className="text-[11px] font-bold" style={{ color: mode.color }}>
-            {mode.label}
-          </div>
-          <div className="text-[10px] text-white/35 mt-0.5">
-            Readiness {readiness.score}/100
-          </div>
-        </div>
+        <span
+          style={{
+            fontSize: "10px",
+            padding: "4px 8px",
+            background: "rgba(255,255,255,0.18)",
+            borderRadius: "9999px",
+            fontWeight: 700,
+            letterSpacing: "0.04em",
+            textTransform: "uppercase",
+          }}
+        >
+          {plan.mode.label.replace(/^[^\s]+\s/, "")}
+        </span>
       </div>
-      <div className="text-[11px] text-white/50 leading-relaxed">{mode.desc}</div>
+      <p style={{ fontSize: "12px", opacity: 0.85, marginTop: "8px", lineHeight: 1.4 }}>
+        {plan.mode.desc}
+      </p>
 
-      {sessionType !== "REST" && exercises.length > 0 && (
-        <div className="mt-3 grid grid-cols-1 gap-1.5">
-          {exercises.map((ex) => (
-            <div key={ex.name} className="flex justify-between text-[11px]">
-              <span className="text-white/55">{ex.name.split("(")[0].trim()}</span>
-              <span className="font-mono" style={{ color: mode.color }}>
+      {plan.sessionType !== "REST" && plan.exercises.length > 0 && (
+        <div style={{ marginTop: "12px" }}>
+          {plan.exercises.map((ex) => (
+            <div
+              key={ex.name}
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                padding: "6px 0",
+                borderTop: "1px solid rgba(255,255,255,0.18)",
+                fontSize: "12px",
+              }}
+            >
+              <span style={{ opacity: 0.85 }}>{ex.name.split("(")[0].trim()}</span>
+              <span data-tnum style={{ fontWeight: 600, opacity: 0.95 }}>
                 {ex.target}
               </span>
             </div>
           ))}
         </div>
       )}
-    </div>
+    </Card>
   );
 }

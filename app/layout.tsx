@@ -2,12 +2,15 @@ import type { Metadata } from "next";
 import { DM_Sans, DM_Mono } from "next/font/google";
 import "./globals.css";
 import { ChatBubbleGate } from "@/components/chat/ChatBubbleGate";
+import { BottomNav } from "@/components/layout/BottomNav";
+import { Fab } from "@/components/layout/Fab";
+import { TopNav } from "@/components/layout/TopNav";
 
 // Self-hosted via next/font — removes the render-blocking Google CSS
 // round-trip (~200ms cold on LTE) and ships zero layout shift.
 const dmSans = DM_Sans({
   subsets: ["latin"],
-  weight: ["300", "400", "500", "600"],
+  weight: ["300", "400", "500", "600", "700", "800"],
   display: "swap",
   variable: "--font-dm-sans",
 });
@@ -29,6 +32,7 @@ export const metadata: Metadata = {
     statusBarStyle: "black-translucent",
     title: "Apex",
   },
+  themeColor: "#f1f2f6",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -47,8 +51,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, interactive-widget=resizes-content"
         />
       </head>
-      <body className="min-h-[100dvh] pt-[env(safe-area-inset-top)] pb-[calc(env(safe-area-inset-bottom)+48px)]">
-        {children}
+      <body className="min-h-[100dvh] bg-bg pt-[env(safe-area-inset-top)] pb-[calc(env(safe-area-inset-bottom)+76px)] md:pb-[env(safe-area-inset-bottom)]">
+        <TopNav />
+        <main>{children}</main>
+        <BottomNav />
+        <Fab />
         <ChatBubbleGate />
       </body>
     </html>

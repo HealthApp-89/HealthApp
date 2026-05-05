@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { PrioBox } from "@/components/ui/PrioBox";
+import { Card } from "@/components/ui/Card";
+import { Pill } from "@/components/ui/Pill";
+import { COLOR } from "@/lib/ui/theme";
 
 export type Insight = {
   priority: "high" | "medium" | "low" | string;
@@ -10,10 +12,17 @@ export type Insight = {
   body: string;
 };
 
+function priorityToTone(p: string): "danger" | "warning" | "success" | "neutral" {
+  if (p === "high")   return "danger";
+  if (p === "medium") return "warning";
+  if (p === "low")    return "success";
+  return "neutral";
+}
+
 export function InsightsList({ insights }: { insights: Insight[] }) {
   const [open, setOpen] = useState<number>(-1);
   return (
-    <div className="flex flex-col gap-2">
+    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
       {insights.map((x, i) => {
         const expanded = open === i;
         return (
@@ -21,30 +30,65 @@ export function InsightsList({ insights }: { insights: Insight[] }) {
             type="button"
             key={i}
             onClick={() => setOpen(expanded ? -1 : i)}
-            className="text-left rounded-[12px] px-3.5 py-3 transition-colors"
             style={{
-              background: "rgba(255,255,255,0.025)",
-              border: "1px solid rgba(255,255,255,0.07)",
+              textAlign: "left",
+              background: "none",
+              border: "none",
+              padding: 0,
+              cursor: "pointer",
+              width: "100%",
             }}
           >
-            <div className="flex items-center gap-2">
-              <PrioBox level={x.priority} />
-              <span className="text-[9px] uppercase tracking-[0.1em] text-white/30">
-                {x.category}
-              </span>
-              <span className="text-[13px] font-medium flex-1">{x.title}</span>
-              <span
-                className="text-white/25 transition-transform"
-                style={{ transform: expanded ? "rotate(90deg)" : undefined }}
-              >
-                ›
-              </span>
-            </div>
-            {expanded && (
-              <div className="text-xs text-white/55 leading-relaxed mt-2.5 pl-[15px]">
-                {x.body}
+            <Card variant="compact">
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <Pill tone={priorityToTone(x.priority)}>
+                  {x.priority.toUpperCase()}
+                </Pill>
+                <span
+                  style={{
+                    fontSize: "10px",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.1em",
+                    color: COLOR.textFaint,
+                  }}
+                >
+                  {x.category}
+                </span>
+                <span
+                  style={{
+                    fontSize: "13px",
+                    fontWeight: 600,
+                    color: COLOR.textStrong,
+                    flex: 1,
+                  }}
+                >
+                  {x.title}
+                </span>
+                <span
+                  style={{
+                    color: COLOR.textFaint,
+                    transition: "transform 120ms",
+                    transform: expanded ? "rotate(90deg)" : undefined,
+                    fontSize: "16px",
+                  }}
+                >
+                  ›
+                </span>
               </div>
-            )}
+              {expanded && (
+                <div
+                  style={{
+                    fontSize: "12px",
+                    color: COLOR.textMid,
+                    lineHeight: 1.5,
+                    marginTop: "10px",
+                    paddingLeft: "4px",
+                  }}
+                >
+                  {x.body}
+                </div>
+              )}
+            </Card>
           </button>
         );
       })}

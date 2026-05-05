@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { Card } from "@/components/ui/Card";
+import { COLOR, RADIUS } from "@/lib/ui/theme";
 
 type Mode = "signin" | "signup";
 
@@ -33,26 +35,41 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center p-6">
-      <div className="max-w-sm w-full rounded-2xl border border-white/10 bg-white/[0.03] p-8">
-        <div className="text-xs uppercase tracking-[0.2em] text-white/30 text-center mb-3">
+    <main style={{ minHeight: "100dvh", display: "flex", alignItems: "center", justifyContent: "center", padding: "24px", background: COLOR.bg }}>
+      <Card style={{ width: "100%", maxWidth: "360px", padding: "32px 24px" }}>
+        <div style={{ fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.2em", color: COLOR.textMuted, textAlign: "center", marginBottom: "12px" }}>
           APEX HEALTH OS
         </div>
-        <h1 className="text-xl font-semibold text-center mb-6">
+        <h1 style={{ fontSize: "20px", fontWeight: 600, textAlign: "center", marginBottom: "24px", color: COLOR.textStrong }}>
           {mode === "signin" ? "Sign in" : "Create account"}
         </h1>
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-          <label className="text-[10px] uppercase tracking-[0.08em] text-white/40">Email</label>
+        <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+          <label style={{ fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.08em", color: COLOR.textMuted }}>Email</label>
           <input
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
             placeholder="you@example.com"
-            className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm font-mono outline-none focus:border-white/30"
+            style={{
+              background: COLOR.surfaceAlt,
+              border: `1px solid ${COLOR.divider}`,
+              borderRadius: RADIUS.input,
+              padding: "8px 12px",
+              fontSize: "14px",
+              fontFamily: "monospace",
+              outline: "none",
+              color: COLOR.textStrong,
+            }}
+            onFocus={(e) => {
+              e.currentTarget.style.borderColor = COLOR.accent;
+            }}
+            onBlur={(e) => {
+              e.currentTarget.style.borderColor = COLOR.divider;
+            }}
           />
-          <label className="text-[10px] uppercase tracking-[0.08em] text-white/40 mt-2">
+          <label style={{ fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.08em", color: COLOR.textMuted, marginTop: "8px" }}>
             Password
           </label>
           <input
@@ -62,21 +79,43 @@ export default function LoginPage() {
             required
             minLength={6}
             placeholder="••••••••"
-            className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm font-mono outline-none focus:border-white/30"
+            style={{
+              background: COLOR.surfaceAlt,
+              border: `1px solid ${COLOR.divider}`,
+              borderRadius: RADIUS.input,
+              padding: "8px 12px",
+              fontSize: "14px",
+              fontFamily: "monospace",
+              outline: "none",
+              color: COLOR.textStrong,
+            }}
+            onFocus={(e) => {
+              e.currentTarget.style.borderColor = COLOR.accent;
+            }}
+            onBlur={(e) => {
+              e.currentTarget.style.borderColor = COLOR.divider;
+            }}
           />
           <button
             type="submit"
             disabled={busy}
-            className="mt-2 rounded-xl px-4 py-3 text-sm font-bold disabled:opacity-50 border"
             style={{
-              background: "rgba(10,132,255,0.2)",
-              borderColor: "rgba(10,132,255,0.4)",
-              color: "#0a84ff",
+              marginTop: "8px",
+              borderRadius: RADIUS.pill,
+              padding: "12px 16px",
+              fontSize: "14px",
+              fontWeight: 700,
+              border: "none",
+              background: COLOR.accent,
+              color: "#fff",
+              width: "100%",
+              cursor: "pointer",
+              opacity: busy ? 0.5 : 1,
             }}
           >
             {busy ? "…" : mode === "signin" ? "Sign in" : "Create account"}
           </button>
-          {error && <p className="text-sm text-red-400">{error}</p>}
+          {error && <p style={{ fontSize: "14px", color: COLOR.danger, marginTop: "8px" }}>{error}</p>}
         </form>
 
         <button
@@ -85,11 +124,27 @@ export default function LoginPage() {
             setMode(mode === "signin" ? "signup" : "signin");
             setError("");
           }}
-          className="mt-4 w-full text-xs text-white/50 hover:text-white"
+          style={{
+            marginTop: "16px",
+            width: "100%",
+            fontSize: "12px",
+            color: COLOR.textMuted,
+            background: "transparent",
+            border: "none",
+            cursor: "pointer",
+            textDecoration: "none",
+            padding: "8px",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.color = COLOR.textStrong;
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.color = COLOR.textMuted;
+          }}
         >
           {mode === "signin" ? "No account? Create one" : "Have an account? Sign in"}
         </button>
-      </div>
+      </Card>
     </main>
   );
 }

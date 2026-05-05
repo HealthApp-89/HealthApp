@@ -1,4 +1,6 @@
 import { Card, SectionLabel } from "@/components/ui/Card";
+import { StatusRow } from "@/components/ui/StatusRow";
+import { COLOR } from "@/lib/ui/theme";
 import type { DailyLog } from "@/lib/data/types";
 import { avg } from "@/lib/ui/score";
 
@@ -11,28 +13,66 @@ export function BaselinesPanel({ logs }: { logs: DailyLog[] }) {
   const slp = avg(recent.map((l) => l.sleep_score));
   const days = recent.length;
   const fmt = (v: number | null, fixed = 1) => (v === null ? "—" : v.toFixed(fixed));
-  return (
-    <Card tint="recovery">
-      <SectionLabel>📊 BASELINES (last 180 days)</SectionLabel>
-      <div className="grid grid-cols-4 gap-2 font-mono">
-        <Stat label="HRV" value={fmt(hrv)} unit="ms" color="#ff375f" />
-        <Stat label="RHR" value={fmt(rhr, 0)} unit="bpm" color="#ff453a" />
-        <Stat label="Recov" value={fmt(rec, 0)} unit="%" color="#30d158" />
-        <Stat label="Sleep" value={fmt(slp, 0)} unit="/100" color="#5e5ce6" />
-      </div>
-      <div className="text-[10px] text-white/30 mt-2.5">based on {days} log days</div>
-    </Card>
-  );
-}
 
-function Stat({ label, value, unit, color }: { label: string; value: string; unit: string; color: string }) {
   return (
-    <div className="rounded-[10px] px-2 py-2" style={{ background: "rgba(0,0,0,0.2)" }}>
-      <div className="text-[9px] uppercase tracking-[0.08em] text-white/35">{label}</div>
-      <div className="text-base font-bold mt-0.5" style={{ color }}>
-        {value}
-        <span className="text-[9px] text-white/30 ml-0.5 font-normal">{unit}</span>
+    <Card>
+      <SectionLabel>BASELINES (last 180 days)</SectionLabel>
+      <div
+        style={{
+          borderRadius: "12px",
+          overflow: "hidden",
+          border: `1px solid ${COLOR.divider}`,
+        }}
+      >
+        <StatusRow
+          label="HRV baseline"
+          value={
+            <span style={{ fontFamily: "monospace", color: COLOR.textStrong }}>
+              {fmt(hrv)}{" "}
+              <span style={{ color: COLOR.textFaint, fontSize: "11px" }}>ms</span>
+            </span>
+          }
+        />
+        <div style={{ height: "1px", background: COLOR.divider }} />
+        <StatusRow
+          label="Resting HR baseline"
+          value={
+            <span style={{ fontFamily: "monospace", color: COLOR.textStrong }}>
+              {fmt(rhr, 0)}{" "}
+              <span style={{ color: COLOR.textFaint, fontSize: "11px" }}>bpm</span>
+            </span>
+          }
+        />
+        <div style={{ height: "1px", background: COLOR.divider }} />
+        <StatusRow
+          label="Recovery baseline"
+          value={
+            <span style={{ fontFamily: "monospace", color: COLOR.textStrong }}>
+              {fmt(rec, 0)}{" "}
+              <span style={{ color: COLOR.textFaint, fontSize: "11px" }}>%</span>
+            </span>
+          }
+        />
+        <div style={{ height: "1px", background: COLOR.divider }} />
+        <StatusRow
+          label="Sleep score baseline"
+          value={
+            <span style={{ fontFamily: "monospace", color: COLOR.textStrong }}>
+              {fmt(slp, 0)}{" "}
+              <span style={{ color: COLOR.textFaint, fontSize: "11px" }}>/100</span>
+            </span>
+          }
+        />
       </div>
-    </div>
+      <div
+        style={{
+          fontSize: "10px",
+          color: COLOR.textFaint,
+          marginTop: "10px",
+        }}
+      >
+        Based on {days} log days
+      </div>
+    </Card>
   );
 }
