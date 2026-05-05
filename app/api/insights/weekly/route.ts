@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient, createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { callClaude, parseClaudeJson } from "@/lib/anthropic/client";
-import { loadWorkouts } from "@/lib/data/workouts";
+import { buildSnapshot, withDayReferenceInstruction } from "@/lib/coach/snapshot";
 import { reviewWindow, recommendationWeekStart, type ReviewMode } from "@/lib/coach/week";
 import { REVIEW_SYSTEM_PROMPT, REVIEW_RESPONSE_SHAPE, frameFor } from "@/lib/coach/prompts";
 import { todayInUserTz } from "@/lib/time";
@@ -63,58 +63,32 @@ export async function POST() {
   const { start, end, mode, daysRemaining } = reviewWindow(anchor);
   const targetWeekStart = recommendationWeekStart(anchor);
 
-  const [{ data: profile }, { data: logs }, allWorkouts] = await Promise.all([
-    supabase
-      .from("profiles")
-      .select("name, goal, whoop_baselines, training_plan")
-      .eq("user_id", user.id)
-      .maybeSingle(),
-    supabase
-      .from("daily_logs")
-      .select(
-        "date, hrv, resting_hr, recovery, sleep_hours, sleep_score, deep_sleep_hours, rem_sleep_hours, strain, steps, calories, calories_eaten, protein_g, carbs_g, fat_g, weight_kg, body_fat_pct, muscle_mass_kg",
-      )
-      .eq("user_id", user.id)
-      .gte("date", start)
-      .lte("date", end)
-      .order("date", { ascending: true }),
-    loadWorkouts(user.id),
-  ]);
-
-  const windowWorkouts = allWorkouts
-    .filter((w) => w.date >= start && w.date <= end)
-    .map((w) => ({
-      date: w.date,
-      type: w.type,
-      vol_kg: Math.round(w.vol),
-      sets: w.sets,
-      top: w.exercises.slice(0, 4).map((e) => ({
-        name: e.name,
-        best: e.sets
-          .filter((s) => !s.warmup && s.kg && s.reps)
-          .sort((a, b) => (b.kg ?? 0) - (a.kg ?? 0))[0],
-      })),
-    }));
+  const { nowLine, body: snapshotBody } = await buildSnapshot({
+    supabase,
+    userId: user.id,
+    since: start,
+    until: end,
+  });
 
   const frame = frameFor(mode, { start, end, daysRemaining, targetWeekStart });
 
-  const userPrompt = `Athlete: ${profile?.name ?? "Athlete"}. Goal: "${profile?.goal ?? "general health"}".
-Baselines: ${JSON.stringify(profile?.whoop_baselines ?? {})}.
-Training plan: ${JSON.stringify(profile?.training_plan ?? {})}.
+  const userPrompt = `${nowLine}
+
+${snapshotBody}
 
 ${frame.windowLine}
 Tone: ${frame.toneHint}
-Daily logs (${(logs ?? []).length} days): ${JSON.stringify(logs ?? [])}.
-Workouts in window: ${JSON.stringify(windowWorkouts)}.
 
 ${frame.recsFraming}
 
 ${REVIEW_RESPONSE_SHAPE}`;
 
+  const systemWithDayRef = withDayReferenceInstruction(REVIEW_SYSTEM_PROMPT);
+
   let payload: WeeklyReviewPayload;
   try {
     const raw = await callClaude([{ role: "user", content: userPrompt }], {
-      system: REVIEW_SYSTEM_PROMPT,
+      system: systemWithDayRef,
       maxTokens: 2000,
       cacheSystem: true,
     });
