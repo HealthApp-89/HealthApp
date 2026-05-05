@@ -7,7 +7,7 @@ import { ChatBubbleGate } from "@/components/chat/ChatBubbleGate";
 // round-trip (~200ms cold on LTE) and ships zero layout shift.
 const dmSans = DM_Sans({
   subsets: ["latin"],
-  weight: ["300", "400", "500", "600"],
+  weight: ["300", "400", "500", "600", "700", "800"],
   display: "swap",
   variable: "--font-dm-sans",
 });
