@@ -12,6 +12,14 @@ import {
   type Recommendation,
 } from "@/components/coach/RecommendationsList";
 import { reviewWindow, recommendationWeekStart, type ReviewMode } from "@/lib/coach/week";
+import { todayInUserTz } from "@/lib/time";
+
+function userTzNoon(): Date {
+  // Build a Date that points unambiguously at "today" in the user's tz,
+  // hour-of-day mid-noon, so reviewWindow/recommendationWeekStart's
+  // internal UTC date math lands on the right calendar day.
+  return new Date(`${todayInUserTz()}T12:00:00Z`);
+}
 
 export const revalidate = 60;
 
@@ -153,7 +161,7 @@ const MODE_SEED_TARGET: Record<ReviewMode, string> = {
 
 async function ThisWeekView({ userId }: { userId: string }) {
   const supabase = await createSupabaseServerClient();
-  const { start, end, mode, daysRemaining } = reviewWindow();
+  const { start, end, mode, daysRemaining } = reviewWindow(userTzNoon());
 
   const { data: cached } = await supabase
     .from("ai_insights")
@@ -211,7 +219,7 @@ async function ThisWeekView({ userId }: { userId: string }) {
 
 async function NextWeekView({ userId }: { userId: string }) {
   const supabase = await createSupabaseServerClient();
-  const targetWeek = recommendationWeekStart();
+  const targetWeek = recommendationWeekStart(userTzNoon());
 
   // Prefer the targeted upcoming week; fall back to the most recent week with rows.
   let { data: items } = await supabase

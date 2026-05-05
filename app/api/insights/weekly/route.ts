@@ -4,6 +4,11 @@ import { callClaude, parseClaudeJson } from "@/lib/anthropic/client";
 import { loadWorkouts } from "@/lib/data/workouts";
 import { reviewWindow, recommendationWeekStart, type ReviewMode } from "@/lib/coach/week";
 import { REVIEW_SYSTEM_PROMPT, REVIEW_RESPONSE_SHAPE, frameFor } from "@/lib/coach/prompts";
+import { todayInUserTz } from "@/lib/time";
+
+function userTzNoon(): Date {
+  return new Date(`${todayInUserTz()}T12:00:00Z`);
+}
 
 export const dynamic = "force-dynamic";
 
@@ -54,8 +59,9 @@ export async function POST() {
   } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ ok: false, reason: "unauthorized" }, { status: 401 });
 
-  const { start, end, mode, daysRemaining } = reviewWindow();
-  const targetWeekStart = recommendationWeekStart();
+  const anchor = userTzNoon();
+  const { start, end, mode, daysRemaining } = reviewWindow(anchor);
+  const targetWeekStart = recommendationWeekStart(anchor);
 
   const [{ data: profile }, { data: logs }, allWorkouts] = await Promise.all([
     supabase
