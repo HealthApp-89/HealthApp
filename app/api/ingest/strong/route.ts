@@ -157,7 +157,10 @@ export async function POST(request: Request) {
       durationMin: iDuration >= 0 ? parseDuration(row[iDuration]) : null,
       exerciseName: row[iExercise].trim(),
       setOrder: int(row[iSetOrder]) ?? 1,
-      weightKg: iWeight >= 0 ? num(row[iWeight]) : null,
+      // Strong CSV writes "0.0" for bodyweight exercises. Normalize to null so the
+      // CSV path matches the text-share parser (which already returns kg=null for
+      // bodyweight). Read paths classify with `!s.kg`, so old kg=0 rows are unaffected.
+      weightKg: iWeight >= 0 ? (num(row[iWeight]) || null) : null,
       reps: iReps >= 0 ? int(row[iReps]) : null,
       distanceKm: iDistance >= 0 ? num(row[iDistance]) : null,
       durationSec: iSeconds >= 0 ? int(row[iSeconds]) : null,
