@@ -35,7 +35,7 @@ These ship together because the chart redesign is not visually verifiable while 
 | D7 | Comparison semantics | Calendar prior period (current 30D vs. the 30D before it, mapped to same x-axis) |
 | D8 | Comparison on minis | Detail-only — minis stay single-line + last-point dot |
 | D9 | Detail card chrome | **Two-row** chrome: row 1 = title + inline legend chips, row 2 = range pills (right-aligned). No menu icon. (Two rows because at 360px the combined width overflows.) |
-| D10 | Scope of revamp | Dashboard `MetricCard` sparklines, `/trends` overview, `/trends/[metric]` detail, `/strength` `VolumeTrendCard`, `ExerciseTrendCard`, PR sparklines |
+| D10 | Scope of revamp | `/trends/[metric]` detail (full new language), `/trends` overview minis (richer fill + interpolation only), `WeeklyRollups` minis on `/` (richer fill + weight interpolation), `VolumeTrendCard` / `ExerciseTrendCard` minis on `/strength` (richer fill only, auto-inherited). Dashboard `/` `MetricCard` itself doesn't currently render sparklines and stays that way. |
 | D11 | Comparison fallback | If prior-period coverage < 50% (fewer than half the days have any data), suppress the comparison line + drop its legend chip — chart looks the same as today's |
 | F1 | `ChatBubble` | Remove globally. Add "Ask coach" item to `Fab` sheet that opens the same `ChatPanel` |
 | F2 | Body bottom padding | Bump from `76px` to `92px` of nav reservation |
@@ -84,18 +84,18 @@ type LineChartProps = {
 
 ### Section 2 — Comparison line semantics
 
-The comparison line is the same metric, same number of points, shifted backwards by one window-length.
+The comparison line lives on the `/trends/[metric]` detail chart only (per D8). That page uses its **own range scheme** — `range=7d|30d|90d|1y` — independent of the `PeriodPreset` system on `/trends` overview, and it works in **pure daily resolution at every range** (no `pickGranularity`/`aggregateSeries` aggregation).
 
-- **Window mapping.** `current = [from, to]`, `prior = [from − Δ, to − Δ]` where `Δ = (to − from) + 1 day` (the prior window ends the day before the current window starts).
+- **Window mapping.** `current = [from, to]`, `prior = [from − Δ, to − Δ]` where `Δ = days` (the prior window ends the day before the current window starts).
 - **Index alignment.** `current[i]` and `prior[i]` are plotted at the same x-position. `i = 0` is the oldest day in each window.
 - **Per-range examples** (today = 2026-05-06):
-  - `7D`: current `2026-04-30..2026-05-06`, prior `2026-04-23..2026-04-29`.
-  - `30D`: current `2026-04-07..2026-05-06`, prior `2026-03-08..2026-04-06`.
-  - `YTD`: 126-day current window, prior is the 126 days ending `2025-12-31`.
-  - `1Y`: current = 365 days ending today, prior = the preceding 365 days.
-- **Aggregation parity.** `comparisonSeries` runs through the same `pickGranularity` + `aggregateSeries` path used for the current window so both arrays have identical bucket sizes (daily for 7D/30D, weekly for YTD/1Y, etc.). Without parity the indices wouldn't align visually.
-- **Interpolation does NOT apply to the comparison line.** It's reference data. Gaps in the prior period are rendered as gaps. The dashed-gray styling already reads as "approximate context"; we don't compound the indirection.
-- **Coverage gate** (D11): if fewer than 50% of buckets in the prior window have any data for the metric, the comparison series is `null` and the chart renders without it. No empty state — the absence is self-explanatory in a chart with no second line.
+  - `7d`: current `2026-04-30..2026-05-06` (7 daily points), prior `2026-04-23..2026-04-29`.
+  - `30d`: current `2026-04-07..2026-05-06` (30 daily points), prior `2026-03-08..2026-04-06`.
+  - `90d`: 90 daily points each side.
+  - `1y`: 365 daily points each side. SVG handles this fine within the existing 320px viewBox; lines compress densely.
+- **Daily-only resolution.** Because `/trends/[metric]` is daily-only, the comparison helper doesn't need to mirror `pickGranularity` / `aggregateSeries`. It's a single same-shape Supabase query at the prior date range, returning `LinePoint[]` of the same length as the current series.
+- **Interpolation does NOT apply to the comparison line.** It's reference data. Gaps in the prior period are rendered as gaps in the dashed-gray line. The "approximate context" reading already follows from the dashed styling; we don't compound the indirection by also estimating it.
+- **Coverage gate** (D11): if fewer than 50% of days in the prior window have any data for the metric, the comparison series is `null` and the chart renders without it. No empty state — the absence is self-explanatory in a chart with no second line.
 
 ### Section 3 — Gap interpolation
 
@@ -214,19 +214,21 @@ These render with true gaps today; opt them in via a one-line config edit when d
 ## Files to create / modify
 
 **Create:**
-- `lib/charts/interpolate.ts`
-- `lib/charts/metricChartConfig.ts`
-- `lib/charts/comparisonSeries.ts` — server-side helper that, given the current period series and `(period, metric)`, fetches the same metric for the prior period from `daily_logs` (running through the same `pickGranularity` + `aggregateSeries` path), applies the 50%-coverage gate, and returns `LinePoint[] | null`.
+- `lib/charts/interpolate.ts` — `interpolateGaps(series, cfg)`.
+- `lib/charts/metricChartConfig.ts` — per-metric `InterpolateConfig` map.
+- `lib/charts/comparisonSeries.ts` — server-side helper. Signature: `getComparisonSeries(supabase, userId, metricKey, fromIso, toIso): Promise<LinePoint[] | null>`. Computes prior window from `(fromIso, toIso, days)`, fetches `daily_logs` for that window, returns daily `LinePoint[]` of length `days` (one per calendar day, with nulls preserved), or `null` if coverage < 50%.
+- `components/charts/DetailChartCard.tsx` — composes the new detail-chart card chrome (title row + legend chips + range pills + `LineChart`) into a single component used by `/trends/[metric]`. Keeps `LineChart` itself focused on rendering, and pulls the chrome out of the page so the page just passes data + range options.
 - `components/layout/FabGate.tsx` — server component, auth-checks then renders `<Fab />`.
 
 **Modify:**
-- `components/charts/LineChart.tsx` — new props, gridlines, y-axis labels, comparison line render, dashed-segment handling, hollow-marker handling, tooltip "(est.)" suffix + comparison value line.
-- `components/charts/MetricCard.tsx` — adopt the new 3-stop fill (no API change needed since it just renders `LineChart variant="mini"` which inherits the gradient change).
-- `app/trends/[metric]/page.tsx` — fetch prior period, pass `comparison` to `LineChart`. Keep `xAxisLabels` integration.
-- `app/trends/page.tsx` — no comparison data, but bump card chrome consistency if needed (mini variant only).
-- `components/strength/VolumeTrendCard.tsx`, `components/strength/ExerciseTrendCard.tsx`, and any other strength sparkline consumers — confirm they pass through `LineChart` cleanly with the new gradient. Implementation step: grep for `LineChart` imports under `components/strength/` and audit each. No comparison line needed for any of them (D8 — minis are single-line).
-- `app/layout.tsx` — replace `<ChatBubbleGate />` with `<FabGate />`; remove the standalone `<Fab />` import (now wrapped); update body className.
-- `app/globals.css` — add `--nav-h` token.
+- `components/charts/LineChart.tsx` — new props (`comparison`, `yAxisLabels`, `pointMarkers`), 3-stop fill gradient, gridlines + HTML-overlay y-axis labels (detail), comparison line render (detail), dashed-segment handling for `estimated: true` runs, hollow-marker handling, tooltip "(est.)" suffix + comparison value line, interpolation pre-pass via `interpolateGaps` keyed off `metricChartConfig`.
+- `app/trends/[metric]/page.tsx` — call `getComparisonSeries`, replace inline `<Card><LineChart .../></Card>` + the separate RangePills row with `<DetailChartCard>`. Keep the existing daily-resolution data fetch unchanged; the helper does the second prior-period query.
+- `app/trends/page.tsx` — pass `metricKey` to each `MetricCard` so the mini sparkline can pick up the per-metric interpolation config. (Existing `LineChart variant="mini"` calls already inherit the new gradient via `LineChart` itself; no other changes.)
+- `components/charts/MetricCard.tsx` — accept an optional `metricKey?: DailyLogKey` prop, thread it down to `LineChart` so mini-sparkline interpolation can be enabled. No visual changes — the gradient change happens inside `LineChart`.
+- `components/dashboard/WeeklyRollups.tsx` — change `wWgt.map((y) => ({ y }))` to `wWgt.map((y, i) => ({ x: weekDates[i], y }))` (week dates are already computed in this file) so weight interpolation can run. Steps and calories stay dateless — they're fail-closed in `metricChartConfig` anyway.
+- `components/strength/VolumeTrendCard.tsx`, `components/strength/ExerciseTrendCard.tsx` — **no source changes required**. They pass dateless points through `LineChart variant="mini"`; the gradient change is automatic, interpolation is a no-op for their workout-derived metrics (not in `metricChartConfig`, defaults to disabled).
+- `app/layout.tsx` — replace `<ChatBubbleGate />` with `<FabGate />`; update body className to use `var(--nav-h)`.
+- `app/globals.css` — add `--nav-h` declaration in a plain `:root` block (outside the `@theme` block, since it's not a Tailwind v4 theme token but a runtime CSS var).
 - `components/layout/Fab.tsx` — extend `SheetItem` union with `"chat"` kind; thread `onAskCoach` from `FabSheet` up to `Fab`; mount `ChatPanel` conditionally at the `Fab` level.
 
 **Delete:**
@@ -264,3 +266,4 @@ No unit tests are configured. Verification is `npm run typecheck` + manual mobil
 - `/trends` overview comparison line (would require minis to grow taller)
 - Donut chart revisit
 - Auto-hide-on-scroll for the bottom nav
+- **Adding sparklines to dashboard `/` MetricCards.** Today they render value + delta only (no `trend` prop passed in `app/page.tsx`). The reference image's metric cards include sparklines; if we want that, it's a separate decision — would need a fresh data query (e.g., last 7 days per metric) wired into the dashboard, plus a UX call about whether the dashboard should look more like `/trends` overview or stay at-a-glance.
