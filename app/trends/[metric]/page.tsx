@@ -1,12 +1,13 @@
 import { notFound, redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { Card } from "@/components/ui/Card";
-import { RangePills } from "@/components/ui/RangePills";
-import { LineChart, type LinePoint } from "@/components/charts/LineChart";
+import { DetailChartCard } from "@/components/charts/DetailChartCard";
+import type { LinePoint } from "@/components/charts/LineChart";
 import { COLOR, METRIC_COLOR } from "@/lib/ui/theme";
 import { FIELDS, type DailyLogKey } from "@/lib/ui/colors";
 import { fmtNum } from "@/lib/ui/score";
 import { todayInUserTz } from "@/lib/time";
+import { getComparisonSeries } from "@/lib/charts/comparisonSeries";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 60;
@@ -19,6 +20,13 @@ type MetricPageProps = {
 };
 
 const RANGE_DAYS: Record<string, number> = { "7d": 7, "30d": 30, "90d": 90, "1y": 365 };
+
+const RANGE_LABEL: Record<string, string> = {
+  "7d": "7 days",
+  "30d": "30 days",
+  "90d": "90 days",
+  "1y": "year",
+};
 
 export default async function MetricDetail(props: MetricPageProps) {
   const { metric } = await props.params;
@@ -50,6 +58,8 @@ export default async function MetricDetail(props: MetricPageProps) {
     .gte("date", startIso)
     .lte("date", today)
     .order("date", { ascending: true });
+
+  const comparison = await getComparisonSeries(supabase, user.id, key, startIso, today);
 
   const field = FIELDS.find((f) => f.k === key)!;
   const data: LinePoint[] = (rows ?? []).map((r) => ({ x: (r as Record<string, unknown>).date as string, y: ((r as Record<string, unknown>)[key] as number | null) ?? null }));
@@ -96,14 +106,18 @@ export default async function MetricDetail(props: MetricPageProps) {
         </div>
       </div>
 
-      <div style={{ padding: "0 8px 14px" }}>
-        <RangePills options={rangeOpts} active={range} />
-      </div>
-
       <div style={{ padding: "0 8px 12px" }}>
-        <Card>
-          <LineChart data={data} color={color} variant="detail" xAxisLabels={labels} />
-        </Card>
+        <DetailChartCard
+          title={field.l}
+          data={data}
+          comparison={comparison}
+          color={color}
+          metricKey={key}
+          rangeOptions={rangeOpts}
+          activeRange={range}
+          periodLabel={RANGE_LABEL[range] ?? `${days} days`}
+          xAxisLabels={labels}
+        />
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "8px", padding: "0 8px 14px" }}>
