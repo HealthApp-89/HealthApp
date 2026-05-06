@@ -12,6 +12,9 @@ export type WorkoutSet = {
 export type WorkoutExercise = {
   name: string;
   position: number;
+  /** History-wide classification. "weighted" if any working set in this user's
+   *  history has kg > 0; "bodyweight" otherwise. Computed in loadWorkouts. */
+  kind: "weighted" | "bodyweight";
   sets: WorkoutSet[];
 };
 
@@ -21,8 +24,10 @@ export type WorkoutSession = {
   type: string | null;
   duration_min: number | null;
   exercises: WorkoutExercise[];
-  /** Total working volume in kg (kg × reps, excludes warmup sets). */
+  /** Total working volume in kg (kg × reps over weighted working sets). */
   vol: number;
+  /** Total reps across bodyweight working sets (warmups excluded). */
+  bwReps: number;
   /** Working set count (excludes warmup). */
   sets: number;
 };
@@ -42,7 +47,10 @@ export type ExerciseTrendPoint = {
   est1rm: number;
 };
 
-/** Load every workout for the user, joined with exercises + sets. Newest first. */
+/** Load every workout for the user, joined with exercises + sets. Newest first.
+ *  Two passes over the result so each exercise gets a history-wide `kind`:
+ *  exercises with at least one working weighted set anywhere in history are
+ *  "weighted", otherwise "bodyweight". */
 export async function loadWorkouts(userId: string): Promise<WorkoutSession[]> {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
@@ -57,16 +65,52 @@ export async function loadWorkouts(userId: string): Promise<WorkoutSession[]> {
 
   if (error) throw error;
 
+  type RawExercise = {
+    name: string;
+    position: number | null;
+    exercise_sets: {
+      kg: number | null;
+      reps: number | null;
+      duration_seconds: number | null;
+      warmup: boolean;
+      failure: boolean;
+      set_index: number;
+    }[];
+  };
+
+  const rawSessions = (data ?? []) as {
+    id: string;
+    date: string;
+    type: string | null;
+    duration_min: number | null;
+    exercises: RawExercise[] | null;
+  }[];
+
+  // Pass 1: collect names of exercises that have at least one *working* set with
+  // kg > 0 anywhere in the user's history. Warmups don't count — a single warmup
+  // weighted row shouldn't flip an exercise to "weighted".
+  const weightedNames = new Set<string>();
+  for (const w of rawSessions) {
+    for (const e of w.exercises ?? []) {
+      for (const s of e.exercise_sets ?? []) {
+        if (!s.warmup && (s.kg ?? 0) > 0) {
+          weightedNames.add(e.name);
+          break;
+        }
+      }
+    }
+  }
+
+  // Pass 2: build sessions with classified exercises and split volumes.
   const sessions: WorkoutSession[] = [];
-  for (const w of data ?? []) {
+  for (const w of rawSessions) {
     const exercises: WorkoutExercise[] = (w.exercises ?? [])
-      .map((e: {
-        name: string;
-        position: number | null;
-        exercise_sets: { kg: number | null; reps: number | null; duration_seconds: number | null; warmup: boolean; failure: boolean; set_index: number }[];
-      }) => ({
+      .map((e) => ({
         name: e.name,
         position: e.position ?? 0,
+        kind: weightedNames.has(e.name)
+          ? ("weighted" as const)
+          : ("bodyweight" as const),
         sets: (e.exercise_sets ?? [])
           .slice()
           .sort((a, b) => a.set_index - b.set_index)
@@ -78,15 +122,17 @@ export async function loadWorkouts(userId: string): Promise<WorkoutSession[]> {
             failure: s.failure,
           })),
       }))
-      .sort((a: WorkoutExercise, b: WorkoutExercise) => a.position - b.position);
+      .sort((a, b) => a.position - b.position);
 
     let vol = 0;
-    let sets = 0;
+    let bwReps = 0;
+    let setsCount = 0;
     for (const e of exercises) {
       for (const s of e.sets) {
         if (s.warmup) continue;
-        sets += 1;
+        setsCount += 1;
         if (s.kg && s.reps) vol += s.kg * s.reps;
+        else if (!s.kg && s.reps) bwReps += s.reps;
       }
     }
     sessions.push({
@@ -96,7 +142,8 @@ export async function loadWorkouts(userId: string): Promise<WorkoutSession[]> {
       duration_min: w.duration_min,
       exercises,
       vol,
-      sets,
+      bwReps,
+      sets: setsCount,
     });
   }
   return sessions;
