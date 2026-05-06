@@ -151,6 +151,7 @@ export default async function TrendsPage(props: {
         <div style={{ display: "flex", flexDirection: "column", gap: "10px", padding: "0 8px" }}>
           <MetricCard
             color={METRIC_COLOR.hrv}
+            metricKey="hrv"
             icon="♥"
             label="HRV"
             value={hrvAvg}
@@ -163,6 +164,7 @@ export default async function TrendsPage(props: {
           />
           <MetricCard
             color={METRIC_COLOR.resting_hr}
+            metricKey="resting_hr"
             icon="♥"
             label="Resting HR"
             value={rhrAvg}
@@ -176,6 +178,7 @@ export default async function TrendsPage(props: {
           />
           <MetricCard
             color={METRIC_COLOR.sleep_hours}
+            metricKey="sleep_hours"
             icon="☾"
             label="Sleep"
             value={sleepAvg}
@@ -188,6 +191,7 @@ export default async function TrendsPage(props: {
           />
           <MetricCard
             color={METRIC_COLOR.strain}
+            metricKey="strain"
             icon="⚡"
             label="Strain"
             value={strainAvg}
@@ -198,6 +202,7 @@ export default async function TrendsPage(props: {
           />
           <MetricCard
             color={METRIC_COLOR.weight_kg}
+            metricKey="weight_kg"
             icon="⚖"
             label="Weight"
             value={weightAvg}
@@ -210,6 +215,7 @@ export default async function TrendsPage(props: {
           />
           <MetricCard
             color={METRIC_COLOR.body_fat_pct}
+            metricKey="body_fat_pct"
             icon="%"
             label="Body Fat"
             value={bfAvg}

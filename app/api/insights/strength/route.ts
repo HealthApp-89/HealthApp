@@ -49,8 +49,12 @@ export async function POST() {
     return NextResponse.json({ ok: false, error: "No workouts to analyse" }, { status: 400 });
   }
 
-  // Build a compact per-exercise history
-  const byEx = new Map<string, { date: string; sets: { kg: number | null; reps: number | null; failure: boolean }[] }[]>();
+  // Build a compact per-exercise history. Bodyweight sets are tagged with
+  // `bw: true` so the model knows to track reps rather than kg.
+  const byEx = new Map<
+    string,
+    { date: string; sets: { kg: number | null; reps: number | null; bw: boolean; failure: boolean }[] }[]
+  >();
   for (const w of workouts) {
     for (const e of w.exercises) {
       const prev = byEx.get(e.name) ?? [];
@@ -58,7 +62,7 @@ export async function POST() {
         date: w.date,
         sets: e.sets
           .filter((s) => !s.warmup && (s.kg || s.reps))
-          .map((s) => ({ kg: s.kg, reps: s.reps, failure: s.failure })),
+          .map((s) => ({ kg: s.kg, reps: s.reps, bw: !s.kg, failure: s.failure })),
       });
       byEx.set(e.name, prev);
     }
@@ -69,6 +73,7 @@ export async function POST() {
   }));
 
   const userPrompt = `Per-exercise history for an intermediate lifter (BW ~105kg, age 36, 2 weeks of data).
+Sets with \`bw: true\` are bodyweight; track progress in reps, not kg.
 ${JSON.stringify(compact, null, 2)}
 
 For EACH exercise produce a recommendation. Output JSON:
@@ -79,8 +84,8 @@ For EACH exercise produce a recommendation. Output JSON:
       "category": "Chest|Back|Legs|Shoulders|Arms|Core|Cardio",
       "priority": "high|medium|low",
       "sessions": <int>,
-      "next_target": "<kg> × <reps>×<sets> or 'Skip' / specific cue",
-      "recommendation": "2-3 sentences with numbers, comparing W1 vs W2 where possible. Reference est 1RM if useful."
+      "next_target": "<kg> × <reps>×<sets>, or '<reps>×<sets>' for bodyweight, or 'Skip' / specific cue",
+      "recommendation": "2-3 sentences with numbers, comparing W1 vs W2 where possible. Reference est 1RM for weighted lifts; reference total reps for bodyweight."
     }
   }
 }

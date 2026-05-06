@@ -98,10 +98,18 @@ export async function buildSnapshot(inputs: SnapshotInputs): Promise<SnapshotRes
     sets: w.sets,
     vol_kg: Math.round(w.vol),
     top: w.exercises.slice(0, 4).map((e) => {
-      const best = e.sets
+      // Prefer the heaviest weighted working set for this session. If the
+      // exercise has only bodyweight working sets in this session, fall back
+      // to the set with the most reps and label "BW×<reps>".
+      const weighted = e.sets
         .filter((s) => !s.warmup && s.kg && s.reps)
-        .sort((a, b) => (b.kg! - a.kg!))[0];
-      return best ? `${e.name} ${best.kg}×${best.reps}` : e.name;
+        .sort((a, b) => b.kg! - a.kg!)[0];
+      if (weighted) return `${e.name} ${weighted.kg}×${weighted.reps}`;
+      const bw = e.sets
+        .filter((s) => !s.warmup && !s.kg && s.reps)
+        .sort((a, b) => b.reps! - a.reps!)[0];
+      if (bw) return `${e.name} BW×${bw.reps}`;
+      return e.name;
     }),
   }));
 

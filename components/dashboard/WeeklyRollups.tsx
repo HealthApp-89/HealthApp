@@ -191,10 +191,11 @@ export async function WeeklyRollups({ userId, today, todayHrv, todayRhr, hrvBase
                 {validWts.length > 1 && (
                   <>
                     <LineChart
-                      data={wWgt.map((y) => ({ y }))}
+                      data={wWgt.map((y, i) => ({ x: week.dates[i], y }))}
                       color={METRIC_COLOR.weight_kg}
                       variant="mini"
                       height={40}
+                      metricKey="weight_kg"
                     />
                     <div className="flex justify-between mt-1.5 mb-2.5">
                       {week.labels.map((d, i) => (

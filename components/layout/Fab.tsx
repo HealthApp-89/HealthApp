@@ -3,31 +3,45 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import { COLOR, RADIUS, SHADOW } from "@/lib/ui/theme";
+
+const ChatPanel = dynamic(() => import("@/components/chat/ChatPanel"), {
+  ssr: false,
+  loading: () => null,
+});
 
 type SheetItem =
   | { kind: "link";   label: string; icon: string; href: string }
-  | { kind: "upload"; label: string; icon: string; accept: string; endpoint: string };
+  | { kind: "upload"; label: string; icon: string; accept: string; endpoint: string }
+  | { kind: "chat";   label: string; icon: string };
 
 const ITEMS: SheetItem[] = [
-  { kind: "link",   label: "Log entry",          icon: "✎", href: "/log" },
+  { kind: "link",   label: "Log entry",          icon: "✎",  href: "/log" },
+  { kind: "chat",   label: "Ask coach",          icon: "💬" },
   { kind: "link",   label: "Strength",           icon: "💪", href: "/strength?view=today" },
-  { kind: "upload", label: "Upload Strong CSV",  icon: "⬆", accept: ".csv", endpoint: "/api/ingest/strong" },
+  { kind: "upload", label: "Upload Strong CSV",  icon: "⬆",  accept: ".csv", endpoint: "/api/ingest/strong" },
   { kind: "link",   label: "Manage connections", icon: "🔗", href: "/profile" },
 ];
 
 /**
  * Floating + button (mobile only) + bottom sheet with quick actions.
- * Rendered in app/layout.tsx so it persists across routes.
+ * Rendered (via FabGate) in app/layout.tsx so it persists across routes.
+ *
+ * "Ask coach" mounts ChatPanel inline — the floating ChatBubble used
+ * to do this from a separate corner button; consolidated here so the
+ * bottom-right of every page isn't permanently occluded.
  */
 export function Fab() {
-  const [open, setOpen] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
+
   return (
     <>
       <button
         type="button"
         aria-label="Quick actions"
-        onClick={() => setOpen(true)}
+        onClick={() => setSheetOpen(true)}
         className="md:hidden"
         style={{
           position: "fixed",
@@ -49,12 +63,27 @@ export function Fab() {
       >
         +
       </button>
-      {open && <FabSheet onClose={() => setOpen(false)} />}
+      {sheetOpen && (
+        <FabSheet
+          onClose={() => setSheetOpen(false)}
+          onAskCoach={() => {
+            setSheetOpen(false);
+            setChatOpen(true);
+          }}
+        />
+      )}
+      {chatOpen && <ChatPanel onClose={() => setChatOpen(false)} />}
     </>
   );
 }
 
-function FabSheet({ onClose }: { onClose: () => void }) {
+function FabSheet({
+  onClose,
+  onAskCoach,
+}: {
+  onClose: () => void;
+  onAskCoach: () => void;
+}) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
 
@@ -144,6 +173,27 @@ function FabSheet({ onClose }: { onClose: () => void }) {
               </Link>
             );
           }
+          if (item.kind === "chat") {
+            return (
+              <button
+                key={item.label}
+                type="button"
+                onClick={onAskCoach}
+                style={{
+                  display: "block",
+                  width: "100%",
+                  background: "none",
+                  border: "none",
+                  padding: 0,
+                  textAlign: "left",
+                  cursor: "pointer",
+                }}
+              >
+                {inner}
+              </button>
+            );
+          }
+          // kind === "upload"
           return (
             <label key={item.label} style={{ display: "block" }}>
               {inner}

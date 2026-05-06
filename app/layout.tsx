@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
 import { DM_Sans, DM_Mono } from "next/font/google";
 import "./globals.css";
-import { ChatBubbleGate } from "@/components/chat/ChatBubbleGate";
 import { BottomNav } from "@/components/layout/BottomNav";
-import { Fab } from "@/components/layout/Fab";
+import { FabGate } from "@/components/layout/FabGate";
 import { TopNav } from "@/components/layout/TopNav";
 
 // Self-hosted via next/font — removes the render-blocking Google CSS
@@ -51,12 +50,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, interactive-widget=resizes-content"
         />
       </head>
-      <body className="min-h-[100dvh] bg-bg pt-[env(safe-area-inset-top)] pb-[calc(env(safe-area-inset-bottom)+76px)] md:pb-[env(safe-area-inset-bottom)]">
+      <body className="min-h-[100dvh] bg-bg pt-[env(safe-area-inset-top)] pb-[calc(env(safe-area-inset-bottom)+var(--nav-h))]">
         <TopNav />
         <main>{children}</main>
         <BottomNav />
-        <Fab />
-        <ChatBubbleGate />
+        <FabGate />
       </body>
     </html>
   );

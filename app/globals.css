@@ -41,6 +41,17 @@
   --font-mono: var(--font-dm-mono), ui-monospace, monospace;
 }
 
+/* Bottom-nav reservation. Mobile only — desktop uses TopNav and needs no
+   bottom space. Math: nav offset 8px + nav rendered height ~70px + 14px
+   breathing = 92px. Owned alongside components/layout/BottomNav.tsx —
+   if you change BottomNav padding/icon size, update this. */
+:root {
+  --nav-h: 92px;
+}
+@media (min-width: 768px) {
+  :root { --nav-h: 0px; }
+}
+
 html {
   background: var(--color-bg);
   color: var(--color-strong);
