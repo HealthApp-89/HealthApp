@@ -1,9 +1,9 @@
 "use client";
 
-import { useTransition, useState } from "react";
+import { useState, useTransition, useRef } from "react";
 import { saveProfile } from "@/app/profile/actions";
-import { Card } from "@/components/ui/Card";
 import { COLOR, RADIUS } from "@/lib/ui/theme";
+import { DEFAULT_SYSTEM_PROMPT } from "@/lib/coach/system-prompts";
 
 type Props = {
   initial: {
@@ -11,12 +11,14 @@ type Props = {
     age: number | null;
     height_cm: number | null;
     goal: string | null;
+    system_prompt: string | null;
   };
 };
 
 export function ProfileForm({ initial }: Props) {
   const [pending, startTransition] = useTransition();
   const [flash, setFlash] = useState<string | null>(null);
+  const promptRef = useRef<HTMLTextAreaElement | null>(null);
 
   function onSubmit(formData: FormData) {
     setFlash(null);
@@ -28,6 +30,14 @@ export function ProfileForm({ initial }: Props) {
         setFlash(`✗ ${(e as Error).message}`);
       }
     });
+  }
+
+  function restoreDefault() {
+    if (promptRef.current) {
+      promptRef.current.value = DEFAULT_SYSTEM_PROMPT;
+      // Bring focus to the field so the user sees the change happened.
+      promptRef.current.focus();
+    }
   }
 
   return (
@@ -84,6 +94,63 @@ export function ProfileForm({ initial }: Props) {
           }}
         />
       </div>
+
+      {/* Coach instructions — full system prompt, with Restore Default. */}
+      <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+          <label
+            style={{
+              fontSize: "10px",
+              textTransform: "uppercase",
+              letterSpacing: "0.08em",
+              color: COLOR.textFaint,
+              fontWeight: 600,
+            }}
+          >
+            Coach instructions
+          </label>
+          <button
+            type="button"
+            onClick={restoreDefault}
+            style={{
+              background: "transparent",
+              border: `1px solid ${COLOR.divider}`,
+              borderRadius: RADIUS.input,
+              padding: "4px 10px",
+              fontSize: "10px",
+              color: COLOR.textMuted,
+              cursor: "pointer",
+              fontWeight: 600,
+              letterSpacing: "0.04em",
+            }}
+          >
+            Restore default
+          </button>
+        </div>
+        <textarea
+          ref={promptRef}
+          name="system_prompt"
+          defaultValue={initial.system_prompt ?? DEFAULT_SYSTEM_PROMPT}
+          rows={12}
+          style={{
+            background: COLOR.surfaceAlt,
+            border: `1px solid ${COLOR.divider}`,
+            borderRadius: RADIUS.input,
+            padding: "10px 12px",
+            fontSize: "13px",
+            lineHeight: 1.5,
+            outline: "none",
+            resize: "vertical",
+            color: COLOR.textStrong,
+            fontFamily: "inherit",
+          }}
+        />
+        <div style={{ fontSize: "10px", color: COLOR.textFaint, lineHeight: 1.4 }}>
+          Steers the chat coach. The schema explainer (column meanings, tool contracts) is added
+          automatically and isn't editable here.
+        </div>
+      </div>
+
       <button
         type="submit"
         disabled={pending}

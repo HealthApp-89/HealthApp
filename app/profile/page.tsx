@@ -28,7 +28,7 @@ export default async function ProfilePage() {
   ] = await Promise.all([
     supabase
       .from("profiles")
-      .select("name, age, height_cm, goal")
+      .select("name, age, height_cm, goal, system_prompt")
       .eq("user_id", user.id)
       .maybeSingle(),
     supabase
@@ -104,6 +104,7 @@ export default async function ProfilePage() {
             age: profile?.age ?? null,
             height_cm: profile?.height_cm ?? null,
             goal: profile?.goal ?? null,
+            system_prompt: profile?.system_prompt ?? null,
           }}
         />
       </div>
