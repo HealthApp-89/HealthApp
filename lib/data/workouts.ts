@@ -32,13 +32,22 @@ export type WorkoutSession = {
   sets: number;
 };
 
-export type PR = {
-  name: string;
-  kg: number;
-  reps: number;
-  est1rm: number;
-  date: string;
-};
+export type PR =
+  | {
+      kind: "weighted";
+      name: string;
+      kg: number;
+      reps: number;
+      est1rm: number;
+      date: string;
+    }
+  | {
+      kind: "bodyweight";
+      name: string;
+      totalReps: number;
+      bestSetReps: number;
+      date: string;
+    };
 
 export type ExerciseTrendPoint = {
   date: string;
@@ -149,21 +158,64 @@ export async function loadWorkouts(userId: string): Promise<WorkoutSession[]> {
   return sessions;
 }
 
+/** Per-exercise PR. Weighted exercises track highest est. 1RM working set;
+ *  bodyweight exercises track the session with the most total working reps.
+ *  Iteration is newest-first (matching loadWorkouts ordering) and uses
+ *  strictly-greater comparisons so ties resolve to the newest session. */
 export function buildPRs(workouts: WorkoutSession[]): PR[] {
   const prs = new Map<string, PR>();
   for (const w of workouts) {
+    // Group bodyweight exercise sessions: per-exercise totals, computed once
+    // per (workout, exercise) so we can compare totalReps across sessions.
     for (const e of w.exercises) {
-      for (const s of e.sets) {
-        if (s.warmup || !s.kg || !s.reps) continue;
-        const v = est1rm(s.kg, s.reps);
+      if (e.kind === "weighted") {
+        for (const s of e.sets) {
+          if (s.warmup || !s.kg || !s.reps) continue;
+          const v = est1rm(s.kg, s.reps);
+          const cur = prs.get(e.name);
+          if (!cur || (cur.kind === "weighted" && v > cur.est1rm)) {
+            prs.set(e.name, {
+              kind: "weighted",
+              name: e.name,
+              kg: s.kg,
+              reps: s.reps,
+              est1rm: v,
+              date: w.date,
+            });
+          }
+        }
+      } else {
+        // bodyweight
+        let totalReps = 0;
+        let bestSetReps = 0;
+        for (const s of e.sets) {
+          if (s.warmup || s.kg || !s.reps) continue;
+          totalReps += s.reps;
+          if (s.reps > bestSetReps) bestSetReps = s.reps;
+        }
+        if (totalReps === 0) continue;
         const cur = prs.get(e.name);
-        if (!cur || v > cur.est1rm) {
-          prs.set(e.name, { name: e.name, kg: s.kg, reps: s.reps, est1rm: v, date: w.date });
+        if (!cur || (cur.kind === "bodyweight" && totalReps > cur.totalReps)) {
+          prs.set(e.name, {
+            kind: "bodyweight",
+            name: e.name,
+            totalReps,
+            bestSetReps,
+            date: w.date,
+          });
         }
       }
     }
   }
-  return [...prs.values()].sort((a, b) => b.est1rm - a.est1rm);
+  // Weighted PRs first (sorted by 1RM desc), bodyweight PRs after (by total reps desc).
+  const all = [...prs.values()];
+  const weighted = all
+    .filter((p): p is Extract<PR, { kind: "weighted" }> => p.kind === "weighted")
+    .sort((a, b) => b.est1rm - a.est1rm);
+  const bodyweight = all
+    .filter((p): p is Extract<PR, { kind: "bodyweight" }> => p.kind === "bodyweight")
+    .sort((a, b) => b.totalReps - a.totalReps);
+  return [...weighted, ...bodyweight];
 }
 
 /** Take the heaviest working set per session for `name`, oldest → newest. */
