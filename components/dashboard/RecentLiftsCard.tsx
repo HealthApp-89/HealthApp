@@ -7,6 +7,7 @@ export type RecentSession = {
   date: string;       // e.g. "MON 4"
   title: string;      // e.g. "Lower body · Squat"
   volumeKg: number;
+  bwReps: number;     // total bodyweight reps for the session (working sets)
 };
 
 type RecentLiftsCardProps = {
@@ -39,7 +40,7 @@ export function RecentLiftsCard({ sessions }: RecentLiftsCardProps) {
                   <div style={{ fontSize: "13px", fontWeight: 700, color: COLOR.textStrong, marginTop: "2px" }}>{s.title}</div>
                 </div>
                 <div data-tnum style={{ fontSize: "12px", color: COLOR.accent, fontWeight: 600 }}>
-                  {fmtNum(s.volumeKg)} kg
+                  {s.volumeKg > 0 ? `${fmtNum(s.volumeKg)} kg` : `${s.bwReps} reps`}
                 </div>
               </div>
             ))}

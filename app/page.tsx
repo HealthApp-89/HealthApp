@@ -236,9 +236,12 @@ export default async function Home(props: {
   };
   const recentSessions: RecentSession[] = (recentWorkoutsRaw as RawWorkout[] | null ?? []).map((w) => {
     let vol = 0;
+    let bwReps = 0;
     for (const e of w.exercises ?? []) {
       for (const s of e.exercise_sets ?? []) {
-        if (!s.warmup && s.kg && s.reps) vol += s.kg * s.reps;
+        if (s.warmup) continue;
+        if (s.kg && s.reps) vol += s.kg * s.reps;
+        else if (!s.kg && s.reps) bwReps += s.reps;
       }
     }
     const firstName = (w.exercises ?? [])
@@ -253,6 +256,7 @@ export default async function Home(props: {
       date: formatShortDate(w.date),
       title,
       volumeKg: vol,
+      bwReps,
     };
   });
 
