@@ -43,6 +43,9 @@ export type Profile = {
   goal: string | null;
   whoop_baselines: Record<string, unknown> | null;
   training_plan: Record<string, unknown> | null;
+  /** User-edited coach prompt. NULL = use code default from
+   *  lib/coach/system-prompts.ts:DEFAULT_SYSTEM_PROMPT. */
+  system_prompt: string | null;
 };
 
 export type WhoopTokensRow = {
@@ -63,4 +66,31 @@ export type IngestTokenRow = {
   created_at: string;
   last_used_at: string | null;
   last_used_source: "apple_health" | "strong" | "yazio" | null;
+};
+
+/** DB row shape for chat_messages. The route's typed return shape
+ *  (lib/chat/types.ts:ChatMessage) is the API surface; this mirrors what's
+ *  in the column directly. */
+export type ChatMessageRow = {
+  id: string;
+  user_id: string;
+  role: "user" | "assistant";
+  content: string;
+  status: "streaming" | "done" | "error";
+  error: string | null;
+  model: string | null;
+  /** [{name, input, ms, result_rows, range_days, truncated, error}] */
+  tool_calls: ToolCallLog[] | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ToolCallLog = {
+  name: "query_daily_logs" | "query_workouts";
+  input: Record<string, unknown>;
+  ms: number;
+  result_rows: number;
+  range_days: number;
+  truncated: boolean;
+  error: string | null;
 };
