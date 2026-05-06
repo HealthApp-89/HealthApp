@@ -31,7 +31,7 @@ export const SCHEMA_EXPLAINER = `# Reference: how the data you receive is shaped
 Profile + WHOOP baselines + training plan + last 14 days of daily_logs (date, hrv, recovery, sleep, strain, steps, calories, weight, macros) + the 5 most recent workout summaries (date, type, sets, vol, top exercises). Stable across turns.
 
 ## Per-turn header (fresh, NOT cached)
-NOW timestamp + TODAY (today's daily_logs row, may be partial — sources arrive at different times) + YESTERDAY (full row) + DATA FRESHNESS (when each source last wrote a row, in hours-ago precision). Use this for "today" and "yesterday" questions; the snapshot prefix may be stale by minutes.
+NOW timestamp + TODAY (today's daily_logs row, may be partial — sources arrive at different times) + YESTERDAY (full row) + DATA FRESHNESS (when each source last wrote a row, in hours-ago precision). Use this for "today" and "yesterday" questions; the snapshot prefix may be stale by up to 1 hour.
 
 ## Tools
 - query_daily_logs(start_date, end_date, columns?, aggregate?) — fetch daily_logs for any range. raw mode capped at 90 days; aggregate (avg/sum/min/max) is uncapped (returns one row). Aggregate responses include non_null_count + null_count per column — when non_null_count < days_in_range, mention sparse coverage rather than presenting the aggregate as a complete total.

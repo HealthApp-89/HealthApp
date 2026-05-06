@@ -376,11 +376,17 @@ type RawWorkout = {
   }[] | null;
 };
 
+type WorkoutsToolData =
+  | WorkoutSummaryRow[]
+  | WorkoutSetRow[]
+  | WorkoutPeriodRow[]
+  | { rows: WorkoutSummaryRow[] | WorkoutSetRow[]; truncated: true; matched_total: number; returned: number; hint: string };
+
 export async function executeQueryWorkouts(opts: {
   supabase: SupabaseClient;
   userId: string;
   input: unknown;
-}): Promise<ToolResult<WorkoutSummaryRow[] | WorkoutSetRow[] | WorkoutPeriodRow[]>> {
+}): Promise<ToolResult<WorkoutsToolData>> {
   const t0 = Date.now();
   const i = (opts.input ?? {}) as Record<string, unknown>;
 
@@ -458,9 +464,12 @@ export async function executeQueryWorkouts(opts: {
     const all = raws.map((w) => buildSummary(w, exerciseFilter));
     const truncated = all.length > SUMMARY_CAP;
     const slice = truncated ? all.slice(-SUMMARY_CAP) : all;
+    const data = truncated
+      ? { rows: slice, truncated: true as const, matched_total: all.length, returned: slice.length, hint: "exceeds 90-workout cap; slice is most recent. Switch to granularity: 'by_week' or 'by_month' for a complete view." }
+      : slice;
     return {
       ok: true,
-      data: slice,
+      data,
       meta: { ms: Date.now() - t0, result_rows: slice.length, range_days, truncated },
     };
   }
@@ -492,14 +501,19 @@ export async function executeQueryWorkouts(opts: {
     );
     const totalTrimmed = merged.length > SETS_TOTAL_CAP;
     const slice = totalTrimmed ? merged.slice(-SETS_TOTAL_CAP) : merged;
+    const truncated = totalTrimmed || perExerciseTrimmed > 0;
+    const matchedTotal = merged.length + perExerciseTrimmed;
+    const data = truncated
+      ? { rows: slice, truncated: true as const, matched_total: matchedTotal, returned: slice.length, hint: "exceeds set caps (60/exercise, 400 total). Slice is most recent. Narrow start_date or filter exercise_name." }
+      : slice;
     return {
       ok: true,
-      data: slice,
+      data,
       meta: {
         ms: Date.now() - t0,
         result_rows: slice.length,
         range_days,
-        truncated: totalTrimmed || perExerciseTrimmed > 0,
+        truncated,
       },
     };
   }

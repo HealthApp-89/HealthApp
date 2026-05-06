@@ -25,6 +25,7 @@ Apply in order via Supabase Dashboard → SQL Editor:
 3. [supabase/migrations/0003_integrations.sql](supabase/migrations/0003_integrations.sql)
 4. [supabase/migrations/0004_coach_v2.sql](supabase/migrations/0004_coach_v2.sql)
 5. [supabase/migrations/0005_chat.sql](supabase/migrations/0005_chat.sql) — also requires the `chat-images` private Storage bucket created beforehand (Storage RLS policies attach to it)
+6. [supabase/migrations/0006_chat_settings.sql](supabase/migrations/0006_chat_settings.sql) — adds `profiles.system_prompt` (user-editable coach prompt; NULL = use code default) and `chat_messages.tool_calls` (jsonb of tool invocations per assistant turn for observability)
 
 `supabase` CLI is now linked (`supabase link --project-ref eopfwwergisvskxqvsqe`); future migrations apply via `supabase db push` after `repair --status applied <history>` if needed.
 

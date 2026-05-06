@@ -12,7 +12,8 @@ import type { ChatMessage, ChatMessageImage, ChatRole, ChatStatus } from "@/lib/
 import { type RichMessage, type ContentBlock } from "@/lib/anthropic/client";
 import { runChatStream } from "@/lib/coach/chat-stream";
 import type { ToolCallLog } from "@/lib/data/types";
-import { buildSnapshotText, buildEphemeralHeader } from "@/lib/coach/snapshot";
+import { buildSnapshot, buildEphemeralHeader } from "@/lib/coach/snapshot";
+import { todayInUserTz } from "@/lib/time";
 import {
   DEFAULT_SYSTEM_PROMPT,
   SCHEMA_EXPLAINER,
@@ -221,7 +222,19 @@ export async function POST(req: Request) {
   const finalSystemPrompt = `${SCHEMA_EXPLAINER}\n\n---\n\n${userPrompt}`;
 
   // Build the cache-aware Anthropic message structure.
-  const snapshot = await buildSnapshotText({ userId: user.id });
+  // Use buildSnapshot directly (not buildSnapshotText) so we can exclude
+  // nowLine from the cached block — it's a per-turn timestamp that would
+  // otherwise stale the cache. The ephemeral header below provides a fresh
+  // NOW for the model.
+  const sinceDate = new Date(`${todayInUserTz()}T00:00:00Z`);
+  sinceDate.setUTCDate(sinceDate.getUTCDate() - 14);
+  const since = sinceDate.toISOString().slice(0, 10);
+  const { body: snapshot } = await buildSnapshot({
+    supabase: sr as unknown as SupabaseClient,
+    userId: user.id,
+    since,
+    workoutLimit: 5,
+  });
 
   // Pull the rolling window: last N messages BEFORE the just-inserted user
   // turn and the streaming assistant stub (both are appended explicitly below).
@@ -344,6 +357,7 @@ export async function POST(req: Request) {
         })) {
           if (req.signal.aborted) {
             aborted = true;
+            errored = "aborted";
             break;
           }
           if (ev.type === "delta") {
