@@ -49,12 +49,9 @@ export type PR =
       date: string;
     };
 
-export type ExerciseTrendPoint = {
-  date: string;
-  kg: number;
-  reps: number;
-  est1rm: number;
-};
+export type ExerciseTrendPoint =
+  | { kind: "weighted"; date: string; kg: number; reps: number; est1rm: number }
+  | { kind: "bodyweight"; date: string; totalReps: number; bestSetReps: number };
 
 /** Load every workout for the user, joined with exercises + sets. Newest first.
  *  Two passes over the result so each exercise gets a history-wide `kind`:
@@ -218,22 +215,54 @@ export function buildPRs(workouts: WorkoutSession[]): PR[] {
   return [...weighted, ...bodyweight];
 }
 
-/** Take the heaviest working set per session for `name`, oldest → newest. */
-export function buildExerciseTrend(workouts: WorkoutSession[], name: string): ExerciseTrendPoint[] {
+/** One trend point per session for `name`, oldest → newest.
+ *  Weighted exercises: heaviest working set's est. 1RM (sessions with no
+ *    weighted working set are skipped).
+ *  Bodyweight exercises: total reps across bodyweight working sets that day.
+ *  An exercise's history-wide `kind` (set in loadWorkouts) decides which path. */
+export function buildExerciseTrend(
+  workouts: WorkoutSession[],
+  name: string,
+): ExerciseTrendPoint[] {
+  // Find the exercise's history-wide kind from the first session that contains it.
+  // If the exercise doesn't appear in any session, return [].
+  let kind: "weighted" | "bodyweight" | null = null;
+  for (const w of workouts) {
+    const ex = w.exercises.find((e) => e.name === name);
+    if (ex) {
+      kind = ex.kind;
+      break;
+    }
+  }
+  if (!kind) return [];
+
   const points: ExerciseTrendPoint[] = [];
   const sorted = [...workouts].sort((a, b) => a.date.localeCompare(b.date));
   for (const w of sorted) {
     const ex = w.exercises.find((e) => e.name === name);
     if (!ex) continue;
-    const working = ex.sets.filter((s) => !s.warmup && s.kg && s.reps);
-    if (!working.length) continue;
-    const best = working.reduce((a, b) => (b.kg! > a.kg! ? b : a));
-    points.push({
-      date: w.date,
-      kg: best.kg!,
-      reps: best.reps!,
-      est1rm: est1rm(best.kg!, best.reps!),
-    });
+    if (kind === "weighted") {
+      const working = ex.sets.filter((s) => !s.warmup && s.kg && s.reps);
+      if (!working.length) continue;
+      const best = working.reduce((a, b) => (b.kg! > a.kg! ? b : a));
+      points.push({
+        kind: "weighted",
+        date: w.date,
+        kg: best.kg!,
+        reps: best.reps!,
+        est1rm: est1rm(best.kg!, best.reps!),
+      });
+    } else {
+      let totalReps = 0;
+      let bestSetReps = 0;
+      for (const s of ex.sets) {
+        if (s.warmup || s.kg || !s.reps) continue;
+        totalReps += s.reps;
+        if (s.reps > bestSetReps) bestSetReps = s.reps;
+      }
+      if (totalReps === 0) continue;
+      points.push({ kind: "bodyweight", date: w.date, totalReps, bestSetReps });
+    }
   }
   return points;
 }
