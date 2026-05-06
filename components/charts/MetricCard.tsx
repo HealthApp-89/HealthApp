@@ -4,6 +4,7 @@ import { Card } from "@/components/ui/Card";
 import { LineChart, type LinePoint } from "@/components/charts/LineChart";
 import { COLOR } from "@/lib/ui/theme";
 import { fmtNum } from "@/lib/ui/score";
+import type { DailyLogKey } from "@/lib/ui/colors";
 
 type MetricCardProps = {
   /** Per-metric color from METRIC_COLOR. Tints the icon chip and chart line. */
@@ -24,6 +25,8 @@ type MetricCardProps = {
   trend?: LinePoint[];
   /** Optional href — wraps in a Link with chevron affordance. */
   href?: string;
+  /** Optional — drives sparkline interpolation lookup. */
+  metricKey?: DailyLogKey;
 };
 
 export function MetricCard({
@@ -38,6 +41,7 @@ export function MetricCard({
   compact,
   trend,
   href,
+  metricKey,
 }: MetricCardProps) {
   const goodWhenPositive = !inverted;
   const deltaColor =
@@ -131,7 +135,7 @@ export function MetricCard({
 
       {trend && trend.length > 0 && (
         <div style={{ marginTop: "6px" }}>
-          <LineChart data={trend} color={color} variant="mini" />
+          <LineChart data={trend} color={color} variant="mini" metricKey={metricKey} />
         </div>
       )}
     </Card>
