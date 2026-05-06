@@ -387,23 +387,29 @@ export function LineChart({
           />
         )}
 
-        {/* Point markers (detail only). Real = filled white dot, estimated =
-            hollow + dashed-stroke dot, last real = emphasized "now" dot. */}
+        {/* Point markers (detail only).
+            - Real value: solid filled colored dot (2.5px). Reads as an
+              accent on the line, not a punched-out ring.
+            - Estimated value: NO marker. The dashed segment alone
+              signals interpolation; piling a hollow marker on top
+              reads busy at this scale.
+            - Last real value: emphasized "now" dot (white fill,
+              colored stroke). Only outlined marker on the chart, so
+              it stands out as the current reading. */}
         {isDetail && pointMarkers &&
           points.map((p, i) => {
-            if (p.raw === null) return null;
+            if (p.raw === null || p.estimated) return null;
             const isLast = lastRealPoint != null && p === lastRealPoint;
-            if (p.estimated) {
+            if (isLast) {
               return (
                 <circle
                   key={i}
                   cx={p.x}
                   cy={p.y}
-                  r={2}
+                  r={5}
                   fill="#fff"
                   stroke={color}
-                  strokeWidth={1.5}
-                  strokeDasharray="2,1.5"
+                  strokeWidth={2.75}
                 />
               );
             }
@@ -412,10 +418,8 @@ export function LineChart({
                 key={i}
                 cx={p.x}
                 cy={p.y}
-                r={isLast ? 5 : 3}
-                fill="#fff"
-                stroke={color}
-                strokeWidth={isLast ? 2.75 : 2}
+                r={2.5}
+                fill={color}
               />
             );
           })}
