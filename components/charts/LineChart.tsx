@@ -9,6 +9,8 @@ export type LinePoint = {
   x?: string;
   /** Numeric value. `null` = no data (gap rendered as a thin dot). */
   y: number | null;
+  /** Set by `interpolateGaps` — renderer treats these as dashed/hollow. */
+  estimated?: boolean;
 };
 
 type LineChartProps = {
