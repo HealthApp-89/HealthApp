@@ -9,7 +9,9 @@ import {
   createSupabaseServiceRoleClient,
 } from "@/lib/supabase/server";
 import type { ChatMessage, ChatMessageImage, ChatRole, ChatStatus } from "@/lib/chat/types";
-import { streamClaude, type RichMessage, type ContentBlock } from "@/lib/anthropic/client";
+import { type RichMessage, type ContentBlock } from "@/lib/anthropic/client";
+import { runChatStream } from "@/lib/coach/chat-stream";
+import type { ToolCallLog } from "@/lib/data/types";
 import { buildSnapshotText, buildEphemeralHeader } from "@/lib/coach/snapshot";
 import {
   DEFAULT_SYSTEM_PROMPT,
@@ -330,14 +332,15 @@ export async function POST(req: Request) {
       };
       req.signal.addEventListener("abort", onAbort);
 
+      const toolCallSink: ToolCallLog[] = [];
       try {
-        for await (const ev of streamClaude(messages, {
-          model: MODEL,
-          system: [
-            { type: "text", text: finalSystemPrompt, cache_control: { type: "ephemeral", ttl: "1h" } },
-          ],
-          maxTokens: 2000,
+        for await (const ev of runChatStream({
+          userId: user.id,
+          systemPrompt: finalSystemPrompt,
+          messages: messages as unknown as Parameters<typeof runChatStream>[0]["messages"],
           signal: req.signal,
+          sr,
+          toolCallSink,
         })) {
           if (req.signal.aborted) {
             aborted = true;
@@ -347,6 +350,24 @@ export async function POST(req: Request) {
             accumulated += ev.text;
             controller.enqueue(
               encoder.encode(formatSseEvent({ event: "delta", data: { text: ev.text } })),
+            );
+          } else if (ev.type === "tool_call_start") {
+            controller.enqueue(
+              encoder.encode(
+                formatSseEvent({
+                  event: "tool_call_start",
+                  data: { id: ev.id, name: ev.name, input: ev.input },
+                }),
+              ),
+            );
+          } else if (ev.type === "tool_call_done") {
+            controller.enqueue(
+              encoder.encode(
+                formatSseEvent({
+                  event: "tool_call_done",
+                  data: { id: ev.id, ok: ev.ok, ms: ev.ms },
+                }),
+              ),
             );
           } else if (ev.type === "error") {
             errored = ev.message;
@@ -360,7 +381,8 @@ export async function POST(req: Request) {
       } finally {
         req.signal.removeEventListener("abort", onAbort);
 
-        // Persist the final state of the assistant stub.
+        // Persist the final state of the assistant stub. tool_calls is set
+        // even on error/abort paths so we keep the diagnostic record.
         const finalStatus = errored ? "error" : "done";
         await sr
           .from("chat_messages")
@@ -368,6 +390,7 @@ export async function POST(req: Request) {
             content: accumulated,
             status: finalStatus,
             error: errored,
+            tool_calls: toolCallSink.length > 0 ? toolCallSink : null,
             updated_at: new Date().toISOString(),
           })
           .eq("id", assistantId);
@@ -402,6 +425,8 @@ export async function POST(req: Request) {
             window: windowAsc.length,
             images: imageIds.length,
             status: aborted ? "aborted" : finalStatus,
+            tool_calls: toolCallSink.length,
+            tool_errors: toolCallSink.filter((c) => c.error !== null).length,
             latency_ms: Date.now() - startedAt,
           }),
         );
