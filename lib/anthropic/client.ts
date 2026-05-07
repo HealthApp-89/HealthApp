@@ -65,17 +65,13 @@ export function parseClaudeJson<T>(raw: string): T {
 // ── Streaming + multimodal ────────────────────────────────────────────────────
 // Used by the chat surface. Separate from `callClaude` so the JSON-shaped
 // insights paths stay simple.
+//
+// CacheControl / ContentBlock / RichMessage live in `lib/chat/types.ts` —
+// the canonical home shared with `lib/coach/chat-stream.ts`. Re-exported
+// here so existing import paths keep working.
 
-export type CacheControl = { type: "ephemeral"; ttl?: "5m" | "1h" };
-
-export type ContentBlock =
-  | { type: "text"; text: string; cache_control?: CacheControl }
-  | { type: "image"; source: { type: "url"; url: string } };
-
-export type RichMessage = {
-  role: "user" | "assistant";
-  content: string | ContentBlock[];
-};
+export type { CacheControl, ContentBlock, RichMessage } from "@/lib/chat/types";
+import type { CacheControl, RichMessage } from "@/lib/chat/types";
 
 export type StreamEvent =
   | { type: "delta"; text: string }

@@ -31,19 +31,11 @@ import {
   type ToolResult,
 } from "@/lib/coach/tools";
 import type { ToolCallLog } from "@/lib/data/types";
+import type { ContentBlock, RichMessage } from "@/lib/chat/types";
 
 const MODEL = "claude-sonnet-4-5";
 const MAX_TOOL_INVOCATIONS = 5;
 const MAX_TOKENS = 2000;
-
-type RichBlock =
-  | { type: "text"; text: string; cache_control?: { type: "ephemeral"; ttl?: "5m" | "1h" } }
-  | { type: "image"; source: { type: "url"; url: string } };
-
-export type RichInputMessage = {
-  role: "user" | "assistant";
-  content: string | RichBlock[];
-};
 
 export type ChatStreamYield =
   | { type: "delta"; text: string }
@@ -58,7 +50,7 @@ export type RunChatStreamOpts = {
   systemPrompt: string;
   /** The full message history including cached snapshot prefix + ephemeral
    *  header + new user turn. The route assembles this. */
-  messages: RichInputMessage[];
+  messages: RichMessage[];
   /** AbortSignal from the request. Threaded into the SDK so cancelling
    *  closes the underlying HTTP connection. */
   signal: AbortSignal;
@@ -87,7 +79,7 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
   // Conversation state — we mutate this each round as the loop appends
   // assistant messages with tool_use blocks and the matching tool_result
   // user-message follow-ups.
-  const messages: RichInputMessage[] = opts.messages.slice();
+  const messages: RichMessage[] = opts.messages.slice();
 
   while (true) {
     const forceText = invocations >= MAX_TOOL_INVOCATIONS;
@@ -155,7 +147,7 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
     // blocks) — required so subsequent rounds reference the right tool_use_id.
     messages.push({
       role: "assistant",
-      content: finalMsg.content as unknown as RichBlock[],
+      content: finalMsg.content as unknown as ContentBlock[],
     });
 
     // Execute each tool_use block serially. disable_parallel_tool_use is
@@ -229,7 +221,7 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
     // turn.
     messages.push({
       role: "user",
-      content: toolResultBlocks as unknown as RichBlock[],
+      content: toolResultBlocks as unknown as ContentBlock[],
     });
     // Loop back; next stream() call will see the tool_result and either
     // call another tool or emit the final text.

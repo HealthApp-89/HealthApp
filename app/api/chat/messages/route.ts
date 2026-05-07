@@ -350,7 +350,7 @@ export async function POST(req: Request) {
         for await (const ev of runChatStream({
           userId: user.id,
           systemPrompt: finalSystemPrompt,
-          messages: messages as unknown as Parameters<typeof runChatStream>[0]["messages"],
+          messages,
           signal: req.signal,
           sr,
           toolCallSink,

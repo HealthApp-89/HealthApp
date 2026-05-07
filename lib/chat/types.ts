@@ -1,9 +1,25 @@
 // lib/chat/types.ts
 //
 // Shared types used by both server and client. Mirror the DB shape.
+// Also the canonical home for Anthropic-message wire shapes used by the
+// chat path — both lib/anthropic/client.ts (hand-rolled streamer) and
+// lib/coach/chat-stream.ts (SDK-based tool loop) import from here.
 
 export type ChatRole = "user" | "assistant";
 export type ChatStatus = "streaming" | "done" | "error";
+
+// ── Anthropic message-content wire shapes ────────────────────────────────────
+export type CacheControl = { type: "ephemeral"; ttl?: "5m" | "1h" };
+
+export type ContentBlock =
+  | { type: "text"; text: string; cache_control?: CacheControl }
+  | { type: "image"; source: { type: "url"; url: string } };
+
+/** Used by both the hand-rolled streamer and the SDK-based tool loop. */
+export type RichMessage = {
+  role: "user" | "assistant";
+  content: string | ContentBlock[];
+};
 
 export type ChatMessageImage = {
   id: string;
