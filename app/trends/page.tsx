@@ -25,9 +25,16 @@ export default async function TrendsPage(props: {
     ["7d", "30d", "ytd", "ly"].includes(rawPeriod) ? rawPeriod : "30d"
   ) as PeriodPreset;
 
-  // Always prefetch a 1-year window — TrendsClient slices it client-side
-  // for any pill choice including "1Y".
-  const { from: yearFrom, to: yearTo } = resolvePeriod("ly", undefined, undefined);
+  // Prefetch a window wide enough to cover EVERY pill range. resolvePeriod's
+  // "ly" returns calendar last year (e.g. 2025-01-01..2025-12-31) and "ytd"
+  // returns the current year so far — they don't overlap. We compute the
+  // union by taking min(ly.from, ytd.from) → today, so any pill click slices
+  // a subset of the cached array (no extra fetch). 7d and 30d are trivially
+  // inside the window.
+  const lyRange = resolvePeriod("ly", undefined, undefined);
+  const ytdRange = resolvePeriod("ytd", undefined, undefined);
+  const yearFrom = lyRange.from < ytdRange.from ? lyRange.from : ytdRange.from;
+  const yearTo = ytdRange.to;
 
   const queryClient = makeServerQueryClient();
   await queryClient.prefetchQuery({
