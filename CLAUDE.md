@@ -59,6 +59,22 @@ App Router pages under [app/](app/): `/` (dashboard), `/log`, `/strength`, `/tre
 
 API routes under [app/api/](app/api/): `whoop/{auth,callback,sync,backfill}`, `withings/{auth,callback,sync,backfill,disconnect}`, `ingest/{health,strong,token}`, `insights`, `recommendations`, `auth/signout`. Sync routes call `revalidatePath()` so 60s ISR on `/` invalidates immediately.
 
+### Client cache (TanStack Query) — read this before adding interactive queries
+
+Every page that fetches per-user data follows the **hybrid SSR-hydrate** pattern:
+
+1. **Server Component** (`app/<route>/page.tsx`) — gates auth, mints a per-request `makeServerQueryClient()` from [lib/query/queryClient.ts](lib/query/queryClient.ts), prefetches initial data using a `Server` fetcher from [lib/query/fetchers/](lib/query/fetchers/), wraps children in `<HydrationBoundary state={dehydrate(queryClient)}>`.
+2. **Client Component** (`components/<route>/<Page>Client.tsx`) — reads via hooks from [lib/query/hooks/](lib/query/hooks/) like `useDailyLogs(userId, from, to)`. Hooks call the matching `Browser` fetcher which goes directly to Supabase via [lib/supabase/client.ts](lib/supabase/client.ts). RLS enforces per-user scoping.
+
+**Rules:**
+- Every fetcher comes in two variants (server + browser) sharing the same select string and return shape — see [lib/query/fetchers/dailyLogs.ts](lib/query/fetchers/dailyLogs.ts) as the canonical example.
+- Both fetcher variants must throw on Supabase errors (`if (error) throw error`) so TanStack Query lights up `isError`.
+- Query keys come from [lib/query/keys.ts](lib/query/keys.ts) — never inline.
+- Mutations (writes / Anthropic calls / cron-triggered work) stay on existing route handlers under [app/api/](app/api/). Only reads use the client cache.
+- After a mutation, invalidate by key prefix: `queryClient.invalidateQueries({ queryKey: queryKeys.dailyLogs.all(userId) })`.
+- Pages that prefetch a wide window for client-side filtering (like `/trends`) must compute the prefetch bounds as the union of all interactive ranges — see `app/trends/page.tsx` for the `min(ly.from, ytd.from) → today` pattern.
+- See [docs/superpowers/specs/2026-05-07-client-cache-refactor-design.md](docs/superpowers/specs/2026-05-07-client-cache-refactor-design.md) for the full rationale.
+
 ### Coach / AI
 
 - [lib/anthropic/client.ts](lib/anthropic/client.ts) — server-side Anthropic SDK. The key is `ANTHROPIC_API_KEY` (never `NEXT_PUBLIC_*`); the prototype exposed it to the browser, the port intentionally moves it server-side.
