@@ -32,4 +32,6 @@ export type ChatMessage = {
 export type ChatStreamEvent =
   | { type: "delta"; text: string }
   | { type: "done"; message_id: string; partial?: boolean }
-  | { type: "error"; message: string };
+  | { type: "error"; message: string }
+  | { type: "tool_call_start"; id: string; name: string; input: Record<string, unknown> }
+  | { type: "tool_call_done"; id: string; ok: boolean; ms: number };

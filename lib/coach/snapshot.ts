@@ -170,3 +170,126 @@ export async function buildSnapshotText({
   });
   return `${nowLine}\n\n${body}`;
 }
+
+// ── Ephemeral header (per-turn, NOT cached) ──────────────────────────────────
+//
+// Built fresh at request time. Carries today's row + yesterday's row (re-
+// queried so freshly-arrived sync data isn't lied about) and a DATA FRESHNESS
+// block giving hours-ago precision per source. Sits as a separate text block
+// AFTER the cached snapshot prefix; never use cache_control on it.
+
+export type SyncFreshnessRow = {
+  source: "WHOOP" | "Withings" | "Apple Health" | "Yazio";
+  /** ISO timestamp of the most recent daily_logs.updated_at where the
+   *  source-signature column is non-null. Null if no rows ever. */
+  last_write_at: string | null;
+};
+
+const FRESHNESS_SOURCES: { source: SyncFreshnessRow["source"]; signatureCol: string }[] = [
+  { source: "WHOOP", signatureCol: "hrv" },
+  { source: "Withings", signatureCol: "weight_kg" },
+  { source: "Apple Health", signatureCol: "steps" },
+  { source: "Yazio", signatureCol: "protein_g" },
+];
+
+export async function getSyncFreshness(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<SyncFreshnessRow[]> {
+  return Promise.all(
+    FRESHNESS_SOURCES.map(async ({ source, signatureCol }) => {
+      const { data } = await supabase
+        .from("daily_logs")
+        .select("updated_at")
+        .eq("user_id", userId)
+        .not(signatureCol, "is", null)
+        .order("date", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      return {
+        source,
+        last_write_at: (data?.updated_at as string | undefined) ?? null,
+      };
+    }),
+  );
+}
+
+/** Render hours-ago in `Nh Mm ago (today|yesterday|N days ago)` form. */
+export function formatFreshness(now: Date, last: string | null): string {
+  if (!last) return "no data";
+  const lastDate = new Date(last);
+  const ms = now.getTime() - lastDate.getTime();
+  const minutes = Math.max(0, Math.floor(ms / 60_000));
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  // Day bucket: compare calendar dates in user's tz proxy (UTC here is fine
+  // for the bucket label since the precision is ±1 day; the hours-ago value
+  // is the load-bearing number).
+  const today = new Date(now.toISOString().slice(0, 10) + "T00:00:00Z");
+  const lastDay = new Date(last.slice(0, 10) + "T00:00:00Z");
+  const dayDelta = Math.round((today.getTime() - lastDay.getTime()) / 86_400_000);
+  let dayLabel: string;
+  if (dayDelta <= 0) dayLabel = "today";
+  else if (dayDelta === 1) dayLabel = "yesterday";
+  else dayLabel = `${dayDelta} days ago`;
+  return `${hours}h ${mins.toString().padStart(2, "0")}m ago (${dayLabel})`;
+}
+
+/** Build the per-turn ephemeral header. Re-queries today + yesterday rows
+ *  fresh so post-cache data lands. Returned as a single string; the caller
+ *  places it as the LAST text block of the user message right before the new
+ *  user content, AFTER the cached snapshot prefix. NOT cacheable. */
+export async function buildEphemeralHeader(opts: {
+  supabase: SupabaseClient;
+  userId: string;
+}): Promise<string> {
+  const { supabase, userId } = opts;
+  const today = todayInUserTz();
+  const yesterdayDate = new Date(`${today}T00:00:00Z`);
+  yesterdayDate.setUTCDate(yesterdayDate.getUTCDate() - 1);
+  const yesterday = yesterdayDate.toISOString().slice(0, 10);
+
+  // Pull both rows + freshness in parallel.
+  const [{ data: rows }, freshness, n] = await Promise.all([
+    supabase
+      .from("daily_logs")
+      .select(
+        "date, hrv, resting_hr, recovery, sleep_hours, sleep_score, deep_sleep_hours, strain, steps, calories, weight_kg, protein_g, carbs_g, fat_g",
+      )
+      .eq("user_id", userId)
+      .in("date", [today, yesterday]),
+    getSyncFreshness(supabase, userId),
+    Promise.resolve(nowInUserTz()),
+  ]);
+
+  const byDate = new Map<string, DailyLogRow>();
+  for (const r of (rows ?? []) as DailyLogRow[]) byDate.set(r.date, r);
+
+  const renderRow = (label: string, date: string) => {
+    const r = byDate.get(date);
+    const fmt = (v: number | null | undefined, unit = "") =>
+      v === null || v === undefined ? "null" : `${v}${unit}`;
+    return [
+      `${label} (${date}):`,
+      `  recovery=${fmt(r?.recovery)}  hrv=${fmt(r?.hrv)}  resting_hr=${fmt(r?.resting_hr)}  sleep_hours=${fmt(r?.sleep_hours)}  sleep_score=${fmt(r?.sleep_score)}`,
+      `  strain=${fmt(r?.strain)}  steps=${fmt(r?.steps)}  weight_kg=${fmt(r?.weight_kg)}`,
+      `  protein_g=${fmt(r?.protein_g)}  carbs_g=${fmt(r?.carbs_g)}  fat_g=${fmt(r?.fat_g)}`,
+    ].join("\n");
+  };
+
+  const nowJsDate = new Date();
+  const freshnessLines = freshness.map(
+    (f) => `  ${f.source} last write: ${formatFreshness(nowJsDate, f.last_write_at)}`,
+  );
+
+  return [
+    `NOW: ${n.date} ${n.time} ${n.utcOffset} (${n.weekday})`,
+    ``,
+    renderRow("TODAY", today),
+    ``,
+    renderRow("YESTERDAY", yesterday),
+    ``,
+    `DATA FRESHNESS:`,
+    ...freshnessLines,
+  ].join("\n");
+}

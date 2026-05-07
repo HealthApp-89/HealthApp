@@ -66,6 +66,20 @@ export async function* postSse(
           };
         } else if (eventName === "error") {
           yield { type: "error", message: data.message as string };
+        } else if (eventName === "tool_call_start") {
+          yield {
+            type: "tool_call_start",
+            id: data.id as string,
+            name: data.name as string,
+            input: (data.input ?? {}) as Record<string, unknown>,
+          };
+        } else if (eventName === "tool_call_done") {
+          yield {
+            type: "tool_call_done",
+            id: data.id as string,
+            ok: data.ok as boolean,
+            ms: data.ms as number,
+          };
         }
       } catch {
         // Malformed; skip.
