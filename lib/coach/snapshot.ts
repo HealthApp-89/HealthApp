@@ -10,7 +10,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { loadWorkouts } from "@/lib/data/workouts";
+import { loadWorkouts } from "@/lib/data/workouts-server";
 import { nowInUserTz, relativeDateLabel, todayInUserTz } from "@/lib/time";
 
 type ProfileRow = {

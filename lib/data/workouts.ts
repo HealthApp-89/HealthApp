@@ -1,4 +1,10 @@
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+// NOTE: This module is imported by Client Components (e.g. StrengthClient.tsx)
+// for the pure helpers (buildPRs, buildExerciseTrend, processRawWorkouts).
+// **Do not** add server-only imports (next/headers, createSupabaseServerClient,
+// service-role client) here — they would poison the client bundle and crash
+// the page with "You're importing a component that needs 'next/headers'".
+// The server-side `loadWorkouts(userId)` lives in `lib/data/workouts-server.ts`.
+
 import { est1rm } from "@/lib/ui/score";
 
 export type WorkoutSet = {
@@ -147,25 +153,6 @@ export type PR =
 export type ExerciseTrendPoint =
   | { kind: "weighted"; date: string; kg: number; reps: number; est1rm: number }
   | { kind: "bodyweight"; date: string; totalReps: number; bestSetReps: number };
-
-/** Load every workout for the user, joined with exercises + sets. Newest first.
- *  Backward-compatible signature — three callers depend on this:
- *    - `app/api/insights/strength/route.ts` (service-role server context)
- *    - `lib/coach/snapshot.ts` (coach internals)
- *    - `app/strength/page.tsx` (about to migrate to the dual fetcher)
- *  The heavy classification logic lives in the pure `processRawWorkouts`
- *  helper above so the browser fetcher can reuse it. */
-export async function loadWorkouts(userId: string): Promise<WorkoutSession[]> {
-  const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase
-    .from("workouts")
-    .select(WORKOUT_QUERY_COLS)
-    .eq("user_id", userId)
-    .order("date", { ascending: false });
-
-  if (error) throw error;
-  return processRawWorkouts((data ?? []) as RawWorkoutRow[]);
-}
 
 /** Per-exercise PR. Weighted exercises track highest est. 1RM working set;
  *  bodyweight exercises track the session with the most total working reps.

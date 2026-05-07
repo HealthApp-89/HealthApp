@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient, createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { callClaude, parseClaudeJson } from "@/lib/anthropic/client";
-import { loadWorkouts } from "@/lib/data/workouts";
+import { loadWorkouts } from "@/lib/data/workouts-server";
 import { todayInUserTz } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
