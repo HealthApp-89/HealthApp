@@ -44,6 +44,17 @@ function avg(points: LinePoint[]): number | null {
   return n > 0 ? sum / n : null;
 }
 
+/** Latest non-null reading in the series. Used for the headline number on the
+ *  metric card — the period average is misleading when a single recent
+ *  data point is what the user actually wants to glance at. */
+function latest(points: LinePoint[]): number | null {
+  for (let i = points.length - 1; i >= 0; i--) {
+    const v = points[i].y;
+    if (v !== null && Number.isFinite(v)) return v;
+  }
+  return null;
+}
+
 /** Delta: second-half average minus first-half average. */
 function halfDelta(points: LinePoint[]): number | null {
   const mid = Math.floor(points.length / 2);
@@ -112,13 +123,14 @@ export default async function TrendsPage(props: {
   const weightTrend  = toPoints(aggWeight);
   const bfTrend      = toPoints(aggBodyFat);
 
-  // Averages
-  const hrvAvg    = avg(hrvTrend);
-  const rhrAvg    = avg(rhrTrend);
-  const sleepAvg  = avg(sleepTrend);
-  const strainAvg = avg(strainTrend);
-  const weightAvg = avg(weightTrend);
-  const bfAvg     = avg(bfTrend);
+  // Headline values: most recent non-null reading in the period. Card swaps
+  // to the hovered point's value when the user drags across the sparkline.
+  const hrvLatest    = latest(hrvTrend);
+  const rhrLatest    = latest(rhrTrend);
+  const sleepLatest  = latest(sleepTrend);
+  const strainLatest = latest(strainTrend);
+  const weightLatest = latest(weightTrend);
+  const bfLatest     = latest(bfTrend);
 
   // Deltas: second-half avg minus first-half avg of the current window.
   const hrvDelta    = halfDelta(hrvTrend);
@@ -154,7 +166,7 @@ export default async function TrendsPage(props: {
             metricKey="hrv"
             icon="♥"
             label="HRV"
-            value={hrvAvg}
+            value={hrvLatest}
             unit="ms"
             delta={hrvDelta}
             deltaUnit="ms"
@@ -167,7 +179,7 @@ export default async function TrendsPage(props: {
             metricKey="resting_hr"
             icon="♥"
             label="Resting HR"
-            value={rhrAvg}
+            value={rhrLatest}
             unit="bpm"
             delta={rhrDelta}
             deltaUnit="bpm"
@@ -181,7 +193,7 @@ export default async function TrendsPage(props: {
             metricKey="sleep_hours"
             icon="☾"
             label="Sleep"
-            value={sleepAvg}
+            value={sleepLatest}
             unit="h"
             delta={sleepDelta}
             deltaUnit="h"
@@ -194,7 +206,7 @@ export default async function TrendsPage(props: {
             metricKey="strain"
             icon="⚡"
             label="Strain"
-            value={strainAvg}
+            value={strainLatest}
             delta={strainDelta}
             compact
             trend={strainTrend}
@@ -205,7 +217,7 @@ export default async function TrendsPage(props: {
             metricKey="weight_kg"
             icon="⚖"
             label="Weight"
-            value={weightAvg}
+            value={weightLatest}
             unit="kg"
             delta={weightDelta}
             deltaUnit="kg"
@@ -218,7 +230,7 @@ export default async function TrendsPage(props: {
             metricKey="body_fat_pct"
             icon="%"
             label="Body Fat"
-            value={bfAvg}
+            value={bfLatest}
             unit="%"
             delta={bfDelta}
             deltaUnit="%"

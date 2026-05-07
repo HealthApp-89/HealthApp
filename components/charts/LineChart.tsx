@@ -34,6 +34,9 @@ type LineChartProps = {
   yAxisLabels?: boolean;
   /** Detail-only: render filled markers on every real value. Default true. */
   pointMarkers?: boolean;
+  /** Fires whenever the user hovers a point (or leaves with `null`). Lets the
+   *  parent (e.g. MetricCard) display the hovered value in its own header. */
+  onHoverChange?: (point: LinePoint | null) => void;
 };
 
 /**
@@ -60,6 +63,7 @@ export function LineChart({
   comparison: rawComparison = null,
   yAxisLabels = true,
   pointMarkers = true,
+  onHoverChange,
 }: LineChartProps) {
   const isDetail = variant === "detail";
   const h = height ?? (isDetail ? 160 : 80);
@@ -116,6 +120,12 @@ export function LineChart({
   // Build paths. We split the primary line into "real-only" and
   // "estimated-touching" segments so estimated stretches render dashed
   // while real-data stretches render solid.
+  //
+  // Critical: the area path must close EACH contiguous segment at its own
+  // first/last x. A naive `M-after-gap` opens an unclosed subpath that SVG
+  // fills via implicit closure (a phantom diagonal back to that subpath's
+  // start), which produced the diagonal artifacts we used to see across
+  // every chart with internal null gaps.
   const { realPath, estPath, areaPath } = useMemo(() => {
     if (!plot || points.length === 0) return { realPath: "", estPath: "", areaPath: "" };
 
@@ -124,28 +134,39 @@ export function LineChart({
     let area = "";
     let realStarted = false;
     let estStarted = false;
-    let areaStarted = false;
+    // Track the open area segment's first/last x so we can close it explicitly
+    // before starting a new one (or at the end of iteration).
+    let segFirstX: number | null = null;
+    let segLastX: number | null = null;
+    const closeSegment = () => {
+      if (segFirstX !== null && segLastX !== null) {
+        area += ` L ${segLastX} ${h} L ${segFirstX} ${h} Z`;
+      }
+      segFirstX = null;
+      segLastX = null;
+    };
 
     for (let i = 0; i < points.length; i++) {
       const p = points[i];
       if (p.raw === null) {
         realStarted = false;
         estStarted = false;
+        // Close the in-flight area segment so the gap doesn't bleed the fill
+        // through implicit closure.
+        closeSegment();
         continue;
       }
-      if (!areaStarted) {
-        area += `M ${p.x} ${p.y}`;
-        areaStarted = true;
-      } else {
-        const prev = points[i - 1];
-        if (prev.raw !== null) {
-          const cx = (p.x - prev.x) / 2;
-          area += ` C ${prev.x + cx} ${prev.y} ${p.x - cx} ${p.y} ${p.x} ${p.y}`;
-        } else {
-          area += ` M ${p.x} ${p.y}`;
-        }
-      }
       const prev = points[i - 1];
+      if (segFirstX === null) {
+        // Start a fresh segment.
+        area += `${area ? " " : ""}M ${p.x} ${p.y}`;
+        segFirstX = p.x;
+      } else if (prev && prev.raw !== null) {
+        const cx = (p.x - prev.x) / 2;
+        area += ` C ${prev.x + cx} ${prev.y} ${p.x - cx} ${p.y} ${p.x} ${p.y}`;
+      }
+      segLastX = p.x;
+
       const segIsEstimated = p.estimated || (prev && prev.raw !== null && prev.estimated);
 
       if (segIsEstimated) {
@@ -171,13 +192,8 @@ export function LineChart({
         estStarted = false;
       }
     }
-    if (areaStarted) {
-      const last = [...points].reverse().find((p) => p.raw !== null);
-      const first = points.find((p) => p.raw !== null);
-      if (last && first) {
-        area += ` L ${last.x} ${h} L ${first.x} ${h} Z`;
-      }
-    }
+    // Close the final segment if iteration ended mid-segment.
+    closeSegment();
     return { realPath: real, estPath: est, areaPath: area };
   }, [plot, points, h]);
 
@@ -259,7 +275,18 @@ export function LineChart({
         nearest = i;
       }
     }
-    setHoverIndex(nearest >= 0 ? nearest : null);
+    const next = nearest >= 0 ? nearest : null;
+    if (next !== hoverIndex) {
+      setHoverIndex(next);
+      onHoverChange?.(next === null ? null : data[next]);
+    }
+  };
+
+  const onPointerLeave = () => {
+    if (hoverIndex !== null) {
+      setHoverIndex(null);
+      onHoverChange?.(null);
+    }
   };
 
   const hover = hoverIndex !== null ? points[hoverIndex] : null;
@@ -319,7 +346,7 @@ export function LineChart({
         height={h}
         style={{ display: "block", touchAction: "none", overflow: "visible" }}
         onPointerMove={onPointerMove}
-        onPointerLeave={() => setHoverIndex(null)}
+        onPointerLeave={onPointerLeave}
       >
         <defs>
           <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">

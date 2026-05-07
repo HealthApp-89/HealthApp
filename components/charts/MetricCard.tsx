@@ -1,4 +1,6 @@
-import type { ReactNode } from "react";
+"use client";
+
+import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { Card } from "@/components/ui/Card";
 import { LineChart, type LinePoint } from "@/components/charts/LineChart";
@@ -21,7 +23,9 @@ type MetricCardProps = {
   inverted?: boolean;
   /** Compact card variant (16px radius, tighter). */
   compact?: boolean;
-  /** Optional sparkline. Renders a `mini` LineChart below value. */
+  /** Optional sparkline. Renders a `mini` LineChart below value. When present
+   *  AND a hover is active, the header value is overridden with the hovered
+   *  point's value (and the delta slot shows the hovered date instead). */
   trend?: LinePoint[];
   /** Optional href — wraps in a Link with chevron affordance. */
   href?: string;
@@ -43,6 +47,12 @@ export function MetricCard({
   href,
   metricKey,
 }: MetricCardProps) {
+  // Hover swap-in: when the user is dragging across the trend, surface the
+  // hovered point's value and date in the header. Falls back to the normal
+  // value + delta when not hovering.
+  const [hover, setHover] = useState<LinePoint | null>(null);
+  const isHovering = hover !== null && hover.y !== null;
+
   const goodWhenPositive = !inverted;
   const deltaColor =
     delta == null
@@ -53,12 +63,13 @@ export function MetricCard({
       ? COLOR.success
       : COLOR.danger;
 
+  const displayValue: number | string | null = isHovering ? hover!.y : value;
   const valueDisplay =
-    value == null
+    displayValue == null
       ? "—"
-      : typeof value === "number"
-      ? fmtNum(value)
-      : value;
+      : typeof displayValue === "number"
+      ? fmtNum(displayValue)
+      : displayValue;
 
   const inner = (
     <Card variant={compact ? "compact" : "standard"}>
@@ -92,7 +103,19 @@ export function MetricCard({
             {label}
           </span>
         </div>
-        {delta != null && (
+        {isHovering && hover!.x ? (
+          <span
+            data-tnum
+            style={{
+              fontSize: "11px",
+              fontWeight: 600,
+              color: COLOR.textFaint,
+              letterSpacing: "0.02em",
+            }}
+          >
+            {formatHoverDate(hover!.x)}
+          </span>
+        ) : delta != null ? (
           <span
             data-tnum
             style={{
@@ -105,7 +128,7 @@ export function MetricCard({
             {fmtNum(delta)}
             {deltaUnit ? ` ${deltaUnit}` : ""}
           </span>
-        )}
+        ) : null}
       </div>
 
       <div
@@ -135,7 +158,13 @@ export function MetricCard({
 
       {trend && trend.length > 0 && (
         <div style={{ marginTop: "6px" }}>
-          <LineChart data={trend} color={color} variant="mini" metricKey={metricKey} />
+          <LineChart
+            data={trend}
+            color={color}
+            variant="mini"
+            metricKey={metricKey}
+            onHoverChange={setHover}
+          />
         </div>
       )}
     </Card>
@@ -162,4 +191,12 @@ function hexToBgChip(hex: string): string {
   const blend = 0.82; // 82% white, 18% color
   const mix = (v: number) => Math.round(v * (1 - blend) + 255 * blend);
   return `rgb(${mix(r)}, ${mix(g)}, ${mix(b)})`;
+}
+
+/** ISO date → "May 4". Returns the input as-is if not a parseable ISO date. */
+function formatHoverDate(x: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(x)) return x;
+  const [y, m, d] = x.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return dt.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
 }
