@@ -104,8 +104,34 @@ function ProviderActions({
   function callJson(url: string, method: "GET" | "POST", label: string) {
     setFlash(null);
     startTransition(async () => {
-      const res = await fetch(url, { method });
-      const j = await res.json();
+      // Robust to non-JSON responses (Vercel timeout HTML pages, network errors,
+      // anything else): never let `await res.json()` throw inside the transition,
+      // because React 19 escalates a thrown async-transition error to the root
+      // error boundary, which renders Next's "Application error: a client-side
+      // exception has occurred" page.
+      type Reply = {
+        ok?: boolean;
+        error?: string;
+        reason?: string;
+        upserted?: number;
+      };
+      let j: Reply;
+      try {
+        const res = await fetch(url, { method });
+        const text = await res.text();
+        try {
+          j = JSON.parse(text) as Reply;
+        } catch {
+          const snippet = text.slice(0, 80).replace(/\s+/g, " ").trim();
+          j = {
+            ok: false,
+            error: `HTTP ${res.status} (non-JSON: ${snippet || "empty"})`,
+          };
+        }
+      } catch (e) {
+        setFlash(`✗ ${label}: ${(e as Error).message}`);
+        return;
+      }
       if (!j.ok) setFlash(`✗ ${label}: ${j.error ?? j.reason ?? "failed"}`);
       else if (j.upserted != null) setFlash(`✓ ${label}: ${j.upserted} days`);
       else setFlash(`✓ ${label}`);
