@@ -41,10 +41,17 @@ export const EXERCISE_CATEGORY: Record<string, ExerciseCategory> = {
   "front raise": "push",
   "cable lateral raise": "push",
   "machine shoulder press": "push",
+  "shoulder press": "push",
   "push-up": "push",
+  "push up": "push",
+  "scapular push-ups": "push",
   "dip": "push",
+  "bench dip": "push",
+  "chest dip": "push",
   "tricep extension": "push",
+  "triceps extension": "push",
   "tricep pushdown": "push",
+  "triceps pushdown": "push",
   "skull crusher": "push",
   "close-grip bench press": "push",
   "chest fly": "push",
@@ -53,11 +60,14 @@ export const EXERCISE_CATEGORY: Record<string, ExerciseCategory> = {
 
   // ── PULL ─────────────────────────────────────────────────────────────────
   "barbell row": "pull",
+  "bent over row": "pull",
   "pendlay row": "pull",
   "dumbbell row": "pull",
   "seated cable row": "pull",
+  "seated row": "pull",
   "t-bar row": "pull",
   "machine row": "pull",
+  "pullover": "pull",
   "pull-up": "pull",
   "chin-up": "pull",
   "lat pulldown": "pull",
@@ -74,6 +84,7 @@ export const EXERCISE_CATEGORY: Record<string, ExerciseCategory> = {
   "shrug": "pull",
 
   // ── SQUAT ────────────────────────────────────────────────────────────────
+  "squat": "squat",
   "back squat": "squat",
   "barbell squat": "squat",
   "front squat": "squat",
@@ -81,6 +92,7 @@ export const EXERCISE_CATEGORY: Record<string, ExerciseCategory> = {
   "low-bar squat": "squat",
   "goblet squat": "squat",
   "leg press": "squat",
+  "seated leg press": "squat",
   "hack squat": "squat",
   "machine squat": "squat",
   "leg extension": "squat",
@@ -110,6 +122,7 @@ export const EXERCISE_CATEGORY: Record<string, ExerciseCategory> = {
   "bulgarian split squat": "single-leg",
   "step-up": "single-leg",
   "single-leg press": "single-leg",
+  "leg press single leg": "single-leg",
   "pistol squat": "single-leg",
   "single-leg deadlift": "single-leg",
 
@@ -137,12 +150,25 @@ export const EXERCISE_CATEGORY: Record<string, ExerciseCategory> = {
   "farmers walk": "accessory",
   "neck flexion": "accessory",
   "neck extension": "accessory",
+  "hip abductor": "accessory",
+  "cable external rotation": "accessory",
+  "cable internal rotation": "accessory",
 
-  // NOTE: This seed mapping covers the canonical names. If the SQL query in
-  // Task 10 step 1 returns names not present here, add them with one of the
-  // 7 buckets and re-commit. Variants with equipment in parens are stripped
-  // by normalize() so the same key works for "Bench Press" and
-  // "Bench Press (Barbell)".
+  // NOTE on intentional omissions: mobility / warmup / breathwork moves the
+  // user logs (90/90 hip mobility, ankle mobility, cat-cow, child's pose,
+  // diaphragmatic breathing, hip flexor stretches, neck CARs, open books,
+  // pelvic tilts, shoulder CARs, shoulder rolls, supine knee drops,
+  // supported deep squat hold, thread the needle, upper trap stretch,
+  // wall slides, hip hinge drill) are intentionally LEFT uncategorized.
+  // Per SCHEMA_EXPLAINER, "uncategorized" is a missing-data flag: the model
+  // excludes these from movement-pattern rollups, which is the right
+  // behavior — these aren't strength training and shouldn't pollute volume
+  // or push:pull balance answers.
+  //
+  // To extend: run `node scripts/audit-exercise-categories.mjs` and add any
+  // newly logged strength moves above. Equipment variants with parens
+  // ("Bench Press (Barbell)") are stripped by normalize() — no separate
+  // entry needed.
 };
 
 export function normalize(s: string): string {
