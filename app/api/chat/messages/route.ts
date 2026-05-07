@@ -209,44 +209,46 @@ export async function POST(req: Request) {
   const rpcTyped = rpcRow as { user_message_id: string; assistant_message_id: string };
   const assistantId = rpcTyped.assistant_message_id;
 
+  // Three independent reads in parallel: user's editable system prompt,
+  // the cached 14-day snapshot prefix, and the rolling chat-history window.
+  // Use buildSnapshot (not buildSnapshotText) so we can exclude nowLine from
+  // the cached block — it's a per-turn timestamp that would otherwise stale
+  // the cache. The ephemeral header below provides a fresh NOW for the model.
+  const sinceDate = new Date(`${todayInUserTz()}T00:00:00Z`);
+  sinceDate.setUTCDate(sinceDate.getUTCDate() - 14);
+  const since = sinceDate.toISOString().slice(0, 10);
+  type WindowRow = { id: string; role: string; content: string; created_at: string };
+  const [
+    { data: profileRow },
+    { body: snapshot },
+    { data: windowRows },
+  ] = await Promise.all([
+    sr.from("profiles")
+      .select("system_prompt")
+      .eq("user_id", user.id)
+      .maybeSingle(),
+    buildSnapshot({
+      supabase: sr as unknown as SupabaseClient,
+      userId: user.id,
+      since,
+      workoutLimit: 5,
+    }),
+    sr.from("chat_messages")
+      .select("id, role, content, created_at")
+      .eq("user_id", user.id)
+      .neq("status", "streaming")
+      .neq("id", rpcTyped.user_message_id)
+      .order("created_at", { ascending: false })
+      .limit(ROLLING_WINDOW),
+  ]);
+
   // Resolve effective system prompt: SCHEMA_EXPLAINER + (user override OR default).
-  const { data: profileRow } = await sr
-    .from("profiles")
-    .select("system_prompt")
-    .eq("user_id", user.id)
-    .maybeSingle();
   const userPrompt =
     typeof profileRow?.system_prompt === "string" && profileRow.system_prompt.length > 0
       ? profileRow.system_prompt
       : DEFAULT_SYSTEM_PROMPT;
   const finalSystemPrompt = `${SCHEMA_EXPLAINER}\n\n---\n\n${userPrompt}`;
 
-  // Build the cache-aware Anthropic message structure.
-  // Use buildSnapshot directly (not buildSnapshotText) so we can exclude
-  // nowLine from the cached block — it's a per-turn timestamp that would
-  // otherwise stale the cache. The ephemeral header below provides a fresh
-  // NOW for the model.
-  const sinceDate = new Date(`${todayInUserTz()}T00:00:00Z`);
-  sinceDate.setUTCDate(sinceDate.getUTCDate() - 14);
-  const since = sinceDate.toISOString().slice(0, 10);
-  const { body: snapshot } = await buildSnapshot({
-    supabase: sr as unknown as SupabaseClient,
-    userId: user.id,
-    since,
-    workoutLimit: 5,
-  });
-
-  // Pull the rolling window: last N messages BEFORE the just-inserted user
-  // turn and the streaming assistant stub (both are appended explicitly below).
-  type WindowRow = { id: string; role: string; content: string; created_at: string };
-  const { data: windowRows } = await sr
-    .from("chat_messages")
-    .select("id, role, content, created_at")
-    .eq("user_id", user.id)
-    .neq("status", "streaming")
-    .neq("id", rpcTyped.user_message_id)
-    .order("created_at", { ascending: false })
-    .limit(ROLLING_WINDOW);
   const windowAsc: WindowRow[] = ((windowRows ?? []) as WindowRow[]).slice().reverse();
 
   // For images on user messages in the window, attach signed URLs as image
