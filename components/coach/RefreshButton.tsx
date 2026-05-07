@@ -7,9 +7,16 @@ import { COLOR, RADIUS } from "@/lib/ui/theme";
 type Props = {
   endpoint: string;
   label?: string;
+  /**
+   * Optional callback fired after a successful POST. Pages using TanStack
+   * Query pass `() => queryClient.invalidateQueries(...)` here. When omitted,
+   * the legacy `router.refresh()` path is used (forces the server component
+   * tree to re-fetch).
+   */
+  onSuccess?: () => void;
 };
 
-export function RefreshButton({ endpoint, label = "Run pattern analysis" }: Props) {
+export function RefreshButton({ endpoint, label = "Run pattern analysis", onSuccess }: Props) {
   const [pending, startTransition] = useTransition();
   const router = useRouter();
   function go() {
@@ -20,7 +27,11 @@ export function RefreshButton({ endpoint, label = "Run pattern analysis" }: Prop
         alert(`Failed: ${j.error ?? res.status}`);
         return;
       }
-      router.refresh();
+      if (onSuccess) {
+        onSuccess();
+      } else {
+        router.refresh();
+      }
     });
   }
   return (

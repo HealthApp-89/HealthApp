@@ -10,16 +10,25 @@ type Props = {
   min?: string;
   /** Latest workout date — usually today. */
   max?: string;
+  /**
+   * If provided, picker changes call this and DO NOT navigate. URL-mode
+   * (legacy) leaves this undefined and pushes `/strength?view=date&date=...`
+   * so the server re-renders with the new day.
+   */
+  onChange?: (date: string) => void;
 };
 
-/** Date picker for /strength?view=date — pushes a new URL on change so the
- *  server re-renders with that day's workouts. Same pattern as LogForm's picker. */
-export function DateNavigator({ date, min, max }: Props) {
+/** Date picker for /strength?view=date. */
+export function DateNavigator({ date, min, max, onChange }: Props) {
   const router = useRouter();
 
-  function onChange(next: string) {
+  function handleChange(next: string) {
     if (!next || next === date) return;
-    router.push(`/strength?view=date&date=${next}`);
+    if (onChange) {
+      onChange(next);
+    } else {
+      router.push(`/strength?view=date&date=${next}`);
+    }
   }
 
   return (
@@ -36,7 +45,7 @@ export function DateNavigator({ date, min, max }: Props) {
           value={date}
           min={min}
           max={max}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(e) => handleChange(e.target.value)}
           className="rounded-lg px-2.5 py-1.5 text-sm font-mono outline-none"
           style={{
             background: COLOR.surfaceAlt,
