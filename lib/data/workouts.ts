@@ -32,71 +32,43 @@ export type WorkoutSession = {
   sets: number;
 };
 
-export type PR =
-  | {
-      kind: "weighted";
-      name: string;
-      kg: number;
-      reps: number;
-      est1rm: number;
-      date: string;
-    }
-  | {
-      kind: "bodyweight";
-      name: string;
-      totalReps: number;
-      bestSetReps: number;
-      date: string;
-    };
+/** Shared select string for the workouts query. Exported so the browser-side
+ *  fetcher in `lib/query/fetchers/loadWorkouts.ts` can use the same shape. */
+export const WORKOUT_QUERY_COLS =
+  "id, date, type, duration_min, exercises(name, position, exercise_sets(kg, reps, duration_seconds, warmup, failure, set_index))";
 
-export type ExerciseTrendPoint =
-  | { kind: "weighted"; date: string; kg: number; reps: number; est1rm: number }
-  | { kind: "bodyweight"; date: string; totalReps: number; bestSetReps: number };
+/** Raw shape Supabase returns for the workouts join. Exported so the browser
+ *  fetcher and server fetcher can both feed `processRawWorkouts`. */
+export type RawWorkoutRow = {
+  id: string;
+  date: string;
+  type: string | null;
+  duration_min: number | null;
+  exercises:
+    | {
+        name: string;
+        position: number | null;
+        exercise_sets: {
+          kg: number | null;
+          reps: number | null;
+          duration_seconds: number | null;
+          warmup: boolean;
+          failure: boolean;
+          set_index: number;
+        }[];
+      }[]
+    | null;
+};
 
-/** Load every workout for the user, joined with exercises + sets. Newest first.
- *  Two passes over the result so each exercise gets a history-wide `kind`:
- *  exercises with at least one working weighted set anywhere in history are
- *  "weighted", otherwise "bodyweight". */
-export async function loadWorkouts(userId: string): Promise<WorkoutSession[]> {
-  const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase
-    .from("workouts")
-    .select(
-      `id, date, type, duration_min,
-       exercises(name, position,
-         exercise_sets(kg, reps, duration_seconds, warmup, failure, set_index))`,
-    )
-    .eq("user_id", userId)
-    .order("date", { ascending: false });
-
-  if (error) throw error;
-
-  type RawExercise = {
-    name: string;
-    position: number | null;
-    exercise_sets: {
-      kg: number | null;
-      reps: number | null;
-      duration_seconds: number | null;
-      warmup: boolean;
-      failure: boolean;
-      set_index: number;
-    }[];
-  };
-
-  const rawSessions = (data ?? []) as {
-    id: string;
-    date: string;
-    type: string | null;
-    duration_min: number | null;
-    exercises: RawExercise[] | null;
-  }[];
-
-  // Pass 1: collect names of exercises that have at least one *working* set with
-  // kg > 0 anywhere in the user's history. Warmups don't count — a single warmup
-  // weighted row shouldn't flip an exercise to "weighted".
+/** Pure post-query transform: classify each exercise as weighted/bodyweight
+ *  history-wide, sort sets, compute volumes. Pulled out of `loadWorkouts` so
+ *  both server and browser fetchers can share the heavy logic. */
+export function processRawWorkouts(raw: RawWorkoutRow[]): WorkoutSession[] {
+  // Pass 1: collect names of exercises that have at least one *working* set
+  // with kg > 0 anywhere in the user's history. Warmups don't count — a single
+  // warmup weighted row shouldn't flip an exercise to "weighted".
   const weightedNames = new Set<string>();
-  for (const w of rawSessions) {
+  for (const w of raw) {
     for (const e of w.exercises ?? []) {
       for (const s of e.exercise_sets ?? []) {
         if (!s.warmup && (s.kg ?? 0) > 0) {
@@ -109,7 +81,7 @@ export async function loadWorkouts(userId: string): Promise<WorkoutSession[]> {
 
   // Pass 2: build sessions with classified exercises and split volumes.
   const sessions: WorkoutSession[] = [];
-  for (const w of rawSessions) {
+  for (const w of raw) {
     const exercises: WorkoutExercise[] = (w.exercises ?? [])
       .map((e) => ({
         name: e.name,
@@ -153,6 +125,46 @@ export async function loadWorkouts(userId: string): Promise<WorkoutSession[]> {
     });
   }
   return sessions;
+}
+
+export type PR =
+  | {
+      kind: "weighted";
+      name: string;
+      kg: number;
+      reps: number;
+      est1rm: number;
+      date: string;
+    }
+  | {
+      kind: "bodyweight";
+      name: string;
+      totalReps: number;
+      bestSetReps: number;
+      date: string;
+    };
+
+export type ExerciseTrendPoint =
+  | { kind: "weighted"; date: string; kg: number; reps: number; est1rm: number }
+  | { kind: "bodyweight"; date: string; totalReps: number; bestSetReps: number };
+
+/** Load every workout for the user, joined with exercises + sets. Newest first.
+ *  Backward-compatible signature — three callers depend on this:
+ *    - `app/api/insights/strength/route.ts` (service-role server context)
+ *    - `lib/coach/snapshot.ts` (coach internals)
+ *    - `app/strength/page.tsx` (about to migrate to the dual fetcher)
+ *  The heavy classification logic lives in the pure `processRawWorkouts`
+ *  helper above so the browser fetcher can reuse it. */
+export async function loadWorkouts(userId: string): Promise<WorkoutSession[]> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("workouts")
+    .select(WORKOUT_QUERY_COLS)
+    .eq("user_id", userId)
+    .order("date", { ascending: false });
+
+  if (error) throw error;
+  return processRawWorkouts((data ?? []) as RawWorkoutRow[]);
 }
 
 /** Per-exercise PR. Weighted exercises track highest est. 1RM working set;
