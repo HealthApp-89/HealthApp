@@ -28,14 +28,25 @@ export const DEFAULT_INTERPOLATE: InterpolateConfig = {
  * `getInterpolateConfig` which falls back to DEFAULT_INTERPOLATE.
  */
 export const METRIC_CHART_CONFIG: Record<string, InterpolateConfig> = {
-  // continuous physiology — 3-day max gap
-  hrv:                { enabled: true,  maxGapDays: 3  },
-  resting_hr:         { enabled: true,  maxGapDays: 3  },
-  recovery:           { enabled: true,  maxGapDays: 3  },
-  sleep_hours:        { enabled: true,  maxGapDays: 3  },
-  sleep_score:        { enabled: true,  maxGapDays: 3  },
-  deep_sleep_hours:   { enabled: true,  maxGapDays: 3  },
-  rem_sleep_hours:    { enabled: true,  maxGapDays: 3  },
+  // Continuous physiology. Two tiers based on how noisy the underlying signal
+  // actually is — the goal is visual continuity (interpolated stretches render
+  // as a dashed line of the same color) without making linear interpolation
+  // claims we can't defend.
+  //
+  //  - 7-day cap for raw daily measurements (HRV, RHR, sleep duration). These
+  //    swing day-to-day with sleep, alcohol, stress, training; bridging a
+  //    week of WHOOP downtime (lost charger, weekend without the strap) is
+  //    fine, longer than that the linear midpoint stops resembling reality.
+  //  - 14-day cap for already-smoothed scores (recovery, sleep_score). These
+  //    are bounded 0–100 composites with less raw jitter, so a longer bridge
+  //    stays plausible.
+  hrv:                { enabled: true,  maxGapDays: 7  },
+  resting_hr:         { enabled: true,  maxGapDays: 7  },
+  sleep_hours:        { enabled: true,  maxGapDays: 7  },
+  deep_sleep_hours:   { enabled: true,  maxGapDays: 7  },
+  rem_sleep_hours:    { enabled: true,  maxGapDays: 7  },
+  recovery:           { enabled: true,  maxGapDays: 14 },
+  sleep_score:        { enabled: true,  maxGapDays: 14 },
 
   // body composition — 14-day max gap (weigh-ins are sparse)
   weight_kg:          { enabled: true,  maxGapDays: 14 },
