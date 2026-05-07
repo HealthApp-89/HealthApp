@@ -50,7 +50,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, interactive-widget=resizes-content"
         />
       </head>
-      <body className="min-h-[100dvh] bg-bg pt-[env(safe-area-inset-top)] pb-[calc(env(safe-area-inset-bottom)+var(--nav-h))]">
+      {/* Padding-top/bottom for safe-area + bottom-nav are set in globals.css.
+          They were inline as `pb-[calc(env(...)+var(--nav-h))]`, but Tailwind
+          arbitrary values strip the spaces around `+` and WebKit/Blink reject
+          calc() without those spaces, so the rule was being silently dropped. */}
+      <body className="min-h-[100dvh] bg-bg">
         <TopNav />
         <main>{children}</main>
         <BottomNav />

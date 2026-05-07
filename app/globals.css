@@ -52,6 +52,18 @@
   :root { --nav-h: 0px; }
 }
 
+/* Body padding lives here (not as a Tailwind arbitrary value) because
+   Tailwind's `pb-[calc(env(...)+var(...))]` collapses the whitespace
+   around `+`, and per CSS spec WebKit/Blink reject calc() without
+   spaces around + and -, dropping the declaration entirely. The body
+   then has 0 bottom padding and the BottomNav/Fab cover content.
+   If you must move this to a className, write it as
+   `pb-[calc(env(safe-area-inset-bottom)_+_var(--nav-h))]`. */
+body {
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: calc(env(safe-area-inset-bottom) + var(--nav-h));
+}
+
 html {
   background: var(--color-bg);
   color: var(--color-strong);
