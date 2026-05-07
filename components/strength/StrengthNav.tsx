@@ -10,6 +10,23 @@ const VIEWS = [
 
 type View = (typeof VIEWS)[number]["id"];
 
-export function StrengthNav({ active }: { active: View }) {
-  return <RangePills options={VIEWS as unknown as { id: string; label: string; href: string }[]} active={active} />;
+/**
+ * Sub-tab nav for /strength. When `onChange` is provided, switching tabs is
+ * pure client state (no URL navigation). The `href` URLs remain on each pill
+ * so cmd-click / right-click still gives the user a deep-linkable target.
+ */
+export function StrengthNav({
+  active,
+  onChange,
+}: {
+  active: View;
+  onChange?: (view: View) => void;
+}) {
+  return (
+    <RangePills
+      options={VIEWS as unknown as { id: string; label: string; href: string }[]}
+      active={active}
+      onChange={onChange ? (id) => onChange(id as View) : undefined}
+    />
+  );
 }
