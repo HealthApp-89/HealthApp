@@ -4,6 +4,7 @@ import "./globals.css";
 import { BottomNav } from "@/components/layout/BottomNav";
 import { FabGate } from "@/components/layout/FabGate";
 import { TopNav } from "@/components/layout/TopNav";
+import { QueryProvider } from "@/components/providers/QueryProvider";
 
 // Self-hosted via next/font — removes the render-blocking Google CSS
 // round-trip (~200ms cold on LTE) and ships zero layout shift.
@@ -53,10 +54,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       {/* Body padding-top (safe-area inset) and padding-bottom (safe-area
           + BottomNav reservation via --nav-h) are set in globals.css. */}
       <body className="min-h-[100dvh] bg-bg">
-        <TopNav />
-        <main>{children}</main>
-        <BottomNav />
-        <FabGate />
+        <QueryProvider>
+          <TopNav />
+          <main>{children}</main>
+          <BottomNav />
+          <FabGate />
+        </QueryProvider>
       </body>
     </html>
   );
