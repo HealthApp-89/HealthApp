@@ -1,0 +1,36 @@
+// lib/query/fetchers/profile.ts
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+
+const COLS = "name, age, height_cm, whoop_baselines";
+
+export type Profile = {
+  name: string | null;
+  age: number | null;
+  height_cm: number | null;
+  whoop_baselines: Record<string, unknown> | null;
+};
+
+export async function fetchProfileServer(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<Profile | null> {
+  const { data, error } = await supabase
+    .from("profiles")
+    .select(COLS)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) throw error;
+  return (data as Profile | null) ?? null;
+}
+
+export async function fetchProfileBrowser(userId: string): Promise<Profile | null> {
+  const supabase = createSupabaseBrowserClient();
+  const { data, error } = await supabase
+    .from("profiles")
+    .select(COLS)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) throw error;
+  return (data as Profile | null) ?? null;
+}
