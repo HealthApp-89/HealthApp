@@ -152,28 +152,35 @@ export default async function Home(props: {
       ? (10 * effectiveWeightKg + 6.25 * profile.height_cm - 5 * profile.age + 5) * 1.55
       : null;
 
-  // Donut readiness: selected day's recovery + load metrics, falling back to prev day
+  // Donut readiness: today's recovery + YESTERDAY's load/intake. Mid-day
+  // partial reads (Yazio still being logged, steps still climbing) drag the
+  // score down artificially — at noon today's calories=434/protein=47g
+  // doesn't mean the user is under-fuelled, it means they haven't eaten
+  // lunch yet. Conceptually: "am I ready today?" = "given how I fueled
+  // yesterday + how I recovered overnight, am I ready?", so D-1 is the
+  // correct window for steps/strain/calories/protein/carbs regardless of
+  // whether D has started accumulating data.
   const scoreLog: DailyLog | null = selectedLog
     ? {
         ...selectedLog,
-        steps: selectedLog.steps ?? prevLog?.steps ?? null,
-        strain: selectedLog.strain ?? prevLog?.strain ?? null,
-        calories_eaten: selectedLog.calories_eaten ?? prevLog?.calories_eaten ?? null,
-        protein_g: selectedLog.protein_g ?? prevLog?.protein_g ?? null,
-        carbs_g: selectedLog.carbs_g ?? prevLog?.carbs_g ?? null,
+        steps: prevLog?.steps ?? null,
+        strain: prevLog?.strain ?? null,
+        calories_eaten: prevLog?.calories_eaten ?? null,
+        protein_g: prevLog?.protein_g ?? null,
+        carbs_g: prevLog?.carbs_g ?? null,
       }
     : null;
 
-  // Track which load fields had to fall back to the prior day.
+  // Mark every load/intake segment as derived-from-prior so the impact donut
+  // labels them with the "yest." prefix. We always read from prevLog now, so
+  // any non-null value got there via fallback by definition.
   const fellBackToPrior = new Set<string>();
-  if (selectedLog) {
-    if (selectedLog.steps == null && prevLog?.steps != null) fellBackToPrior.add("steps");
-    if (selectedLog.strain == null && prevLog?.strain != null) fellBackToPrior.add("strain");
-    if (selectedLog.calories_eaten == null && prevLog?.calories_eaten != null)
-      fellBackToPrior.add("calories");
-    if (selectedLog.protein_g == null && prevLog?.protein_g != null)
-      fellBackToPrior.add("protein");
-    if (selectedLog.carbs_g == null && prevLog?.carbs_g != null) fellBackToPrior.add("carbs");
+  if (prevLog) {
+    if (prevLog.steps != null) fellBackToPrior.add("steps");
+    if (prevLog.strain != null) fellBackToPrior.add("strain");
+    if (prevLog.calories_eaten != null) fellBackToPrior.add("calories");
+    if (prevLog.protein_g != null) fellBackToPrior.add("protein");
+    if (prevLog.carbs_g != null) fellBackToPrior.add("carbs");
   }
 
   const score = calcReadinessScore({
