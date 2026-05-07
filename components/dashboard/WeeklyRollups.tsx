@@ -44,7 +44,7 @@ export async function WeeklyRollups({ userId, today, todayHrv, todayRhr, hrvBase
   const { data: logsRaw } = await supabase
     .from("daily_logs")
     .select(
-      "user_id, date, hrv, resting_hr, steps, calories, weight_kg, source, updated_at",
+      "user_id, date, hrv, resting_hr, steps, calories_eaten, weight_kg, source, updated_at",
     )
     .eq("user_id", userId)
     .order("date", { ascending: false })
@@ -53,7 +53,11 @@ export async function WeeklyRollups({ userId, today, todayHrv, todayRhr, hrvBase
   const logs: DailyLog[] = (logsRaw ?? []) as DailyLog[];
   const week = buildWeekWindow(logs, today);
   const wSteps = week.rows.map((r) => r?.steps ?? null);
-  const wCals = week.rows.map((r) => r?.calories ?? null);
+  // The "Calories" card represents nutrition intake (from Yazio), NOT energy
+  // burned. The `calories` column is total energy expenditure from Apple
+  // Health and lives elsewhere; `calories_eaten` is what the user logged via
+  // Yazio→HealthKit and what this card semantically tracks.
+  const wCals = week.rows.map((r) => r?.calories_eaten ?? null);
   const wWgt = week.rows.map((r) => r?.weight_kg ?? null);
   const latestWeightRow = logs.find((l) => l.weight_kg !== null);
   const validWts = wWgt.filter((v): v is number => typeof v === "number");

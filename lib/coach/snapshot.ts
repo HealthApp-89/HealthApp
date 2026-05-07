@@ -30,7 +30,10 @@ type DailyLogRow = {
   deep_sleep_hours: number | null;
   strain: number | null;
   steps: number | null;
-  calories: number | null;
+  /** Nutrition intake (Yazio) — what shows up as "kcal" in the coach summary.
+   *  This deliberately excludes the `calories` (energy burned) column, which
+   *  is from Apple Health and surfaces elsewhere via strain/active metrics. */
+  calories_eaten: number | null;
   weight_kg: number | null;
   protein_g: number | null;
   carbs_g: number | null;
@@ -71,7 +74,7 @@ export async function buildSnapshot(inputs: SnapshotInputs): Promise<SnapshotRes
   let logsQ = supabase
     .from("daily_logs")
     .select(
-      "date, hrv, resting_hr, recovery, sleep_hours, sleep_score, deep_sleep_hours, strain, steps, calories, weight_kg, protein_g, carbs_g, fat_g",
+      "date, hrv, resting_hr, recovery, sleep_hours, sleep_score, deep_sleep_hours, strain, steps, calories_eaten, weight_kg, protein_g, carbs_g, fat_g",
     )
     .eq("user_id", userId)
     .gte("date", since)
@@ -119,7 +122,7 @@ export async function buildSnapshot(inputs: SnapshotInputs): Promise<SnapshotRes
   const logLines = ((logs ?? []) as DailyLogRow[])
     .map((l) => {
       const rel = relativeDateLabel(l.date, today);
-      return `  ${l.date} (${rel}) | hrv ${fmt(l.hrv)} | rhr ${fmt(l.resting_hr)} | recov ${fmt(l.recovery)} | sleep ${fmt(l.sleep_hours, "h")} (deep ${fmt(l.deep_sleep_hours)}) | strain ${fmt(l.strain)} | steps ${fmt(l.steps)} | kcal ${fmt(l.calories)} | prot ${fmt(l.protein_g, "g")} | weight ${fmt(l.weight_kg, "kg")}`;
+      return `  ${l.date} (${rel}) | hrv ${fmt(l.hrv)} | rhr ${fmt(l.resting_hr)} | recov ${fmt(l.recovery)} | sleep ${fmt(l.sleep_hours, "h")} (deep ${fmt(l.deep_sleep_hours)}) | strain ${fmt(l.strain)} | steps ${fmt(l.steps)} | kcal ${fmt(l.calories_eaten)} | prot ${fmt(l.protein_g, "g")} | weight ${fmt(l.weight_kg, "kg")}`;
     })
     .join("\n");
 
@@ -254,7 +257,7 @@ export async function buildEphemeralHeader(opts: {
     supabase
       .from("daily_logs")
       .select(
-        "date, hrv, resting_hr, recovery, sleep_hours, sleep_score, deep_sleep_hours, strain, steps, calories, weight_kg, protein_g, carbs_g, fat_g",
+        "date, hrv, resting_hr, recovery, sleep_hours, sleep_score, deep_sleep_hours, strain, steps, calories_eaten, weight_kg, protein_g, carbs_g, fat_g",
       )
       .eq("user_id", userId)
       .in("date", [today, yesterday]),

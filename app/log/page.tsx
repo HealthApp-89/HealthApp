@@ -100,7 +100,7 @@ export default async function LogPage(props: {
           color={METRIC_COLOR.calories}
           icon="🍴"
           label="Calories"
-          value={log?.calories ?? null}
+          value={log?.calories_eaten ?? null}
           unit="kcal"
           compact
         />
