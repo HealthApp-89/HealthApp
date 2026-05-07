@@ -8,7 +8,7 @@
 
 import type { WhoopRecovery, WhoopCycle, WhoopSleep } from "@/lib/whoop";
 import { buildCycleTzLookup } from "@/lib/whoop-tz";
-import { parseValidDate, ymdInUserTz, ymdInZoneOffset } from "@/lib/time";
+import { parseUtcOffsetMs, parseValidDate, ymdInUserTz, ymdInZoneOffset } from "@/lib/time";
 
 export type WhoopDayRow = {
   user_id: string;
@@ -29,12 +29,17 @@ export type WhoopDayRow = {
 };
 
 /** Counts of records dropped at the boundary because a required date field
- *  was missing/unparseable. Surfaced in the backfill response so the caller
- *  can tell silent data loss from a clean run. */
+ *  was missing/unparseable, plus a separate count of records that survived
+ *  but had a malformed `timezone_offset` and were keyed to USER_TIMEZONE as
+ *  a fallback. Surfaced in the route response so callers can tell silent
+ *  data loss / degraded keying from a clean run. */
 export type WhoopBuildSkipped = {
   cycles: number;
   sleep: number;
   recovery: number;
+  /** Cycles or sleeps with a bad `timezone_offset`; row is still produced
+   *  but keyed via USER_TIMEZONE rather than the intended per-record zone. */
+  badTzOffset: number;
 };
 
 export type WhoopBuildResult = {
@@ -61,7 +66,7 @@ export function buildWhoopDayRows(
 ): WhoopBuildResult {
   const lookupCycleTz = buildCycleTzLookup(cycles);
   const byDate = new Map<string, WhoopDayRow>();
-  const skipped: WhoopBuildSkipped = { cycles: 0, sleep: 0, recovery: 0 };
+  const skipped: WhoopBuildSkipped = { cycles: 0, sleep: 0, recovery: 0, badTzOffset: 0 };
   const ensure = (date: string): WhoopDayRow => {
     let row = byDate.get(date);
     if (!row) {
@@ -85,6 +90,12 @@ export function buildWhoopDayRows(
       console.warn(`[whoop] cycle ${c.id} skipped: invalid start=${JSON.stringify(c.start)}`);
       continue;
     }
+    if (parseUtcOffsetMs(c.timezone_offset) === null) {
+      skipped.badTzOffset++;
+      console.warn(
+        `[whoop] cycle ${c.id} bad timezone_offset=${JSON.stringify(c.timezone_offset)}; keying via USER_TIMEZONE`,
+      );
+    }
     const date = ymdInZoneOffset(startDate, c.timezone_offset);
     const row = ensure(date);
     row.strain = c.score.strain;
@@ -100,9 +111,20 @@ export function buildWhoopDayRows(
       continue;
     }
     const cycleTz = lookupCycleTz(endDate);
-    const date = cycleTz
-      ? ymdInZoneOffset(endDate, cycleTz)
-      : ymdInUserTz(endDate);
+    let date: string;
+    if (cycleTz && parseUtcOffsetMs(cycleTz) !== null) {
+      date = ymdInZoneOffset(endDate, cycleTz);
+    } else {
+      if (cycleTz) {
+        // Cycle matched but its offset is malformed — ymdInZoneOffset would
+        // have fallen back internally anyway; we still want it counted.
+        skipped.badTzOffset++;
+        console.warn(
+          `[whoop] sleep ${s.id} matched cycle with bad timezone_offset=${JSON.stringify(cycleTz)}; keying via USER_TIMEZONE`,
+        );
+      }
+      date = ymdInUserTz(endDate);
+    }
     sleepIdToDate.set(s.id, date);
     if (!s.score) continue;
     const row = ensure(date);

@@ -71,6 +71,9 @@ function partsInUserTz(now: Date): Parts {
  *  no-arg "right now" case. Use this when keying historical timestamps
  *  (WHOOP/Withings sync, etc.). */
 export function ymdInUserTz(when: Date): string {
+  if (!Number.isFinite(when.getTime())) {
+    throw new Error("ymdInUserTz: invalid Date input");
+  }
   const p = partsInUserTz(when);
   return `${p.year}-${p.month}-${p.day}`;
 }
@@ -156,14 +159,53 @@ export function relativeDateLabel(
   return `${weekday} (in ${diffDays}d)`;
 }
 
+/** Parse a "+04:00" / "-05:30" style UTC offset into milliseconds.
+ *  Tolerant of compact forms ("+0400", "+04") and bad input — returns null
+ *  rather than NaN so callers can branch instead of propagating Invalid Date.
+ *  Used to keep ymdInZoneOffset from throwing "Invalid time value" when a
+ *  WHOOP record arrives with a malformed `timezone_offset`. */
+export function parseUtcOffsetMs(offset: string | null | undefined): number | null {
+  if (typeof offset !== "string" || offset.length === 0) return null;
+  const sign = offset[0] === "-" ? -1 : offset[0] === "+" ? 1 : null;
+  if (sign === null) return null;
+  const rest = offset.slice(1);
+  let hh: number;
+  let mm: number;
+  if (rest.includes(":")) {
+    const parts = rest.split(":");
+    hh = Number(parts[0]);
+    mm = Number(parts[1]);
+  } else if (rest.length >= 3) {
+    // "+0400"
+    hh = Number(rest.slice(0, 2));
+    mm = Number(rest.slice(2));
+  } else {
+    // "+04"
+    hh = Number(rest);
+    mm = 0;
+  }
+  if (!Number.isFinite(hh) || !Number.isFinite(mm)) return null;
+  if (hh < 0 || hh > 14 || mm < 0 || mm >= 60) return null;
+  return sign * (hh * 3_600_000 + mm * 60_000);
+}
+
 /** YYYY-MM-DD for a given UTC moment in a fixed-offset zone like "+04:00"
  *  or "-05:00". Used for WHOOP per-record `timezone_offset` (travel mode L1).
  *  Handles non-integer offsets like "+05:45" (Nepal) and "-04:30" (Newfoundland)
- *  correctly because hours and minutes are parsed independently. */
+ *  correctly because hours and minutes are parsed independently.
+ *
+ *  Defensive fallbacks:
+ *   - Invalid `when` Date → throws with a clear label (caller should have
+ *     pre-validated; this catches regressions cleanly).
+ *   - Unparseable `offset` → falls back to user-tz keying. WHOOP occasionally
+ *     emits malformed timezone_offset on edge records and we'd rather key
+ *     the row to USER_TIMEZONE than crash the whole batch. */
 export function ymdInZoneOffset(when: Date, offset: string): string {
-  const sign = offset[0] === "-" ? -1 : 1;
-  const [hh, mm] = offset.slice(1).split(":").map(Number);
-  const offsetMs = sign * (hh * 3_600_000 + mm * 60_000);
+  if (!Number.isFinite(when.getTime())) {
+    throw new Error("ymdInZoneOffset: invalid Date input");
+  }
+  const offsetMs = parseUtcOffsetMs(offset);
+  if (offsetMs === null) return ymdInUserTz(when);
   return new Date(when.getTime() + offsetMs).toISOString().slice(0, 10);
 }
 
