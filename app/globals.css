@@ -42,23 +42,26 @@
 }
 
 /* Bottom-nav reservation. Mobile only — desktop uses TopNav and needs no
-   bottom space. Math: nav offset 8px + nav rendered height ~70px + 14px
-   breathing = 92px. Owned alongside components/layout/BottomNav.tsx —
-   if you change BottomNav padding/icon size, update this. */
+   bottom space. Math (above the iOS safe-area inset, mobile):
+     nav offset    8px (BottomNav `bottom: env() + 8px`)
+     nav height   72px (measured live in WebKit @ 390×844: 71.5px)
+     breathing   ~40px (gap between last card and nav top edge)
+                 -----
+     total       120px
+   The previous value of 92px gave only ~12px direct clearance and was
+   too tight on real iOS — the last card visually touched the nav.
+   Owned alongside components/layout/BottomNav.tsx — if you change
+   BottomNav padding/icon size, remeasure and update this. */
 :root {
-  --nav-h: 92px;
+  --nav-h: 120px;
 }
 @media (min-width: 768px) {
   :root { --nav-h: 0px; }
 }
 
-/* Body padding lives here (not as a Tailwind arbitrary value) because
-   Tailwind's `pb-[calc(env(...)+var(...))]` collapses the whitespace
-   around `+`, and per CSS spec WebKit/Blink reject calc() without
-   spaces around + and -, dropping the declaration entirely. The body
-   then has 0 bottom padding and the BottomNav/Fab cover content.
-   If you must move this to a className, write it as
-   `pb-[calc(env(safe-area-inset-bottom)_+_var(--nav-h))]`. */
+/* Body padding for the iOS safe-area + the BottomNav reservation.
+   Lives here rather than as a Tailwind arbitrary class on <body> so
+   the calc() expression stays readable and unambiguous. */
 body {
   padding-top: env(safe-area-inset-top);
   padding-bottom: calc(env(safe-area-inset-bottom) + var(--nav-h));
