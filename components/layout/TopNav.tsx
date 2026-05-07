@@ -3,7 +3,16 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
+import dynamic from "next/dynamic";
 import { COLOR, RADIUS, SHADOW } from "@/lib/ui/theme";
+
+// Lazy-load the chat panel — same pattern as the mobile FAB
+// (components/layout/Fab.tsx). Server-side render is disabled because
+// ChatPanel uses browser APIs (visualViewport, FormData, etc.).
+const ChatPanel = dynamic(() => import("@/components/chat/ChatPanel"), {
+  ssr: false,
+  loading: () => null,
+});
 
 const TABS = [
   { href: "/",        label: "Today" },
@@ -13,11 +22,17 @@ const TABS = [
   { href: "/profile", label: "Profile" },
 ];
 
-const SHEET = [
-  { kind: "link" as const, label: "Log entry", href: "/log" },
-  { kind: "link" as const, label: "Strength",  href: "/strength?view=today" },
-  { kind: "upload" as const, label: "Upload Strong CSV", accept: ".csv", endpoint: "/api/ingest/strong" },
-  { kind: "link" as const, label: "Manage connections", href: "/profile" },
+type SheetItem =
+  | { kind: "link";   label: string; href: string }
+  | { kind: "chat";   label: string }
+  | { kind: "upload"; label: string; accept: string; endpoint: string };
+
+const SHEET: SheetItem[] = [
+  { kind: "link",   label: "Log entry", href: "/log" },
+  { kind: "chat",   label: "Ask coach" },
+  { kind: "link",   label: "Strength",  href: "/strength?view=today" },
+  { kind: "upload", label: "Upload Strong CSV", accept: ".csv", endpoint: "/api/ingest/strong" },
+  { kind: "link",   label: "Manage connections", href: "/profile" },
 ];
 
 /**
@@ -28,6 +43,7 @@ export function TopNav() {
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
 
   const isActive = (href: string) =>
     href === "/" ? pathname === "/" : pathname.startsWith(href);
@@ -139,6 +155,27 @@ export function TopNav() {
                   </Link>
                 );
               }
+              if (item.kind === "chat") {
+                return (
+                  <button
+                    key={item.label}
+                    type="button"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      setChatOpen(true);
+                    }}
+                    style={{
+                      ...baseStyle,
+                      width: "100%",
+                      background: "none",
+                      border: "none",
+                      textAlign: "left",
+                    }}
+                  >
+                    {item.label}
+                  </button>
+                );
+              }
               return (
                 <label key={item.label} style={baseStyle}>
                   {item.label}
@@ -158,6 +195,7 @@ export function TopNav() {
           </div>
         )}
       </div>
+      {chatOpen && <ChatPanel onClose={() => setChatOpen(false)} />}
     </header>
   );
 }
