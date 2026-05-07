@@ -10,11 +10,23 @@ const VIEWS = [
 
 export type CoachView = (typeof VIEWS)[number]["id"];
 
-export function CoachNav({ active }: { active: CoachView }) {
+/**
+ * When `onChange` is provided, switching tabs is pure client state — no URL
+ * navigation. Hrefs remain on each pill so cmd-click still gives a deep
+ * link. URL-mode (no onChange) preserves the legacy server-render-per-tap.
+ */
+export function CoachNav({
+  active,
+  onChange,
+}: {
+  active: CoachView;
+  onChange?: (view: CoachView) => void;
+}) {
   return (
     <RangePills
       options={VIEWS as unknown as { id: string; label: string; href: string }[]}
       active={active}
+      onChange={onChange ? (id) => onChange(id as CoachView) : undefined}
     />
   );
 }
