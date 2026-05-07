@@ -161,12 +161,53 @@ export async function getValidAccessToken(userId: string): Promise<string | null
   return refreshed.access_token;
 }
 
+/**
+ * GET a WHOOP endpoint with retry on 429 (rate limit) and 5xx (transient).
+ *
+ * WHOOP enforces a per-token rate limit (~100 req/min). The backfill route
+ * fans out three parallel paginated walks, which can briefly exceed that
+ * during a 2-year history pull. We honor the `Retry-After` header when
+ * present (capped so a misbehaving server can't hold the whole request
+ * hostage) and fall back to capped exponential backoff otherwise.
+ *
+ * Non-retryable failures (4xx other than 429, exhausted attempts) throw
+ * with the same `WHOOP GET <path> failed: <status> <body>` shape callers
+ * already surface to the UI.
+ */
 export async function whoopGet<T>(accessToken: string, path: string): Promise<T> {
-  const res = await fetch(`${WHOOP_API_BASE}${path}`, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
-  if (!res.ok) throw new Error(`WHOOP GET ${path} failed: ${res.status} ${await res.text()}`);
-  return res.json() as Promise<T>;
+  const MAX_ATTEMPTS = 4;
+  const MAX_WAIT_MS = 15_000;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const res = await fetch(`${WHOOP_API_BASE}${path}`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (res.ok) return res.json() as Promise<T>;
+
+    const retryable = res.status === 429 || (res.status >= 500 && res.status < 600);
+    if (!retryable || attempt === MAX_ATTEMPTS) {
+      const body = await res.text().catch(() => "");
+      throw new Error(`WHOOP GET ${path} failed: ${res.status} ${body}`);
+    }
+
+    // Honor Retry-After header (seconds or HTTP-date); fall back to exp backoff.
+    const retryAfter = res.headers.get("retry-after");
+    let waitMs: number;
+    if (retryAfter) {
+      const asSeconds = Number(retryAfter);
+      waitMs = Number.isFinite(asSeconds)
+        ? asSeconds * 1000
+        : Math.max(0, new Date(retryAfter).getTime() - Date.now());
+    } else {
+      waitMs = 500 * 2 ** (attempt - 1); // 500, 1000, 2000ms
+    }
+    waitMs = Math.min(Math.max(waitMs, 250), MAX_WAIT_MS);
+
+    // Drain body so the connection isn't held open during the wait.
+    await res.text().catch(() => undefined);
+    await new Promise((r) => setTimeout(r, waitMs));
+  }
+  // Unreachable — the loop above either returns or throws.
+  throw new Error(`WHOOP GET ${path}: exhausted retries`);
 }
 
 /** Page through WHOOP collection endpoints (recovery / cycle / activity/sleep / activity/workout)
