@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition, type MouseEvent } from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import dynamic from "next/dynamic";
@@ -44,9 +44,28 @@ export function TopNav() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  // Optimistic active-tab state. See BottomNav for the rationale — `pathname`
+  // doesn't update until navigation completes, so without this the active
+  // pill stays on the previous tab for the entire server round-trip.
+  const [isPending, startTransition] = useTransition();
+  const [pendingHref, setPendingHref] = useState<string | null>(null);
 
+  const optimisticPath = isPending && pendingHref ? pendingHref : pathname;
   const isActive = (href: string) =>
-    href === "/" ? pathname === "/" : pathname.startsWith(href);
+    href === "/" ? optimisticPath === "/" : optimisticPath.startsWith(href);
+
+  function handleTabClick(e: MouseEvent<HTMLAnchorElement>, href: string) {
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+    if (href === pathname) {
+      e.preventDefault();
+      return;
+    }
+    e.preventDefault();
+    setPendingHref(href);
+    startTransition(() => {
+      router.push(href);
+    });
+  }
 
   async function onUpload(file: File, endpoint: string) {
     setBusy(true);
@@ -89,6 +108,7 @@ export function TopNav() {
             <Link
               key={t.href}
               href={t.href}
+              onClick={(e) => handleTabClick(e, t.href)}
               style={{
                 padding: "6px 12px",
                 borderRadius: RADIUS.pill,
@@ -97,6 +117,7 @@ export function TopNav() {
                 fontSize: "13px",
                 fontWeight: active ? 700 : 500,
                 textDecoration: "none",
+                transition: "background 120ms ease, color 120ms ease",
               }}
             >
               {t.label}

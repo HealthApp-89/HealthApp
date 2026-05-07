@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
+import { useState, useTransition, type MouseEvent } from "react";
 import { COLOR, RADIUS, SHADOW } from "@/lib/ui/theme";
 
 type Tab = { href: string; label: string; icon: string; match: (p: string) => boolean };
@@ -17,9 +18,40 @@ const TABS: Tab[] = [
 /**
  * Mobile-only bottom nav. Hides at md and above (desktop uses TopNav).
  * Reserves a center gap for the floating <Fab />.
+ *
+ * Optimistic active state — the tab the user just tapped flips to "active"
+ * immediately (before the new page finishes loading) so taps feel instant.
+ * Without this, `usePathname()` only updates *after* navigation completes,
+ * leaving the visual indicator stuck on the previous tab for the duration
+ * of the server round-trip. Pairs with the per-route loading.tsx skeletons,
+ * which give the *content area* the same instant feedback.
  */
 export function BottomNav() {
   const pathname = usePathname();
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+  const [pendingHref, setPendingHref] = useState<string | null>(null);
+
+  // While a navigation is in flight, treat the user's tapped tab as active
+  // *even if* `pathname` hasn't caught up. Once the transition resolves,
+  // `pathname` reflects the new URL and we can drop pendingHref — but we
+  // keep it for one extra tick to avoid a flicker if React batches awkwardly.
+  const optimisticPath = isPending && pendingHref ? pendingHref : pathname;
+
+  function handleNavigate(e: MouseEvent<HTMLAnchorElement>, href: string) {
+    // Respect modifier-clicks / middle-clicks so "open in new tab" still works.
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+    if (href === pathname) {
+      e.preventDefault();
+      return;
+    }
+    e.preventDefault();
+    setPendingHref(href);
+    startTransition(() => {
+      router.push(href);
+    });
+  }
+
   return (
     <nav
       // `flex` activates the row layout on mobile; `md:hidden` cascades after
@@ -43,21 +75,40 @@ export function BottomNav() {
       }}
     >
       {TABS.slice(0, 2).map((t) => (
-        <TabButton key={t.href} tab={t} active={t.match(pathname)} />
+        <TabButton
+          key={t.href}
+          tab={t}
+          active={t.match(optimisticPath)}
+          onNavigate={handleNavigate}
+        />
       ))}
       {/* Spacer for the FAB */}
       <div style={{ width: "56px", flexShrink: 0 }} aria-hidden="true" />
       {TABS.slice(2).map((t) => (
-        <TabButton key={t.href} tab={t} active={t.match(pathname)} />
+        <TabButton
+          key={t.href}
+          tab={t}
+          active={t.match(optimisticPath)}
+          onNavigate={handleNavigate}
+        />
       ))}
     </nav>
   );
 }
 
-function TabButton({ tab, active }: { tab: Tab; active: boolean }) {
+function TabButton({
+  tab,
+  active,
+  onNavigate,
+}: {
+  tab: Tab;
+  active: boolean;
+  onNavigate: (e: MouseEvent<HTMLAnchorElement>, href: string) => void;
+}) {
   return (
     <Link
       href={tab.href}
+      onClick={(e) => onNavigate(e, tab.href)}
       style={{
         display: "flex",
         flexDirection: "column",
@@ -79,11 +130,21 @@ function TabButton({ tab, active }: { tab: Tab; active: boolean }) {
           alignItems: "center",
           justifyContent: "center",
           fontSize: "16px",
+          // Smooth out the optimistic-active flip so it doesn't feel like a
+          // hard cut. 120ms matches the "tactile but not laggy" sweet spot.
+          transition: "background 120ms ease, color 120ms ease",
         }}
       >
         {tab.icon}
       </span>
-      <span style={{ fontSize: "9px", fontWeight: 600, color: active ? COLOR.accent : COLOR.textMuted }}>
+      <span
+        style={{
+          fontSize: "9px",
+          fontWeight: 600,
+          color: active ? COLOR.accent : COLOR.textMuted,
+          transition: "color 120ms ease",
+        }}
+      >
         {tab.label}
       </span>
     </Link>
