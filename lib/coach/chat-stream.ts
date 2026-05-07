@@ -89,8 +89,11 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
         max_tokens: MAX_TOKENS,
         system,
         tools: [DAILY_LOGS_TOOL, WORKOUTS_TOOL],
-        tool_choice: forceText ? { type: "none" } : { type: "auto" },
-        disable_parallel_tool_use: true,
+        // disable_parallel_tool_use lives INSIDE tool_choice (Auto/Any/Tool
+        // variants only — ToolChoiceNone has no tools to parallelize).
+        tool_choice: forceText
+          ? { type: "none" }
+          : { type: "auto", disable_parallel_tool_use: true },
         messages: messages as Anthropic.MessageParam[],
       },
       { signal: opts.signal },
