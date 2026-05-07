@@ -22,7 +22,12 @@ export function BottomNav() {
   const pathname = usePathname();
   return (
     <nav
-      className="md:hidden"
+      // `flex` activates the row layout on mobile; `md:hidden` cascades after
+      // it (ordered later in Tailwind's compiled CSS) so desktop ≥768px gets
+      // `display: none`. Do NOT add `display: "flex"` to the inline style —
+      // inline beats `md:hidden`'s class rule and the nav stays visible on
+      // desktop, hovering over content with no `--nav-h` reservation behind it.
+      className="flex md:hidden"
       style={{
         position: "fixed",
         left: "8px",
@@ -31,7 +36,6 @@ export function BottomNav() {
         background: COLOR.surface,
         borderRadius: "22px",
         padding: "8px 0",
-        display: "flex",
         justifyContent: "space-around",
         alignItems: "flex-start",
         boxShadow: SHADOW.bottomNav,
