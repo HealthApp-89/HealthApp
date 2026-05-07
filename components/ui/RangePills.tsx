@@ -17,11 +17,15 @@ type RangePillsProps = {
   options: RangeOption[];
   /** Currently active option id. */
   active: string;
-  /** Optional callback when a pill is tapped (e.g. for optimistic updates). */
-  onSelect?: (id: string) => void;
+  /**
+   * If provided, pill clicks call this and DO NOT navigate. URL-mode (the
+   * current /trends/[metric] sub-page) leaves this undefined and the
+   * underlying <Link> performs a normal client-side navigation.
+   */
+  onChange?: (id: string) => void;
 };
 
-export function RangePills({ options, active, onSelect }: RangePillsProps) {
+export function RangePills({ options, active, onChange }: RangePillsProps) {
   return (
     <div
       role="tablist"
@@ -34,7 +38,10 @@ export function RangePills({ options, active, onSelect }: RangePillsProps) {
         const isActive = opt.id === active;
         const onClick = (e: MouseEvent<HTMLAnchorElement>) => {
           if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
-          onSelect?.(opt.id);
+          if (onChange) {
+            e.preventDefault();
+            onChange(opt.id);
+          }
         };
         return (
           <Link
