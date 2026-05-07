@@ -63,9 +63,9 @@ async function syncForUser(userId: string) {
     if (s.score) counts.sleep_scored += 1;
   }
 
-  const rows = buildWhoopDayRows(userId, recovery.records, cycles.records, sleep.records);
+  const { rows, skipped } = buildWhoopDayRows(userId, recovery.records, cycles.records, sleep.records);
 
-  if (rows.length === 0) return { ok: true, ...counts };
+  if (rows.length === 0) return { ok: true, ...counts, skipped };
 
   const supabase = createSupabaseServiceRoleClient();
   const { error } = await supabase
@@ -78,7 +78,7 @@ async function syncForUser(userId: string) {
   revalidatePath("/");
   revalidatePath("/trends");
   revalidatePath("/coach");
-  return { ok: true, ...counts };
+  return { ok: true, ...counts, skipped };
 }
 
 export async function GET(request: Request) {

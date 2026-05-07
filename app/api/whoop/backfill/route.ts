@@ -64,7 +64,19 @@ export async function POST(request: Request) {
       );
     }
 
-    const rows = buildWhoopDayRows(user.id, recovery, cycles, sleep);
+    let rows: Awaited<ReturnType<typeof buildWhoopDayRows>>["rows"];
+    let skipped: Awaited<ReturnType<typeof buildWhoopDayRows>>["skipped"];
+    try {
+      ({ rows, skipped } = buildWhoopDayRows(user.id, recovery, cycles, sleep));
+    } catch (e) {
+      // The builder is now defensive against bad date fields, but wrap anyway
+      // so any future regression surfaces with a precise label instead of
+      // bubbling to the outer catch as an opaque `unhandled:` error.
+      return NextResponse.json(
+        { ok: false, error: `build rows failed: ${(e as Error).message}` },
+        { status: 500 },
+      );
+    }
 
     if (rows.length === 0) {
       return NextResponse.json({
@@ -72,6 +84,7 @@ export async function POST(request: Request) {
         since: sinceIso.slice(0, 10),
         upserted: 0,
         counts: { recovery: recovery.length, cycles: cycles.length, sleep: sleep.length },
+        skipped,
       });
     }
 
@@ -96,6 +109,7 @@ export async function POST(request: Request) {
       since: sinceIso.slice(0, 10),
       upserted,
       counts: { recovery: recovery.length, cycles: cycles.length, sleep: sleep.length },
+      skipped,
     });
   } catch (e) {
     return NextResponse.json(

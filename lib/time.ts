@@ -17,6 +17,18 @@ function logOnce(): void {
 
 export const USER_TIMEZONE = USER_TZ;
 
+/** Parse a string into a Date, returning null for missing/invalid input.
+ *  Use at the boundary when consuming external data (WHOOP/Withings/etc.)
+ *  whose date fields the API contracts say are required but reality
+ *  occasionally violates — passing an Invalid Date into `ymdInZoneOffset`
+ *  or `ymdInUserTz` throws "Invalid time value" via toISOString /
+ *  Intl.DateTimeFormat and crashes the whole batch operation. */
+export function parseValidDate(s: string | null | undefined): Date | null {
+  if (!s) return null;
+  const d = new Date(s);
+  return Number.isFinite(d.getTime()) ? d : null;
+}
+
 type Parts = {
   year: string;
   month: string;
