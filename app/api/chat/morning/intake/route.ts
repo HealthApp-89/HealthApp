@@ -26,6 +26,7 @@ import {
   REST_DAY_MESSAGE_HEALTHY_TO_SICK,
   REST_DAY_MESSAGE_STILL_SICK,
   FREE_TEXT_TAIL_PROMPT,
+  SYNC_WHOOP_PROMPT,
   type SlotKey,
 } from "@/lib/morning/script";
 import { nextSlot, nextIntakeState } from "@/lib/morning/state";
@@ -378,6 +379,29 @@ Today's structured answers so far: ${JSON.stringify({
 
         // Auto-advance to recommendation phase
         await upsertCheckin(sr, userId, today, { intake_state: "awaiting_whoop" });
+
+        // Check if WHOOP is ready. If recovery is non-null, the client's auto-fire
+        // effect will pick this up via useDailyLogs and POST to /api/chat/morning/recommendation.
+        // If recovery is null, insert a parked assistant turn with action chips so the
+        // user has a path forward (manual sync or skip).
+        const { data: log } = await sr
+          .from("daily_logs")
+          .select("recovery")
+          .eq("user_id", userId)
+          .eq("date", today)
+          .maybeSingle<{ recovery: number | null }>();
+
+        if (!log || log.recovery == null) {
+          await insertAssistantTurn(sr, userId, {
+            content: SYNC_WHOOP_PROMPT,
+            ui: {
+              chips: [
+                { label: "Sync WHOOP now", action: "whoop_sync" },
+                { label: "Skip — feel-only plan", action: "skip_whoop" },
+              ],
+            },
+          });
+        }
 
         controller.enqueue(encoder.encode(formatSseEvent({
           event: "done",

@@ -302,6 +302,7 @@ export default function ChatPanel({
     async (body: { skip_whoop: boolean }) => {
       const tempId = `stub-${crypto.randomUUID()}`;
       dispatch({ type: "append_assistant_stub", id: tempId });
+      let parkedSilently = false;
       try {
         for await (const ev of postSse("/api/chat/morning/recommendation", body)) {
           if (ev.type === "delta") {
@@ -310,15 +311,103 @@ export default function ChatPanel({
             dispatch({ type: "replace_id", tempId, serverId: ev.message_id });
             dispatch({ type: "finalize_assistant", id: ev.message_id, status: "done" });
           } else if (ev.type === "error") {
-            dispatch({ type: "finalize_assistant", id: tempId, status: "error", error: ev.message });
+            if (ev.message === "awaiting_whoop") {
+              // Server returned 425 — recommendation can't be delivered yet.
+              // The intake route already inserted a parked WHOOP-sync turn,
+              // so just finalize the empty stub silently.
+              parkedSilently = true;
+              dispatch({ type: "finalize_assistant", id: tempId, status: "done" });
+            } else {
+              dispatch({ type: "finalize_assistant", id: tempId, status: "error", error: ev.message });
+            }
           }
         }
       } catch (e) {
         dispatch({ type: "finalize_assistant", id: tempId, status: "error", error: String(e) });
       }
       queryClient.invalidateQueries({ queryKey: queryKeys.checkin.one(userId, today) });
+
+      if (parkedSilently) {
+        // Refetch so the server-inserted SYNC_WHOOP_PROMPT turn appears.
+        const refresh = await fetch(`/api/chat/messages?limit=50&kind=${currentMode}`);
+        const histJson = (await refresh.json()) as { ok: boolean; messages?: ChatMessage[] };
+        if (histJson.ok && histJson.messages) {
+          dispatch({ type: "loaded", messages: histJson.messages.slice().reverse() });
+        }
+      }
     },
-    [queryClient, today, userId],
+    [queryClient, today, userId, currentMode],
+  );
+
+  const sendMorningFreeText = useCallback(
+    async (value: string) => {
+      const trimmed = value.trim();
+
+      // Optimistic local user message
+      const tempUserId = `tmp-${crypto.randomUUID()}`;
+      dispatch({
+        type: "append_user",
+        message: {
+          id: tempUserId,
+          role: "user",
+          content: trimmed,
+          status: "done",
+          error: null,
+          model: null,
+          kind: "morning_intake",
+          ui: null,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          images: [],
+        },
+      });
+
+      // Optimistic local assistant stub for streaming
+      const tempAssistantId = `stub-${crypto.randomUUID()}`;
+      dispatch({ type: "append_assistant_stub", id: tempAssistantId });
+
+      let serverAssistantId: string | null = null;
+      try {
+        for await (const ev of postSse("/api/chat/morning/intake", {
+          kind: "free_text",
+          value: trimmed,
+        })) {
+          if (ev.type === "delta") {
+            dispatch({ type: "append_delta", id: tempAssistantId, text: ev.text });
+          } else if (ev.type === "done") {
+            serverAssistantId = ev.message_id;
+            dispatch({ type: "replace_id", tempId: tempAssistantId, serverId: ev.message_id });
+            dispatch({ type: "finalize_assistant", id: ev.message_id, status: "done" });
+          } else if (ev.type === "error") {
+            dispatch({
+              type: "finalize_assistant",
+              id: serverAssistantId ?? tempAssistantId,
+              status: "error",
+              error: ev.message,
+            });
+          }
+        }
+      } catch (e) {
+        dispatch({
+          type: "finalize_assistant",
+          id: serverAssistantId ?? tempAssistantId,
+          status: "error",
+          error: String(e),
+        });
+      }
+
+      // Invalidate so the auto-fire effect picks up intake_state='awaiting_whoop'
+      queryClient.invalidateQueries({ queryKey: queryKeys.checkin.one(userId, today) });
+
+      // Refetch the thread so the parked WHOOP-sync turn (or any other server-inserted
+      // assistant turns) shows up.
+      const refresh = await fetch(`/api/chat/messages?limit=50&kind=${currentMode}`);
+      const histJson = (await refresh.json()) as { ok: boolean; messages?: ChatMessage[] };
+      if (histJson.ok && histJson.messages) {
+        dispatch({ type: "loaded", messages: histJson.messages.slice().reverse() });
+      }
+    },
+    [queryClient, userId, today, currentMode],
   );
 
   // Fix 1: In-flight guard — prevents duplicate recommendation streams while
@@ -529,8 +618,19 @@ export default function ChatPanel({
           last.ui.chips.length > 0 &&
           !last.ui.allow_text;
         if (hideComposer) return null;
+
+        // Morning intake: text submissions during allow_text turns route to the
+        // intake state machine, not the free-form coach endpoint.
+        const isMorningTextTurn =
+          currentMode === "morning_intake" &&
+          last?.role === "assistant" &&
+          last?.ui?.allow_text === true;
+
         return (
-          <ChatComposer disabled={state.inFlightAssistantId !== null} onSend={send} />
+          <ChatComposer
+            disabled={state.inFlightAssistantId !== null}
+            onSend={isMorningTextTurn ? (content) => sendMorningFreeText(content) : send}
+          />
         );
       })()}
 
