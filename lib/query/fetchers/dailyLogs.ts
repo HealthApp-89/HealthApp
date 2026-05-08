@@ -53,3 +53,51 @@ export async function fetchDailyLogsBrowser(
   if (error) throw error;
   return (data ?? []) as DailyLog[];
 }
+
+/**
+ * Narrow projection for /trends — only the 6 charted metrics + date. About
+ * a 70% payload reduction vs the wide COLS above, which matters because
+ * /trends prefetches ~16 months of rows. Separate cache key (queryKeys
+ * .dailyLogs.trend) so it doesn't collide with `range` consumers that
+ * expect the full DailyLog shape.
+ */
+const TREND_COLS = "date, hrv, resting_hr, sleep_hours, strain, weight_kg, body_fat_pct";
+
+export type TrendLog = Pick<
+  DailyLog,
+  "date" | "hrv" | "resting_hr" | "sleep_hours" | "strain" | "weight_kg" | "body_fat_pct"
+>;
+
+export async function fetchDailyLogsTrendServer(
+  supabase: SupabaseClient,
+  userId: string,
+  from: string,
+  to: string,
+): Promise<TrendLog[]> {
+  const { data, error } = await supabase
+    .from("daily_logs")
+    .select(TREND_COLS)
+    .eq("user_id", userId)
+    .gte("date", from)
+    .lte("date", to)
+    .order("date", { ascending: true });
+  if (error) throw error;
+  return (data ?? []) as TrendLog[];
+}
+
+export async function fetchDailyLogsTrendBrowser(
+  userId: string,
+  from: string,
+  to: string,
+): Promise<TrendLog[]> {
+  const supabase = createSupabaseBrowserClient();
+  const { data, error } = await supabase
+    .from("daily_logs")
+    .select(TREND_COLS)
+    .eq("user_id", userId)
+    .gte("date", from)
+    .lte("date", to)
+    .order("date", { ascending: true });
+  if (error) throw error;
+  return (data ?? []) as TrendLog[];
+}

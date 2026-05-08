@@ -4,7 +4,7 @@ import { HydrationBoundary, dehydrate } from "@tanstack/react-query";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { makeServerQueryClient } from "@/lib/query/queryClient";
 import { queryKeys } from "@/lib/query/keys";
-import { fetchDailyLogsServer } from "@/lib/query/fetchers/dailyLogs";
+import { fetchDailyLogsTrendServer } from "@/lib/query/fetchers/dailyLogs";
 import { TrendsClient } from "@/components/trends/TrendsClient";
 import { resolvePeriod, type PeriodPreset } from "@/lib/ui/period";
 
@@ -38,8 +38,8 @@ export default async function TrendsPage(props: {
 
   const queryClient = makeServerQueryClient();
   await queryClient.prefetchQuery({
-    queryKey: queryKeys.dailyLogs.range(user.id, yearFrom, yearTo),
-    queryFn: () => fetchDailyLogsServer(supabase, user.id, yearFrom, yearTo),
+    queryKey: queryKeys.dailyLogs.trend(user.id, yearFrom, yearTo),
+    queryFn: () => fetchDailyLogsTrendServer(supabase, user.id, yearFrom, yearTo),
   });
 
   return (

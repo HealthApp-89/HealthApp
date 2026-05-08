@@ -13,6 +13,11 @@ export const queryKeys = {
     all: (userId: string) => ["daily-logs", userId] as const,
     range: (userId: string, from: string, to: string) =>
       ["daily-logs", userId, "range", from, to] as const,
+    /** Narrow column projection used by /trends — only the 6 charted metrics
+     *  + date. Separate cache key from `range` because the result shape is
+     *  smaller (Pick<DailyLog, ...>), not the full `DailyLog`. */
+    trend: (userId: string, from: string, to: string) =>
+      ["daily-logs", userId, "trend", from, to] as const,
     single: (userId: string, date: string) =>
       ["daily-logs", userId, "single", date] as const,
     latestWeight: (userId: string, before: string) =>
