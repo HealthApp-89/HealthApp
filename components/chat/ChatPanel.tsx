@@ -6,6 +6,12 @@ import type { ChatMessage } from "@/lib/chat/types";
 import { ChatThread } from "./ChatThread";
 import { ChatComposer } from "./ChatComposer";
 import { postSse } from "./sseClient";
+import { ChatChips } from "./ChatChips";
+import { useQueryClient } from "@tanstack/react-query";
+import { queryKeys } from "@/lib/query/keys";
+import { useDailyLogs } from "@/lib/query/hooks/useDailyLogs";
+import { useCheckin } from "@/lib/query/hooks/useCheckin";
+import { todayInUserTz } from "@/lib/time";
 
 type State = {
   loaded: boolean;
@@ -91,9 +97,11 @@ function reducer(state: State, action: Action): State {
 export default function ChatPanel({
   onClose,
   mode = "coach",
+  userId,
 }: {
   onClose: () => void;
   mode?: "coach" | "morning_intake";
+  userId: string;
 }) {
   const [state, dispatch] = useReducer(reducer, {
     loaded: false,
@@ -266,6 +274,132 @@ export default function ChatPanel({
     [state.messages, send],
   );
 
+  // ── Morning intake hooks & handlers ─────────────────────────────────────────
+
+  const queryClient = useQueryClient();
+  const today = todayInUserTz();
+
+  // Only fetch the daily log on demand (when in morning_intake mode and we
+  // might need to detect WHOOP recovery arrival).
+  const todayLogQuery = useDailyLogs(userId, today, today, {
+    enabled: mode === "morning_intake",
+    // Polling reset later in this hook based on intake_state
+    refetchInterval: false,
+  });
+  const { data: todayCheckin } = useCheckin(userId, today);
+
+  const runRecommendation = useCallback(
+    async (body: { skip_whoop: boolean }) => {
+      const tempId = `stub-${crypto.randomUUID()}`;
+      dispatch({ type: "append_assistant_stub", id: tempId });
+      try {
+        for await (const ev of postSse("/api/chat/morning/recommendation", body)) {
+          if (ev.type === "delta") {
+            dispatch({ type: "append_delta", id: tempId, text: ev.text });
+          } else if (ev.type === "done") {
+            dispatch({ type: "replace_id", tempId, serverId: ev.message_id });
+            dispatch({ type: "finalize_assistant", id: ev.message_id, status: "done" });
+          } else if (ev.type === "error") {
+            dispatch({ type: "finalize_assistant", id: tempId, status: "error", error: ev.message });
+          }
+        }
+      } catch (e) {
+        dispatch({ type: "finalize_assistant", id: tempId, status: "error", error: String(e) });
+      }
+      queryClient.invalidateQueries({ queryKey: queryKeys.checkin.one(userId, today) });
+    },
+    [queryClient, today, userId],
+  );
+
+  // When morning intake mode mounts and there are no messages yet, kick off
+  // /start so the bot inserts the first scripted question.
+  useEffect(() => {
+    if (mode !== "morning_intake") return;
+    if (!state.loaded) return;
+    if (state.messages.length > 0) return;
+    void (async () => {
+      const res = await fetch("/api/chat/morning/intake", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind: "start" }),
+      });
+      if (res.ok) {
+        const refresh = await fetch(`/api/chat/messages?limit=50&kind=${mode}`);
+        const json = (await refresh.json()) as { ok: boolean; messages?: ChatMessage[] };
+        if (json.ok && json.messages) {
+          dispatch({ type: "loaded", messages: json.messages.slice().reverse() });
+        }
+      }
+    })();
+  }, [mode, state.loaded, state.messages.length]);
+
+  const onSlotAnswer = useCallback(
+    async (slot: string, value: string | number | string[]) => {
+      const res = await fetch("/api/chat/morning/intake", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slot, value }),
+      });
+      void res; // Refetch the thread regardless of status — server may have inserted assistant turns
+      const refresh = await fetch(`/api/chat/messages?limit=50&kind=${mode}`);
+      const histJson = (await refresh.json()) as { ok: boolean; messages?: ChatMessage[] };
+      if (histJson.ok && histJson.messages) {
+        dispatch({ type: "loaded", messages: histJson.messages.slice().reverse() });
+      }
+      queryClient.invalidateQueries({ queryKey: queryKeys.checkin.one(userId, today) });
+    },
+    [mode, queryClient, today, userId],
+  );
+
+  const onAction = useCallback(
+    async (action: "whoop_sync" | "skip_whoop" | "retry_recommendation") => {
+      if (action === "whoop_sync") {
+        try {
+          const res = await fetch("/api/whoop/sync", { method: "GET" });
+          if (!res.ok) throw new Error(`http_${res.status}`);
+          await queryClient.invalidateQueries({
+            queryKey: queryKeys.dailyLogs.range(userId, today, today),
+          });
+          await runRecommendation({ skip_whoop: false });
+        } catch (e) {
+          // Insert a server-side failure assistant turn for visibility.
+          await fetch("/api/chat/morning/intake", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ kind: "free_text", value: `(client: WHOOP sync failed: ${String(e)})` }),
+          });
+          const refresh = await fetch(`/api/chat/messages?limit=50&kind=${mode}`);
+          const histJson = (await refresh.json()) as { ok: boolean; messages?: ChatMessage[] };
+          if (histJson.ok && histJson.messages) {
+            dispatch({ type: "loaded", messages: histJson.messages.slice().reverse() });
+          }
+        }
+        return;
+      }
+      if (action === "skip_whoop") {
+        await runRecommendation({ skip_whoop: true });
+        return;
+      }
+      if (action === "retry_recommendation") {
+        await runRecommendation({ skip_whoop: false });
+        return;
+      }
+    },
+    [mode, queryClient, today, userId, runRecommendation],
+  );
+
+  // Auto-fire recommendation when state transitions to awaiting_whoop and
+  // today's log has recovery (cron arrived in background, or sync just landed).
+  useEffect(() => {
+    if (mode !== "morning_intake") return;
+    if (todayCheckin?.intake_state !== "awaiting_whoop") return;
+    const log = todayLogQuery.data?.[0];
+    if (!log || log.recovery == null) return;
+    void runRecommendation({ skip_whoop: false });
+  }, [mode, todayCheckin?.intake_state, todayLogQuery.data, runRecommendation]);
+
+  // ── Render ───────────────────────────────────────────────────────────────────
+
   return (
     <div
       ref={panelRef}
@@ -302,7 +436,25 @@ export default function ChatPanel({
         </div>
       )}
 
-      <ChatComposer disabled={state.inFlightAssistantId !== null} onSend={send} />
+      {(() => {
+        const last = state.messages[state.messages.length - 1];
+        if (!last || last.role !== "assistant" || last.status !== "done") return null;
+        if (!last.ui || !last.ui.chips || last.ui.chips.length === 0) return null;
+        return <ChatChips ui={last.ui} onSlotAnswer={onSlotAnswer} onAction={onAction} />;
+      })()}
+
+      {(() => {
+        const last = state.messages[state.messages.length - 1];
+        const hideComposer =
+          mode === "morning_intake" &&
+          !!last?.ui?.chips &&
+          last.ui.chips.length > 0 &&
+          !last.ui.allow_text;
+        if (hideComposer) return null;
+        return (
+          <ChatComposer disabled={state.inFlightAssistantId !== null} onSend={send} />
+        );
+      })()}
     </div>
   );
 }

@@ -72,7 +72,7 @@ export function Fab() {
           }}
         />
       )}
-      {chatOpen && <ChatPanel onClose={() => setChatOpen(false)} />}
+      {chatOpen && <ChatPanel onClose={() => setChatOpen(false)} userId="" /* TODO: Task 11 */ />}
     </>
   );
 }

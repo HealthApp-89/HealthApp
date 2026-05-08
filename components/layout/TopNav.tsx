@@ -216,7 +216,7 @@ export function TopNav() {
           </div>
         )}
       </div>
-      {chatOpen && <ChatPanel onClose={() => setChatOpen(false)} />}
+      {chatOpen && <ChatPanel onClose={() => setChatOpen(false)} userId="" /* TODO: Task 11 */ />}
     </header>
   );
 }
