@@ -154,6 +154,8 @@ async function handleDeclareSick(args: {
   sr: SR; userId: string; today: string; todayRow: CheckinRow | null;
 }) {
   const { sr, userId, today } = args;
+  // Insert user reply so the thread shows what the user just did.
+  await insertUserReply(sr, userId, "I'm coming down with something");
   await upsertCheckin(sr, userId, today, {
     sick: true,
     intake_state: "awaiting_sickness_notes",
@@ -169,8 +171,13 @@ async function handleSicknessNotes(args: {
   sr: SR; userId: string; today: string; value: string;
 }) {
   const { sr, userId, today, value } = args;
+  const trimmed = value.trim();
+  // Insert user reply so the thread shows what the user typed.
+  if (trimmed) {
+    await insertUserReply(sr, userId, trimmed);
+  }
   await upsertCheckin(sr, userId, today, {
-    sickness_notes: value.trim() || null,
+    sickness_notes: trimmed || null,
     sick: true,
     intake_state: "delivered",
   });
@@ -187,6 +194,11 @@ async function handleSlotAnswer(args: {
   const { sr, userId, today, body } = args;
   const slot = body.slot;
   const value = body.value;
+
+  // Insert a user reply for the chip tap so the thread renders what the user
+  // just answered. Without this the chat shows back-to-back assistant prompts
+  // with no visible feedback that the chip even registered.
+  await insertUserReply(sr, userId, formatChipReply(value));
 
   // Special: still_sick chip (yes/no). Only valid when the latest assistant
   // turn was the still-sick prompt. We detect by checking sickness_notes
@@ -218,16 +230,27 @@ async function handleSlotAnswer(args: {
     return NextResponse.json({ ok: true });
   }
 
-  // Soreness gate (virtual slot)
+  // Soreness gate (virtual slot — no DB column for it).
   if (slot === "soreness_gate") {
     if (value === "no") {
+      // Mark "no soreness" by writing an empty array. nextSlot below will
+      // skip soreness_areas + severity and advance to fatigue.
       await upsertCheckin(sr, userId, today, {
         soreness_areas: [],
         soreness_severity: null,
       });
+    } else {
+      // 'yes' — directly insert the soreness_areas multi-select prompt
+      // and return. We can't fall through to nextSlot() here because
+      // soreness_areas is still null (the user hasn't picked areas yet),
+      // and nextSlot would loop back to the gate.
+      const areasSlot = SLOT_BY_KEY.soreness_areas;
+      await insertAssistantTurn(sr, userId, {
+        content: areasSlot.prompt,
+        ui: chipsForSlot(areasSlot.key),
+      });
+      return NextResponse.json({ ok: true, next: "soreness_areas" });
     }
-    // 'yes' falls through; soreness_areas stays null so nextSlot returns
-    // soreness_areas next.
   } else {
     // Map chip slot → DB column
     const update = mapSlotToColumn(slot as SlotKey, value);
@@ -444,6 +467,35 @@ async function upsertCheckin(
     .from("checkins")
     .upsert({ user_id: userId, date, ...patch }, { onConflict: "user_id,date" });
   if (error) throw error;
+}
+
+/** Insert the user's reply into chat_messages so the thread renders what
+ *  was just answered. Used for chip taps (slot answers) and for the sickness
+ *  declare/notes flow — without these inserts the user sees back-to-back
+ *  assistant prompts with no feedback that their action registered. */
+async function insertUserReply(
+  sr: SR,
+  userId: string,
+  content: string,
+): Promise<void> {
+  const { error } = await sr.from("chat_messages").insert({
+    user_id: userId,
+    role: "user",
+    content,
+    status: "done",
+    kind: "morning_intake",
+    ui: null,
+  });
+  if (error) throw error;
+}
+
+/** Render a chip's value as user-visible text. Chip values are intentionally
+ *  lowercase / programmatic (e.g. "low", "yes", body-part keys); keep them
+ *  unmodified — the labels in the rendered chip buttons matched these closely
+ *  enough that the user can tell what they tapped. */
+function formatChipReply(value: string | number | string[]): string {
+  if (Array.isArray(value)) return value.join(", ");
+  return String(value);
 }
 
 async function insertAssistantTurn(
