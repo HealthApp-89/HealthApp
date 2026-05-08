@@ -7,9 +7,10 @@ import { fetchInsightsDailyServer } from "@/lib/query/fetchers/insightsDaily";
 import { fetchWeeklyReviewServer } from "@/lib/query/fetchers/weeklyReview";
 import { fetchRecommendationsServer } from "@/lib/query/fetchers/recommendations";
 import { computeBlockProgress } from "@/lib/query/fetchers/blockProgress";
+import { fetchTrainingWeekServer } from "@/lib/query/fetchers/trainingWeek";
 import { CoachClient } from "@/components/coach/CoachClient";
 import { type CoachView } from "@/components/coach/CoachNav";
-import { reviewWindow, recommendationWeekStart } from "@/lib/coach/week";
+import { reviewWindow, recommendationWeekStart, planningTargetMonday } from "@/lib/coach/week";
 import { todayInUserTz } from "@/lib/time";
 
 function userTzNoon(): Date {
@@ -38,6 +39,7 @@ export default async function CoachPage(props: {
   const noon = userTzNoon();
   const { start: weekStart, end: weekEnd, mode: weekMode, daysRemaining } = reviewWindow(noon);
   const recsTargetWeek = recommendationWeekStart(noon);
+  const targetMonday = planningTargetMonday(noon);
 
   // Prefetch all three views' data so any tab tap is a cache hit. Server has
   // no client cache to consult, so this is one Supabase round-trip per view —
@@ -59,6 +61,10 @@ export default async function CoachPage(props: {
     queryClient.prefetchQuery({
       queryKey: queryKeys.blockProgress.active(user.id),
       queryFn: () => computeBlockProgress(supabase, user.id),
+    }),
+    queryClient.prefetchQuery({
+      queryKey: queryKeys.trainingWeeks.one(user.id, targetMonday),
+      queryFn: () => fetchTrainingWeekServer(supabase, user.id, targetMonday),
     }),
   ]);
 

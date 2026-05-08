@@ -20,6 +20,12 @@ import { useInsightsDaily } from "@/lib/query/hooks/useInsightsDaily";
 import { useWeeklyReview } from "@/lib/query/hooks/useWeeklyReview";
 import { useRecommendations } from "@/lib/query/hooks/useRecommendations";
 import { BlockProgressCard } from "@/components/coach/BlockProgressCard";
+import { WeekPlanCard } from "@/components/coach/WeekPlanCard";
+import { PlanWeekCTA } from "@/components/coach/PlanWeekCTA";
+import { useBlockProgress } from "@/lib/query/hooks/useBlockProgress";
+import { useTrainingWeek } from "@/lib/query/hooks/useTrainingWeek";
+import { planningTargetMonday } from "@/lib/coach/week";
+import { weekdayInUserTz } from "@/lib/time";
 import { queryKeys } from "@/lib/query/keys";
 
 type Pattern = { label: string; detail: string };
@@ -344,6 +350,28 @@ function ThisWeekView({
 }
 
 function NextWeekView({ userId, targetWeek }: { userId: string; targetWeek: string }) {
+  const { data: blockProgress } = useBlockProgress(userId);
+  const targetMonday = planningTargetMonday(new Date());
+  const { data: existing } = useTrainingWeek(userId, targetMonday);
+
+  // Decision-table state per spec section "Mode triggering"
+  const hasActiveBlock = blockProgress != null && !("active" in blockProgress);
+  const planExists = existing !== null && existing !== undefined;
+  const today = weekdayInUserTz(); // "Monday" .. "Sunday"
+
+  const showPlanCTA =
+    hasActiveBlock && !planExists && (today === "Sunday" || today === "Monday" || today === "Tuesday");
+  const showWeekCard = hasActiveBlock && planExists;
+
+  // Derive weekN for CTA display — known only when block is active.
+  // On Sunday we're targeting NEXT week, so add 1 to current_week.
+  const weekN =
+    hasActiveBlock && blockProgress && !("active" in blockProgress)
+      ? Math.min(5, blockProgress.current_week + (today === "Sunday" ? 1 : 0))
+      : null;
+  const isLatePlanning = today === "Monday" || today === "Tuesday";
+
+  // Existing recommendations data (preserve)
   const { data } = useRecommendations(userId, targetWeek);
   const items = (data?.items ?? []) as Recommendation[];
   const weekShown = data?.weekShown ?? null;
@@ -351,7 +379,9 @@ function NextWeekView({ userId, targetWeek }: { userId: string; targetWeek: stri
   return (
     <>
       <BlockProgressCard userId={userId} />
-      {/* WeekPlanCard + CTAs added in Task 16 */}
+      {showPlanCTA && <PlanWeekCTA weekStart={targetMonday} weekN={weekN} isLate={isLatePlanning} />}
+      {showWeekCard && <WeekPlanCard userId={userId} weekStart={targetMonday} />}
+
       <div>
         <div
           style={{
