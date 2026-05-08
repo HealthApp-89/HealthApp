@@ -1,16 +1,29 @@
 // lib/query/fetchers/checkin.ts
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import type { CheckinRow } from "@/lib/data/types";
 
-const COLS = "readiness, energy_label, mood, soreness, feel_notes";
+const COLS =
+  "readiness, energy_label, mood, soreness, feel_notes, " +
+  "sick, sickness_notes, fatigue, bloating, soreness_areas, soreness_severity, intake_state";
 
-export type Checkin = {
-  readiness: number | null;
-  energy_label: string | null;
-  mood: string | null;
-  soreness: string | null;
-  feel_notes: string | null;
-};
+/** Narrow shape returned by the dashboard / log fetchers — only the columns
+ *  we render or feed into readiness math. The full row lives on the server. */
+export type Checkin = Pick<
+  CheckinRow,
+  | "readiness"
+  | "energy_label"
+  | "mood"
+  | "soreness"
+  | "feel_notes"
+  | "sick"
+  | "sickness_notes"
+  | "fatigue"
+  | "bloating"
+  | "soreness_areas"
+  | "soreness_severity"
+  | "intake_state"
+>;
 
 export async function fetchCheckinServer(
   supabase: SupabaseClient,

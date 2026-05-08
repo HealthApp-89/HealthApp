@@ -50,6 +50,8 @@ function reducer(state: State, action: Action): State {
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
             images: [],
+            kind: "coach" as const,
+            ui: null,
           },
         ],
       };
@@ -161,6 +163,8 @@ export default function ChatPanel({ onClose }: { onClose: () => void }) {
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         images: [], // optimistic — we don't have signed URLs for the new uploads here
+        kind: "coach",
+        ui: null,
       };
       dispatch({ type: "append_user", message: tempMsg });
 
