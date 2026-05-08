@@ -90,7 +90,7 @@ export async function POST(req: Request) {
     if (!todayRow) {
       return NextResponse.json({ ok: false, reason: "no_today_row" }, { status: 409 });
     }
-    return handleSlotAnswer({ sr, userId: user.id, today, todayRow, body });
+    return handleSlotAnswer({ sr, userId: user.id, today, body });
   }
 
   return NextResponse.json({ ok: false, reason: "bad_body" }, { status: 400 });
@@ -108,8 +108,10 @@ async function handleStart(args: {
     return NextResponse.json({ ok: false, reason: "already_delivered" }, { status: 409 });
   }
 
-  // Resume: today row already exists in some non-delivered state. Just return
-  // the latest assistant message so the client can render — no insert.
+  // Mid-flow resume: today's row already exists in awaiting_feel /
+  // awaiting_sickness_notes / awaiting_whoop. The latest assistant message
+  // is already in chat_messages and the client re-renders the existing
+  // thread on its own — no new turn to insert.
   if (todayRow && todayRow.intake_state !== "pending") {
     return NextResponse.json({ ok: true, resumed: true });
   }
@@ -130,7 +132,7 @@ async function handleStart(args: {
       sick: false, // will be flipped back to true if user answers Yes
       sickness_notes: yRow.sickness_notes ?? null, // carry forward as default
     });
-    await insertAssistantTurn(sr, userId, today, {
+    await insertAssistantTurn(sr, userId, {
       content: STILL_SICK_PROMPT,
       ui: { chips: STILL_SICK_CHIPS.map((c) => ({ ...c, slot: "still_sick" })) },
     });
@@ -140,7 +142,7 @@ async function handleStart(args: {
   // Healthy fresh start — first slot is readiness.
   await upsertCheckin(sr, userId, today, { intake_state: "awaiting_feel" });
   const firstSlot = SLOT_BY_KEY.readiness;
-  await insertAssistantTurn(sr, userId, today, {
+  await insertAssistantTurn(sr, userId, {
     content: firstSlot.prompt,
     ui: chipsForSlot(firstSlot.key),
   });
@@ -155,7 +157,7 @@ async function handleDeclareSick(args: {
     sick: true,
     intake_state: "awaiting_sickness_notes",
   });
-  await insertAssistantTurn(sr, userId, today, {
+  await insertAssistantTurn(sr, userId, {
     content: SICKNESS_NOTES_PROMPT,
     ui: { allow_text: true },
   });
@@ -171,7 +173,7 @@ async function handleSicknessNotes(args: {
     sick: true,
     intake_state: "delivered",
   });
-  await insertAssistantTurn(sr, userId, today, {
+  await insertAssistantTurn(sr, userId, {
     content: REST_DAY_MESSAGE_HEALTHY_TO_SICK,
     ui: null,
   });
@@ -179,7 +181,7 @@ async function handleSicknessNotes(args: {
 }
 
 async function handleSlotAnswer(args: {
-  sr: SR; userId: string; today: string; todayRow: CheckinRow; body: Extract<Body, { slot: string }>;
+  sr: SR; userId: string; today: string; body: Extract<Body, { slot: string }>;
 }) {
   const { sr, userId, today, body } = args;
   const slot = body.slot;
@@ -194,7 +196,7 @@ async function handleSlotAnswer(args: {
         sick: true,
         intake_state: "delivered",
       });
-      await insertAssistantTurn(sr, userId, today, {
+      await insertAssistantTurn(sr, userId, {
         content: REST_DAY_MESSAGE_STILL_SICK,
         ui: null,
       });
@@ -208,7 +210,7 @@ async function handleSlotAnswer(args: {
       intake_state: "awaiting_feel",
     });
     const firstSlot = SLOT_BY_KEY.readiness;
-    await insertAssistantTurn(sr, userId, today, {
+    await insertAssistantTurn(sr, userId, {
       content: "Good — let's run through the morning check-in. " + firstSlot.prompt,
       ui: chipsForSlot(firstSlot.key),
     });
@@ -254,7 +256,7 @@ async function handleSlotAnswer(args: {
 
   if (next.kind === "slot") {
     const def = SLOT_BY_KEY[next.key];
-    await insertAssistantTurn(sr, userId, today, {
+    await insertAssistantTurn(sr, userId, {
       content: def.prompt,
       ui: chipsForSlot(next.key),
     });
@@ -262,7 +264,7 @@ async function handleSlotAnswer(args: {
   }
 
   if (next.kind === "tail") {
-    await insertAssistantTurn(sr, userId, today, {
+    await insertAssistantTurn(sr, userId, {
       content: FREE_TEXT_TAIL_PROMPT,
       ui: { allow_text: true },
     });
@@ -397,7 +399,12 @@ Today's structured answers so far: ${JSON.stringify({
   });
 
   return new Response(stream, {
-    headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" },
+    status: 200,
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+    },
   });
 }
 
@@ -418,7 +425,6 @@ async function upsertCheckin(
 async function insertAssistantTurn(
   sr: SR,
   userId: string,
-  _date: string,
   args: { content: string; ui: MorningUI | null },
 ): Promise<void> {
   const { error } = await sr.from("chat_messages").insert({
@@ -493,6 +499,10 @@ async function applyToolUpdate(
   await upsertCheckin(sr, userId, today, update);
 }
 
+/** Subtract `days` from an ISO date string (YYYY-MM-DD), returning the new
+ *  date string. Date-string arithmetic — both endpoints are anchored at UTC
+ *  midnight, so the math is always exactly N×86400000 ms regardless of DST.
+ *  Use this for "what was the date N days before <today-in-user-tz>" lookups. */
 function isoMinusDays(iso: string, days: number): string {
   const t = new Date(iso + "T00:00:00Z").getTime();
   return new Date(t - days * 86_400_000).toISOString().slice(0, 10);
