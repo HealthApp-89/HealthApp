@@ -113,6 +113,8 @@ export default function ChatPanel({
 
   const panelRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const recommendationRunningRef = useRef(false);
+  const startFiredRef = useRef(false);
 
   // Load history on mount or when mode changes.
   useEffect(() => {
@@ -311,24 +313,54 @@ export default function ChatPanel({
     [queryClient, today, userId],
   );
 
+  // Fix 1: In-flight guard — prevents duplicate recommendation streams while
+  // intake_state is still transitioning from awaiting_whoop to delivered.
+  const tryRunRecommendation = useCallback(
+    async (body: { skip_whoop: boolean }) => {
+      if (recommendationRunningRef.current) return;
+      recommendationRunningRef.current = true;
+      try {
+        await runRecommendation(body);
+      } finally {
+        recommendationRunningRef.current = false;
+      }
+    },
+    [runRecommendation],
+  );
+
+  // Fix 2: Reset startFiredRef when mode changes so re-entering morning_intake
+  // mode after visiting coach can start a fresh session.
+  useEffect(() => {
+    startFiredRef.current = false;
+  }, [mode]);
+
   // When morning intake mode mounts and there are no messages yet, kick off
   // /start so the bot inserts the first scripted question.
+  // startFiredRef prevents re-firing if the POST succeeds but the subsequent
+  // thread refetch fails (messages.length stays 0 but we must not retry).
   useEffect(() => {
     if (mode !== "morning_intake") return;
     if (!state.loaded) return;
     if (state.messages.length > 0) return;
+    if (startFiredRef.current) return;
+    startFiredRef.current = true;
     void (async () => {
-      const res = await fetch("/api/chat/morning/intake", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ kind: "start" }),
-      });
-      if (res.ok) {
-        const refresh = await fetch(`/api/chat/messages?limit=50&kind=${mode}`);
-        const json = (await refresh.json()) as { ok: boolean; messages?: ChatMessage[] };
-        if (json.ok && json.messages) {
-          dispatch({ type: "loaded", messages: json.messages.slice().reverse() });
+      try {
+        const res = await fetch("/api/chat/morning/intake", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ kind: "start" }),
+        });
+        if (res.ok) {
+          const refresh = await fetch(`/api/chat/messages?limit=50&kind=${mode}`);
+          const json = (await refresh.json()) as { ok: boolean; messages?: ChatMessage[] };
+          if (json.ok && json.messages) {
+            dispatch({ type: "loaded", messages: json.messages.slice().reverse() });
+          }
         }
+      } catch {
+        // Refetch may fail; the ref-based guard prevents re-fire from this hook.
+        // User can close + reopen the panel to retry.
       }
     })();
   }, [mode, state.loaded, state.messages.length]);
@@ -360,43 +392,48 @@ export default function ChatPanel({
           await queryClient.invalidateQueries({
             queryKey: queryKeys.dailyLogs.range(userId, today, today),
           });
-          await runRecommendation({ skip_whoop: false });
+          // Fix 1: use tryRunRecommendation to guard against double-fire.
+          await tryRunRecommendation({ skip_whoop: false });
         } catch (e) {
-          // Insert a server-side failure assistant turn for visibility.
-          await fetch("/api/chat/morning/intake", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ kind: "free_text", value: `(client: WHOOP sync failed: ${String(e)})` }),
+          // Fix 3: dispatch a client-only error message instead of POSTing
+          // free_text, which would corrupt feel_notes and re-transition the
+          // state machine, compounding the awaiting_whoop loop.
+          const errorId = `err-${crypto.randomUUID()}`;
+          dispatch({ type: "append_assistant_stub", id: errorId });
+          dispatch({
+            type: "finalize_assistant",
+            id: errorId,
+            status: "error",
+            error: `WHOOP sync failed: ${String(e)}. Tap "Try again" or "Skip" below.`,
           });
-          const refresh = await fetch(`/api/chat/messages?limit=50&kind=${mode}`);
-          const histJson = (await refresh.json()) as { ok: boolean; messages?: ChatMessage[] };
-          if (histJson.ok && histJson.messages) {
-            dispatch({ type: "loaded", messages: histJson.messages.slice().reverse() });
-          }
         }
         return;
       }
       if (action === "skip_whoop") {
-        await runRecommendation({ skip_whoop: true });
+        // Fix 1: use tryRunRecommendation to guard against double-fire.
+        await tryRunRecommendation({ skip_whoop: true });
         return;
       }
       if (action === "retry_recommendation") {
-        await runRecommendation({ skip_whoop: false });
+        // Fix 1: use tryRunRecommendation to guard against double-fire.
+        await tryRunRecommendation({ skip_whoop: false });
         return;
       }
     },
-    [mode, queryClient, today, userId, runRecommendation],
+    [queryClient, today, userId, tryRunRecommendation],
   );
 
   // Auto-fire recommendation when state transitions to awaiting_whoop and
   // today's log has recovery (cron arrived in background, or sync just landed).
+  // Fix 1: tryRunRecommendation guards against re-fire while intake_state is
+  // still transitioning from awaiting_whoop to delivered.
   useEffect(() => {
     if (mode !== "morning_intake") return;
     if (todayCheckin?.intake_state !== "awaiting_whoop") return;
     const log = todayLogQuery.data?.[0];
     if (!log || log.recovery == null) return;
-    void runRecommendation({ skip_whoop: false });
-  }, [mode, todayCheckin?.intake_state, todayLogQuery.data, runRecommendation]);
+    void tryRunRecommendation({ skip_whoop: false });
+  }, [mode, todayCheckin?.intake_state, todayLogQuery.data, tryRunRecommendation]);
 
   // ── Render ───────────────────────────────────────────────────────────────────
 
@@ -440,7 +477,16 @@ export default function ChatPanel({
         const last = state.messages[state.messages.length - 1];
         if (!last || last.role !== "assistant" || last.status !== "done") return null;
         if (!last.ui || !last.ui.chips || last.ui.chips.length === 0) return null;
-        return <ChatChips ui={last.ui} onSlotAnswer={onSlotAnswer} onAction={onAction} />;
+        // Fix 4: key by last.id so the multi-select Set state remounts fresh on
+        // each prompt transition, preventing stale selections carrying over.
+        return (
+          <ChatChips
+            key={last.id}
+            ui={last.ui}
+            onSlotAnswer={onSlotAnswer}
+            onAction={onAction}
+          />
+        );
       })()}
 
       {(() => {
