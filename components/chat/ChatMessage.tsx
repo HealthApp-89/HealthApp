@@ -4,17 +4,37 @@
 import { useState } from "react";
 import type { ChatMessage as ChatMessageType } from "@/lib/chat/types";
 import { renderMarkdownSubset } from "./markdown";
+import { WeekPlanProposalCard, type WeekProposal } from "./WeekPlanProposalCard";
+import { BlockProposalCard, type BlockProposal } from "./BlockProposalCard";
 
 export function ChatMessage({
   message,
   onRetry,
+  onSendUserMessage,
+  onFocusComposer,
 }: {
   message: ChatMessageType;
   onRetry?: () => void;
+  onSendUserMessage?: (text: string) => void;
+  onFocusComposer?: (placeholder: string) => void;
 }) {
+  // Hide approval messages — they're implementation detail, not conversation.
+  if (message.role === "user" && message.content.startsWith("[approve:")) {
+    return null;
+  }
+
   const isUser = message.role === "user";
   const isStreaming = message.status === "streaming";
   const isError = message.status === "error";
+
+  // Determine if a commit tool ran successfully in this message's tool_calls.
+  const toolCalls = message.tool_calls ?? [];
+  const hasCommittedBlock = toolCalls.some(
+    (c) => c.name === "commit_block" && !c.error,
+  );
+  const hasCommittedWeek = toolCalls.some(
+    (c) => c.name === "commit_week_plan" && !c.error,
+  );
 
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"} px-3 py-1.5`}>
@@ -60,6 +80,53 @@ export function ChatMessage({
             )}
           </div>
         )}
+
+        {/* Inline proposal cards — rendered for assistant messages with tool results */}
+        {!isUser &&
+          toolCalls.map((call, i) => {
+            if (!call.result) return null;
+            const result = call.result as {
+              preview?: unknown;
+              approval_token?: string;
+            };
+            if (!result.preview || !result.approval_token) return null;
+
+            if (call.name === "propose_week_plan") {
+              return (
+                <WeekPlanProposalCard
+                  key={i}
+                  proposal={result.preview as WeekProposal}
+                  approvalToken={result.approval_token}
+                  committed={hasCommittedWeek}
+                  onApprove={(token) =>
+                    onSendUserMessage?.(`[approve:${token}]`)
+                  }
+                  onTweak={() =>
+                    onFocusComposer?.("e.g., 'make Friday Arms instead'")
+                  }
+                />
+              );
+            }
+            if (call.name === "propose_block") {
+              return (
+                <BlockProposalCard
+                  key={i}
+                  proposal={result.preview as BlockProposal}
+                  approvalToken={result.approval_token}
+                  committed={hasCommittedBlock}
+                  onApprove={(token) =>
+                    onSendUserMessage?.(`[approve:${token}]`)
+                  }
+                  onTweak={() =>
+                    onFocusComposer?.(
+                      "e.g., 'change the goal to bench instead'",
+                    )
+                  }
+                />
+              );
+            }
+            return null;
+          })}
       </div>
     </div>
   );

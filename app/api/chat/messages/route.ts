@@ -43,7 +43,7 @@ export async function GET(req: Request) {
 
   let q = supabase
     .from("chat_messages")
-    .select("id, role, content, status, error, model, kind, ui, created_at, updated_at")
+    .select("id, role, content, status, error, model, kind, ui, tool_calls, mode, created_at, updated_at")
     .eq("user_id", user.id)
     .eq("kind", kind)
     .order("created_at", { ascending: false })
@@ -104,6 +104,8 @@ export async function GET(req: Request) {
     images: imagesByMsg.get(r.id) ?? [],
     kind: (r.kind as "coach" | "morning_intake") ?? "coach",
     ui: (r.ui as MorningUI | null) ?? null,
+    tool_calls: (r as { tool_calls?: import("@/lib/data/types").ToolCallLog[] | null }).tool_calls ?? null,
+    mode: (r as { mode?: import("@/lib/data/types").ChatMode }).mode ?? "default",
   }));
 
   return NextResponse.json({ ok: true, messages });

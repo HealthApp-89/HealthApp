@@ -9,10 +9,14 @@ export function ChatThread({
   messages,
   onLoadOlder,
   onRetry,
+  onSendUserMessage,
+  onFocusComposer,
 }: {
   messages: ChatMessage[];
   onLoadOlder: (beforeIso: string) => Promise<{ added: number }>;
   onRetry: (messageId: string) => void;
+  onSendUserMessage?: (text: string) => void;
+  onFocusComposer?: (placeholder: string) => void;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
@@ -104,6 +108,8 @@ export function ChatThread({
             key={it.m.id}
             message={it.m}
             onRetry={it.m.status === "error" ? () => onRetry(it.m.id) : undefined}
+            onSendUserMessage={onSendUserMessage}
+            onFocusComposer={onFocusComposer}
           />
         ),
       )}

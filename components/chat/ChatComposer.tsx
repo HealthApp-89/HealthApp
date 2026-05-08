@@ -15,9 +15,11 @@ type Pending = {
 export function ChatComposer({
   disabled,
   onSend,
+  placeholder,
 }: {
   disabled?: boolean;
   onSend: (content: string, imageIds: string[]) => void;
+  placeholder?: string;
 }) {
   const [text, setText] = useState("");
   const [pending, setPending] = useState<Pending[]>([]);
@@ -144,7 +146,7 @@ export function ChatComposer({
               send();
             }
           }}
-          placeholder="Message your coach…"
+          placeholder={placeholder ?? "Message your coach…"}
           rows={1}
           className="flex-1 resize-none bg-white/[0.04] border border-white/[0.08] rounded-2xl px-3 py-2 text-sm text-white/90 outline-none focus:border-white/20 max-h-[140px]"
           style={{ height: "auto" }}

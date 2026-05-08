@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { COLOR, RADIUS, SHADOW } from "@/lib/ui/theme";
 import { MorningTrigger } from "@/components/morning/MorningTrigger";
+import type { ChatMode } from "@/lib/data/types";
 
 const ChatPanel = dynamic(() => import("@/components/chat/ChatPanel"), {
   ssr: false,
@@ -34,10 +35,27 @@ type ChatState = { open: boolean; mode: "coach" | "morning_intake" };
  * "Ask coach" mounts ChatPanel inline — the floating ChatBubble used
  * to do this from a separate corner button; consolidated here so the
  * bottom-right of every page isn't permanently occluded.
+ *
+ * Listens for the custom "open-chat" event dispatched by CoachClient
+ * when the URL contains ?mode=plan_week|setup_block.
  */
 export function Fab({ userId }: { userId: string }) {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [chatState, setChatState] = useState<ChatState>({ open: false, mode: "coach" });
+  const [chatPlanMode, setChatPlanMode] = useState<ChatMode>("default");
+
+  useEffect(() => {
+    function onOpenChat(e: Event) {
+      const detail = (e as CustomEvent).detail as { mode?: ChatMode } | undefined;
+      const m = detail?.mode;
+      if (m === "plan_week" || m === "setup_block") {
+        setChatPlanMode(m);
+        setChatState({ open: true, mode: "coach" });
+      }
+    }
+    window.addEventListener("open-chat", onOpenChat);
+    return () => window.removeEventListener("open-chat", onOpenChat);
+  }, []);
 
   return (
     <>
@@ -71,6 +89,7 @@ export function Fab({ userId }: { userId: string }) {
           onClose={() => setSheetOpen(false)}
           onAskCoach={() => {
             setSheetOpen(false);
+            setChatPlanMode("default");
             setChatState({ open: true, mode: "coach" });
           }}
         />
@@ -81,9 +100,13 @@ export function Fab({ userId }: { userId: string }) {
       />
       {chatState.open && (
         <ChatPanel
-          mode={chatState.mode}
+          initialKind={chatState.mode}
           userId={userId}
-          onClose={() => setChatState((s) => ({ ...s, open: false }))}
+          onClose={() => {
+            setChatState((s) => ({ ...s, open: false }));
+            setChatPlanMode("default");
+          }}
+          initialMode={chatPlanMode}
         />
       )}
     </>

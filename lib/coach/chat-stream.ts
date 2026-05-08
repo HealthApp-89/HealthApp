@@ -50,6 +50,16 @@ import type { ChatMode, ToolCallLog } from "@/lib/data/types";
 import type { ContentBlock, RichMessage } from "@/lib/chat/types";
 
 const MODEL = "claude-sonnet-4-5";
+
+const PERSIST_RESULT_TOOLS = new Set([
+  "propose_block",
+  "commit_block",
+  "propose_week_plan",
+  "commit_week_plan",
+]);
+function shouldPersistResult(name: string): boolean {
+  return PERSIST_RESULT_TOOLS.has(name);
+}
 const MAX_TOOL_INVOCATIONS = 5;
 const MAX_TOKENS = 2000;
 
@@ -298,6 +308,7 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
         range_days: result.meta.range_days,
         truncated: result.ok ? result.meta.truncated : false,
         error: result.ok ? null : result.error.error,
+        result: shouldPersistResult(block.name) && result.ok ? result.data : undefined,
       });
 
       yield { type: "tool_call_done", id: block.id, ok: result.ok, ms: elapsed };

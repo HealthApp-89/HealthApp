@@ -47,6 +47,12 @@ export type ChatMessage = {
   kind: "coach" | "morning_intake";
   /** Chips / rendering hints for morning_intake turns. */
   ui: MorningUI | null;
+  /** Persisted tool-call logs. Populated only for assistant messages that
+   *  invoked at least one tool. Non-null only when the server includes the
+   *  column in its select (GET /api/chat/messages returns it). */
+  tool_calls?: import("@/lib/data/types").ToolCallLog[] | null;
+  /** Conversational sub-state within the coach lane. */
+  mode?: import("@/lib/data/types").ChatMode;
 };
 
 /** SSE event sent from server to client. */

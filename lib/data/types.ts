@@ -100,6 +100,10 @@ export type ToolCallLog = {
   range_days: number;
   truncated: boolean;
   error: string | null;
+  /** Tool result `data` field, persisted only for tools whose result the
+   *  chat UI needs to render inline (propose_block, propose_week_plan,
+   *  commit_block, commit_week_plan). Null/undefined for query tools. */
+  result?: unknown;
 };
 
 // ── checkins ─────────────────────────────────────────────────────────────────

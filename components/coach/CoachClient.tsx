@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card, SectionLabel } from "@/components/ui/Card";
 import { tintByKey } from "@/lib/ui/tints";
@@ -94,6 +95,18 @@ export function CoachClient({
   const queryClient = useQueryClient();
   const router = useRouter();
   const [activeView, setActiveView] = useState<CoachView>(initialView);
+  const search = useSearchParams();
+
+  useEffect(() => {
+    const m = search.get("mode");
+    if (m === "plan_week" || m === "setup_block") {
+      window.dispatchEvent(new CustomEvent("open-chat", { detail: { mode: m } }));
+      // Strip the param so the dispatch doesn't fire on every re-render.
+      const url = new URL(window.location.href);
+      url.searchParams.delete("mode");
+      window.history.replaceState({}, "", url.toString());
+    }
+  }, [search]);
 
   return (
     <div style={{ maxWidth: "640px", margin: "0 auto", padding: "12px 8px 16px" }}>
