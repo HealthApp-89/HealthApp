@@ -101,6 +101,9 @@ export default function ChatPanel({
   userId,
 }: {
   onClose: () => void;
+  /** Initial mode; tab clicks at runtime override this. Changing this prop
+   *  after mount has no effect (the component seeds local state from it
+   *  once and never re-syncs). To force a re-seed, remount with a new key. */
   mode?: "coach" | "morning_intake";
   userId: string;
 }) {
@@ -113,6 +116,7 @@ export default function ChatPanel({
   });
 
   const [currentMode, setCurrentMode] = useState<"coach" | "morning_intake">(mode);
+  const [sickInFlight, setSickInFlight] = useState(false);
 
   const panelRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -533,23 +537,49 @@ export default function ChatPanel({
         <div style={{ padding: "8px 14px 10px", textAlign: "center" }}>
           <button
             type="button"
+            disabled={sickInFlight}
             onClick={async () => {
+              if (sickInFlight) return;
               const ok = window.confirm(
                 "Flag yourself as sick? This locks today's plan to REST. (Undo on the Log page.)",
               );
               if (!ok) return;
-              const res = await fetch("/api/chat/morning/intake", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ kind: "declare_sick" }),
-              });
-              if (res.ok) {
-                const refresh = await fetch(`/api/chat/messages?limit=50&kind=${currentMode}`);
-                const json = (await refresh.json()) as { ok: boolean; messages?: ChatMessage[] };
-                if (json.ok && json.messages) {
-                  dispatch({ type: "loaded", messages: json.messages.slice().reverse() });
+              setSickInFlight(true);
+              try {
+                const res = await fetch("/api/chat/morning/intake", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ kind: "declare_sick" }),
+                });
+                if (res.ok) {
+                  const refresh = await fetch(`/api/chat/messages?limit=50&kind=${currentMode}`);
+                  const json = (await refresh.json()) as { ok: boolean; messages?: ChatMessage[] };
+                  if (json.ok && json.messages) {
+                    dispatch({ type: "loaded", messages: json.messages.slice().reverse() });
+                  }
+                  queryClient.invalidateQueries({ queryKey: queryKeys.checkin.one(userId, today) });
+                } else {
+                  // Surface the error inline so the user has feedback.
+                  const errorId = `err-${crypto.randomUUID()}`;
+                  dispatch({ type: "append_assistant_stub", id: errorId });
+                  dispatch({
+                    type: "finalize_assistant",
+                    id: errorId,
+                    status: "error",
+                    error: `Couldn't flag sickness: HTTP ${res.status}`,
+                  });
                 }
-                queryClient.invalidateQueries({ queryKey: queryKeys.checkin.one(userId, today) });
+              } catch (e) {
+                const errorId = `err-${crypto.randomUUID()}`;
+                dispatch({ type: "append_assistant_stub", id: errorId });
+                dispatch({
+                  type: "finalize_assistant",
+                  id: errorId,
+                  status: "error",
+                  error: `Couldn't flag sickness: ${String(e)}`,
+                });
+              } finally {
+                setSickInFlight(false);
               }
             }}
             style={{
@@ -558,7 +588,8 @@ export default function ChatPanel({
               color: COLOR.textFaint,
               fontSize: "11px",
               textDecoration: "underline",
-              cursor: "pointer",
+              cursor: sickInFlight ? "default" : "pointer",
+              opacity: sickInFlight ? 0.5 : 1,
             }}
           >
             I&apos;m coming down with something
