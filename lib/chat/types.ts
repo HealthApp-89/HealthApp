@@ -4,6 +4,7 @@
 // Also the canonical home for Anthropic-message wire shapes used by the
 // chat path — both lib/anthropic/client.ts (hand-rolled streamer) and
 // lib/coach/chat-stream.ts (SDK-based tool loop) import from here.
+import type { MorningUI } from "@/lib/data/types";
 
 export type ChatRole = "user" | "assistant";
 export type ChatStatus = "streaming" | "done" | "error";
@@ -42,6 +43,10 @@ export type ChatMessage = {
   created_at: string;
   updated_at: string;
   images: ChatMessageImage[];
+  /** Default 'coach'. ChatPanel filters its render by this. */
+  kind: "coach" | "morning_intake";
+  /** Chips / rendering hints for morning_intake turns. */
+  ui: MorningUI | null;
 };
 
 /** SSE event sent from server to client. */

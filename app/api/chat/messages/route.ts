@@ -11,7 +11,7 @@ import {
 import type { ChatMessage, ChatMessageImage, ChatRole, ChatStatus } from "@/lib/chat/types";
 import { type RichMessage, type ContentBlock } from "@/lib/anthropic/client";
 import { runChatStream } from "@/lib/coach/chat-stream";
-import type { ToolCallLog } from "@/lib/data/types";
+import type { ToolCallLog, MorningUI } from "@/lib/data/types";
 import { buildSnapshot, buildEphemeralHeader } from "@/lib/coach/snapshot";
 import { todayInUserTz } from "@/lib/time";
 import {
@@ -38,13 +38,16 @@ export async function GET(req: Request) {
 
   const url = new URL(req.url);
   const before = url.searchParams.get("before"); // ISO timestamp, exclusive
+  const kindRaw = url.searchParams.get("kind") ?? "coach";
+  const kind = kindRaw === "morning_intake" ? "morning_intake" : "coach";
   const limitRaw = parseInt(url.searchParams.get("limit") ?? "", 10);
   const limit = Math.min(MAX_LIMIT, Number.isFinite(limitRaw) && limitRaw > 0 ? limitRaw : DEFAULT_LIMIT);
 
   let q = supabase
     .from("chat_messages")
-    .select("id, role, content, status, error, model, created_at, updated_at")
+    .select("id, role, content, status, error, model, kind, ui, created_at, updated_at")
     .eq("user_id", user.id)
+    .eq("kind", kind)
     .order("created_at", { ascending: false })
     .limit(limit);
   if (before) q = q.lt("created_at", before);
@@ -101,6 +104,8 @@ export async function GET(req: Request) {
     created_at: r.created_at,
     updated_at: r.updated_at,
     images: imagesByMsg.get(r.id) ?? [],
+    kind: (r.kind as "coach" | "morning_intake") ?? "coach",
+    ui: (r.ui as MorningUI | null) ?? null,
   }));
 
   return NextResponse.json({ ok: true, messages });

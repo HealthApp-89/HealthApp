@@ -14,5 +14,5 @@ export async function FabGate() {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return null;
-  return <Fab />;
+  return <Fab userId={user.id} />;
 }

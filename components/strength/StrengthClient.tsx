@@ -87,6 +87,10 @@ export function StrengthClient({
         mood: todayCheckin.mood,
         soreness: todayCheckin.soreness,
         notes: todayCheckin.feel_notes,
+        sick: todayCheckin.sick ?? false,
+        fatigue: todayCheckin.fatigue ?? null,
+        sorenessAreas: todayCheckin.soreness_areas ?? null,
+        sorenessSeverity: todayCheckin.soreness_severity ?? null,
       }
     : null;
   const dailyPlan = buildDailyPlan(todayLog, feel, hrvBaseline);

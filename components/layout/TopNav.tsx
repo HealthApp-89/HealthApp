@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import dynamic from "next/dynamic";
 import { COLOR, RADIUS, SHADOW } from "@/lib/ui/theme";
+import { MorningTrigger } from "@/components/morning/MorningTrigger";
 
 // Lazy-load the chat panel — same pattern as the mobile FAB
 // (components/layout/Fab.tsx). Server-side render is disabled because
@@ -35,15 +36,17 @@ const SHEET: SheetItem[] = [
   { kind: "link",   label: "Manage connections", href: "/profile" },
 ];
 
+type ChatState = { open: boolean; mode: "coach" | "morning_intake" };
+
 /**
  * Desktop-only top nav. Hidden below md.
  */
-export function TopNav() {
+export function TopNav({ userId }: { userId: string }) {
   const pathname = usePathname();
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [chatOpen, setChatOpen] = useState(false);
+  const [chatState, setChatState] = useState<ChatState>({ open: false, mode: "coach" });
   // Optimistic active-tab state. See BottomNav for the rationale — `pathname`
   // doesn't update until navigation completes, so without this the active
   // pill stays on the previous tab for the entire server round-trip.
@@ -183,7 +186,7 @@ export function TopNav() {
                     type="button"
                     onClick={() => {
                       setMenuOpen(false);
-                      setChatOpen(true);
+                      setChatState({ open: true, mode: "coach" });
                     }}
                     style={{
                       ...baseStyle,
@@ -216,7 +219,17 @@ export function TopNav() {
           </div>
         )}
       </div>
-      {chatOpen && <ChatPanel onClose={() => setChatOpen(false)} />}
+      <MorningTrigger
+        userId={userId}
+        onShouldOpen={() => setChatState({ open: true, mode: "morning_intake" })}
+      />
+      {chatState.open && (
+        <ChatPanel
+          mode={chatState.mode}
+          userId={userId}
+          onClose={() => setChatState((s) => ({ ...s, open: false }))}
+        />
+      )}
     </header>
   );
 }

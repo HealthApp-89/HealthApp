@@ -1,11 +1,18 @@
 // components/chat/ChatPanel.tsx
 "use client";
 
-import { useCallback, useEffect, useReducer, useRef } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import type { ChatMessage } from "@/lib/chat/types";
 import { ChatThread } from "./ChatThread";
 import { ChatComposer } from "./ChatComposer";
 import { postSse } from "./sseClient";
+import { ChatChips } from "./ChatChips";
+import { useQueryClient } from "@tanstack/react-query";
+import { queryKeys } from "@/lib/query/keys";
+import { useDailyLogs } from "@/lib/query/hooks/useDailyLogs";
+import { useCheckin } from "@/lib/query/hooks/useCheckin";
+import { todayInUserTz } from "@/lib/time";
+import { COLOR } from "@/lib/ui/theme";
 
 type State = {
   loaded: boolean;
@@ -50,6 +57,8 @@ function reducer(state: State, action: Action): State {
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
             images: [],
+            kind: "coach" as const,
+            ui: null,
           },
         ],
       };
@@ -86,7 +95,18 @@ function reducer(state: State, action: Action): State {
   }
 }
 
-export default function ChatPanel({ onClose }: { onClose: () => void }) {
+export default function ChatPanel({
+  onClose,
+  mode = "coach",
+  userId,
+}: {
+  onClose: () => void;
+  /** Initial mode; tab clicks at runtime override this. Changing this prop
+   *  after mount has no effect (the component seeds local state from it
+   *  once and never re-syncs). To force a re-seed, remount with a new key. */
+  mode?: "coach" | "morning_intake";
+  userId: string;
+}) {
   const [state, dispatch] = useReducer(reducer, {
     loaded: false,
     messages: [],
@@ -95,14 +115,19 @@ export default function ChatPanel({ onClose }: { onClose: () => void }) {
     inFlightWaitMessage: null,
   });
 
+  const [currentMode, setCurrentMode] = useState<"coach" | "morning_intake">(mode);
+  const [sickInFlight, setSickInFlight] = useState(false);
+
   const panelRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const recommendationRunningRef = useRef(false);
+  const startFiredRef = useRef(false);
 
-  // Load history on mount.
+  // Load history on mount or when currentMode changes.
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const res = await fetch("/api/chat/messages?limit=50");
+      const res = await fetch(`/api/chat/messages?limit=50&kind=${currentMode}`);
       const json = (await res.json()) as { ok: boolean; messages?: ChatMessage[] };
       if (cancelled) return;
       if (json.ok && json.messages) {
@@ -116,7 +141,7 @@ export default function ChatPanel({ onClose }: { onClose: () => void }) {
       cancelled = true;
       abortRef.current?.abort();
     };
-  }, []);
+  }, [currentMode]);
 
   // iOS PWA keyboard handling: subscribe to visualViewport.resize and
   // translate the panel up by the keyboard's intrusion.
@@ -139,13 +164,13 @@ export default function ChatPanel({ onClose }: { onClose: () => void }) {
 
   const loadOlder = useCallback(async (beforeIso: string) => {
     if (!state.hasMoreOlder) return { added: 0 };
-    const res = await fetch(`/api/chat/messages?limit=50&before=${encodeURIComponent(beforeIso)}`);
+    const res = await fetch(`/api/chat/messages?limit=50&kind=${currentMode}&before=${encodeURIComponent(beforeIso)}`);
     const json = (await res.json()) as { ok: boolean; messages?: ChatMessage[] };
     if (!json.ok || !json.messages) return { added: 0 };
     const older = json.messages.slice().reverse();
     dispatch({ type: "prepend", messages: older, hasMore: older.length >= 50 });
     return { added: older.length };
-  }, [state.hasMoreOlder]);
+  }, [state.hasMoreOlder, currentMode]);
 
   const send = useCallback(
     async (content: string, imageIds: string[]) => {
@@ -161,6 +186,8 @@ export default function ChatPanel({ onClose }: { onClose: () => void }) {
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         images: [], // optimistic — we don't have signed URLs for the new uploads here
+        kind: "coach" as const,
+        ui: null,
       };
       dispatch({ type: "append_user", message: tempMsg });
 
@@ -256,6 +283,257 @@ export default function ChatPanel({ onClose }: { onClose: () => void }) {
     [state.messages, send],
   );
 
+  // ── Morning intake hooks & handlers ─────────────────────────────────────────
+
+  const queryClient = useQueryClient();
+  const today = todayInUserTz();
+
+  const { data: todayCheckin } = useCheckin(userId, today);
+
+  // Only fetch the daily log on demand (when in morning_intake mode and we
+  // might need to detect WHOOP recovery arrival).
+  const todayLogQuery = useDailyLogs(userId, today, today, {
+    enabled: currentMode === "morning_intake",
+    refetchInterval:
+      todayCheckin?.intake_state === "awaiting_whoop" ? 5 * 60 * 1000 : false,
+  });
+
+  const runRecommendation = useCallback(
+    async (body: { skip_whoop: boolean }) => {
+      const tempId = `stub-${crypto.randomUUID()}`;
+      dispatch({ type: "append_assistant_stub", id: tempId });
+      let parkedSilently = false;
+      try {
+        for await (const ev of postSse("/api/chat/morning/recommendation", body)) {
+          if (ev.type === "delta") {
+            dispatch({ type: "append_delta", id: tempId, text: ev.text });
+          } else if (ev.type === "done") {
+            dispatch({ type: "replace_id", tempId, serverId: ev.message_id });
+            dispatch({ type: "finalize_assistant", id: ev.message_id, status: "done" });
+          } else if (ev.type === "error") {
+            if (ev.message === "awaiting_whoop") {
+              // Server returned 425 — recommendation can't be delivered yet.
+              // The intake route already inserted a parked WHOOP-sync turn,
+              // so just finalize the empty stub silently.
+              parkedSilently = true;
+              dispatch({ type: "finalize_assistant", id: tempId, status: "done" });
+            } else {
+              dispatch({ type: "finalize_assistant", id: tempId, status: "error", error: ev.message });
+            }
+          }
+        }
+      } catch (e) {
+        dispatch({ type: "finalize_assistant", id: tempId, status: "error", error: String(e) });
+      }
+      queryClient.invalidateQueries({ queryKey: queryKeys.checkin.one(userId, today) });
+
+      if (parkedSilently) {
+        // Refetch so the server-inserted SYNC_WHOOP_PROMPT turn appears.
+        const refresh = await fetch(`/api/chat/messages?limit=50&kind=${currentMode}`);
+        const histJson = (await refresh.json()) as { ok: boolean; messages?: ChatMessage[] };
+        if (histJson.ok && histJson.messages) {
+          dispatch({ type: "loaded", messages: histJson.messages.slice().reverse() });
+        }
+      }
+    },
+    [queryClient, today, userId, currentMode],
+  );
+
+  const sendMorningFreeText = useCallback(
+    async (value: string) => {
+      const trimmed = value.trim();
+
+      // Optimistic local user message
+      const tempUserId = `tmp-${crypto.randomUUID()}`;
+      dispatch({
+        type: "append_user",
+        message: {
+          id: tempUserId,
+          role: "user",
+          content: trimmed,
+          status: "done",
+          error: null,
+          model: null,
+          kind: "morning_intake",
+          ui: null,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          images: [],
+        },
+      });
+
+      // Optimistic local assistant stub for streaming
+      const tempAssistantId = `stub-${crypto.randomUUID()}`;
+      dispatch({ type: "append_assistant_stub", id: tempAssistantId });
+
+      let serverAssistantId: string | null = null;
+      try {
+        for await (const ev of postSse("/api/chat/morning/intake", {
+          kind: "free_text",
+          value: trimmed,
+        })) {
+          if (ev.type === "delta") {
+            dispatch({ type: "append_delta", id: tempAssistantId, text: ev.text });
+          } else if (ev.type === "done") {
+            serverAssistantId = ev.message_id;
+            dispatch({ type: "replace_id", tempId: tempAssistantId, serverId: ev.message_id });
+            dispatch({ type: "finalize_assistant", id: ev.message_id, status: "done" });
+          } else if (ev.type === "error") {
+            dispatch({
+              type: "finalize_assistant",
+              id: serverAssistantId ?? tempAssistantId,
+              status: "error",
+              error: ev.message,
+            });
+          }
+        }
+      } catch (e) {
+        dispatch({
+          type: "finalize_assistant",
+          id: serverAssistantId ?? tempAssistantId,
+          status: "error",
+          error: String(e),
+        });
+      }
+
+      // Invalidate so the auto-fire effect picks up intake_state='awaiting_whoop'
+      queryClient.invalidateQueries({ queryKey: queryKeys.checkin.one(userId, today) });
+
+      // Refetch the thread so the parked WHOOP-sync turn (or any other server-inserted
+      // assistant turns) shows up.
+      const refresh = await fetch(`/api/chat/messages?limit=50&kind=${currentMode}`);
+      const histJson = (await refresh.json()) as { ok: boolean; messages?: ChatMessage[] };
+      if (histJson.ok && histJson.messages) {
+        dispatch({ type: "loaded", messages: histJson.messages.slice().reverse() });
+      }
+    },
+    [queryClient, userId, today, currentMode],
+  );
+
+  // Fix 1: In-flight guard — prevents duplicate recommendation streams while
+  // intake_state is still transitioning from awaiting_whoop to delivered.
+  const tryRunRecommendation = useCallback(
+    async (body: { skip_whoop: boolean }) => {
+      if (recommendationRunningRef.current) return;
+      recommendationRunningRef.current = true;
+      try {
+        await runRecommendation(body);
+      } finally {
+        recommendationRunningRef.current = false;
+      }
+    },
+    [runRecommendation],
+  );
+
+  // Fix 2: Reset startFiredRef when currentMode changes so re-entering morning_intake
+  // mode after visiting coach can start a fresh session.
+  useEffect(() => {
+    startFiredRef.current = false;
+  }, [currentMode]);
+
+  // When morning intake mode mounts and there are no messages yet, kick off
+  // /start so the bot inserts the first scripted question.
+  // startFiredRef prevents re-firing if the POST succeeds but the subsequent
+  // thread refetch fails (messages.length stays 0 but we must not retry).
+  useEffect(() => {
+    if (currentMode !== "morning_intake") return;
+    if (!state.loaded) return;
+    if (state.messages.length > 0) return;
+    if (startFiredRef.current) return;
+    startFiredRef.current = true;
+    void (async () => {
+      try {
+        const res = await fetch("/api/chat/morning/intake", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ kind: "start" }),
+        });
+        if (res.ok) {
+          const refresh = await fetch(`/api/chat/messages?limit=50&kind=${currentMode}`);
+          const json = (await refresh.json()) as { ok: boolean; messages?: ChatMessage[] };
+          if (json.ok && json.messages) {
+            dispatch({ type: "loaded", messages: json.messages.slice().reverse() });
+          }
+        }
+      } catch {
+        // Refetch may fail; the ref-based guard prevents re-fire from this hook.
+        // User can close + reopen the panel to retry.
+      }
+    })();
+  }, [currentMode, state.loaded, state.messages.length]);
+
+  const onSlotAnswer = useCallback(
+    async (slot: string, value: string | number | string[]) => {
+      const res = await fetch("/api/chat/morning/intake", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slot, value }),
+      });
+      void res; // Refetch the thread regardless of status — server may have inserted assistant turns
+      const refresh = await fetch(`/api/chat/messages?limit=50&kind=${currentMode}`);
+      const histJson = (await refresh.json()) as { ok: boolean; messages?: ChatMessage[] };
+      if (histJson.ok && histJson.messages) {
+        dispatch({ type: "loaded", messages: histJson.messages.slice().reverse() });
+      }
+      queryClient.invalidateQueries({ queryKey: queryKeys.checkin.one(userId, today) });
+    },
+    [currentMode, queryClient, today, userId],
+  );
+
+  const onAction = useCallback(
+    async (action: "whoop_sync" | "skip_whoop" | "retry_recommendation") => {
+      if (action === "whoop_sync") {
+        try {
+          const res = await fetch("/api/whoop/sync", { method: "GET" });
+          if (!res.ok) throw new Error(`http_${res.status}`);
+          await queryClient.invalidateQueries({
+            queryKey: queryKeys.dailyLogs.range(userId, today, today),
+          });
+          // Fix 1: use tryRunRecommendation to guard against double-fire.
+          await tryRunRecommendation({ skip_whoop: false });
+        } catch (e) {
+          // Fix 3: dispatch a client-only error message instead of POSTing
+          // free_text, which would corrupt feel_notes and re-transition the
+          // state machine, compounding the awaiting_whoop loop.
+          const errorId = `err-${crypto.randomUUID()}`;
+          dispatch({ type: "append_assistant_stub", id: errorId });
+          dispatch({
+            type: "finalize_assistant",
+            id: errorId,
+            status: "error",
+            error: `WHOOP sync failed: ${String(e)}. Tap "Try again" or "Skip" below.`,
+          });
+        }
+        return;
+      }
+      if (action === "skip_whoop") {
+        // Fix 1: use tryRunRecommendation to guard against double-fire.
+        await tryRunRecommendation({ skip_whoop: true });
+        return;
+      }
+      if (action === "retry_recommendation") {
+        // Fix 1: use tryRunRecommendation to guard against double-fire.
+        await tryRunRecommendation({ skip_whoop: false });
+        return;
+      }
+    },
+    [queryClient, today, userId, tryRunRecommendation],
+  );
+
+  // Auto-fire recommendation when state transitions to awaiting_whoop and
+  // today's log has recovery (cron arrived in background, or sync just landed).
+  // Fix 1: tryRunRecommendation guards against re-fire while intake_state is
+  // still transitioning from awaiting_whoop to delivered.
+  useEffect(() => {
+    if (currentMode !== "morning_intake") return;
+    if (todayCheckin?.intake_state !== "awaiting_whoop") return;
+    const log = todayLogQuery.data?.[0];
+    if (!log || log.recovery == null) return;
+    void tryRunRecommendation({ skip_whoop: false });
+  }, [currentMode, todayCheckin?.intake_state, todayLogQuery.data, tryRunRecommendation]);
+
+  // ── Render ───────────────────────────────────────────────────────────────────
+
   return (
     <div
       ref={panelRef}
@@ -266,7 +544,31 @@ export default function ChatPanel({ onClose }: { onClose: () => void }) {
       }}
     >
       <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.06]">
-        <div className="text-sm font-semibold text-white/90">Coach</div>
+        <div style={{ display: "flex", gap: "4px", padding: "4px 0 0" }}>
+          {(["coach", "morning_intake"] as const).map((m) => {
+            const label = m === "coach" ? "Coach" : "Morning";
+            const active = currentMode === m;
+            return (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setCurrentMode(m)}
+                style={{
+                  padding: "6px 14px",
+                  borderRadius: "999px",
+                  background: active ? COLOR.accentSoft : "transparent",
+                  color: active ? COLOR.accent : COLOR.textMid,
+                  border: "none",
+                  fontSize: "12px",
+                  fontWeight: active ? 700 : 500,
+                  cursor: "pointer",
+                }}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
         <button
           type="button"
           onClick={onClose}
@@ -292,7 +594,109 @@ export default function ChatPanel({ onClose }: { onClose: () => void }) {
         </div>
       )}
 
-      <ChatComposer disabled={state.inFlightAssistantId !== null} onSend={send} />
+      {(() => {
+        const last = state.messages[state.messages.length - 1];
+        if (!last || last.role !== "assistant" || last.status !== "done") return null;
+        if (!last.ui || !last.ui.chips || last.ui.chips.length === 0) return null;
+        // Fix 4: key by last.id so the multi-select Set state remounts fresh on
+        // each prompt transition, preventing stale selections carrying over.
+        return (
+          <ChatChips
+            key={last.id}
+            ui={last.ui}
+            onSlotAnswer={onSlotAnswer}
+            onAction={onAction}
+          />
+        );
+      })()}
+
+      {(() => {
+        const last = state.messages[state.messages.length - 1];
+        const hideComposer =
+          currentMode === "morning_intake" &&
+          !!last?.ui?.chips &&
+          last.ui.chips.length > 0 &&
+          !last.ui.allow_text;
+        if (hideComposer) return null;
+
+        // Morning intake: text submissions during allow_text turns route to the
+        // intake state machine, not the free-form coach endpoint.
+        const isMorningTextTurn =
+          currentMode === "morning_intake" &&
+          last?.role === "assistant" &&
+          last?.ui?.allow_text === true;
+
+        return (
+          <ChatComposer
+            disabled={state.inFlightAssistantId !== null}
+            onSend={isMorningTextTurn ? (content) => sendMorningFreeText(content) : send}
+          />
+        );
+      })()}
+
+      {currentMode === "morning_intake" && !todayCheckin?.sick && (
+        <div style={{ padding: "8px 14px 10px", textAlign: "center" }}>
+          <button
+            type="button"
+            disabled={sickInFlight}
+            onClick={async () => {
+              if (sickInFlight) return;
+              const ok = window.confirm(
+                "Flag yourself as sick? This locks today's plan to REST. (Undo on the Log page.)",
+              );
+              if (!ok) return;
+              setSickInFlight(true);
+              try {
+                const res = await fetch("/api/chat/morning/intake", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ kind: "declare_sick" }),
+                });
+                if (res.ok) {
+                  const refresh = await fetch(`/api/chat/messages?limit=50&kind=${currentMode}`);
+                  const json = (await refresh.json()) as { ok: boolean; messages?: ChatMessage[] };
+                  if (json.ok && json.messages) {
+                    dispatch({ type: "loaded", messages: json.messages.slice().reverse() });
+                  }
+                  queryClient.invalidateQueries({ queryKey: queryKeys.checkin.one(userId, today) });
+                } else {
+                  // Surface the error inline so the user has feedback.
+                  const errorId = `err-${crypto.randomUUID()}`;
+                  dispatch({ type: "append_assistant_stub", id: errorId });
+                  dispatch({
+                    type: "finalize_assistant",
+                    id: errorId,
+                    status: "error",
+                    error: `Couldn't flag sickness: HTTP ${res.status}`,
+                  });
+                }
+              } catch (e) {
+                const errorId = `err-${crypto.randomUUID()}`;
+                dispatch({ type: "append_assistant_stub", id: errorId });
+                dispatch({
+                  type: "finalize_assistant",
+                  id: errorId,
+                  status: "error",
+                  error: `Couldn't flag sickness: ${String(e)}`,
+                });
+              } finally {
+                setSickInFlight(false);
+              }
+            }}
+            style={{
+              background: "none",
+              border: "none",
+              color: COLOR.textFaint,
+              fontSize: "11px",
+              textDecoration: "underline",
+              cursor: sickInFlight ? "default" : "pointer",
+              opacity: sickInFlight ? 0.5 : 1,
+            }}
+          >
+            I&apos;m coming down with something
+          </button>
+        </div>
+      )}
     </div>
   );
 }
