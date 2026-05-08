@@ -19,6 +19,7 @@ import { COLOR } from "@/lib/ui/theme";
 import { useInsightsDaily } from "@/lib/query/hooks/useInsightsDaily";
 import { useWeeklyReview } from "@/lib/query/hooks/useWeeklyReview";
 import { useRecommendations } from "@/lib/query/hooks/useRecommendations";
+import { BlockProgressCard } from "@/components/coach/BlockProgressCard";
 import { queryKeys } from "@/lib/query/keys";
 
 type Pattern = { label: string; detail: string };
@@ -349,6 +350,8 @@ function NextWeekView({ userId, targetWeek }: { userId: string; targetWeek: stri
 
   return (
     <>
+      <BlockProgressCard userId={userId} />
+      {/* WeekPlanCard + CTAs added in Task 16 */}
       <div>
         <div
           style={{
