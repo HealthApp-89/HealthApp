@@ -140,6 +140,10 @@ export function TodayClient({
         mood: checkin.mood ?? null,
         soreness: checkin.soreness ?? null,
         notes: checkin.feel_notes ?? null,
+        sick: checkin.sick ?? false,
+        fatigue: checkin.fatigue ?? null,
+        sorenessAreas: checkin.soreness_areas ?? null,
+        sorenessSeverity: checkin.soreness_severity ?? null,
       }
     : null;
   const dailyPlan = buildDailyPlan(selectedLog, feelInput, hrvBaseline);
