@@ -6,6 +6,7 @@ import { queryKeys } from "@/lib/query/keys";
 import { fetchInsightsDailyServer } from "@/lib/query/fetchers/insightsDaily";
 import { fetchWeeklyReviewServer } from "@/lib/query/fetchers/weeklyReview";
 import { fetchRecommendationsServer } from "@/lib/query/fetchers/recommendations";
+import { computeBlockProgress } from "@/lib/query/fetchers/blockProgress";
 import { CoachClient } from "@/components/coach/CoachClient";
 import { type CoachView } from "@/components/coach/CoachNav";
 import { reviewWindow, recommendationWeekStart } from "@/lib/coach/week";
@@ -54,6 +55,10 @@ export default async function CoachPage(props: {
     queryClient.prefetchQuery({
       queryKey: queryKeys.recommendations.week(user.id, recsTargetWeek),
       queryFn: () => fetchRecommendationsServer(supabase, user.id, recsTargetWeek),
+    }),
+    queryClient.prefetchQuery({
+      queryKey: queryKeys.blockProgress.active(user.id),
+      queryFn: () => computeBlockProgress(supabase, user.id),
     }),
   ]);
 
