@@ -114,7 +114,7 @@ export function LogForm({ date, initialLog, initialCheckin }: Props) {
 
   const [feel, setFeel] = useState<CheckinState>({
     readiness: initialCheckin?.readiness ?? null,
-    energy_label: initialCheckin?.energy_label ?? "",
+    energy_label: (initialCheckin?.energy_label ?? "").toLowerCase(),
     mood: initialCheckin?.mood ?? "",
     soreness: initialCheckin?.soreness ?? "",
     feel_notes: initialCheckin?.feel_notes ?? "",

@@ -80,13 +80,18 @@ export async function saveDailyLog(formData: FormData) {
       ? bloatingRaw === "1"
       : null;
   const sorenessAreasRaw = formData.get("feel_soreness_areas");
-  const sorenessAreas: string[] | null =
-    typeof sorenessAreasRaw === "string" && sorenessAreasRaw.trim() !== ""
-      ? sorenessAreasRaw
-          .split(",")
-          .map((s) => s.trim())
-          .filter(Boolean)
-      : null;
+  let sorenessAreas: string[] | null;
+  if (typeof sorenessAreasRaw !== "string") {
+    // Hidden input genuinely missing (form malformed) — treat as not asked.
+    sorenessAreas = null;
+  } else if (sorenessAreasRaw.trim() === "") {
+    // Hidden input present but empty → user submitted the form without
+    // selecting any body parts. Aligns with the morning bot's
+    // soreness_gate=no path (which writes []) — both mean "no soreness".
+    sorenessAreas = [];
+  } else {
+    sorenessAreas = sorenessAreasRaw.split(",").map((s) => s.trim()).filter(Boolean);
+  }
 
   const checkinRow = {
     user_id: user.id,
@@ -111,6 +116,7 @@ export async function saveDailyLog(formData: FormData) {
   const requiredFilled =
     checkinRow.readiness !== null &&
     checkinRow.energy_label !== null &&
+    checkinRow.mood !== null &&
     (checkinRow.sick ||
       (checkinRow.fatigue !== null &&
         checkinRow.bloating !== null &&
