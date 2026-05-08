@@ -88,7 +88,13 @@ function reducer(state: State, action: Action): State {
   }
 }
 
-export default function ChatPanel({ onClose }: { onClose: () => void }) {
+export default function ChatPanel({
+  onClose,
+  mode = "coach",
+}: {
+  onClose: () => void;
+  mode?: "coach" | "morning_intake";
+}) {
   const [state, dispatch] = useReducer(reducer, {
     loaded: false,
     messages: [],
@@ -100,11 +106,11 @@ export default function ChatPanel({ onClose }: { onClose: () => void }) {
   const panelRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  // Load history on mount.
+  // Load history on mount or when mode changes.
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const res = await fetch("/api/chat/messages?limit=50");
+      const res = await fetch(`/api/chat/messages?limit=50&kind=${mode}`);
       const json = (await res.json()) as { ok: boolean; messages?: ChatMessage[] };
       if (cancelled) return;
       if (json.ok && json.messages) {
@@ -118,7 +124,7 @@ export default function ChatPanel({ onClose }: { onClose: () => void }) {
       cancelled = true;
       abortRef.current?.abort();
     };
-  }, []);
+  }, [mode]);
 
   // iOS PWA keyboard handling: subscribe to visualViewport.resize and
   // translate the panel up by the keyboard's intrusion.
@@ -141,13 +147,13 @@ export default function ChatPanel({ onClose }: { onClose: () => void }) {
 
   const loadOlder = useCallback(async (beforeIso: string) => {
     if (!state.hasMoreOlder) return { added: 0 };
-    const res = await fetch(`/api/chat/messages?limit=50&before=${encodeURIComponent(beforeIso)}`);
+    const res = await fetch(`/api/chat/messages?limit=50&kind=${mode}&before=${encodeURIComponent(beforeIso)}`);
     const json = (await res.json()) as { ok: boolean; messages?: ChatMessage[] };
     if (!json.ok || !json.messages) return { added: 0 };
     const older = json.messages.slice().reverse();
     dispatch({ type: "prepend", messages: older, hasMore: older.length >= 50 });
     return { added: older.length };
-  }, [state.hasMoreOlder]);
+  }, [state.hasMoreOlder, mode]);
 
   const send = useCallback(
     async (content: string, imageIds: string[]) => {

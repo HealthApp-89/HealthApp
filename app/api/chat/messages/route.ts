@@ -38,6 +38,8 @@ export async function GET(req: Request) {
 
   const url = new URL(req.url);
   const before = url.searchParams.get("before"); // ISO timestamp, exclusive
+  const kindRaw = url.searchParams.get("kind") ?? "coach";
+  const kind = kindRaw === "morning_intake" ? "morning_intake" : "coach";
   const limitRaw = parseInt(url.searchParams.get("limit") ?? "", 10);
   const limit = Math.min(MAX_LIMIT, Number.isFinite(limitRaw) && limitRaw > 0 ? limitRaw : DEFAULT_LIMIT);
 
@@ -45,6 +47,7 @@ export async function GET(req: Request) {
     .from("chat_messages")
     .select("id, role, content, status, error, model, kind, ui, created_at, updated_at")
     .eq("user_id", user.id)
+    .eq("kind", kind)
     .order("created_at", { ascending: false })
     .limit(limit);
   if (before) q = q.lt("created_at", before);
