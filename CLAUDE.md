@@ -28,6 +28,8 @@ Apply in order via Supabase Dashboard → SQL Editor:
 6. [supabase/migrations/0006_chat_settings.sql](supabase/migrations/0006_chat_settings.sql) — adds `profiles.system_prompt` (user-editable coach prompt; NULL = use code default) and `chat_messages.tool_calls` (jsonb of tool invocations per assistant turn for observability)
 7. [supabase/migrations/0007_morning_intake.sql](supabase/migrations/0007_morning_intake.sql) — adds structured morning-feel slots (`sick`, `sickness_notes`, `fatigue`, `bloating`, `soreness_areas`, `soreness_severity`), per-day state machine on `checkins.intake_state`, and `chat_messages.kind` + `ui` for the morning intake bot
 
+7. [supabase/migrations/0008_weekly_planning.sql](supabase/migrations/0008_weekly_planning.sql) — adds `training_blocks` (5-week mesocycle goals), `training_weeks` (committed Sunday plans), and `chat_messages.mode` (`default`|`plan_week`|`setup_block`) for the weekly planning ritual
+
 `supabase` CLI is now linked (`supabase link --project-ref eopfwwergisvskxqvsqe`); future migrations apply via `supabase db push` after `repair --status applied <history>` if needed.
 
 Row shapes mirrored in [lib/data/types.ts](lib/data/types.ts). Schema is snake_case; keep DB columns and TS types in sync.
