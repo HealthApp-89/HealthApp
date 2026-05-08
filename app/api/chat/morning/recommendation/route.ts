@@ -69,7 +69,8 @@ export async function POST(req: Request) {
   }
 
   // ── healthy path: Claude renders the plan ───────────────────────────────────
-  const useSkipPath = body.skip_whoop || !log || log.recovery == null;
+  // At this point either skip_whoop is true OR log+recovery are present (the 425 guard above ruled out the missing-WHOOP-without-skip case).
+  const useSkipPath = !!body.skip_whoop;
   const feel: FeelInput = {
     readiness: row.readiness,
     energyLabel: row.energy_label,
@@ -97,7 +98,7 @@ async function deliverTemplated(
   content: string,
 ) {
   const today = todayInUserTz();
-  const { data: msg } = await sr
+  const { data: msg, error: insertErr } = await sr
     .from("chat_messages")
     .insert({
       user_id: userId,
@@ -109,11 +110,17 @@ async function deliverTemplated(
     })
     .select("id")
     .single();
-  await sr.from("checkins").upsert(
+  if (insertErr || !msg) {
+    return NextResponse.json({ ok: false, reason: "insert_failed" }, { status: 500 });
+  }
+  const { error: upsertErr } = await sr.from("checkins").upsert(
     { user_id: userId, date: today, intake_state: "delivered" },
     { onConflict: "user_id,date" },
   );
-  return NextResponse.json({ ok: true, message_id: msg?.id ?? null });
+  if (upsertErr) {
+    return NextResponse.json({ ok: false, reason: "state_upsert_failed" }, { status: 500 });
+  }
+  return NextResponse.json({ ok: true, message_id: msg.id });
 }
 
 async function deliverWithClaude(
@@ -162,11 +169,22 @@ async function deliverWithClaude(
     })),
   });
 
+  const feelForPrompt = {
+    readiness: args.feel.readiness,
+    energyLabel: args.feel.energyLabel,
+    mood: args.feel.mood,
+    notes: args.feel.notes,
+    sick: args.feel.sick,
+    fatigue: args.feel.fatigue,
+    sorenessAreas: args.feel.sorenessAreas,
+    sorenessSeverity: args.feel.sorenessSeverity,
+  };
+
   const sys = `You are the athlete's coach delivering today's morning recommendation. Plan was computed from WHOOP + their morning check-in:
 
 ${planJson}
 
-Their feel: ${JSON.stringify(args.feel)}
+Their feel: ${JSON.stringify(feelForPrompt)}
 Today's WHOOP: ${args.log ? `recovery=${args.log.recovery}, hrv=${args.log.hrv}, sleep_score=${args.log.sleep_score}, strain=${args.log.strain}` : "not synced"}
 ${args.skipWhoop ? "NOTE: WHOOP data unavailable — use feel + last 7 days for the plan. Mention this caveat once." : ""}
 
@@ -198,15 +216,17 @@ Speak in concrete numbers — kg, reps, %, ms. No "around"/"roughly". Don't repe
           }
         }
 
-        await sr.from("chat_messages").update({
-          content: assembled,
-          status: "done",
-        }).eq("id", stub.id);
+        const { error: updateErr } = await sr
+          .from("chat_messages")
+          .update({ content: assembled, status: "done" })
+          .eq("id", stub.id);
+        if (updateErr) throw new Error(`finalize_failed: ${updateErr.message}`);
 
-        await sr.from("checkins").upsert(
+        const { error: stateErr } = await sr.from("checkins").upsert(
           { user_id: userId, date: today, intake_state: "delivered" },
           { onConflict: "user_id,date" },
         );
+        if (stateErr) throw new Error(`state_upsert_failed: ${stateErr.message}`);
 
         controller.enqueue(encoder.encode(formatSseEvent({
           event: "done", data: { message_id: stub.id },
