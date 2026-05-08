@@ -71,3 +71,32 @@ export function recommendationWeekStart(today: Date = new Date()): string {
   }
   return fmt(monday);
 }
+
+/** Monday that the planning CTA targets when the user opens /coach.
+ *
+ *  Mon-Sat → the most recent Monday on or before today (current calendar week).
+ *  Sun     → next Monday (the upcoming calendar week).
+ *
+ *  Distinct from `recommendationWeekStart` (which has identical semantics today
+ *  but is a separate concept — recommendations vs. plan targeting; keeping them
+ *  separate avoids accidental coupling when one's policy changes).
+ *
+ *  Distinct from `currentWeekMonday(today)` (used by the strength tab) which
+ *  always returns the most recent Monday on or before today regardless of
+ *  weekday — strength reads "this week's plan", not "next week's". */
+export function planningTargetMonday(today: Date = new Date()): string {
+  const t = utc(today);
+  const monday = startOfWeekMonday(t);
+  if (t.getUTCDay() === 0) {
+    const nextMon = new Date(monday);
+    nextMon.setUTCDate(monday.getUTCDate() + 7);
+    return fmt(nextMon);
+  }
+  return fmt(monday);
+}
+
+/** Monday of the week containing today (no Sunday flip). Used by the strength
+ *  tab to look up the *current* week's training_weeks row. */
+export function currentWeekMonday(today: Date = new Date()): string {
+  return fmt(startOfWeekMonday(utc(today)));
+}
