@@ -11,7 +11,7 @@ import {
 import type { ChatMessage, ChatMessageImage, ChatRole, ChatStatus } from "@/lib/chat/types";
 import { type RichMessage, type ContentBlock } from "@/lib/anthropic/client";
 import { runChatStream } from "@/lib/coach/chat-stream";
-import type { ToolCallLog } from "@/lib/data/types";
+import type { ToolCallLog, MorningUI } from "@/lib/data/types";
 import { buildSnapshot, buildEphemeralHeader } from "@/lib/coach/snapshot";
 import { todayInUserTz } from "@/lib/time";
 import {
@@ -102,7 +102,7 @@ export async function GET(req: Request) {
     updated_at: r.updated_at,
     images: imagesByMsg.get(r.id) ?? [],
     kind: (r.kind as "coach" | "morning_intake") ?? "coach",
-    ui: (r.ui as import("@/lib/data/types").MorningUI | null) ?? null,
+    ui: (r.ui as MorningUI | null) ?? null,
   }));
 
   return NextResponse.json({ ok: true, messages });

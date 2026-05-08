@@ -110,7 +110,7 @@ export type IntakeState =
   | "awaiting_whoop"
   | "delivered";
 
-export type Fatigue = "none" | "some" | "heavy";
+export type FatigueLevel = "none" | "some" | "heavy";
 export type SorenessSeverity = "mild" | "sharp";
 
 export type CheckinRow = {
@@ -126,7 +126,7 @@ export type CheckinRow = {
   // 0007 additions
   sick: boolean;
   sickness_notes: string | null;
-  fatigue: Fatigue | null;
+  fatigue: FatigueLevel | null;
   bloating: boolean | null;        // nullable: not asked = null
   soreness_areas: string[] | null; // ['chest','back','legs','shoulders','arms','core']
   soreness_severity: SorenessSeverity | null;
@@ -136,6 +136,8 @@ export type CheckinRow = {
 
 // ── chat_messages.ui (chip rendering) ────────────────────────────────────────
 
+/** Discriminant: presence of `slot` (slot answer) vs `action` (client side-effect)
+ *  field. Renderers branch via `"slot" in chip` / `"action" in chip`. */
 export type MorningChip =
   // Slot answer — POST {slot, value} to /api/chat/morning/intake
   | { label: string; value: string | number; slot: string }
