@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import dynamic from "next/dynamic";
 import { COLOR, RADIUS, SHADOW } from "@/lib/ui/theme";
+import { MorningTrigger } from "@/components/morning/MorningTrigger";
 
 // Lazy-load the chat panel — same pattern as the mobile FAB
 // (components/layout/Fab.tsx). Server-side render is disabled because
@@ -218,6 +219,10 @@ export function TopNav({ userId }: { userId: string }) {
           </div>
         )}
       </div>
+      <MorningTrigger
+        userId={userId}
+        onShouldOpen={() => setChatState({ open: true, mode: "morning_intake" })}
+      />
       {chatState.open && (
         <ChatPanel
           mode={chatState.mode}

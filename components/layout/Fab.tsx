@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { COLOR, RADIUS, SHADOW } from "@/lib/ui/theme";
+import { MorningTrigger } from "@/components/morning/MorningTrigger";
 
 const ChatPanel = dynamic(() => import("@/components/chat/ChatPanel"), {
   ssr: false,
@@ -74,6 +75,10 @@ export function Fab({ userId }: { userId: string }) {
           }}
         />
       )}
+      <MorningTrigger
+        userId={userId}
+        onShouldOpen={() => setChatState({ open: true, mode: "morning_intake" })}
+      />
       {chatState.open && (
         <ChatPanel
           mode={chatState.mode}
