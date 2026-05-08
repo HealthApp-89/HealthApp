@@ -288,14 +288,15 @@ export default function ChatPanel({
   const queryClient = useQueryClient();
   const today = todayInUserTz();
 
+  const { data: todayCheckin } = useCheckin(userId, today);
+
   // Only fetch the daily log on demand (when in morning_intake mode and we
   // might need to detect WHOOP recovery arrival).
   const todayLogQuery = useDailyLogs(userId, today, today, {
     enabled: currentMode === "morning_intake",
-    // Polling reset later in this hook based on intake_state
-    refetchInterval: false,
+    refetchInterval:
+      todayCheckin?.intake_state === "awaiting_whoop" ? 5 * 60 * 1000 : false,
   });
-  const { data: todayCheckin } = useCheckin(userId, today);
 
   const runRecommendation = useCallback(
     async (body: { skip_whoop: boolean }) => {

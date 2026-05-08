@@ -236,6 +236,17 @@ Speak in concrete numbers — kg, reps, %, ms. No "around"/"roughly". Don't repe
         await sr.from("chat_messages").update({
           status: "error", error: String(e),
         }).eq("id", stub.id);
+
+        // Insert a retry chip so the user has a path forward.
+        await sr.from("chat_messages").insert({
+          user_id: userId,
+          role: "assistant",
+          content: "Recommendation generation failed. Tap to retry.",
+          status: "done",
+          kind: "morning_intake",
+          ui: { chips: [{ label: "Retry", action: "retry_recommendation" }] },
+        });
+
         controller.enqueue(encoder.encode(formatSseEvent({
           event: "error", data: { message: String(e) },
         })));
