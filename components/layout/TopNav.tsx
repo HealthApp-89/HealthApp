@@ -225,7 +225,7 @@ export function TopNav({ userId }: { userId: string }) {
       />
       {chatState.open && (
         <ChatPanel
-          mode={chatState.mode}
+          initialKind={chatState.mode}
           userId={userId}
           onClose={() => setChatState((s) => ({ ...s, open: false }))}
         />

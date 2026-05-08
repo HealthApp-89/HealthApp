@@ -4,12 +4,24 @@ import { RADIUS, modeColorLight } from "@/lib/ui/theme";
 
 type Props = {
   plan: DailyPlan;
+  committedFromPlan?: boolean;
+  rirTarget?: number | null;
+  researchPhase?: "accumulate" | "deload" | null;
 };
 
 /** Light-theme session plan card for the strength page.
  *  Shows session type, mode intensity, description, and full exercise list. */
-export function TodayPlanCard({ plan }: Props) {
+export function TodayPlanCard({ plan, committedFromPlan, rirTarget, researchPhase }: Props) {
   const accent = modeColorLight(plan.mode.color);
+
+  // Pill text: prefer committed plan info if present.
+  const pillText = committedFromPlan
+    ? [
+        researchPhase ? researchPhase.toUpperCase() : null,
+        rirTarget != null ? `RIR ${rirTarget}` : null,
+      ].filter(Boolean).join(" · ")
+    : "DEFAULT — PLAN ON COACH ↗";
+  const pillIsLink = !committedFromPlan;
 
   return (
     <Card
@@ -34,19 +46,38 @@ export function TodayPlanCard({ plan }: Props) {
             {plan.sessionType === "REST" ? "Rest day" : `💪 ${plan.sessionType}`}
           </div>
         </div>
-        <span
-          style={{
-            fontSize: "10px",
-            padding: "4px 8px",
-            background: "rgba(255,255,255,0.18)",
-            borderRadius: "9999px",
-            fontWeight: 700,
-            letterSpacing: "0.04em",
-            textTransform: "uppercase",
-          }}
-        >
-          {plan.mode.label.replace(/^[^\s]+\s/, "")}
-        </span>
+        {pillIsLink ? (
+          <a
+            href="/coach?mode=plan_week"
+            style={{
+              fontSize: "10px",
+              padding: "4px 8px",
+              background: "rgba(255,255,255,0.18)",
+              borderRadius: "9999px",
+              fontWeight: 700,
+              letterSpacing: "0.04em",
+              textTransform: "uppercase",
+              color: "#fff",
+              textDecoration: "none",
+            }}
+          >
+            {pillText}
+          </a>
+        ) : (
+          <span
+            style={{
+              fontSize: "10px",
+              padding: "4px 8px",
+              background: "rgba(255,255,255,0.18)",
+              borderRadius: "9999px",
+              fontWeight: 700,
+              letterSpacing: "0.04em",
+              textTransform: "uppercase",
+            }}
+          >
+            {pillText}
+          </span>
+        )}
       </div>
       <p style={{ fontSize: "12px", opacity: 0.85, marginTop: "8px", lineHeight: 1.4 }}>
         {plan.mode.desc}

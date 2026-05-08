@@ -87,18 +87,23 @@ export type ChatMessageRow = {
   /** Chip definitions / rendering hints for the morning intake bot. NULL on
    *  free-form coach turns. */
   ui: MorningUI | null;
+  mode: ChatMode;
   created_at: string;
   updated_at: string;
 };
 
 export type ToolCallLog = {
-  name: "query_daily_logs" | "query_workouts";
+  name: "query_daily_logs" | "query_workouts" | "query_training_blocks" | "query_training_weeks" | "get_autoregulation_signals" | "compute_adherence" | "propose_block" | "commit_block" | "propose_week_plan" | "commit_week_plan";
   input: Record<string, unknown>;
   ms: number;
   result_rows: number;
   range_days: number;
   truncated: boolean;
   error: string | null;
+  /** Tool result `data` field, persisted only for tools whose result the
+   *  chat UI needs to render inline (propose_block, propose_week_plan,
+   *  commit_block, commit_week_plan). Null/undefined for query tools. */
+  result?: unknown;
 };
 
 // ── checkins ─────────────────────────────────────────────────────────────────
@@ -153,3 +158,62 @@ export type MorningUI = {
    *  step). Default: false (composer hidden when chips are present). */
   allow_text?: boolean;
 };
+
+// ── training_blocks ──────────────────────────────────────────────────────────
+
+export type BlockStatus = "active" | "completed" | "abandoned";
+export type PrimaryLift = "squat" | "bench" | "deadlift" | "ohp";
+export type TargetMetric = "e1rm" | "working_weight";
+
+export type TrainingBlock = {
+  id: string;
+  user_id: string;
+  status: BlockStatus;
+  /** YYYY-MM-DD, always a Monday. */
+  start_date: string;
+  /** YYYY-MM-DD, always start + 34 days (week-5 Sunday). */
+  end_date: string;
+  goal_text: string;
+  primary_lift: PrimaryLift | null;
+  target_metric: TargetMetric | null;
+  target_value: number | null;
+  target_unit: string;
+  /** Reserved-null in v1. v2 populates with calorie/macro targets. */
+  diet_goal: Record<string, unknown> | null;
+  created_at: string;
+  completed_at: string | null;
+  updated_at: string;
+};
+
+// ── training_weeks ───────────────────────────────────────────────────────────
+
+export type Weekday = "Mon" | "Tue" | "Wed" | "Thu" | "Fri" | "Sat" | "Sun";
+/** Session-type strings keyed in SESSION_PLANS, plus the literal "REST". */
+export type SessionPlan = Partial<Record<Weekday, string>>;
+/** Per-primary-lift intensity multipliers; missing keys default to 1.0. */
+export type IntensityModifier = Partial<Record<PrimaryLift, number>>;
+
+export type ResearchPhase = "accumulate" | "deload";
+export type ProposedBy = "coach" | "user";
+
+export type TrainingWeek = {
+  id: string;
+  user_id: string;
+  block_id: string | null;
+  /** YYYY-MM-DD, always a Monday (UTC). */
+  week_start: string;
+  session_plan: SessionPlan;
+  weekly_focus: string | null;
+  intensity_modifier: IntensityModifier;
+  rir_target: number | null;
+  research_phase: ResearchPhase | null;
+  proposed_by: ProposedBy;
+  chat_message_id: string | null;
+  committed_at: string;
+  created_at: string;
+  updated_at: string;
+};
+
+// ── chat mode (extends existing ChatMessageRow) ──────────────────────────────
+
+export type ChatMode = "default" | "plan_week" | "setup_block";

@@ -26,14 +26,40 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   DAILY_LOGS_TOOL,
   WORKOUTS_TOOL,
+  TRAINING_BLOCKS_TOOL,
+  TRAINING_WEEKS_TOOL,
+  AUTOREGULATION_TOOL,
+  ADHERENCE_TOOL,
+  PROPOSE_BLOCK_TOOL,
+  COMMIT_BLOCK_TOOL,
+  PROPOSE_WEEK_PLAN_TOOL,
+  COMMIT_WEEK_PLAN_TOOL,
   executeQueryDailyLogs,
   executeQueryWorkouts,
+  executeQueryTrainingBlocks,
+  executeQueryTrainingWeeks,
+  executeGetAutoregulationSignals,
+  executeComputeAdherence,
+  executeProposeBlock,
+  executeCommitBlock,
+  executeProposeWeekPlan,
+  executeCommitWeekPlan,
   type ToolResult,
 } from "@/lib/coach/tools";
-import type { ToolCallLog } from "@/lib/data/types";
+import type { ChatMode, ToolCallLog } from "@/lib/data/types";
 import type { ContentBlock, RichMessage } from "@/lib/chat/types";
 
 const MODEL = "claude-sonnet-4-5";
+
+const PERSIST_RESULT_TOOLS = new Set([
+  "propose_block",
+  "commit_block",
+  "propose_week_plan",
+  "commit_week_plan",
+]);
+function shouldPersistResult(name: string): boolean {
+  return PERSIST_RESULT_TOOLS.has(name);
+}
 const MAX_TOOL_INVOCATIONS = 5;
 const MAX_TOKENS = 2000;
 
@@ -59,6 +85,12 @@ export type RunChatStreamOpts = {
   /** Mutable array; the loop pushes a ToolCallLog for each invocation so
    *  the route can persist it in its `finally` block. */
   toolCallSink: ToolCallLog[];
+  /** The assistant stub message id, used by commit_week_plan to populate
+   *  training_weeks.chat_message_id for traceability. */
+  assistantMessageId?: string | null;
+  /** Chat mode — controls which tools are exposed to the model.
+   *  Default mode hides propose_ and commit_ tools to prevent accidental plan writes. */
+  mode?: ChatMode;
 };
 
 export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<ChatStreamYield> {
@@ -81,6 +113,28 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
   // user-message follow-ups.
   const messages: RichMessage[] = opts.messages.slice();
 
+  const allTools = [
+    DAILY_LOGS_TOOL,
+    WORKOUTS_TOOL,
+    TRAINING_BLOCKS_TOOL,
+    TRAINING_WEEKS_TOOL,
+    AUTOREGULATION_TOOL,
+    ADHERENCE_TOOL,
+    PROPOSE_BLOCK_TOOL,
+    COMMIT_BLOCK_TOOL,
+    PROPOSE_WEEK_PLAN_TOOL,
+    COMMIT_WEEK_PLAN_TOOL,
+  ];
+
+  // In default mode, hide the planning-write tools to prevent accidental
+  // invocation from casual conversation. plan_week + setup_block expose all.
+  const toolsForMode =
+    opts.mode === "plan_week" || opts.mode === "setup_block"
+      ? allTools
+      : allTools.filter(
+          (t) => !t.name.startsWith("propose_") && !t.name.startsWith("commit_"),
+        );
+
   while (true) {
     const forceText = invocations >= MAX_TOOL_INVOCATIONS;
     const stream = client.messages.stream(
@@ -88,7 +142,7 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
         model: MODEL,
         max_tokens: MAX_TOKENS,
         system,
-        tools: [DAILY_LOGS_TOOL, WORKOUTS_TOOL],
+        tools: toolsForMode,
         // disable_parallel_tool_use lives INSIDE tool_choice (Auto/Any/Tool
         // variants only — ToolChoiceNone has no tools to parallelize).
         tool_choice: forceText
@@ -180,6 +234,55 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
             userId: opts.userId,
             input: block.input,
           });
+        } else if (block.name === "query_training_blocks") {
+          result = await executeQueryTrainingBlocks({
+            supabase: opts.sr,
+            userId: opts.userId,
+            input: block.input,
+          });
+        } else if (block.name === "query_training_weeks") {
+          result = await executeQueryTrainingWeeks({
+            supabase: opts.sr,
+            userId: opts.userId,
+            input: block.input,
+          });
+        } else if (block.name === "get_autoregulation_signals") {
+          result = await executeGetAutoregulationSignals({
+            supabase: opts.sr,
+            userId: opts.userId,
+            input: block.input,
+          });
+        } else if (block.name === "compute_adherence") {
+          result = await executeComputeAdherence({
+            supabase: opts.sr,
+            userId: opts.userId,
+            input: block.input,
+          });
+        } else if (block.name === "propose_block") {
+          result = await executeProposeBlock({
+            supabase: opts.sr,
+            userId: opts.userId,
+            input: block.input,
+          });
+        } else if (block.name === "commit_block") {
+          result = await executeCommitBlock({
+            supabase: opts.sr,
+            userId: opts.userId,
+            input: block.input,
+          });
+        } else if (block.name === "propose_week_plan") {
+          result = await executeProposeWeekPlan({
+            supabase: opts.sr,
+            userId: opts.userId,
+            input: block.input,
+          });
+        } else if (block.name === "commit_week_plan") {
+          result = await executeCommitWeekPlan({
+            supabase: opts.sr,
+            userId: opts.userId,
+            input: block.input,
+            chatMessageId: opts.assistantMessageId ?? null,
+          });
         } else {
           result = {
             ok: false,
@@ -205,6 +308,7 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
         range_days: result.meta.range_days,
         truncated: result.ok ? result.meta.truncated : false,
         error: result.ok ? null : result.error.error,
+        result: shouldPersistResult(block.name) && result.ok ? result.data : undefined,
       });
 
       yield { type: "tool_call_done", id: block.id, ok: result.ok, ms: elapsed };

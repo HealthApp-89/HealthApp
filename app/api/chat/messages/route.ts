@@ -14,11 +14,9 @@ import { runChatStream } from "@/lib/coach/chat-stream";
 import type { ToolCallLog, MorningUI } from "@/lib/data/types";
 import { buildSnapshot, buildEphemeralHeader } from "@/lib/coach/snapshot";
 import { todayInUserTz } from "@/lib/time";
-import {
-  DEFAULT_SYSTEM_PROMPT,
-  SCHEMA_EXPLAINER,
-} from "@/lib/coach/system-prompts";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { buildSystemPrompt } from "@/lib/coach/planning-prompts";
+import type { ChatMode } from "@/lib/data/types";
 import { formatSseEvent } from "@/lib/chat/sse";
 
 export const dynamic = "force-dynamic";
@@ -45,7 +43,7 @@ export async function GET(req: Request) {
 
   let q = supabase
     .from("chat_messages")
-    .select("id, role, content, status, error, model, kind, ui, created_at, updated_at")
+    .select("id, role, content, status, error, model, kind, ui, tool_calls, mode, created_at, updated_at")
     .eq("user_id", user.id)
     .eq("kind", kind)
     .order("created_at", { ascending: false })
@@ -106,6 +104,8 @@ export async function GET(req: Request) {
     images: imagesByMsg.get(r.id) ?? [],
     kind: (r.kind as "coach" | "morning_intake") ?? "coach",
     ui: (r.ui as MorningUI | null) ?? null,
+    tool_calls: (r as { tool_calls?: import("@/lib/data/types").ToolCallLog[] | null }).tool_calls ?? null,
+    mode: (r as { mode?: import("@/lib/data/types").ChatMode }).mode ?? "default",
   }));
 
   return NextResponse.json({ ok: true, messages });
@@ -118,7 +118,7 @@ const UNATTACHED_WINDOW_MIN = 15;
 const DAILY_USER_MSG_CAP = 200;
 const MODEL = "claude-sonnet-4-5";
 
-type SendBody = { content?: string; image_ids?: string[] };
+type SendBody = { content?: string; image_ids?: string[]; mode?: string };
 
 export async function POST(req: Request) {
   const supabase = await createSupabaseServerClient();
@@ -138,6 +138,9 @@ export async function POST(req: Request) {
 
   const content = (body.content ?? "").replace(/\x00/g, "");
   const imageIds = Array.isArray(body.image_ids) ? body.image_ids : [];
+
+  const requestedMode: ChatMode | null =
+    body.mode === "plan_week" || body.mode === "setup_block" ? body.mode : null;
 
   if (content.length === 0 && imageIds.length === 0) {
     return NextResponse.json({ ok: false, reason: "empty" }, { status: 400 });
@@ -214,6 +217,34 @@ export async function POST(req: Request) {
   const rpcTyped = rpcRow as { user_message_id: string; assistant_message_id: string };
   const assistantId = rpcTyped.assistant_message_id;
 
+  // Resolve effective chat mode for this turn:
+  //   1. Explicit request param wins
+  //   2. Else inherit from the most recent prior chat_messages row (if non-default)
+  //   3. Else 'default'
+  let effectiveMode: ChatMode = "default";
+  if (requestedMode) {
+    effectiveMode = requestedMode;
+  } else {
+    const { data: prior } = await sr
+      .from("chat_messages")
+      .select("mode")
+      .eq("user_id", user.id)
+      .neq("id", rpcTyped.user_message_id)
+      .neq("id", rpcTyped.assistant_message_id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (prior?.mode === "plan_week" || prior?.mode === "setup_block") {
+      effectiveMode = prior.mode;
+    }
+  }
+
+  // Stamp both rows with the resolved mode.
+  await sr
+    .from("chat_messages")
+    .update({ mode: effectiveMode, updated_at: new Date().toISOString() })
+    .in("id", [rpcTyped.user_message_id, rpcTyped.assistant_message_id]);
+
   // Three independent reads in parallel: user's editable system prompt,
   // the cached 14-day snapshot prefix, and the rolling chat-history window.
   // Use buildSnapshot (not buildSnapshotText) so we can exclude nowLine from
@@ -247,12 +278,17 @@ export async function POST(req: Request) {
       .limit(ROLLING_WINDOW),
   ]);
 
-  // Resolve effective system prompt: SCHEMA_EXPLAINER + (user override OR default).
-  const userPrompt =
+  // Resolve effective system prompt via mode-aware assembler.
+  const userPromptOverride =
     typeof profileRow?.system_prompt === "string" && profileRow.system_prompt.length > 0
       ? profileRow.system_prompt
-      : DEFAULT_SYSTEM_PROMPT;
-  const finalSystemPrompt = `${SCHEMA_EXPLAINER}\n\n---\n\n${userPrompt}`;
+      : null;
+  const finalSystemPrompt = await buildSystemPrompt({
+    supabase: sr as unknown as SupabaseClient,
+    userId: user.id,
+    mode: effectiveMode,
+    userPromptOverride,
+  });
 
   const windowAsc: WindowRow[] = ((windowRows ?? []) as WindowRow[]).slice().reverse();
 
@@ -361,6 +397,8 @@ export async function POST(req: Request) {
           signal: req.signal,
           sr,
           toolCallSink,
+          assistantMessageId: assistantId,
+          mode: effectiveMode,
         })) {
           if (req.signal.aborted) {
             aborted = true;

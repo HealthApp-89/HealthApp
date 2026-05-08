@@ -28,6 +28,8 @@ Apply in order via Supabase Dashboard → SQL Editor:
 6. [supabase/migrations/0006_chat_settings.sql](supabase/migrations/0006_chat_settings.sql) — adds `profiles.system_prompt` (user-editable coach prompt; NULL = use code default) and `chat_messages.tool_calls` (jsonb of tool invocations per assistant turn for observability)
 7. [supabase/migrations/0007_morning_intake.sql](supabase/migrations/0007_morning_intake.sql) — adds structured morning-feel slots (`sick`, `sickness_notes`, `fatigue`, `bloating`, `soreness_areas`, `soreness_severity`), per-day state machine on `checkins.intake_state`, and `chat_messages.kind` + `ui` for the morning intake bot
 
+7. [supabase/migrations/0008_weekly_planning.sql](supabase/migrations/0008_weekly_planning.sql) — adds `training_blocks` (5-week mesocycle goals), `training_weeks` (committed Sunday plans), and `chat_messages.mode` (`default`|`plan_week`|`setup_block`) for the weekly planning ritual
+
 `supabase` CLI is now linked (`supabase link --project-ref eopfwwergisvskxqvsqe`); future migrations apply via `supabase db push` after `repair --status applied <history>` if needed.
 
 Row shapes mirrored in [lib/data/types.ts](lib/data/types.ts). Schema is snake_case; keep DB columns and TS types in sync.
@@ -80,6 +82,7 @@ Every page that fetches per-user data follows the **hybrid SSR-hydrate** pattern
 
 - [lib/anthropic/client.ts](lib/anthropic/client.ts) — server-side Anthropic SDK. The key is `ANTHROPIC_API_KEY` (never `NEXT_PUBLIC_*`); the prototype exposed it to the browser, the port intentionally moves it server-side.
 - [lib/coach/](lib/coach/) — `readiness.ts` (daily plan), `impact.ts` (per-metric +/− contributions to readiness), `week.ts`, `sessionPlans.ts`, `prompts.ts`. Pure functions; UI consumes the outputs.
+- **Weekly planning v1**: `training_blocks` (5-week mesocycles) + `training_weeks` (committed Sunday plans) drive the strength tab via [lib/coach/planning-prompts.ts](lib/coach/planning-prompts.ts) and the chat `mode` discriminator (`default|plan_week|setup_block`). Conversation produces structured plans via propose_*/commit_* tools gated by HMAC approval tokens (`COACH_TOOL_SECRET` env). Body-comp-aware progress metrics (strength-per-LBM, allometric, IPF GL) computed on demand in [lib/coach/progress-metrics.ts](lib/coach/progress-metrics.ts) — no `progress_metrics` table in v1.
 
 ### UI conventions
 
@@ -91,6 +94,8 @@ Every page that fetches per-user data follows the **hybrid SSR-hydrate** pattern
 ## Environment
 
 Copy [.env.example](.env.example) → `.env.local`. Required for any backend work: Supabase URL + anon key + service role; for OAuth: WHOOP/Withings client id/secret/redirect; for coach: `ANTHROPIC_API_KEY`; for cron: `CRON_SECRET`; `NEXT_PUBLIC_APP_URL` controls callback URLs.
+
+Coach planning tools require `COACH_TOOL_SECRET` (32+ char random; generate with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`). The same value must be set in Vercel env (Production + Preview).
 
 ## Scripts
 

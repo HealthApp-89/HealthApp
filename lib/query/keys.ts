@@ -52,4 +52,13 @@ export const queryKeys = {
     week: (userId: string, weekStart: string) =>
       ["recommendations", userId, weekStart] as const,
   },
+  trainingWeeks: {
+    one: (userId: string, weekStart: string) =>
+      ["training-weeks", userId, "one", weekStart] as const,
+    range: (userId: string, from: string, to: string) =>
+      ["training-weeks", userId, "range", from, to] as const,
+  },
+  blockProgress: {
+    active: (userId: string) => ["block-progress", userId, "active"] as const,
+  },
 } as const;

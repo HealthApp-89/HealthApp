@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card, SectionLabel } from "@/components/ui/Card";
 import { tintByKey } from "@/lib/ui/tints";
@@ -19,6 +20,13 @@ import { COLOR } from "@/lib/ui/theme";
 import { useInsightsDaily } from "@/lib/query/hooks/useInsightsDaily";
 import { useWeeklyReview } from "@/lib/query/hooks/useWeeklyReview";
 import { useRecommendations } from "@/lib/query/hooks/useRecommendations";
+import { BlockProgressCard } from "@/components/coach/BlockProgressCard";
+import { WeekPlanCard } from "@/components/coach/WeekPlanCard";
+import { PlanWeekCTA } from "@/components/coach/PlanWeekCTA";
+import { useBlockProgress } from "@/lib/query/hooks/useBlockProgress";
+import { useTrainingWeek } from "@/lib/query/hooks/useTrainingWeek";
+import { planningTargetMonday } from "@/lib/coach/week";
+import { weekdayInUserTz } from "@/lib/time";
 import { queryKeys } from "@/lib/query/keys";
 
 type Pattern = { label: string; detail: string };
@@ -87,6 +95,18 @@ export function CoachClient({
   const queryClient = useQueryClient();
   const router = useRouter();
   const [activeView, setActiveView] = useState<CoachView>(initialView);
+  const search = useSearchParams();
+
+  useEffect(() => {
+    const m = search.get("mode");
+    if (m === "plan_week" || m === "setup_block") {
+      window.dispatchEvent(new CustomEvent("open-chat", { detail: { mode: m } }));
+      // Strip the param so the dispatch doesn't fire on every re-render.
+      const url = new URL(window.location.href);
+      url.searchParams.delete("mode");
+      window.history.replaceState({}, "", url.toString());
+    }
+  }, [search]);
 
   return (
     <div style={{ maxWidth: "640px", margin: "0 auto", padding: "12px 8px 16px" }}>
@@ -343,12 +363,38 @@ function ThisWeekView({
 }
 
 function NextWeekView({ userId, targetWeek }: { userId: string; targetWeek: string }) {
+  const { data: blockProgress } = useBlockProgress(userId);
+  const targetMonday = planningTargetMonday(new Date());
+  const { data: existing } = useTrainingWeek(userId, targetMonday);
+
+  // Decision-table state per spec section "Mode triggering"
+  const hasActiveBlock = blockProgress != null && !("active" in blockProgress);
+  const planExists = existing !== null && existing !== undefined;
+  const today = weekdayInUserTz(); // "Monday" .. "Sunday"
+
+  const showPlanCTA =
+    hasActiveBlock && !planExists && (today === "Sunday" || today === "Monday" || today === "Tuesday");
+  const showWeekCard = hasActiveBlock && planExists;
+
+  // Derive weekN for CTA display — known only when block is active.
+  // On Sunday we're targeting NEXT week, so add 1 to current_week.
+  const weekN =
+    hasActiveBlock && blockProgress && !("active" in blockProgress)
+      ? Math.min(5, blockProgress.current_week + (today === "Sunday" ? 1 : 0))
+      : null;
+  const isLatePlanning = today === "Monday" || today === "Tuesday";
+
+  // Existing recommendations data (preserve)
   const { data } = useRecommendations(userId, targetWeek);
   const items = (data?.items ?? []) as Recommendation[];
   const weekShown = data?.weekShown ?? null;
 
   return (
     <>
+      <BlockProgressCard userId={userId} />
+      {showPlanCTA && <PlanWeekCTA weekStart={targetMonday} weekN={weekN} isLate={isLatePlanning} />}
+      {showWeekCard && <WeekPlanCard userId={userId} weekStart={targetMonday} />}
+
       <div>
         <div
           style={{

@@ -22,8 +22,10 @@ import { useStrengthInsights } from "@/lib/query/hooks/useStrengthInsights";
 import { useDailyLogs } from "@/lib/query/hooks/useDailyLogs";
 import { useCheckin } from "@/lib/query/hooks/useCheckin";
 import { useProfile } from "@/lib/query/hooks/useProfile";
+import { useTrainingWeek } from "@/lib/query/hooks/useTrainingWeek";
+import { weekdayInUserTz } from "@/lib/time";
 import { queryKeys } from "@/lib/query/keys";
-import type { DailyLog } from "@/lib/data/types";
+import type { DailyLog, Weekday } from "@/lib/data/types";
 
 type View = "today" | "recent" | "date";
 
@@ -36,12 +38,14 @@ function subtitleByView(v: View): string {
 export function StrengthClient({
   userId,
   todayIso,
+  currentWeekStart,
   initialView,
   initialDate,
   selectedExercise,
 }: {
   userId: string;
   todayIso: string;
+  currentWeekStart: string;
   initialView: View;
   /** Initial date for date-view mode. If null, falls back to latest workout. */
   initialDate: string | null;
@@ -93,7 +97,29 @@ export function StrengthClient({
         sorenessSeverity: todayCheckin.soreness_severity ?? null,
       }
     : null;
-  const dailyPlan = buildDailyPlan(todayLog, feel, hrvBaseline);
+
+  const { data: committedWeek = null } = useTrainingWeek(userId, currentWeekStart);
+
+  // Map en-US weekday names ("Monday" etc) to our Weekday keys ("Mon" | "Tue" | ...)
+  const WEEKDAY_MAP: Record<string, Weekday> = {
+    Monday: "Mon", Tuesday: "Tue", Wednesday: "Wed", Thursday: "Thu",
+    Friday: "Fri", Saturday: "Sat", Sunday: "Sun",
+  };
+  const todayWeekdayKey = WEEKDAY_MAP[weekdayInUserTz()];
+  const committedSessionType = committedWeek?.session_plan?.[todayWeekdayKey] ?? null;
+  const committedRirTarget   = committedWeek?.rir_target ?? null;
+  const committedPhase       = committedWeek?.research_phase ?? null;
+
+  // Pick the first key in committed intensity_modifier that has a value;
+  // for v1 each block has a single primary_lift so there's at most one entry.
+  const firstIntensityValue =
+    committedWeek?.intensity_modifier
+      ? Object.values(committedWeek.intensity_modifier)[0] ?? null
+      : null;
+  const dailyPlan = buildDailyPlan(todayLog, feel, hrvBaseline, {
+    sessionType: committedSessionType,
+    intensityMultiplier: firstIntensityValue,
+  });
 
   return (
     <div style={{ maxWidth: "640px", margin: "0 auto", padding: "12px 8px 16px" }}>
@@ -137,7 +163,12 @@ export function StrengthClient({
         }}
       >
         {activeView === "today" ? (
-          <TodayPlanCard plan={dailyPlan} />
+          <TodayPlanCard
+            plan={dailyPlan}
+            committedFromPlan={committedSessionType !== null}
+            rirTarget={committedRirTarget}
+            researchPhase={committedPhase}
+          />
         ) : !workouts.length ? (
           <Card>
             <div className="text-center py-12">
