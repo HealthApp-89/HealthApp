@@ -6,7 +6,7 @@ import { RangePills } from "@/components/ui/RangePills";
 import { MetricCard } from "@/components/charts/MetricCard";
 import type { LinePoint } from "@/components/charts/LineChart";
 import { COLOR, METRIC_COLOR } from "@/lib/ui/theme";
-import { useDailyLogs } from "@/lib/query/hooks/useDailyLogs";
+import { useDailyLogsTrend } from "@/lib/query/hooks/useDailyLogsTrend";
 import {
   resolvePeriod,
   pickGranularity,
@@ -72,8 +72,10 @@ export function TrendsClient({
 }) {
   const [period, setPeriod] = useState<PeriodPreset>(initialPeriod);
 
-  // Always read the same 1y key from cache — already hydrated by server.
-  const { data: allLogs = [] } = useDailyLogs(userId, initialFrom, initialTo);
+  // Always read the same wide-window narrow key from cache — already
+  // hydrated by server. Narrow projection (date + 6 charted metrics only)
+  // is ~70% smaller than the full DailyLog payload.
+  const { data: allLogs = [] } = useDailyLogsTrend(userId, initialFrom, initialTo);
 
   // Derive the active window from `period` and slice client-side.
   const { from, to } = useMemo(
