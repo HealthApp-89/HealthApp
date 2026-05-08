@@ -28,12 +28,9 @@ export type SlotDef = {
   prompt: string;
   chips: SlotChip[];
   multi_select?: boolean;
-  /** When true, this slot only appears if the gate-condition (the soreness Y/N
-   *  gate) was answered "yes". Resolved by nextSlot() in state.ts. */
-  conditional_on_soreness?: boolean;
 };
 
-export const SOREN_AREAS = ["chest", "back", "legs", "shoulders", "arms", "core"] as const;
+export const SORENESS_AREAS = ["chest", "back", "legs", "shoulders", "arms", "core"] as const;
 
 export const SLOTS: SlotDef[] = [
   {
@@ -71,9 +68,8 @@ export const SLOTS: SlotDef[] = [
   {
     key: "soreness_areas",
     prompt: "Where are you sore? (tap all that apply)",
-    chips: SOREN_AREAS.map((a) => ({ label: a[0].toUpperCase() + a.slice(1), value: a })),
+    chips: SORENESS_AREAS.map((a) => ({ label: a[0].toUpperCase() + a.slice(1), value: a })),
     multi_select: true,
-    conditional_on_soreness: true,
   },
   {
     key: "soreness_severity",
@@ -82,7 +78,6 @@ export const SLOTS: SlotDef[] = [
       { label: "Mild",  value: "mild" satisfies SorenessSeverity },
       { label: "Sharp", value: "sharp" satisfies SorenessSeverity },
     ],
-    conditional_on_soreness: true,
   },
   {
     key: "fatigue",

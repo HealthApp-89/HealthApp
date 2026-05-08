@@ -5,7 +5,7 @@
 // Zero IO, zero clocks (clock injected) — fully deterministic, easy to test.
 
 import type { CheckinRow, IntakeState } from "@/lib/data/types";
-import { SLOTS, type SlotKey } from "./script";
+import type { SlotKey } from "./script";
 
 /**
  * Decide what the morning bot should do on app-open.
@@ -42,11 +42,11 @@ export function decideIntakeAction(
     case "awaiting_sickness_notes":
       return { action: "open", mode: "resume_feel" };
     default: {
-      // Exhaustiveness guard. If a new state is added, the type system flags
-      // this branch.
+      // Exhaustiveness guard. If a new IntakeState is added, the type system
+      // flags this branch at compile time and we throw at runtime to surface
+      // the mismatch instead of silently falling back.
       const _exhaustive: never = todayRow.intake_state;
-      void _exhaustive;
-      return { action: "open", mode: "resume_feel" };
+      throw new Error(`unhandled intake_state: ${String(_exhaustive)}`);
     }
   }
 }
