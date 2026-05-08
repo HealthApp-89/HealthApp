@@ -30,12 +30,20 @@ import {
   TRAINING_WEEKS_TOOL,
   AUTOREGULATION_TOOL,
   ADHERENCE_TOOL,
+  PROPOSE_BLOCK_TOOL,
+  COMMIT_BLOCK_TOOL,
+  PROPOSE_WEEK_PLAN_TOOL,
+  COMMIT_WEEK_PLAN_TOOL,
   executeQueryDailyLogs,
   executeQueryWorkouts,
   executeQueryTrainingBlocks,
   executeQueryTrainingWeeks,
   executeGetAutoregulationSignals,
   executeComputeAdherence,
+  executeProposeBlock,
+  executeCommitBlock,
+  executeProposeWeekPlan,
+  executeCommitWeekPlan,
   type ToolResult,
 } from "@/lib/coach/tools";
 import type { ToolCallLog } from "@/lib/data/types";
@@ -67,6 +75,9 @@ export type RunChatStreamOpts = {
   /** Mutable array; the loop pushes a ToolCallLog for each invocation so
    *  the route can persist it in its `finally` block. */
   toolCallSink: ToolCallLog[];
+  /** The assistant stub message id, used by commit_week_plan to populate
+   *  training_weeks.chat_message_id for traceability. */
+  assistantMessageId?: string | null;
 };
 
 export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<ChatStreamYield> {
@@ -96,7 +107,7 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
         model: MODEL,
         max_tokens: MAX_TOKENS,
         system,
-        tools: [DAILY_LOGS_TOOL, WORKOUTS_TOOL, TRAINING_BLOCKS_TOOL, TRAINING_WEEKS_TOOL, AUTOREGULATION_TOOL, ADHERENCE_TOOL],
+        tools: [DAILY_LOGS_TOOL, WORKOUTS_TOOL, TRAINING_BLOCKS_TOOL, TRAINING_WEEKS_TOOL, AUTOREGULATION_TOOL, ADHERENCE_TOOL, PROPOSE_BLOCK_TOOL, COMMIT_BLOCK_TOOL, PROPOSE_WEEK_PLAN_TOOL, COMMIT_WEEK_PLAN_TOOL],
         // disable_parallel_tool_use lives INSIDE tool_choice (Auto/Any/Tool
         // variants only — ToolChoiceNone has no tools to parallelize).
         tool_choice: forceText
@@ -211,6 +222,31 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
             supabase: opts.sr,
             userId: opts.userId,
             input: block.input,
+          });
+        } else if (block.name === "propose_block") {
+          result = await executeProposeBlock({
+            supabase: opts.sr,
+            userId: opts.userId,
+            input: block.input,
+          });
+        } else if (block.name === "commit_block") {
+          result = await executeCommitBlock({
+            supabase: opts.sr,
+            userId: opts.userId,
+            input: block.input,
+          });
+        } else if (block.name === "propose_week_plan") {
+          result = await executeProposeWeekPlan({
+            supabase: opts.sr,
+            userId: opts.userId,
+            input: block.input,
+          });
+        } else if (block.name === "commit_week_plan") {
+          result = await executeCommitWeekPlan({
+            supabase: opts.sr,
+            userId: opts.userId,
+            input: block.input,
+            chatMessageId: opts.assistantMessageId ?? null,
           });
         } else {
           result = {

@@ -361,6 +361,7 @@ export async function POST(req: Request) {
           signal: req.signal,
           sr,
           toolCallSink,
+          assistantMessageId: assistantId,
         })) {
           if (req.signal.aborted) {
             aborted = true;
