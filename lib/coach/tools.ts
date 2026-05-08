@@ -29,6 +29,10 @@ import {
   type SetRow,
 } from "@/lib/coach/derived";
 import { categorize, type ExerciseCategory } from "@/lib/coach/exercise-categories";
+import type { PrimaryLift } from "@/lib/data/types";
+import { todayInUserTz } from "@/lib/time";
+import { computeAdherence } from "@/lib/coach/adherence";
+import { getAutoregulationSignals } from "@/lib/coach/autoregulation";
 
 // ── Allowlist (cross-checked against lib/data/types.ts:DailyLog + schema.sql) ─
 export const ALLOWED_COLUMNS = [
@@ -92,6 +96,57 @@ export const WORKOUTS_TOOL = {
         enum: ALLOWED_GRANULARITIES,
         default: "summary",
       },
+    },
+  },
+};
+
+export const TRAINING_BLOCKS_TOOL = {
+  name: "query_training_blocks",
+  description:
+    "Fetch the athlete's training blocks. Default returns the active block (or 0 rows if none). status='all' returns full history. Use when planning a week or recapping block-level progress.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      status: { type: "string", enum: ["active", "completed", "abandoned", "all"], default: "active" },
+    },
+  },
+};
+
+export const TRAINING_WEEKS_TOOL = {
+  name: "query_training_weeks",
+  description:
+    "Fetch committed weekly plans (training_weeks rows) in a date range. Range cap: 90 days. Use when recapping a recent week or referencing what was committed.",
+  input_schema: {
+    type: "object" as const,
+    required: ["start_date", "end_date"],
+    properties: {
+      start_date: { type: "string", format: "date" },
+      end_date: { type: "string", format: "date" },
+    },
+  },
+};
+
+export const AUTOREGULATION_TOOL = {
+  name: "get_autoregulation_signals",
+  description:
+    "Compute the 4 fatigue signals (HRV vs SWC band, e1RM drop on primary lift, RPE drift, sleep<6h nights) for an as-of date. Returns count of signals fired and should_deload boolean (count>=2). Call before proposing a week plan to surface deload alerts.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      as_of: { type: "string", format: "date", description: "Defaults to today (user TZ)." },
+    },
+  },
+};
+
+export const ADHERENCE_TOOL = {
+  name: "compute_adherence",
+  description:
+    "Compute planned-vs-actual session adherence and per-muscle volume deltas vs prior-4w-avg for a Mon-Sun window. Use during the RECAP beat of plan_week mode to ground the recap in concrete numbers.",
+  input_schema: {
+    type: "object" as const,
+    required: ["week_start"],
+    properties: {
+      week_start: { type: "string", format: "date", description: "Monday (UTC) of the week to recap." },
     },
   },
 };
@@ -692,4 +747,244 @@ function buildPeriodRow(
     set_counts_by_category: setCounts,
     top_set_per_exercise: topList,
   };
+}
+
+// ── query_training_blocks executor ───────────────────────────────────────────
+
+const ALLOWED_BLOCK_STATUSES = ["active", "completed", "abandoned", "all"] as const;
+type BlockStatusFilter = (typeof ALLOWED_BLOCK_STATUSES)[number];
+
+export async function executeQueryTrainingBlocks(opts: {
+  supabase: SupabaseClient;
+  userId: string;
+  input: unknown;
+}): Promise<ToolResult<Record<string, unknown>[]>> {
+  const t0 = Date.now();
+  const i = (opts.input ?? {}) as Record<string, unknown>;
+
+  const statusRaw = i.status ?? "active";
+  if (typeof statusRaw !== "string" || !ALLOWED_BLOCK_STATUSES.includes(statusRaw as BlockStatusFilter)) {
+    return {
+      ok: false,
+      error: { error: `status must be one of: ${ALLOWED_BLOCK_STATUSES.join(", ")}` },
+      meta: { ms: Date.now() - t0, range_days: 0 },
+    };
+  }
+  const status = statusRaw as BlockStatusFilter;
+
+  let query = opts.supabase
+    .from("training_blocks")
+    .select("*")
+    .eq("user_id", opts.userId);
+  if (status !== "all") {
+    query = query.eq("status", status);
+  }
+  query = query.order("start_date", { ascending: false });
+
+  const { data: rows, error } = await query;
+  if (error) {
+    return {
+      ok: false,
+      error: { error: `db_error: ${error.message}` },
+      meta: { ms: Date.now() - t0, range_days: 0 },
+    };
+  }
+
+  const today = todayInUserTz();
+
+  // Lazy auto-flip: active blocks whose end_date is in the past → completed
+  const flipped: Record<string, unknown>[] = [];
+  for (const row of rows ?? []) {
+    const r = row as Record<string, unknown>;
+    if (r.status === "active" && typeof r.end_date === "string" && r.end_date < today) {
+      const { data: updated, error: updateErr } = await opts.supabase
+        .from("training_blocks")
+        .update({ status: "completed", completed_at: new Date().toISOString() })
+        .eq("user_id", opts.userId)
+        .eq("id", r.id)
+        .select("*")
+        .maybeSingle();
+      if (!updateErr && updated) {
+        flipped.push(updated as Record<string, unknown>);
+      } else {
+        flipped.push(r);
+      }
+    } else {
+      flipped.push(r);
+    }
+  }
+
+  return {
+    ok: true,
+    data: flipped,
+    meta: { ms: Date.now() - t0, result_rows: flipped.length, range_days: 0, truncated: false },
+  };
+}
+
+// ── query_training_weeks executor ────────────────────────────────────────────
+
+export async function executeQueryTrainingWeeks(opts: {
+  supabase: SupabaseClient;
+  userId: string;
+  input: unknown;
+}): Promise<ToolResult<Record<string, unknown>[]>> {
+  const t0 = Date.now();
+  const i = (opts.input ?? {}) as Record<string, unknown>;
+
+  if (!isYmd(i.start_date) || !isYmd(i.end_date)) {
+    return {
+      ok: false,
+      error: { error: "start_date and end_date must be YYYY-MM-DD" },
+      meta: { ms: Date.now() - t0, range_days: 0 },
+    };
+  }
+  let start: string, end: string;
+  try {
+    start = reformatYmd(i.start_date);
+    end = reformatYmd(i.end_date);
+  } catch {
+    return {
+      ok: false,
+      error: { error: "invalid calendar date" },
+      meta: { ms: Date.now() - t0, range_days: 0 },
+    };
+  }
+  if (start > end) {
+    return {
+      ok: false,
+      error: { error: "start_date must be <= end_date" },
+      meta: { ms: Date.now() - t0, range_days: 0 },
+    };
+  }
+  const range_days = diffDays(start, end);
+  if (range_days > 90) {
+    return {
+      ok: false,
+      error: { error: "range > 90 days; narrow your query" },
+      meta: { ms: Date.now() - t0, range_days },
+    };
+  }
+
+  const { data: rows, error } = await opts.supabase
+    .from("training_weeks")
+    .select("*")
+    .eq("user_id", opts.userId)
+    .gte("week_start", start)
+    .lte("week_start", end)
+    .order("week_start", { ascending: true });
+  if (error) {
+    return {
+      ok: false,
+      error: { error: `db_error: ${error.message}` },
+      meta: { ms: Date.now() - t0, range_days },
+    };
+  }
+
+  const data = (rows ?? []) as unknown as Record<string, unknown>[];
+  return {
+    ok: true,
+    data,
+    meta: { ms: Date.now() - t0, result_rows: data.length, range_days, truncated: false },
+  };
+}
+
+// ── get_autoregulation_signals executor ──────────────────────────────────────
+
+export async function executeGetAutoregulationSignals(opts: {
+  supabase: SupabaseClient;
+  userId: string;
+  input: unknown;
+}): Promise<ToolResult<ReturnType<typeof getAutoregulationSignals> extends Promise<infer R> ? R : never>> {
+  const t0 = Date.now();
+  const i = (opts.input ?? {}) as Record<string, unknown>;
+
+  let asOf: string;
+  if (i.as_of !== undefined) {
+    if (!isYmd(i.as_of)) {
+      return {
+        ok: false,
+        error: { error: "as_of must be YYYY-MM-DD or omitted" },
+        meta: { ms: Date.now() - t0, range_days: 7 },
+      };
+    }
+    try {
+      asOf = reformatYmd(i.as_of);
+    } catch {
+      return {
+        ok: false,
+        error: { error: "invalid calendar date for as_of" },
+        meta: { ms: Date.now() - t0, range_days: 7 },
+      };
+    }
+  } else {
+    asOf = todayInUserTz();
+  }
+
+  // Look up active block's primary_lift (security invariant 2: .eq("user_id"))
+  const { data: activeBlock } = await opts.supabase
+    .from("training_blocks")
+    .select("primary_lift")
+    .eq("user_id", opts.userId)
+    .eq("status", "active")
+    .maybeSingle();
+  const primaryLift = (activeBlock?.primary_lift as PrimaryLift | null) ?? null;
+
+  try {
+    const result = await getAutoregulationSignals(opts.supabase, opts.userId, asOf, primaryLift);
+    return {
+      ok: true,
+      data: result,
+      meta: { ms: Date.now() - t0, result_rows: 1, range_days: 7, truncated: false },
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      error: { error: `autoregulation_error: ${(e as Error).message}` },
+      meta: { ms: Date.now() - t0, range_days: 7 },
+    };
+  }
+}
+
+// ── compute_adherence executor ───────────────────────────────────────────────
+
+export async function executeComputeAdherence(opts: {
+  supabase: SupabaseClient;
+  userId: string;
+  input: unknown;
+}): Promise<ToolResult<ReturnType<typeof computeAdherence> extends Promise<infer R> ? R : never>> {
+  const t0 = Date.now();
+  const i = (opts.input ?? {}) as Record<string, unknown>;
+
+  if (!isYmd(i.week_start)) {
+    return {
+      ok: false,
+      error: { error: "week_start must be YYYY-MM-DD" },
+      meta: { ms: Date.now() - t0, range_days: 7 },
+    };
+  }
+  let weekStart: string;
+  try {
+    weekStart = reformatYmd(i.week_start);
+  } catch {
+    return {
+      ok: false,
+      error: { error: "invalid calendar date for week_start" },
+      meta: { ms: Date.now() - t0, range_days: 7 },
+    };
+  }
+
+  try {
+    const result = await computeAdherence(opts.supabase, opts.userId, weekStart);
+    return {
+      ok: true,
+      data: result,
+      meta: { ms: Date.now() - t0, result_rows: 1, range_days: 7, truncated: false },
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      error: { error: `adherence_error: ${(e as Error).message}` },
+      meta: { ms: Date.now() - t0, range_days: 7 },
+    };
+  }
 }

@@ -26,8 +26,16 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   DAILY_LOGS_TOOL,
   WORKOUTS_TOOL,
+  TRAINING_BLOCKS_TOOL,
+  TRAINING_WEEKS_TOOL,
+  AUTOREGULATION_TOOL,
+  ADHERENCE_TOOL,
   executeQueryDailyLogs,
   executeQueryWorkouts,
+  executeQueryTrainingBlocks,
+  executeQueryTrainingWeeks,
+  executeGetAutoregulationSignals,
+  executeComputeAdherence,
   type ToolResult,
 } from "@/lib/coach/tools";
 import type { ToolCallLog } from "@/lib/data/types";
@@ -88,7 +96,7 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
         model: MODEL,
         max_tokens: MAX_TOKENS,
         system,
-        tools: [DAILY_LOGS_TOOL, WORKOUTS_TOOL],
+        tools: [DAILY_LOGS_TOOL, WORKOUTS_TOOL, TRAINING_BLOCKS_TOOL, TRAINING_WEEKS_TOOL, AUTOREGULATION_TOOL, ADHERENCE_TOOL],
         // disable_parallel_tool_use lives INSIDE tool_choice (Auto/Any/Tool
         // variants only — ToolChoiceNone has no tools to parallelize).
         tool_choice: forceText
@@ -176,6 +184,30 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
           });
         } else if (block.name === "query_workouts") {
           result = await executeQueryWorkouts({
+            supabase: opts.sr,
+            userId: opts.userId,
+            input: block.input,
+          });
+        } else if (block.name === "query_training_blocks") {
+          result = await executeQueryTrainingBlocks({
+            supabase: opts.sr,
+            userId: opts.userId,
+            input: block.input,
+          });
+        } else if (block.name === "query_training_weeks") {
+          result = await executeQueryTrainingWeeks({
+            supabase: opts.sr,
+            userId: opts.userId,
+            input: block.input,
+          });
+        } else if (block.name === "get_autoregulation_signals") {
+          result = await executeGetAutoregulationSignals({
+            supabase: opts.sr,
+            userId: opts.userId,
+            input: block.input,
+          });
+        } else if (block.name === "compute_adherence") {
+          result = await executeComputeAdherence({
             supabase: opts.sr,
             userId: opts.userId,
             input: block.input,
