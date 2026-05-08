@@ -10,7 +10,7 @@
 
 The deeper problem is that a single-user coaching app has no business hardcoding a static weekly schedule. The user has goals, history, recovery data, and a chatbot already wired to all of it via [lib/coach/tools.ts](../../../lib/coach/tools.ts). What's missing is the *conversational ritual* that produces a structured weekly training plan — the way a real strength coach would do it: review what happened, ask how you feel, propose next week with rationale, commit on approval.
 
-This spec covers the v1 cut: a Sunday weekly-planning conversation that produces a committed plan, anchored in 5-week mesocycle blocks with research-backed periodization, with strength-only progress tracking. Body composition, diet prescription, and recomp-aware metrics are explicitly deferred to v2.
+This spec covers the v1 cut: a Sunday weekly-planning conversation that produces a committed plan, anchored in 5-week mesocycle blocks with research-backed periodization. Strength progress is tracked alongside body-composition-aware relative metrics (strength-per-LBM, allometric, IPF GoodLift) so flat e1RM during a cut reads as the recomp win it usually is. Diet prescription, mid-week plan editing, push notifications, and real 1RM testing are explicitly deferred to v2.
 
 ## Goals
 
@@ -21,11 +21,14 @@ This spec covers the v1 cut: a Sunday weekly-planning conversation that produces
 5. **Adherence visibility.** Sunday's recap pulls planned-vs-actual session types and per-muscle volume deltas vs the prior 4-week average — computed on the fly from existing `workouts`, no new schema.
 6. **Autoregulation triggers.** When ≥2 of {HRV outside SWC band ×3 days, e1RM drop ≥5%, RPE +2 vs baseline, sleep <6h ×3 nights} fire concurrently, the coach surfaces a deload alert in the next planning conversation. The user decides — never auto-applied.
 7. **Research-backed defaults, not user-arbitrary choices.** Block length is fixed at 5 weeks (consensus modal). Within-block RIR progression is fixed. Block-end is always a deload in v1 (real 1RM tests deferred).
+8. **Body-composition-aware progress framing.** Surface strength-per-LBM, allometric strength, and IPF GoodLift alongside raw e1RM in `<BlockProgressCard>` and the coach RECAP beat. Without these, a flat e1RM during a cut reads as a plateau when it's often a recomp win — the whole point of the metrics is honest progress framing. Computed on demand from existing `daily_logs` columns; no new schema in v1.
 
 ## Non-Goals
 
-- **Body composition integration.** Strength-per-LBM, allometric scaling, IPF GL, fat loss velocity, protein floor — all deferred to v2. v1 is strength-only.
-- **Diet prescription.** No calorie/macro targets. v2 territory.
+- **Body-composition-driven block goals.** v1 surfaces strength-per-LBM, allometric, and IPF GL as supplementary metrics in the progress card and coach narrative — but `training_blocks.target_metric` stays restricted to `'e1rm' | 'working_weight'`. Setting a goal directly against `strength_per_lbm` or `body_fat_pct` is v2.
+- **Diet prescription.** No calorie/macro targets. The coach reads `daily_logs.calories_eaten / protein_g / carbs_g / fat_g` for context (already happens via existing tools) but never prescribes intake. v2 territory.
+- **Body comp time-series chart.** v1 shows current vs block-start values for the body-comp-derived metrics. Multi-month historical charts of strength-per-LBM trajectory require a materialized `progress_metrics` table — v2.
+- **Cut velocity / protein floor warnings.** Auto-flagging "you lost >0.6 kg/wk last week" or "your 7-day protein avg is below 2.3×LBM" requires diet integration to be actionable. v2.
 - **Per-exercise prescription override.** The session's exercise list continues to come from the existing static `SESSION_PLANS[type]` constants. The Sunday conversation outputs *session type per day + intensity multiplier per primary lift*, not arbitrary exercise lists. v2 can layer custom prescription.
 - **Mid-week plan-edit UI.** Once a week is committed, the only path to change it is re-running the planning conversation (which updates the existing row, not creating a new one). No tap-to-swap-Friday button. v2.
 - **Push notifications.** No native push in this PWA environment. The Sunday CTA appears on `/coach` page load; the user must open the app.
@@ -472,7 +475,27 @@ Exercise list and target weight rendering are unchanged — `SESSION_PLANS[type]
 </NextWeekView>
 ```
 
-**`<BlockProgressCard>`** (new): renders the active block progress card described in Section 3 above. Shows goal, week N of 5, e1RM trajectory, adherence %, on-pace boolean. If no active block: shows "Set up your first training block" CTA card instead. Data via new `useBlockProgress(userId)` hook + new `/api/coach/block-progress` endpoint that runs the three queries described in Section 3.
+**`<BlockProgressCard>`** (new): renders the active block progress card described in Section 3 above. Shows goal, week N of 5, e1RM trajectory, body-comp-aware relative metrics (strength-per-LBM and allometric — both shown when their inputs are available; IPF GL shown only when SBD totals exist), adherence %, on-pace boolean. If no active block: shows "Set up your first training block" CTA card instead. Data via new `useBlockProgress(userId)` hook + new `/api/coach/block-progress` endpoint.
+
+The card layout (rough — dimensions match the existing `Card` component):
+
+```
+┌────────────────────────────────────────────┐
+│ ACTIVE BLOCK                               │
+│ Block 1 · Deadlift to 125kg                │
+│ Week 3 of 5 · Accumulate · RIR 2           │
+│ ───────────────────────────────────────    │
+│ e1RM:    117 → 119kg     (+2kg, +1.7%)     │
+│ /LBM:    1.94 → 1.99      (+2.6%)          │  ← shown when LBM data exists
+│ /BW^.67: 4.31 → 4.46      (+3.5%)          │  ← shown when weight data exists
+│ IPF GL:  68.2 → 71.4      (+4.7%)          │  ← shown when all SBD totals exist
+│ ───────────────────────────────────────    │
+│ Adherence: 89% (8/9 sessions on plan)      │
+│ On pace · 6kg from goal                    │
+└────────────────────────────────────────────┘
+```
+
+Each row hidden if its source data is null. The card never shows "—" placeholders; it just collapses missing rows. Color coding on the relative-metric percentages: green for >0%, amber for 0%, red for <0% — independent of the e1RM line's color, so a flat-e1RM-but-rising-strength-per-LBM cut shows visually that something positive is happening.
 
 **`<WeekPlanCard>`** (new): renders the committed plan for the current/upcoming week (read-only summary view). Mon-Sun grid with session types, intensity multipliers, weekly focus, RIR target. Links to "Re-open planning chat" → `?mode=plan_week`. If no plan committed: hidden (the BlockProgressCard's CTA replaces it).
 
@@ -544,11 +567,31 @@ Used by `compute_adherence` tool, `<BlockProgressCard>`, and the `/api/coach/blo
 //   total_weeks: 5,
 //   research_phase: 'accumulate',  // weeks 1-4
 //   rir_target: 2,                 // 5 - current_week
+//
+//   // Absolute strength
 //   e1rm_at_block_start: 117,
 //   e1rm_now: 119,                 // rolling 4w mean of top working set on primary_lift
 //   e1rm_delta: 2,
 //   e1rm_remaining_to_goal: 6,
 //   on_pace: true,                 // (e1rm_delta / weeks_elapsed) >= ((target_value - e1rm_at_start) / total_weeks)
+//
+//   // Relative strength (body-comp-aware) — each field omitted if its body-comp source is missing
+//   strength_per_lbm_at_start: 1.94,    // e1rm / fat_free_mass_kg
+//   strength_per_lbm_now: 1.99,
+//   strength_per_lbm_delta_pct: 2.6,
+//   allometric_at_start: 4.31,           // e1rm / weight_kg^0.67
+//   allometric_now: 4.46,
+//   allometric_delta_pct: 3.5,
+//   ipf_gl_at_start: 68.2,               // null unless squat+bench+dead all logged in last 4w
+//   ipf_gl_now: 71.4,
+//   ipf_gl_delta_pct: 4.7,
+//
+//   // Body comp context (most recent values within last 7 days)
+//   lbm_now_kg: 64.2,                    // null if no fat_free_mass_kg in last 7d
+//   bf_pct_now: 15.4,                    // null if no body_fat_pct in last 7d
+//   weight_now_kg: 76.0,                 // always present if any weight log exists in last 7d
+//
+//   // Adherence
 //   sessions_planned_to_date: 9,
 //   sessions_done: 8,
 //   adherence_pct: 89
@@ -560,6 +603,53 @@ Used by `compute_adherence` tool, `<BlockProgressCard>`, and the `/api/coach/blo
 - 80-99% → amber
 - <80% → red
 - No primary_lift on the block → omit pace fields entirely
+
+### Body-comp-aware metric computation
+
+New module `lib/coach/progress-metrics.ts` (pure functions, fully unit-testable):
+
+```ts
+/** e1RM (kg) divided by lean body mass (kg). Returns null if either input
+ *  is null/zero. Most sensitive recomp metric — rises when load holds and
+ *  LBM holds, or when load rises and LBM is flat, or when load is flat
+ *  and fat is lost (because LBM holds while body weight drops). */
+export function strengthPerLbm(e1rm_kg: number | null, lbm_kg: number | null): number | null;
+
+/** Allometric strength: load (kg) divided by bodyweight^0.67. Surface-area-
+ *  to-volume scaling exponent (Ødland 2023). Useful when LBM is unavailable
+ *  but weight is — comparable across cuts because bodyweight is in the
+ *  denominator. */
+export function allometric(load_kg: number | null, bw_kg: number | null): number | null;
+
+/** IPF GoodLift score for a 3-lift total. Formula:
+ *    GL = total × 100 / (A − B·exp(−C·BW))
+ *  Constants A,B,C are sex-specific. Male (default for v1):
+ *    A = 1199.72839, B = 1025.18162, C = 0.00921
+ *  Returns null if any of squat/bench/dead is missing or if BW is null. */
+export function ipfGl(squat_kg: number, bench_kg: number, dead_kg: number, bw_kg: number, sex?: 'M' | 'F'): number | null;
+```
+
+Inputs sourced as follows (all in `lib/coach/progress-metrics.ts:fetchProgressInputs`):
+
+- **e1RM** for primary lift: existing `topSet`/`epley` from [lib/coach/derived.ts](../../../lib/coach/derived.ts), rolling 4-week mean of top-set Epley scores. At-block-start uses the same computation against the 28 days *before* `block.start_date`.
+- **e1RM totals** for IPF GL: separate rolling 4-week means for squat, bench, deadlift, fetched in parallel. If any of the three has no working set in the 4-week window, `ipf_gl_*` returns null.
+- **LBM**: most recent non-null `daily_logs.fat_free_mass_kg` within last 7 days; for at-block-start uses last non-null value within the 7 days *before or after* `block.start_date` (Withings sync isn't daily). If neither side has a value within 14 days of block start, omit `strength_per_lbm_at_start`.
+- **Bodyweight**: same logic as LBM but on `weight_kg`. Allometric requires only weight (not LBM) so it's available more often.
+- **Body fat %**: most recent `daily_logs.body_fat_pct` within last 7 days; informational only, not part of any computation.
+
+### Coach RECAP framing rules
+
+The `plan_week` mode system prompt is extended with:
+
+> When recapping last week, surface BOTH absolute and relative metrics from the block-progress response. Honest framing rules:
+>
+> - Rising e1RM → call it strength progress directly: "deadlift e1RM up 2kg this block."
+> - Flat e1RM during a cut (LBM dropped or weight dropped) → frame as a recomp win: "deadlift e1RM held while you dropped 0.8pp body fat — that's 2.6% stronger per kg of muscle, not a plateau."
+> - Flat e1RM with LBM also flat or rising → call it a plateau honestly: "deadlift e1RM hasn't moved in two weeks, LBM steady — we should change something."
+> - Falling e1RM with falling LBM → say it plainly: "you're losing strength faster than expected. Either deficit too aggressive or recovery short."
+> - Never call rising strength-per-LBM "PR-equivalent" — relative gains are real progress but not the same as absolute strength PRs.
+
+This framing rule is the single most important UX decision for a recomp-phase user, and the prompt enforces it explicitly so the coach can't drift into pure-e1RM tunnel vision.
 
 ### Sunday recap
 
@@ -585,7 +675,7 @@ Apply via Supabase Dashboard SQL Editor (per CLAUDE.md convention) and immediate
 ### Rollout sequence
 
 1. **Migration first** — schema + RLS in DB.
-2. **Backend tools** — implement the 8 new tools in `lib/coach/tools.ts`, the autoregulation computation in `lib/coach/autoregulation.ts` (new), the adherence computation in `lib/coach/adherence.ts` (new), the approval-token util in `lib/coach/approval-token.ts` (new). Wire into the chat route handler. Type-check passes.
+2. **Backend tools** — implement the 8 new tools in `lib/coach/tools.ts`, the autoregulation computation in `lib/coach/autoregulation.ts` (new), the adherence computation in `lib/coach/adherence.ts` (new), the body-comp progress metrics in `lib/coach/progress-metrics.ts` (new), the approval-token util in `lib/coach/approval-token.ts` (new). Wire into the chat route handler. Type-check passes. Unit-test the pure functions in `progress-metrics.ts` against a fixture of (e1rm, lbm, weight, sbd) values to lock the formulas.
 3. **Strength tab fix** — `TodayPlanCard` reads from `training_weeks` first, falls back to `WEEKLY_SESSIONS`. The pill UI updates. **At this point the user can manually INSERT a `training_weeks` row via SQL and verify the strength tab respects it** — kills the original Friday=Legs bug independently of the chat flow.
 4. **`/coach` UI** — `<BlockProgressCard>`, `<WeekPlanCard>`, the CTA card, the mode banner in `ChatPanel`, the `<WeekPlanProposalCard>` / `<BlockProposalCard>` rendering in `<ChatMessage>`.
 5. **Conversation flow** — system prompts for `plan_week` / `setup_block`, mode persistence, the Approve/Tweak interaction.
@@ -595,8 +685,10 @@ Apply via Supabase Dashboard SQL Editor (per CLAUDE.md convention) and immediate
 
 Explicitly out of v1, captured here so v2 has somewhere to start:
 
-- **Body composition integration.** Strength-per-LBM, allometric, IPF GL, fat loss velocity. Reads `daily_logs.fat_free_mass_kg`, `weight_kg`, `body_fat_pct`. New `progress_metrics` table materialized daily.
-- **Diet prescription.** Calorie/macro targets from the coach. Wires into `daily_logs.calories_eaten / protein_g / carbs_g / fat_g`. Populates `training_blocks.diet_goal` jsonb.
+- **Body-comp-driven block goals.** v1 surfaces strength-per-LBM, allometric, IPF GL as supplementary metrics, but `training_blocks.target_metric` only accepts `'e1rm' | 'working_weight'`. v2 adds `'strength_per_lbm' | 'body_fat_pct' | 'composite'` plus a `goal_constraints` jsonb for compound goals like "deadlift e1RM ≥ 130kg AND body fat ≤ 14%".
+- **Body comp time-series chart.** Multi-month historical chart of strength-per-LBM, allometric, IPF GL trajectories. Requires materializing a `progress_metrics` table populated by a daily cron, since computing 12 months of these values on demand is expensive. v1 just shows current vs block-start values.
+- **Cut velocity / protein floor warnings.** Auto-flag "you lost >0.6 kg/wk last week" or "your 7-day protein avg is below 2.3×LBM" as `coach_recommendations` rows. Requires diet integration to be actionable.
+- **Diet prescription.** Calorie/macro targets from the coach. Wires into `daily_logs.calories_eaten / protein_g / carbs_g / fat_g`. Populates `training_blocks.diet_goal` jsonb (already reserved-null in v1 schema).
 - **Mid-week swap UI.** Tap-to-swap on `<WeekPlanCard>`. Updates `training_weeks.session_plan` directly without going through chat.
 - **Real 1RM testing.** When `final_phase='test'`, the deload week is replaced by a test-week protocol (3-day taper, PR attempt). Conditional on prior block completion + recovery state.
 - **Functional overreaching.** Optional final-block week of 20-30% volume bump pre-test. Strict gates (not in deficit, recovery green for prior 2 weeks).
