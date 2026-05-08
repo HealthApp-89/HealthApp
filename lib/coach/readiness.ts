@@ -135,22 +135,27 @@ export function buildDailyPlan(
   log: Pick<DailyLog, "hrv" | "sleep_score" | "recovery"> | null,
   feel: FeelInput | null,
   hrvBaseline?: number,
+  override?: {
+    sessionType?: string | null;
+    intensityMultiplier?: number | null;
+  },
 ): DailyPlan {
   const readiness = computeDailyReadiness(log, feel, hrvBaseline);
   const mode = getIntensityMode(readiness, feel);
-  const sessionType = getTodaySession();
+  const sessionType = override?.sessionType ?? getTodaySession();
+  const effectiveMult = override?.intensityMultiplier ?? mode.multiplier;
   const exercises = (SESSION_PLANS[sessionType] ?? []).map((ex) => {
     if (!ex.baseKg) {
       return { ...ex, target: ex.reps ?? "—", adjusted: false };
     }
     const adjKg =
-      mode.multiplier === 0 ? 0 : Math.round(ex.baseKg * mode.multiplier * 2) / 2;
+      effectiveMult === 0 ? 0 : Math.round(ex.baseKg * effectiveMult * 2) / 2;
     const adjReps =
-      mode.multiplier >= 0.85
+      effectiveMult >= 0.85
         ? ex.baseReps!
         : Math.round((ex.baseReps ?? 8) * 1.2);
-    const target = mode.multiplier === 0 ? "Skip" : `${adjKg}kg × ${adjReps} × ${ex.sets ?? 3}`;
-    const isPRAttempt = mode.multiplier >= 1.0;
+    const target = effectiveMult === 0 ? "Skip" : `${adjKg}kg × ${adjReps} × ${ex.sets ?? 3}`;
+    const isPRAttempt = effectiveMult >= 1.0;
     return {
       ...ex,
       target,

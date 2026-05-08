@@ -8,8 +8,10 @@ import { fetchDailyLogsServer } from "@/lib/query/fetchers/dailyLogs";
 import { fetchCheckinServer } from "@/lib/query/fetchers/checkin";
 import { fetchAllWorkoutsServer } from "@/lib/query/fetchers/loadWorkouts";
 import { fetchStrengthInsightsServer } from "@/lib/query/fetchers/strengthInsights";
+import { fetchTrainingWeekServer } from "@/lib/query/fetchers/trainingWeek";
 import { StrengthClient } from "@/components/strength/StrengthClient";
 import { todayInUserTz } from "@/lib/time";
+import { currentWeekMonday } from "@/lib/coach/week";
 
 export const revalidate = 60;
 
@@ -34,6 +36,7 @@ export default async function StrengthPage(props: {
   if (!user) redirect("/login");
 
   const queryClient = makeServerQueryClient();
+  const currentWeekStart = currentWeekMonday();
   await Promise.all([
     queryClient.prefetchQuery({
       queryKey: queryKeys.profile.one(user.id),
@@ -55,6 +58,10 @@ export default async function StrengthPage(props: {
       queryKey: queryKeys.checkin.one(user.id, todayIso),
       queryFn: () => fetchCheckinServer(supabase, user.id, todayIso),
     }),
+    queryClient.prefetchQuery({
+      queryKey: queryKeys.trainingWeeks.one(user.id, currentWeekStart),
+      queryFn: () => fetchTrainingWeekServer(supabase, user.id, currentWeekStart),
+    }),
   ]);
 
   return (
@@ -62,6 +69,7 @@ export default async function StrengthPage(props: {
       <StrengthClient
         userId={user.id}
         todayIso={todayIso}
+        currentWeekStart={currentWeekStart}
         initialView={initialView}
         initialDate={initialDate}
         selectedExercise={selectedExercise}
