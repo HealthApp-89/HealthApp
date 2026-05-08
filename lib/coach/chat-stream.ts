@@ -46,7 +46,7 @@ import {
   executeCommitWeekPlan,
   type ToolResult,
 } from "@/lib/coach/tools";
-import type { ToolCallLog } from "@/lib/data/types";
+import type { ChatMode, ToolCallLog } from "@/lib/data/types";
 import type { ContentBlock, RichMessage } from "@/lib/chat/types";
 
 const MODEL = "claude-sonnet-4-5";
@@ -78,6 +78,9 @@ export type RunChatStreamOpts = {
   /** The assistant stub message id, used by commit_week_plan to populate
    *  training_weeks.chat_message_id for traceability. */
   assistantMessageId?: string | null;
+  /** Chat mode — controls which tools are exposed to the model.
+   *  Default mode hides propose_ and commit_ tools to prevent accidental plan writes. */
+  mode?: ChatMode;
 };
 
 export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<ChatStreamYield> {
@@ -100,6 +103,28 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
   // user-message follow-ups.
   const messages: RichMessage[] = opts.messages.slice();
 
+  const allTools = [
+    DAILY_LOGS_TOOL,
+    WORKOUTS_TOOL,
+    TRAINING_BLOCKS_TOOL,
+    TRAINING_WEEKS_TOOL,
+    AUTOREGULATION_TOOL,
+    ADHERENCE_TOOL,
+    PROPOSE_BLOCK_TOOL,
+    COMMIT_BLOCK_TOOL,
+    PROPOSE_WEEK_PLAN_TOOL,
+    COMMIT_WEEK_PLAN_TOOL,
+  ];
+
+  // In default mode, hide the planning-write tools to prevent accidental
+  // invocation from casual conversation. plan_week + setup_block expose all.
+  const toolsForMode =
+    opts.mode === "plan_week" || opts.mode === "setup_block"
+      ? allTools
+      : allTools.filter(
+          (t) => !t.name.startsWith("propose_") && !t.name.startsWith("commit_"),
+        );
+
   while (true) {
     const forceText = invocations >= MAX_TOOL_INVOCATIONS;
     const stream = client.messages.stream(
@@ -107,7 +132,7 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
         model: MODEL,
         max_tokens: MAX_TOKENS,
         system,
-        tools: [DAILY_LOGS_TOOL, WORKOUTS_TOOL, TRAINING_BLOCKS_TOOL, TRAINING_WEEKS_TOOL, AUTOREGULATION_TOOL, ADHERENCE_TOOL, PROPOSE_BLOCK_TOOL, COMMIT_BLOCK_TOOL, PROPOSE_WEEK_PLAN_TOOL, COMMIT_WEEK_PLAN_TOOL],
+        tools: toolsForMode,
         // disable_parallel_tool_use lives INSIDE tool_choice (Auto/Any/Tool
         // variants only — ToolChoiceNone has no tools to parallelize).
         tool_choice: forceText
