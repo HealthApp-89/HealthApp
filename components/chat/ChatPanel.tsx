@@ -1,7 +1,7 @@
 // components/chat/ChatPanel.tsx
 "use client";
 
-import { useCallback, useEffect, useReducer, useRef } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import type { ChatMessage } from "@/lib/chat/types";
 import { ChatThread } from "./ChatThread";
 import { ChatComposer } from "./ChatComposer";
@@ -12,6 +12,7 @@ import { queryKeys } from "@/lib/query/keys";
 import { useDailyLogs } from "@/lib/query/hooks/useDailyLogs";
 import { useCheckin } from "@/lib/query/hooks/useCheckin";
 import { todayInUserTz } from "@/lib/time";
+import { COLOR } from "@/lib/ui/theme";
 
 type State = {
   loaded: boolean;
@@ -111,16 +112,18 @@ export default function ChatPanel({
     inFlightWaitMessage: null,
   });
 
+  const [currentMode, setCurrentMode] = useState<"coach" | "morning_intake">(mode);
+
   const panelRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const recommendationRunningRef = useRef(false);
   const startFiredRef = useRef(false);
 
-  // Load history on mount or when mode changes.
+  // Load history on mount or when currentMode changes.
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const res = await fetch(`/api/chat/messages?limit=50&kind=${mode}`);
+      const res = await fetch(`/api/chat/messages?limit=50&kind=${currentMode}`);
       const json = (await res.json()) as { ok: boolean; messages?: ChatMessage[] };
       if (cancelled) return;
       if (json.ok && json.messages) {
@@ -134,7 +137,7 @@ export default function ChatPanel({
       cancelled = true;
       abortRef.current?.abort();
     };
-  }, [mode]);
+  }, [currentMode]);
 
   // iOS PWA keyboard handling: subscribe to visualViewport.resize and
   // translate the panel up by the keyboard's intrusion.
@@ -157,13 +160,13 @@ export default function ChatPanel({
 
   const loadOlder = useCallback(async (beforeIso: string) => {
     if (!state.hasMoreOlder) return { added: 0 };
-    const res = await fetch(`/api/chat/messages?limit=50&kind=${mode}&before=${encodeURIComponent(beforeIso)}`);
+    const res = await fetch(`/api/chat/messages?limit=50&kind=${currentMode}&before=${encodeURIComponent(beforeIso)}`);
     const json = (await res.json()) as { ok: boolean; messages?: ChatMessage[] };
     if (!json.ok || !json.messages) return { added: 0 };
     const older = json.messages.slice().reverse();
     dispatch({ type: "prepend", messages: older, hasMore: older.length >= 50 });
     return { added: older.length };
-  }, [state.hasMoreOlder, mode]);
+  }, [state.hasMoreOlder, currentMode]);
 
   const send = useCallback(
     async (content: string, imageIds: string[]) => {
@@ -284,7 +287,7 @@ export default function ChatPanel({
   // Only fetch the daily log on demand (when in morning_intake mode and we
   // might need to detect WHOOP recovery arrival).
   const todayLogQuery = useDailyLogs(userId, today, today, {
-    enabled: mode === "morning_intake",
+    enabled: currentMode === "morning_intake",
     // Polling reset later in this hook based on intake_state
     refetchInterval: false,
   });
@@ -328,18 +331,18 @@ export default function ChatPanel({
     [runRecommendation],
   );
 
-  // Fix 2: Reset startFiredRef when mode changes so re-entering morning_intake
+  // Fix 2: Reset startFiredRef when currentMode changes so re-entering morning_intake
   // mode after visiting coach can start a fresh session.
   useEffect(() => {
     startFiredRef.current = false;
-  }, [mode]);
+  }, [currentMode]);
 
   // When morning intake mode mounts and there are no messages yet, kick off
   // /start so the bot inserts the first scripted question.
   // startFiredRef prevents re-firing if the POST succeeds but the subsequent
   // thread refetch fails (messages.length stays 0 but we must not retry).
   useEffect(() => {
-    if (mode !== "morning_intake") return;
+    if (currentMode !== "morning_intake") return;
     if (!state.loaded) return;
     if (state.messages.length > 0) return;
     if (startFiredRef.current) return;
@@ -352,7 +355,7 @@ export default function ChatPanel({
           body: JSON.stringify({ kind: "start" }),
         });
         if (res.ok) {
-          const refresh = await fetch(`/api/chat/messages?limit=50&kind=${mode}`);
+          const refresh = await fetch(`/api/chat/messages?limit=50&kind=${currentMode}`);
           const json = (await refresh.json()) as { ok: boolean; messages?: ChatMessage[] };
           if (json.ok && json.messages) {
             dispatch({ type: "loaded", messages: json.messages.slice().reverse() });
@@ -363,7 +366,7 @@ export default function ChatPanel({
         // User can close + reopen the panel to retry.
       }
     })();
-  }, [mode, state.loaded, state.messages.length]);
+  }, [currentMode, state.loaded, state.messages.length]);
 
   const onSlotAnswer = useCallback(
     async (slot: string, value: string | number | string[]) => {
@@ -373,14 +376,14 @@ export default function ChatPanel({
         body: JSON.stringify({ slot, value }),
       });
       void res; // Refetch the thread regardless of status — server may have inserted assistant turns
-      const refresh = await fetch(`/api/chat/messages?limit=50&kind=${mode}`);
+      const refresh = await fetch(`/api/chat/messages?limit=50&kind=${currentMode}`);
       const histJson = (await refresh.json()) as { ok: boolean; messages?: ChatMessage[] };
       if (histJson.ok && histJson.messages) {
         dispatch({ type: "loaded", messages: histJson.messages.slice().reverse() });
       }
       queryClient.invalidateQueries({ queryKey: queryKeys.checkin.one(userId, today) });
     },
-    [mode, queryClient, today, userId],
+    [currentMode, queryClient, today, userId],
   );
 
   const onAction = useCallback(
@@ -428,12 +431,12 @@ export default function ChatPanel({
   // Fix 1: tryRunRecommendation guards against re-fire while intake_state is
   // still transitioning from awaiting_whoop to delivered.
   useEffect(() => {
-    if (mode !== "morning_intake") return;
+    if (currentMode !== "morning_intake") return;
     if (todayCheckin?.intake_state !== "awaiting_whoop") return;
     const log = todayLogQuery.data?.[0];
     if (!log || log.recovery == null) return;
     void tryRunRecommendation({ skip_whoop: false });
-  }, [mode, todayCheckin?.intake_state, todayLogQuery.data, tryRunRecommendation]);
+  }, [currentMode, todayCheckin?.intake_state, todayLogQuery.data, tryRunRecommendation]);
 
   // ── Render ───────────────────────────────────────────────────────────────────
 
@@ -447,7 +450,31 @@ export default function ChatPanel({
       }}
     >
       <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.06]">
-        <div className="text-sm font-semibold text-white/90">Coach</div>
+        <div style={{ display: "flex", gap: "4px", padding: "4px 0 0" }}>
+          {(["coach", "morning_intake"] as const).map((m) => {
+            const label = m === "coach" ? "Coach" : "Morning";
+            const active = currentMode === m;
+            return (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setCurrentMode(m)}
+                style={{
+                  padding: "6px 14px",
+                  borderRadius: "999px",
+                  background: active ? COLOR.accentSoft : "transparent",
+                  color: active ? COLOR.accent : COLOR.textMid,
+                  border: "none",
+                  fontSize: "12px",
+                  fontWeight: active ? 700 : 500,
+                  cursor: "pointer",
+                }}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
         <button
           type="button"
           onClick={onClose}
@@ -492,7 +519,7 @@ export default function ChatPanel({
       {(() => {
         const last = state.messages[state.messages.length - 1];
         const hideComposer =
-          mode === "morning_intake" &&
+          currentMode === "morning_intake" &&
           !!last?.ui?.chips &&
           last.ui.chips.length > 0 &&
           !last.ui.allow_text;
@@ -501,6 +528,43 @@ export default function ChatPanel({
           <ChatComposer disabled={state.inFlightAssistantId !== null} onSend={send} />
         );
       })()}
+
+      {currentMode === "morning_intake" && !todayCheckin?.sick && (
+        <div style={{ padding: "8px 14px 10px", textAlign: "center" }}>
+          <button
+            type="button"
+            onClick={async () => {
+              const ok = window.confirm(
+                "Flag yourself as sick? This locks today's plan to REST. (Undo on the Log page.)",
+              );
+              if (!ok) return;
+              const res = await fetch("/api/chat/morning/intake", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ kind: "declare_sick" }),
+              });
+              if (res.ok) {
+                const refresh = await fetch(`/api/chat/messages?limit=50&kind=${currentMode}`);
+                const json = (await refresh.json()) as { ok: boolean; messages?: ChatMessage[] };
+                if (json.ok && json.messages) {
+                  dispatch({ type: "loaded", messages: json.messages.slice().reverse() });
+                }
+                queryClient.invalidateQueries({ queryKey: queryKeys.checkin.one(userId, today) });
+              }
+            }}
+            style={{
+              background: "none",
+              border: "none",
+              color: COLOR.textFaint,
+              fontSize: "11px",
+              textDecoration: "underline",
+              cursor: "pointer",
+            }}
+          >
+            I&apos;m coming down with something
+          </button>
+        </div>
+      )}
     </div>
   );
 }
