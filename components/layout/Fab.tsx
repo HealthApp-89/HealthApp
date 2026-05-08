@@ -24,6 +24,8 @@ const ITEMS: SheetItem[] = [
   { kind: "link",   label: "Manage connections", icon: "🔗", href: "/profile" },
 ];
 
+type ChatState = { open: boolean; mode: "coach" | "morning_intake" };
+
 /**
  * Floating + button (mobile only) + bottom sheet with quick actions.
  * Rendered (via FabGate) in app/layout.tsx so it persists across routes.
@@ -32,9 +34,9 @@ const ITEMS: SheetItem[] = [
  * to do this from a separate corner button; consolidated here so the
  * bottom-right of every page isn't permanently occluded.
  */
-export function Fab() {
+export function Fab({ userId }: { userId: string }) {
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [chatOpen, setChatOpen] = useState(false);
+  const [chatState, setChatState] = useState<ChatState>({ open: false, mode: "coach" });
 
   return (
     <>
@@ -68,11 +70,17 @@ export function Fab() {
           onClose={() => setSheetOpen(false)}
           onAskCoach={() => {
             setSheetOpen(false);
-            setChatOpen(true);
+            setChatState({ open: true, mode: "coach" });
           }}
         />
       )}
-      {chatOpen && <ChatPanel onClose={() => setChatOpen(false)} userId="" /* TODO: Task 11 */ />}
+      {chatState.open && (
+        <ChatPanel
+          mode={chatState.mode}
+          userId={userId}
+          onClose={() => setChatState((s) => ({ ...s, open: false }))}
+        />
+      )}
     </>
   );
 }

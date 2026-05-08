@@ -3,7 +3,7 @@ import { DM_Sans, DM_Mono } from "next/font/google";
 import "./globals.css";
 import { BottomNav } from "@/components/layout/BottomNav";
 import { FabGate } from "@/components/layout/FabGate";
-import { TopNav } from "@/components/layout/TopNav";
+import { TopNavGate } from "@/components/layout/TopNavGate";
 import { QueryProvider } from "@/components/providers/QueryProvider";
 
 // Self-hosted via next/font — removes the render-blocking Google CSS
@@ -55,7 +55,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           + BottomNav reservation via --nav-h) are set in globals.css. */}
       <body className="min-h-[100dvh] bg-bg">
         <QueryProvider>
-          <TopNav />
+          <TopNavGate />
           <main>{children}</main>
           <BottomNav />
           <FabGate />
