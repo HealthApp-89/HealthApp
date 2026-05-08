@@ -196,14 +196,10 @@ export default function ChatPanel({
         model: null,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
-<<<<<<< HEAD
         images: [], // optimistic — we don't have signed URLs for the new uploads here
         kind: "coach" as const,
         ui: null,
-=======
-        images: [],
         tool_calls: null,
->>>>>>> 2b4dc78 (feat(chat): inline proposal cards + mode banner + URL-driven chat opening)
       };
       dispatch({ type: "append_user", message: tempMsg });
 
@@ -300,7 +296,6 @@ export default function ChatPanel({
     [state.messages, send],
   );
 
-<<<<<<< HEAD
   // ── Morning intake hooks & handlers ─────────────────────────────────────────
 
   const queryClient = useQueryClient();

@@ -82,6 +82,7 @@ Every page that fetches per-user data follows the **hybrid SSR-hydrate** pattern
 
 - [lib/anthropic/client.ts](lib/anthropic/client.ts) — server-side Anthropic SDK. The key is `ANTHROPIC_API_KEY` (never `NEXT_PUBLIC_*`); the prototype exposed it to the browser, the port intentionally moves it server-side.
 - [lib/coach/](lib/coach/) — `readiness.ts` (daily plan), `impact.ts` (per-metric +/− contributions to readiness), `week.ts`, `sessionPlans.ts`, `prompts.ts`. Pure functions; UI consumes the outputs.
+- **Weekly planning v1**: `training_blocks` (5-week mesocycles) + `training_weeks` (committed Sunday plans) drive the strength tab via [lib/coach/planning-prompts.ts](lib/coach/planning-prompts.ts) and the chat `mode` discriminator (`default|plan_week|setup_block`). Conversation produces structured plans via propose_*/commit_* tools gated by HMAC approval tokens (`COACH_TOOL_SECRET` env). Body-comp-aware progress metrics (strength-per-LBM, allometric, IPF GL) computed on demand in [lib/coach/progress-metrics.ts](lib/coach/progress-metrics.ts) — no `progress_metrics` table in v1.
 
 ### UI conventions
 
@@ -93,6 +94,8 @@ Every page that fetches per-user data follows the **hybrid SSR-hydrate** pattern
 ## Environment
 
 Copy [.env.example](.env.example) → `.env.local`. Required for any backend work: Supabase URL + anon key + service role; for OAuth: WHOOP/Withings client id/secret/redirect; for coach: `ANTHROPIC_API_KEY`; for cron: `CRON_SECRET`; `NEXT_PUBLIC_APP_URL` controls callback URLs.
+
+Coach planning tools require `COACH_TOOL_SECRET` (32+ char random; generate with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`). The same value must be set in Vercel env (Production + Preview).
 
 ## Scripts
 
