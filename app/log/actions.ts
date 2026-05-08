@@ -72,6 +72,22 @@ export async function saveDailyLog(formData: FormData) {
   if (error) throw error;
 
   // Save the morning-feel checkin in the same submit
+  const sickRaw = formData.get("feel_sick");
+  const sick = typeof sickRaw === "string" && sickRaw === "1";
+  const bloatingRaw = formData.get("feel_bloating");
+  const bloating: boolean | null =
+    typeof bloatingRaw === "string" && bloatingRaw !== ""
+      ? bloatingRaw === "1"
+      : null;
+  const sorenessAreasRaw = formData.get("feel_soreness_areas");
+  const sorenessAreas: string[] | null =
+    typeof sorenessAreasRaw === "string" && sorenessAreasRaw.trim() !== ""
+      ? sorenessAreasRaw
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : null;
+
   const checkinRow = {
     user_id: user.id,
     date,
@@ -80,14 +96,41 @@ export async function saveDailyLog(formData: FormData) {
     mood: str(formData.get("feel_mood")),
     soreness: str(formData.get("feel_soreness")),
     feel_notes: str(formData.get("feel_notes")),
+    sick,
+    sickness_notes: str(formData.get("feel_sickness_notes")),
+    fatigue: str(formData.get("feel_fatigue")),
+    bloating,
+    soreness_areas: sorenessAreas,
+    soreness_severity: str(formData.get("feel_soreness_severity")),
   };
-  const hasFeelInput = Object.values(checkinRow).some(
-    (v, i) => i >= 2 && v !== null && v !== "",
-  );
+
+  // Auto-mark intake_state='delivered' when the user fills in enough via the
+  // form for the bot to be redundant for the day. "Enough" = readiness + the
+  // gate fields needed by readiness math (energy, sick OR all three of
+  // {fatigue, bloating, soreness gate answered}).
+  const requiredFilled =
+    checkinRow.readiness !== null &&
+    checkinRow.energy_label !== null &&
+    (checkinRow.sick ||
+      (checkinRow.fatigue !== null &&
+        checkinRow.bloating !== null &&
+        checkinRow.soreness_areas !== null));
+
+  const hasFeelInput = Object.entries(checkinRow).some(([k, v]) => {
+    if (k === "user_id" || k === "date") return false;
+    if (v === null || v === false || v === "") return false;
+    if (Array.isArray(v) && v.length === 0) return false;
+    return true;
+  });
+
   if (hasFeelInput) {
+    const finalRow = {
+      ...checkinRow,
+      ...(requiredFilled ? { intake_state: "delivered" as const } : {}),
+    };
     const { error: cErr } = await supabase
       .from("checkins")
-      .upsert(checkinRow, { onConflict: "user_id,date" });
+      .upsert(finalRow, { onConflict: "user_id,date" });
     if (cErr) throw cErr;
   }
 

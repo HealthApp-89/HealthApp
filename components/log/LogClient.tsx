@@ -87,6 +87,12 @@ export function LogClient({
                   mood: checkin.mood,
                   soreness: checkin.soreness,
                   feel_notes: checkin.feel_notes,
+                  sick: checkin.sick,
+                  sickness_notes: checkin.sickness_notes,
+                  fatigue: checkin.fatigue,
+                  bloating: checkin.bloating,
+                  soreness_areas: checkin.soreness_areas,
+                  soreness_severity: checkin.soreness_severity,
                 }
               : null
           }

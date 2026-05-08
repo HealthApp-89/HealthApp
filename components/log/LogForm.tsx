@@ -66,9 +66,12 @@ const SECTIONS: { title: string; color: string; fields: { k: keyof DailyLog; l: 
   },
 ];
 
-const ENERGY_OPTIONS = ["Low", "Medium", "High"] as const;
+const ENERGY_OPTIONS = ["low", "medium", "high"] as const;
 const MOOD_OPTIONS = ["😔", "😐", "😊", "🔥"] as const;
 const READINESS_NUMS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
+const FATIGUE_OPTIONS = ["none", "some", "heavy"] as const;
+const SORENESS_AREAS = ["chest", "back", "legs", "shoulders", "arms", "core"] as const;
+const SORENESS_SEVERITY_OPTIONS = ["mild", "sharp"] as const;
 
 const TODAY_ISO = () => new Date().toISOString().slice(0, 10);
 
@@ -78,6 +81,12 @@ type CheckinState = {
   mood: string;
   soreness: string;
   feel_notes: string;
+  sick: boolean;
+  sickness_notes: string;
+  fatigue: string; // '' | 'none' | 'some' | 'heavy'
+  bloating: boolean | null;
+  soreness_areas: string[];
+  soreness_severity: string; // '' | 'mild' | 'sharp'
 };
 
 type Props = {
@@ -89,6 +98,12 @@ type Props = {
     mood: string | null;
     soreness: string | null;
     feel_notes: string | null;
+    sick: boolean | null;
+    sickness_notes: string | null;
+    fatigue: string | null;
+    bloating: boolean | null;
+    soreness_areas: string[] | null;
+    soreness_severity: string | null;
   } | null;
 };
 
@@ -103,6 +118,12 @@ export function LogForm({ date, initialLog, initialCheckin }: Props) {
     mood: initialCheckin?.mood ?? "",
     soreness: initialCheckin?.soreness ?? "",
     feel_notes: initialCheckin?.feel_notes ?? "",
+    sick: initialCheckin?.sick ?? false,
+    sickness_notes: initialCheckin?.sickness_notes ?? "",
+    fatigue: initialCheckin?.fatigue ?? "",
+    bloating: initialCheckin?.bloating ?? null,
+    soreness_areas: initialCheckin?.soreness_areas ?? [],
+    soreness_severity: initialCheckin?.soreness_severity ?? "",
   });
 
   function onSubmit(formData: FormData) {
@@ -293,15 +314,15 @@ export function LogForm({ date, initialLog, initialCheckin }: Props) {
             Energy
           </div>
           <div style={{ display: "flex", gap: "6px" }}>
-            {ENERGY_OPTIONS.map((opt) => (
+            {ENERGY_OPTIONS.map((o) => (
               <button
-                key={opt}
+                key={o}
                 type="button"
-                onClick={() => setFeel((f) => ({ ...f, energy_label: f.energy_label === opt ? "" : opt }))}
+                onClick={() => setFeel((f) => ({ ...f, energy_label: f.energy_label === o ? "" : o }))}
                 style={{
                   flex: 1,
-                  background: feel.energy_label === opt ? COLOR.accent : COLOR.surfaceAlt,
-                  color: feel.energy_label === opt ? "#fff" : COLOR.textMuted,
+                  background: feel.energy_label === o ? COLOR.accent : COLOR.surfaceAlt,
+                  color: feel.energy_label === o ? "#fff" : COLOR.textMuted,
                   borderRadius: "8px",
                   border: "none",
                   padding: "8px 0",
@@ -310,7 +331,7 @@ export function LogForm({ date, initialLog, initialCheckin }: Props) {
                   cursor: "pointer",
                 }}
               >
-                {opt}
+                {o[0].toUpperCase() + o.slice(1)}
               </button>
             ))}
           </div>
@@ -355,8 +376,8 @@ export function LogForm({ date, initialLog, initialCheckin }: Props) {
           <input type="hidden" name="feel_mood" value={feel.mood} />
         </div>
 
-        {/* Soreness */}
-        <div>
+        {/* Soreness (legacy free-text) */}
+        <div style={{ marginBottom: "14px" }}>
           <label
             style={{
               fontSize: "10px",
@@ -368,7 +389,7 @@ export function LogForm({ date, initialLog, initialCheckin }: Props) {
               marginBottom: "6px",
             }}
           >
-            Soreness
+            Soreness (notes)
           </label>
           <input
             name="feel_soreness"
@@ -379,6 +400,224 @@ export function LogForm({ date, initialLog, initialCheckin }: Props) {
             style={inputStyle}
           />
         </div>
+
+        {/* Feel notes */}
+        <div style={{ marginBottom: "14px" }}>
+          <label
+            style={{
+              fontSize: "10px",
+              textTransform: "uppercase",
+              letterSpacing: "0.08em",
+              color: COLOR.textMuted,
+              fontWeight: 600,
+              display: "block",
+              marginBottom: "6px",
+            }}
+          >
+            Feel notes
+          </label>
+          <textarea
+            name="feel_notes"
+            value={feel.feel_notes}
+            onChange={(e) => setFeel((f) => ({ ...f, feel_notes: e.target.value }))}
+            placeholder="How are you feeling overall?"
+            style={{ ...inputStyle, minHeight: "60px", resize: "vertical" }}
+          />
+        </div>
+
+        {/* Sickness */}
+        <div style={{ marginTop: "14px" }}>
+          <div
+            style={{
+              fontSize: "10px",
+              textTransform: "uppercase",
+              letterSpacing: "0.08em",
+              color: COLOR.textMuted,
+              fontWeight: 600,
+              marginBottom: "8px",
+            }}
+          >
+            Sickness
+          </div>
+          <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", color: COLOR.textStrong }}>
+            <input
+              type="checkbox"
+              checked={feel.sick}
+              onChange={(e) => setFeel((f) => ({ ...f, sick: e.target.checked }))}
+            />
+            I&apos;m sick today
+          </label>
+          {feel.sick && (
+            <textarea
+              placeholder="What's going on? (optional)"
+              value={feel.sickness_notes}
+              onChange={(e) => setFeel((f) => ({ ...f, sickness_notes: e.target.value }))}
+              style={{ ...inputStyle, marginTop: "8px", minHeight: "60px", resize: "vertical" }}
+            />
+          )}
+        </div>
+
+        {/* Fatigue */}
+        <div style={{ marginTop: "14px" }}>
+          <div
+            style={{
+              fontSize: "10px",
+              textTransform: "uppercase",
+              letterSpacing: "0.08em",
+              color: COLOR.textMuted,
+              fontWeight: 600,
+              marginBottom: "8px",
+            }}
+          >
+            Fatigue
+          </div>
+          <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+            {FATIGUE_OPTIONS.map((o) => (
+              <button
+                type="button"
+                key={o}
+                onClick={() => setFeel((f) => ({ ...f, fatigue: f.fatigue === o ? "" : o }))}
+                style={{
+                  padding: "6px 12px",
+                  borderRadius: "999px",
+                  background: feel.fatigue === o ? COLOR.accent : COLOR.surfaceAlt,
+                  color: feel.fatigue === o ? "#fff" : COLOR.textMuted,
+                  border: "none",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  textTransform: "capitalize",
+                }}
+              >
+                {o}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Bloating */}
+        <div style={{ marginTop: "14px" }}>
+          <div
+            style={{
+              fontSize: "10px",
+              textTransform: "uppercase",
+              letterSpacing: "0.08em",
+              color: COLOR.textMuted,
+              fontWeight: 600,
+              marginBottom: "8px",
+            }}
+          >
+            Bloating
+          </div>
+          <div style={{ display: "flex", gap: "6px" }}>
+            {[
+              { label: "No", value: false },
+              { label: "Yes", value: true },
+            ].map((opt) => (
+              <button
+                type="button"
+                key={opt.label}
+                onClick={() => setFeel((f) => ({ ...f, bloating: f.bloating === opt.value ? null : opt.value }))}
+                style={{
+                  padding: "6px 12px",
+                  borderRadius: "999px",
+                  background: feel.bloating === opt.value ? COLOR.accent : COLOR.surfaceAlt,
+                  color: feel.bloating === opt.value ? "#fff" : COLOR.textMuted,
+                  border: "none",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Soreness areas + severity */}
+        <div style={{ marginTop: "14px" }}>
+          <div
+            style={{
+              fontSize: "10px",
+              textTransform: "uppercase",
+              letterSpacing: "0.08em",
+              color: COLOR.textMuted,
+              fontWeight: 600,
+              marginBottom: "8px",
+            }}
+          >
+            Soreness areas
+          </div>
+          <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+            {SORENESS_AREAS.map((a) => {
+              const on = feel.soreness_areas.includes(a);
+              return (
+                <button
+                  type="button"
+                  key={a}
+                  onClick={() =>
+                    setFeel((f) => ({
+                      ...f,
+                      soreness_areas: on
+                        ? f.soreness_areas.filter((x) => x !== a)
+                        : [...f.soreness_areas, a],
+                    }))
+                  }
+                  style={{
+                    padding: "6px 12px",
+                    borderRadius: "999px",
+                    background: on ? COLOR.accent : COLOR.surfaceAlt,
+                    color: on ? "#fff" : COLOR.textMuted,
+                    border: "none",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    textTransform: "capitalize",
+                  }}
+                >
+                  {a}
+                </button>
+              );
+            })}
+          </div>
+          {feel.soreness_areas.length > 0 && (
+            <div style={{ display: "flex", gap: "6px", marginTop: "8px" }}>
+              {SORENESS_SEVERITY_OPTIONS.map((sev) => (
+                <button
+                  type="button"
+                  key={sev}
+                  onClick={() => setFeel((f) => ({ ...f, soreness_severity: f.soreness_severity === sev ? "" : sev }))}
+                  style={{
+                    padding: "6px 12px",
+                    borderRadius: "999px",
+                    background: feel.soreness_severity === sev ? COLOR.accent : COLOR.surfaceAlt,
+                    color: feel.soreness_severity === sev ? "#fff" : COLOR.textMuted,
+                    border: "none",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    textTransform: "capitalize",
+                  }}
+                >
+                  {sev}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Hidden inputs for feel fields */}
+        <input type="hidden" name="feel_sick" value={feel.sick ? "1" : ""} />
+        <input type="hidden" name="feel_sickness_notes" value={feel.sickness_notes} />
+        <input type="hidden" name="feel_fatigue" value={feel.fatigue} />
+        <input
+          type="hidden"
+          name="feel_bloating"
+          value={feel.bloating === null ? "" : feel.bloating ? "1" : "0"}
+        />
+        <input type="hidden" name="feel_soreness_areas" value={feel.soreness_areas.join(",")} />
+        <input type="hidden" name="feel_soreness_severity" value={feel.soreness_severity} />
       </Card>
 
       {/* Notes */}
