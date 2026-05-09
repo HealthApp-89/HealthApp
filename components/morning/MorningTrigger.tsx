@@ -3,10 +3,15 @@
 // Invisible client component. On mount, queries today + yesterday checkins
 // and decides whether to auto-open ChatPanel in morning_intake mode. Uses
 // sessionStorage to suppress re-pop on intra-session navigation.
+//
+// `today` is held in state (not just a render-time const) so a PWA that
+// stays alive across midnight re-evaluates on the next visibility/focus
+// event — without that, the trigger's `today` would stay stuck on the day
+// the panel mounted, and the next-day morning bot would silently skip.
 
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useCheckin } from "@/lib/query/hooks/useCheckin";
 import { todayInUserTz } from "@/lib/time";
 import { decideIntakeAction } from "@/lib/morning/state";
@@ -25,8 +30,27 @@ export function MorningTrigger({
   userId: string;
   onShouldOpen: () => void;
 }) {
-  const today = todayInUserTz();
+  const [today, setToday] = useState<string>(() => todayInUserTz());
   const yesterday = isoMinusDays(today, 1);
+
+  // Re-evaluate `today` when the tab/PWA comes back into focus. If the user
+  // crossed midnight while the app was backgrounded, the new `today` triggers
+  // fresh useCheckin queries and lets the decision effect below re-run with
+  // a fresh sessionStorage key (date-prefixed), so the next-day pop fires
+  // even without a full reload.
+  useEffect(() => {
+    const recheck = () => {
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+      const now = todayInUserTz();
+      setToday((prev) => (prev === now ? prev : now));
+    };
+    document.addEventListener("visibilitychange", recheck);
+    window.addEventListener("focus", recheck);
+    return () => {
+      document.removeEventListener("visibilitychange", recheck);
+      window.removeEventListener("focus", recheck);
+    };
+  }, []);
 
   const { data: todayCheckin, isLoading: tLoading } = useCheckin(userId, today);
   const { data: yesterdayCheckin, isLoading: yLoading } = useCheckin(userId, yesterday);
