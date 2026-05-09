@@ -13,8 +13,23 @@ import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/query/keys";
 import { useDailyLogs } from "@/lib/query/hooks/useDailyLogs";
 import { useCheckin } from "@/lib/query/hooks/useCheckin";
-import { todayInUserTz } from "@/lib/time";
+import { todayInUserTz, ymdInUserTz } from "@/lib/time";
 import { COLOR } from "@/lib/ui/theme";
+
+/** For morning_intake, scope thread to today's messages only — yesterday's
+ *  morning checkin shouldn't appear in today's panel and would otherwise
+ *  block the auto-start guard from firing the next-day fresh prompt.
+ *  Coach mode keeps cross-day history (intentional there). */
+function scopeForMode(
+  messages: ChatMessage[],
+  mode: "coach" | "morning_intake",
+  todayYmd: string,
+): ChatMessage[] {
+  if (mode !== "morning_intake") return messages;
+  return messages.filter(
+    (m) => ymdInUserTz(new Date(m.created_at)) === todayYmd,
+  );
+}
 
 type State = {
   loaded: boolean;
@@ -139,7 +154,8 @@ export default function ChatPanel({
       if (cancelled) return;
       if (json.ok && json.messages) {
         // Server returns desc; we want asc for render.
-        dispatch({ type: "loaded", messages: json.messages.slice().reverse() });
+        const asc = json.messages.slice().reverse();
+        dispatch({ type: "loaded", messages: scopeForMode(asc, currentMode, today) });
       } else {
         dispatch({ type: "loaded", messages: [] });
       }
@@ -148,6 +164,9 @@ export default function ChatPanel({
       cancelled = true;
       abortRef.current?.abort();
     };
+    // `today` is intentionally not in deps — it's a render-time string that
+    // would only change at midnight (and the panel is unlikely to span that).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentMode]);
 
   // iOS PWA keyboard handling: subscribe to visualViewport.resize and
@@ -170,6 +189,10 @@ export default function ChatPanel({
   }, []);
 
   const loadOlder = useCallback(async (beforeIso: string) => {
+    // Morning thread is one day at a time — older messages are yesterday's
+    // checkin (and would just be filtered out by scopeForMode anyway, leading
+    // to an empty-fetch loop with the IntersectionObserver).
+    if (currentMode === "morning_intake") return { added: 0 };
     if (!state.hasMoreOlder) return { added: 0 };
     const res = await fetch(`/api/chat/messages?limit=50&kind=${currentMode}&before=${encodeURIComponent(beforeIso)}`);
     const json = (await res.json()) as { ok: boolean; messages?: ChatMessage[] };
@@ -345,7 +368,10 @@ export default function ChatPanel({
         const refresh = await fetch(`/api/chat/messages?limit=50&kind=${currentMode}`);
         const histJson = (await refresh.json()) as { ok: boolean; messages?: ChatMessage[] };
         if (histJson.ok && histJson.messages) {
-          dispatch({ type: "loaded", messages: histJson.messages.slice().reverse() });
+          dispatch({
+            type: "loaded",
+            messages: scopeForMode(histJson.messages.slice().reverse(), currentMode, today),
+          });
         }
       }
     },
@@ -417,7 +443,10 @@ export default function ChatPanel({
       const refresh = await fetch(`/api/chat/messages?limit=50&kind=${currentMode}`);
       const histJson = (await refresh.json()) as { ok: boolean; messages?: ChatMessage[] };
       if (histJson.ok && histJson.messages) {
-        dispatch({ type: "loaded", messages: histJson.messages.slice().reverse() });
+        dispatch({
+          type: "loaded",
+          messages: scopeForMode(histJson.messages.slice().reverse(), currentMode, today),
+        });
       }
     },
     [queryClient, userId, today, currentMode],
@@ -465,7 +494,10 @@ export default function ChatPanel({
           const refresh = await fetch(`/api/chat/messages?limit=50&kind=${currentMode}`);
           const json = (await refresh.json()) as { ok: boolean; messages?: ChatMessage[] };
           if (json.ok && json.messages) {
-            dispatch({ type: "loaded", messages: json.messages.slice().reverse() });
+            dispatch({
+            type: "loaded",
+            messages: scopeForMode(json.messages.slice().reverse(), currentMode, today),
+          });
           }
         }
       } catch {
@@ -486,7 +518,10 @@ export default function ChatPanel({
       const refresh = await fetch(`/api/chat/messages?limit=50&kind=${currentMode}`);
       const histJson = (await refresh.json()) as { ok: boolean; messages?: ChatMessage[] };
       if (histJson.ok && histJson.messages) {
-        dispatch({ type: "loaded", messages: histJson.messages.slice().reverse() });
+        dispatch({
+          type: "loaded",
+          messages: scopeForMode(histJson.messages.slice().reverse(), currentMode, today),
+        });
       }
       queryClient.invalidateQueries({ queryKey: queryKeys.checkin.one(userId, today) });
     },
@@ -690,7 +725,10 @@ export default function ChatPanel({
                   const refresh = await fetch(`/api/chat/messages?limit=50&kind=${currentMode}`);
                   const json = (await refresh.json()) as { ok: boolean; messages?: ChatMessage[] };
                   if (json.ok && json.messages) {
-                    dispatch({ type: "loaded", messages: json.messages.slice().reverse() });
+                    dispatch({
+            type: "loaded",
+            messages: scopeForMode(json.messages.slice().reverse(), currentMode, today),
+          });
                   }
                   queryClient.invalidateQueries({ queryKey: queryKeys.checkin.one(userId, today) });
                 } else {
