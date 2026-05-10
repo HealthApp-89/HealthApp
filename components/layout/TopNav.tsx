@@ -32,6 +32,7 @@ const SHEET: SheetItem[] = [
   { kind: "link",   label: "Log entry", href: "/log" },
   { kind: "chat",   label: "Ask coach" },
   { kind: "link",   label: "Strength",  href: "/strength?view=today" },
+  { kind: "link",   label: "Body",      href: "/health" },
   { kind: "upload", label: "Upload Strong CSV", accept: ".csv", endpoint: "/api/ingest/strong" },
   { kind: "link",   label: "Manage connections", href: "/profile" },
 ];
