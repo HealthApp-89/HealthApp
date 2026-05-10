@@ -6,7 +6,6 @@ import { WeekStrip } from "@/components/layout/WeekStrip";
 import { ReadinessHero } from "@/components/dashboard/ReadinessHero";
 import { CoachEntryCard } from "@/components/dashboard/CoachEntryCard";
 import { RecentLiftsCard, type RecentSession } from "@/components/dashboard/RecentLiftsCard";
-import { BodyTile } from "@/components/dashboard/BodyTile";
 import { MetricCard } from "@/components/charts/MetricCard";
 import { ImpactDonut } from "@/components/dashboard/ImpactDonut";
 import { InstallHint } from "@/components/layout/InstallHint";
@@ -48,6 +47,7 @@ export function TodayClient({
   today,
   isToday,
   weeklyRollups,
+  bodyTile,
 }: {
   userId: string;
   userEmail: string | null;
@@ -58,6 +58,10 @@ export function TodayClient({
    *  WeeklyRollups is async and uses next/headers — it can't be imported
    *  into a Client Component, so the parent passes it as a child node. */
   weeklyRollups: ReactNode;
+  /** Pre-rendered BodyTile node from the Server Component parent.
+   *  BodyTile is async and uses Supabase server client — it can't be imported
+   *  into a Client Component, so the parent passes it as a child node. */
+  bodyTile: ReactNode;
 }) {
   const selectedYesterday = shiftIso(selectedDate, -1);
   const sevenDaysBefore = shiftIso(selectedDate, -7);
@@ -228,7 +232,7 @@ export function TodayClient({
 
         <RecentLiftsCard sessions={recentSessions} />
 
-        <BodyTile userId={userId} />
+        {bodyTile}
 
         <Suspense fallback={null}>{weeklyRollups}</Suspense>
       </div>

@@ -12,6 +12,7 @@ import { fetchLast7Server } from "@/lib/query/fetchers/last7";
 import { fetchWorkoutsRangeServer } from "@/lib/query/fetchers/workouts";
 import { TodayClient } from "@/components/dashboard/TodayClient";
 import { WeeklyRollups } from "@/components/dashboard/WeeklyRollups";
+import { BodyTile } from "@/components/dashboard/BodyTile";
 import { todayInUserTz } from "@/lib/time";
 import type { Profile } from "@/lib/query/fetchers/profile";
 import type { DailyLog } from "@/lib/data/types";
@@ -96,6 +97,8 @@ export default async function Home(props: { searchParams: Promise<{ date?: strin
     />
   );
 
+  const bodyTile = <BodyTile userId={user.id} />;
+
   return (
     <HydrationBoundary state={dehydrate(queryClient)}>
       <TodayClient
@@ -105,6 +108,7 @@ export default async function Home(props: { searchParams: Promise<{ date?: strin
         today={today}
         isToday={isToday}
         weeklyRollups={weeklyRollups}
+        bodyTile={bodyTile}
       />
     </HydrationBoundary>
   );
