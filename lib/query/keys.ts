@@ -25,6 +25,13 @@ export const queryKeys = {
     last7: (userId: string, before: string) =>
       ["daily-logs", userId, "last7", before] as const,
   },
+  bodyMeasurements: {
+    all: (userId: string) => ["body-measurements", userId] as const,
+  },
+  healthTrend: {
+    range: (userId: string, from: string, to: string) =>
+      ["health-trend", userId, from, to] as const,
+  },
   profile: {
     one: (userId: string) => ["profile", userId] as const,
   },
