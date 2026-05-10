@@ -5,7 +5,7 @@
 -- the bucket MUST exist before this migration runs (see CLAUDE.md
 -- "Database migrations" section).
 
-create table public.body_measurements (
+create table if not exists public.body_measurements (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
   measured_on date not null,
@@ -32,29 +32,34 @@ create table public.body_measurements (
   unique (user_id, measured_on)
 );
 
-create index body_measurements_user_date_idx
+create index if not exists body_measurements_user_date_idx
   on public.body_measurements (user_id, measured_on desc);
 
 alter table public.body_measurements enable row level security;
 
+drop policy if exists "own_measurements_select" on public.body_measurements;
 create policy "own_measurements_select" on public.body_measurements
   for select using (auth.uid() = user_id);
+drop policy if exists "own_measurements_modify" on public.body_measurements;
 create policy "own_measurements_modify" on public.body_measurements
   for all   using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 -- Storage RLS for health-photos: owner-only by path prefix (mirrors
 -- chat-images pattern). The bucket itself is created manually in the
 -- Supabase Dashboard before this migration runs.
+drop policy if exists "own_health_photos_select" on storage.objects;
 create policy "own_health_photos_select" on storage.objects
   for select using (
     bucket_id = 'health-photos'
     and (storage.foldername(name))[1] = auth.uid()::text
   );
+drop policy if exists "own_health_photos_insert" on storage.objects;
 create policy "own_health_photos_insert" on storage.objects
   for insert with check (
     bucket_id = 'health-photos'
     and (storage.foldername(name))[1] = auth.uid()::text
   );
+drop policy if exists "own_health_photos_delete" on storage.objects;
 create policy "own_health_photos_delete" on storage.objects
   for delete using (
     bucket_id = 'health-photos'
