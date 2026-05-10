@@ -30,6 +30,8 @@ Apply in order via Supabase Dashboard → SQL Editor:
 
 7. [supabase/migrations/0008_weekly_planning.sql](supabase/migrations/0008_weekly_planning.sql) — adds `training_blocks` (5-week mesocycle goals), `training_weeks` (committed Sunday plans), and `chat_messages.mode` (`default`|`plan_week`|`setup_block`) for the weekly planning ritual
 
+8. [supabase/migrations/0009_body_measurements.sql](supabase/migrations/0009_body_measurements.sql) — adds `body_measurements` (monthly circumference rows, 14 numeric fields + `photo_path` + `notes`, unique on `(user_id, measured_on)`); also requires the `health-photos` private Storage bucket created beforehand (Storage RLS policies attach to it)
+
 `supabase` CLI is now linked (`supabase link --project-ref eopfwwergisvskxqvsqe`); future migrations apply via `supabase db push` after `repair --status applied <history>` if needed.
 
 Row shapes mirrored in [lib/data/types.ts](lib/data/types.ts). Schema is snake_case; keep DB columns and TS types in sync.
@@ -53,6 +55,7 @@ Multiple integrations write to the same `daily_logs` columns. Source-of-truth is
 - **WHOOP** ([lib/whoop.ts](lib/whoop.ts)) — owns `hrv`, `resting_hr`, `recovery`, `sleep_*`, `strain`, `spo2`, `skin_temp_c`. Vercel cron `/api/whoop/sync` runs daily at 08:00 UTC ([vercel.json](vercel.json)) authenticated via `CRON_SECRET`.
 - **Withings** ([lib/withings.ts](lib/withings.ts), merge logic in [lib/withings-merge.ts](lib/withings-merge.ts)) — owns body comp (`weight_kg`, `body_fat_pct`, `fat_mass_kg`, `fat_free_mass_kg`, `muscle_mass_kg`, `bone_mass_kg`, `hydration_kg`) + `exercise_min`. **MUST NOT overwrite** `steps`, `calories`, `active_calories`, `distance_km` — those are Apple Health's (Garmin-sourced, more accurate). The merge function comments this constraint; preserve it.
 - **Apple Health / Yazio / Strong** → single ingest webhook [app/api/ingest/health/route.ts](app/api/ingest/health/route.ts) with `?source=apple_health|yazio|strong`. Auth is per-user bearer tokens generated from `/profile` (hashed in DB, shown once). Strong CSV has its own endpoint [app/api/ingest/strong/route.ts](app/api/ingest/strong/route.ts), idempotent on `(user_id, external_id)`; CSV upload evicts the matching `strong-hk-<date>` HealthKit summary stub.
+- **Body measurements** ([components/health/MeasurementForm.tsx](components/health/MeasurementForm.tsx), API at [app/api/health/measurements/route.ts](app/api/health/measurements/route.ts)) — owns the 14 circumference fields on the `body_measurements` table. Distinct from Withings body composition (which writes to `daily_logs`); circumferences live in their own table because cadence is monthly and rows own a photo. Photos sit in the `health-photos` private Storage bucket under `${user_id}/measurements/...`.
 
 When adding a new metric, decide the owner first, then ensure no other sync path writes that column.
 
