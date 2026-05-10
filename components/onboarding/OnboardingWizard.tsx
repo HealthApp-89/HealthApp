@@ -17,7 +17,7 @@ import { StepLifestyle } from "@/components/onboarding/StepLifestyle";
 import { StepNutrition } from "@/components/onboarding/StepNutrition";    // Task 12
 import { StepSleep } from "@/components/onboarding/StepSleep";            // Task 12
 import { StepGoals } from "@/components/onboarding/StepGoals";            // Task 13
-// import { ReviewAndAcknowledge } from "@/components/onboarding/ReviewAndAcknowledge"; // Task 14
+import { ReviewAndAcknowledge } from "@/components/onboarding/ReviewAndAcknowledge"; // Task 14
 
 const TOTAL_STEPS = 6;
 
@@ -65,9 +65,6 @@ export function OnboardingWizard({ prefill, userId }: { prefill: WizardPrefill; 
       setStep(7); // review
     });
   }
-
-  // Suppress router until ReviewAndAcknowledge is re-enabled
-  void router;
 
   return (
     <div style={{ maxWidth: 640, margin: "0 auto", padding: "12px 16px 32px", color: COLOR.textStrong }}>
@@ -156,7 +153,6 @@ export function OnboardingWizard({ prefill, userId }: { prefill: WizardPrefill; 
           fieldErrors={fieldErrors}
         />
       )}
-      {/* step === 7 — ReviewAndAcknowledge (Task 14)
       {step === 7 && draftId && (
         <ReviewAndAcknowledge
           intake={intake}
@@ -166,7 +162,7 @@ export function OnboardingWizard({ prefill, userId }: { prefill: WizardPrefill; 
           onBack={() => setStep(6)}
           onAcknowledged={() => router.push("/profile")}
         />
-      )} */}
+      )}
     </div>
   );
 }
