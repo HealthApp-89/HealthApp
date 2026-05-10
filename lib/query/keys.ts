@@ -68,6 +68,9 @@ export const queryKeys = {
   blockProgress: {
     active: (userId: string) => ["block-progress", userId, "active"] as const,
   },
+  recentE1RMs: {
+    one: (userId: string) => ["recent-e1rms", userId] as const,
+  },
   athleteProfile: {
     /** Active acknowledged version for this user (status='active'). */
     active: (userId: string) => ["athlete-profile", userId, "active"] as const,
