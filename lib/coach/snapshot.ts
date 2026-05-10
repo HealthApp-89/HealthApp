@@ -12,6 +12,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { loadWorkouts } from "@/lib/data/workouts-server";
 import { nowInUserTz, relativeDateLabel, todayInUserTz } from "@/lib/time";
+import { renderProfileSummary } from "@/lib/coach/profile-renderer";
+import type { IntakePayload } from "@/lib/data/types";
 
 type ProfileRow = {
   name?: string | null;
@@ -81,7 +83,7 @@ export async function buildSnapshot(inputs: SnapshotInputs): Promise<SnapshotRes
     .order("date", { ascending: true });
   if (until) logsQ = logsQ.lte("date", until);
 
-  const [{ data: profile }, { data: logs }, allWorkouts] = await Promise.all([
+  const [{ data: profile }, { data: logs }, allWorkouts, { data: athleteProfileRow }] = await Promise.all([
     supabase
       .from("profiles")
       .select("name, goal, whoop_baselines, training_plan")
@@ -89,6 +91,12 @@ export async function buildSnapshot(inputs: SnapshotInputs): Promise<SnapshotRes
       .maybeSingle(),
     logsQ,
     loadWorkouts(userId),
+    supabase
+      .from("athlete_profile_documents")
+      .select("version, intake_payload")
+      .eq("user_id", userId)
+      .eq("status", "active")
+      .maybeSingle(),
   ]);
 
   const workouts = until
@@ -134,10 +142,16 @@ export async function buildSnapshot(inputs: SnapshotInputs): Promise<SnapshotRes
     .join("\n");
 
   const p = profile as ProfileRow;
+
+  const athleteProfileBlock = athleteProfileRow
+    ? `\n${renderProfileSummary(athleteProfileRow.intake_payload as IntakePayload, athleteProfileRow.version as number)}\n`
+    : "";
+
   const body = [
     `ATHLETE: ${p?.name ?? "Athlete"}. GOAL: "${p?.goal ?? "general health"}".`,
     `BASELINES: ${JSON.stringify(p?.whoop_baselines ?? {})}`,
     `TRAINING PLAN: ${JSON.stringify(p?.training_plan ?? {})}`,
+    athleteProfileBlock,
     ``,
     `DAILY LOGS (${since} → ${until ?? today}):`,
     logLines || `  (no logs in window)`,
