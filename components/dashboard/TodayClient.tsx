@@ -47,6 +47,7 @@ export function TodayClient({
   today,
   isToday,
   weeklyRollups,
+  bodyTile,
 }: {
   userId: string;
   userEmail: string | null;
@@ -57,6 +58,10 @@ export function TodayClient({
    *  WeeklyRollups is async and uses next/headers — it can't be imported
    *  into a Client Component, so the parent passes it as a child node. */
   weeklyRollups: ReactNode;
+  /** Pre-rendered BodyTile node from the Server Component parent.
+   *  BodyTile is async and uses Supabase server client — it can't be imported
+   *  into a Client Component, so the parent passes it as a child node. */
+  bodyTile: ReactNode;
 }) {
   const selectedYesterday = shiftIso(selectedDate, -1);
   const sevenDaysBefore = shiftIso(selectedDate, -7);
@@ -226,6 +231,8 @@ export function TodayClient({
         <CoachEntryCard headline={mode.desc} thumbnailColor={modeColorLight(mode.color)} thumbnailGlyph={"▲"} meta="Coach · 2 min read" />
 
         <RecentLiftsCard sessions={recentSessions} />
+
+        {bodyTile}
 
         <Suspense fallback={null}>{weeklyRollups}</Suspense>
       </div>

@@ -217,3 +217,53 @@ export type TrainingWeek = {
 // ── chat mode (extends existing ChatMessageRow) ──────────────────────────────
 
 export type ChatMode = "default" | "plan_week" | "setup_block";
+
+// ── body_measurements ────────────────────────────────────────────────────────
+
+/** Row shape for `body_measurements`. All circumference fields are nullable
+ *  to permit partial entry. `photo_path` is a Supabase Storage object key in
+ *  the `health-photos` bucket. */
+export type BodyMeasurement = {
+  id: string;
+  user_id: string;
+  measured_on: string; // YYYY-MM-DD
+  neck_cm: number | null;
+  left_upper_arm_cm: number | null;
+  right_upper_arm_cm: number | null;
+  chest_cm: number | null;
+  high_waist_cm: number | null;
+  mid_waist_cm: number | null;
+  low_waist_cm: number | null;
+  hips_cm: number | null;
+  left_thigh_cm: number | null;
+  left_thigh_min_cm: number | null;
+  right_thigh_cm: number | null;
+  right_thigh_min_cm: number | null;
+  left_calf_cm: number | null;
+  right_calf_cm: number | null;
+  photo_path: string | null;
+  notes: string | null;
+  created_at: string;
+};
+
+/** Field key list — the 14 circumference columns, in display order
+ *  (Upper → Core → Lower). Used by the form modal, the latest-measurement
+ *  table, and the trend config. */
+export const BODY_MEASUREMENT_FIELDS = [
+  "neck_cm",
+  "left_upper_arm_cm",
+  "right_upper_arm_cm",
+  "chest_cm",
+  "high_waist_cm",
+  "mid_waist_cm",
+  "low_waist_cm",
+  "hips_cm",
+  "left_thigh_cm",
+  "left_thigh_min_cm",
+  "right_thigh_cm",
+  "right_thigh_min_cm",
+  "left_calf_cm",
+  "right_calf_cm",
+] as const;
+
+export type BodyMeasurementField = (typeof BODY_MEASUREMENT_FIELDS)[number];
