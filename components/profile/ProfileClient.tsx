@@ -14,6 +14,7 @@ import { useWhoopTokens } from "@/lib/query/hooks/useWhoopTokens";
 import { useWithingsTokens } from "@/lib/query/hooks/useWithingsTokens";
 import { useIngestToken } from "@/lib/query/hooks/useIngestToken";
 import { useDailyLogs } from "@/lib/query/hooks/useDailyLogs";
+import { AthleteProfilePanel } from "@/components/profile/AthleteProfilePanel";
 
 export function ProfileClient({
   userId,
@@ -104,6 +105,11 @@ export function ProfileClient({
             system_prompt: profile?.system_prompt ?? null,
           }}
         />
+      </div>
+
+      <SectionLabel>Coaching plan</SectionLabel>
+      <div style={{ padding: "0 8px 14px" }}>
+        <AthleteProfilePanel userId={userId} />
       </div>
 
       <SectionLabel>Connected sources</SectionLabel>
