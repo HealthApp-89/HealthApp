@@ -2,6 +2,7 @@
 import type { IntakePayload } from "@/lib/data/types";
 import { Group, Select, TextField, TextArea } from "@/components/onboarding/_fields";
 import { WizardNav } from "@/components/onboarding/WizardNav";
+import { COLOR } from "@/lib/ui/theme";
 
 type V = IntakePayload["nutrition"];
 
@@ -24,7 +25,7 @@ export function StepNutrition({
   return (
     <section>
       <h2 style={{ fontSize: 18, fontWeight: 600, margin: "16px 0 4px" }}>Nutrition baseline</h2>
-      <p style={{ fontSize: 12, color: "var(--color-text-muted, #888)", marginBottom: 12 }}>
+      <p style={{ fontSize: 12, color: COLOR.textMuted, marginBottom: 12 }}>
         Pre-filled from your last 7 days of Yazio data where available. Tweak as needed.
       </p>
 

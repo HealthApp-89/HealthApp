@@ -6,12 +6,14 @@ import { COLOR } from "@/lib/ui/theme";
 import type { IntakePayload } from "@/lib/data/types";
 import { renderProfileMarkdown } from "@/lib/coach/profile-renderer";
 import { acknowledgeDraft, discardDraft } from "@/app/onboarding/actions";
+import { queryKeys } from "@/lib/query/keys";
 
 export function ReviewAndAcknowledge({
   intake,
   draftId,
   version,
   supersedesVersion,
+  userId,
   onBack,
   onAcknowledged,
 }: {
@@ -19,6 +21,7 @@ export function ReviewAndAcknowledge({
   draftId: string;
   version: number;
   supersedesVersion: number | null;
+  userId: string;
   onBack: () => void;
   onAcknowledged: () => void;
 }) {
@@ -50,7 +53,7 @@ export function ReviewAndAcknowledge({
         return;
       }
       // Invalidate all athleteProfile cache for this user-scope.
-      queryClient.invalidateQueries({ queryKey: ["athlete-profile"] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.athleteProfile.all(userId) });
       onAcknowledged();
     });
   }
@@ -63,7 +66,7 @@ export function ReviewAndAcknowledge({
         setError(r.error);
         return;
       }
-      queryClient.invalidateQueries({ queryKey: ["athlete-profile"] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.athleteProfile.all(userId) });
       onAcknowledged();
     });
   }

@@ -32,7 +32,7 @@ export function AthleteProfilePanel({ userId }: { userId: string }) {
               </div>
             </div>
             <Link
-              href={draft.id ? `/onboarding` : "/onboarding"}
+              href="/onboarding"
               style={{
                 padding: "6px 12px",
                 background: COLOR.accent,
@@ -95,7 +95,7 @@ export function AthleteProfilePanel({ userId }: { userId: string }) {
               <button type="button" onClick={() => setViewing(active)} style={btn("secondary")}>
                 View
               </button>
-              <Link href={`/onboarding?revise=${active.id}`} style={btn("primary") as React.CSSProperties as never}>
+              <Link href={`/onboarding?revise=${active.id}`} style={btn("primary")}>
                 Revise
               </Link>
             </div>

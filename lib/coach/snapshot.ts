@@ -143,15 +143,13 @@ export async function buildSnapshot(inputs: SnapshotInputs): Promise<SnapshotRes
 
   const p = profile as ProfileRow;
 
-  const athleteProfileBlock = athleteProfileRow
-    ? `\n${renderProfileSummary(athleteProfileRow.intake_payload as IntakePayload, athleteProfileRow.version as number)}\n`
-    : "";
-
   const body = [
     `ATHLETE: ${p?.name ?? "Athlete"}. GOAL: "${p?.goal ?? "general health"}".`,
     `BASELINES: ${JSON.stringify(p?.whoop_baselines ?? {})}`,
     `TRAINING PLAN: ${JSON.stringify(p?.training_plan ?? {})}`,
-    athleteProfileBlock,
+    ...(athleteProfileRow
+      ? [``, renderProfileSummary(athleteProfileRow.intake_payload as IntakePayload, athleteProfileRow.version as number)]
+      : []),
     ``,
     `DAILY LOGS (${since} → ${until ?? today}):`,
     logLines || `  (no logs in window)`,

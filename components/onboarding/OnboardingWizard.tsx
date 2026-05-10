@@ -159,6 +159,7 @@ export function OnboardingWizard({ prefill, userId }: { prefill: WizardPrefill; 
           draftId={draftId}
           version={prefill.nextVersion}
           supersedesVersion={prefill.supersedesVersion}
+          userId={userId}
           onBack={() => setStep(6)}
           onAcknowledged={() => router.push("/profile")}
         />
