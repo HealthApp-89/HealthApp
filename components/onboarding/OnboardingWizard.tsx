@@ -16,7 +16,7 @@ import { StepTraining } from "@/components/onboarding/StepTraining";
 import { StepLifestyle } from "@/components/onboarding/StepLifestyle";
 import { StepNutrition } from "@/components/onboarding/StepNutrition";    // Task 12
 import { StepSleep } from "@/components/onboarding/StepSleep";            // Task 12
-// import { StepGoals } from "@/components/onboarding/StepGoals";            // Task 13
+import { StepGoals } from "@/components/onboarding/StepGoals";            // Task 13
 // import { ReviewAndAcknowledge } from "@/components/onboarding/ReviewAndAcknowledge"; // Task 14
 
 const TOTAL_STEPS = 6;
@@ -66,10 +66,6 @@ export function OnboardingWizard({ prefill, userId }: { prefill: WizardPrefill; 
     });
   }
 
-  // Suppress unused-variable warning for goToReview until Step 6 is re-enabled
-  void goToReview;
-  // Suppress isPending until Step 6 is re-enabled
-  void isPending;
   // Suppress router until ReviewAndAcknowledge is re-enabled
   void router;
 
@@ -147,7 +143,6 @@ export function OnboardingWizard({ prefill, userId }: { prefill: WizardPrefill; 
           fieldErrors={fieldErrors}
         />
       )}
-      {/* step === 6 — StepGoals (Task 13)
       {step === 6 && (
         <StepGoals
           value={intake.goals}
@@ -160,7 +155,7 @@ export function OnboardingWizard({ prefill, userId }: { prefill: WizardPrefill; 
           totalSteps={TOTAL_STEPS}
           fieldErrors={fieldErrors}
         />
-      )} */}
+      )}
       {/* step === 7 — ReviewAndAcknowledge (Task 14)
       {step === 7 && draftId && (
         <ReviewAndAcknowledge
