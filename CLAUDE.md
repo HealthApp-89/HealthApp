@@ -32,6 +32,8 @@ Apply in order via Supabase Dashboard → SQL Editor:
 
 8. [supabase/migrations/0009_body_measurements.sql](supabase/migrations/0009_body_measurements.sql) — adds `body_measurements` (monthly circumference rows, 14 numeric fields + `photo_path` + `notes`, unique on `(user_id, measured_on)`); also requires the `health-photos` private Storage bucket created beforehand (Storage RLS policies attach to it)
 
+9. [supabase/migrations/0010_athlete_profile.sql](supabase/migrations/0010_athlete_profile.sql) — adds `athlete_profile_documents` (versioned, user-acknowledged athlete profile capturing medical/training/lifestyle/nutrition/sleep baselines + goal-with-why) for the Phase 1 onboarding wizard. `plan_payload` and `rendered_md` columns are nullable in Phase 1; Phase 2 populates them when AI plan generation lands.
+
 `supabase` CLI is now linked (`supabase link --project-ref eopfwwergisvskxqvsqe`); future migrations apply via `supabase db push` after `repair --status applied <history>` if needed.
 
 Row shapes mirrored in [lib/data/types.ts](lib/data/types.ts). Schema is snake_case; keep DB columns and TS types in sync.
@@ -86,6 +88,7 @@ Every page that fetches per-user data follows the **hybrid SSR-hydrate** pattern
 - [lib/anthropic/client.ts](lib/anthropic/client.ts) — server-side Anthropic SDK. The key is `ANTHROPIC_API_KEY` (never `NEXT_PUBLIC_*`); the prototype exposed it to the browser, the port intentionally moves it server-side.
 - [lib/coach/](lib/coach/) — `readiness.ts` (daily plan), `impact.ts` (per-metric +/− contributions to readiness), `week.ts`, `sessionPlans.ts`, `prompts.ts`. Pure functions; UI consumes the outputs.
 - **Weekly planning v1**: `training_blocks` (5-week mesocycles) + `training_weeks` (committed Sunday plans) drive the strength tab via [lib/coach/planning-prompts.ts](lib/coach/planning-prompts.ts) and the chat `mode` discriminator (`default|plan_week|setup_block`). Conversation produces structured plans via propose_*/commit_* tools gated by HMAC approval tokens (`COACH_TOOL_SECRET` env). Body-comp-aware progress metrics (strength-per-LBM, allometric, IPF GL) computed on demand in [lib/coach/progress-metrics.ts](lib/coach/progress-metrics.ts) — no `progress_metrics` table in v1.
+- **Athlete profile (Phase 1)**: `athlete_profile_documents` is the durable client file — medical history, equipment, lifestyle, goal narrative, nutrition + sleep baselines, all captured via the 6-step `/onboarding` wizard. Acknowledged versions are immutable; revisions create v2/v3/etc. with the prior version superseded. The active version's summary is injected into the coach AI's snapshot prefix via `renderProfileSummary` in [lib/coach/profile-renderer.ts](lib/coach/profile-renderer.ts). Phase 2 will add AI plan generation (prescriptions for sleep/nutrition/strength) on top.
 
 ### UI conventions
 

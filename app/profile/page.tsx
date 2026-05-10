@@ -8,6 +8,7 @@ import { fetchWhoopTokensServer } from "@/lib/query/fetchers/whoopTokens";
 import { fetchWithingsTokensServer } from "@/lib/query/fetchers/withingsTokens";
 import { fetchIngestTokenServer } from "@/lib/query/fetchers/ingestToken";
 import { fetchDailyLogsServer } from "@/lib/query/fetchers/dailyLogs";
+import { fetchActiveProfileServer, fetchProfileHistoryServer, fetchDraftProfileServer } from "@/lib/query/fetchers/athleteProfile";
 import { ProfileClient } from "@/components/profile/ProfileClient";
 
 export const revalidate = 60;
@@ -49,6 +50,18 @@ export default async function ProfilePage() {
     queryClient.prefetchQuery({
       queryKey: queryKeys.dailyLogs.range(user.id, BASELINE_FROM, today),
       queryFn: () => fetchDailyLogsServer(supabase, user.id, BASELINE_FROM, today),
+    }),
+    queryClient.prefetchQuery({
+      queryKey: queryKeys.athleteProfile.active(user.id),
+      queryFn: () => fetchActiveProfileServer(supabase, user.id),
+    }),
+    queryClient.prefetchQuery({
+      queryKey: queryKeys.athleteProfile.history(user.id),
+      queryFn: () => fetchProfileHistoryServer(supabase, user.id),
+    }),
+    queryClient.prefetchQuery({
+      queryKey: queryKeys.athleteProfile.draft(user.id),
+      queryFn: () => fetchDraftProfileServer(supabase, user.id),
     }),
   ]);
 

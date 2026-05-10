@@ -68,4 +68,20 @@ export const queryKeys = {
   blockProgress: {
     active: (userId: string) => ["block-progress", userId, "active"] as const,
   },
+  recentE1RMs: {
+    one: (userId: string, today: string) =>
+      ["recent-e1rms", userId, today] as const,
+  },
+  athleteProfile: {
+    /** Active acknowledged version for this user (status='active'). */
+    active: (userId: string) => ["athlete-profile", userId, "active"] as const,
+    /** All non-discarded versions for this user, ordered version desc. */
+    history: (userId: string) => ["athlete-profile", userId, "history"] as const,
+    /** Current draft, if any (status='draft'). */
+    draft: (userId: string) => ["athlete-profile", userId, "draft"] as const,
+    /** Single document by id (used by ViewModal for any version). */
+    one: (userId: string, id: string) => ["athlete-profile", userId, "one", id] as const,
+    /** Wide invalidation prefix — use after any write. */
+    all: (userId: string) => ["athlete-profile", userId] as const,
+  },
 } as const;
