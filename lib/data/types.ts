@@ -267,3 +267,130 @@ export const BODY_MEASUREMENT_FIELDS = [
 ] as const;
 
 export type BodyMeasurementField = (typeof BODY_MEASUREMENT_FIELDS)[number];
+
+// ── Athlete profile (Phase 1) ────────────────────────────────────────────────
+
+export type AthleteProfileStatus = "draft" | "active" | "superseded" | "discarded";
+
+/** Phase 1 intake_payload shape. Phase 2 will add `goal_narrative_chat`,
+ *  `coaching_preferences`, and `free_form_constraints` slots populated by the
+ *  chat mode; those keys are reserved-absent in Phase 1.
+ *
+ *  Schema is snake_case to mirror what gets stored in Postgres jsonb.
+ *  `schema_version` discriminates future migrations of this shape. */
+export type IntakePayload = {
+  schema_version: 1;
+  health: {
+    conditions: {
+      cardiac: boolean;
+      hypertension: boolean;
+      diabetes: "none" | "type1" | "type2" | "prediabetic";
+      autoimmune: boolean;
+      joint_surgeries: Array<{ joint: string; year: number; notes?: string }>;
+      other: string;
+    };
+    medications: string;
+    recent_illness_injury: string;
+    active_injuries: Array<{ joint: string; restriction: string }>;
+    allergies: string;
+  };
+  training: {
+    years_lifting: number;
+    training_age: "beginner" | "intermediate" | "advanced";
+    sessions_per_week: number;
+    typical_session_minutes: number;
+    equipment: {
+      barbell: boolean;
+      rack: boolean;
+      bench: boolean;
+      dumbbells: boolean;
+      cables: boolean;
+      machines: boolean;
+      platform: boolean;
+      ghd: boolean;
+      sled: boolean;
+      treadmill: boolean;
+      rower: boolean;
+      bike: boolean;
+      kettlebells: boolean;
+      bands: boolean;
+      other: string;
+    };
+    current_e1rm: {
+      squat: number | null;
+      bench: number | null;
+      deadlift: number | null;
+      ohp: number | null;
+    };
+    best_ever_pr: {
+      squat: number | null;
+      bench: number | null;
+      deadlift: number | null;
+      ohp: number | null;
+    };
+    previous_programs: string;
+    recent_plateaus: string;
+  };
+  lifestyle: {
+    job_demands: "sedentary" | "mixed" | "active" | "labor";
+    commute_minutes: number;
+    has_dependents: boolean;
+    dependent_notes: string;
+    stress_self_rating: 1 | 2 | 3 | 4 | 5;
+    days_available: {
+      mon: boolean;
+      tue: boolean;
+      wed: boolean;
+      thu: boolean;
+      fri: boolean;
+      sat: boolean;
+      sun: boolean;
+    };
+    earliest_session_time: string; // "HH:mm"
+    latest_session_time: string; // "HH:mm"
+    travel_frequency: "none" | "rare" | "monthly" | "weekly";
+  };
+  nutrition: {
+    current_phase: "cut" | "maintain" | "lean_bulk" | "recomp" | "unsure";
+    current_kcal: number;
+    current_macros: { protein_g: number; carb_g: number; fat_g: number };
+    tracking_experience: "none" | "on_off" | "consistent";
+    restrictions: string;
+    alcohol_drinks_per_week: number;
+    caffeine_mg_per_day: number;
+    supplements: string;
+  };
+  sleep_recovery: {
+    avg_sleep_hours: number;
+    typical_bedtime: string; // "HH:mm"
+    typical_wake_time: string; // "HH:mm"
+    sleep_latency_minutes: number;
+    awakenings: "none" | "1_2" | "3_plus";
+    mobility_work: string;
+    soreness_frequency: "rare" | "common" | "always";
+  };
+  goals: {
+    primary_type: "strength" | "body_comp" | "performance" | "health";
+    primary_metric: string;
+    target_value: number;
+    target_unit: string;
+    target_date: string; // "YYYY-MM-DD"
+    why_narrative: string;
+  };
+};
+
+/** Row mirror of public.athlete_profile_documents. */
+export type AthleteProfileDocument = {
+  id: string;
+  user_id: string;
+  version: number;
+  status: AthleteProfileStatus;
+  intake_payload: IntakePayload;
+  plan_payload: unknown | null; // populated in Phase 2
+  rendered_md: string | null;
+  acknowledged_at: string | null;
+  superseded_at: string | null;
+  superseded_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
