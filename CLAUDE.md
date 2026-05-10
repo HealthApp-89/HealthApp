@@ -32,6 +32,8 @@ Apply in order via Supabase Dashboard → SQL Editor:
 
 8. [supabase/migrations/0009_body_measurements.sql](supabase/migrations/0009_body_measurements.sql) — adds `body_measurements` (monthly circumference rows, 14 numeric fields + `photo_path` + `notes`, unique on `(user_id, measured_on)`); also requires the `health-photos` private Storage bucket created beforehand (Storage RLS policies attach to it)
 
+9. [supabase/migrations/0010_athlete_profile.sql](supabase/migrations/0010_athlete_profile.sql) — adds `athlete_profile_documents` (versioned, user-acknowledged athlete profile capturing medical/training/lifestyle/nutrition/sleep baselines + goal-with-why) for the Phase 1 onboarding wizard. `plan_payload` and `rendered_md` columns are nullable in Phase 1; Phase 2 populates them when AI plan generation lands.
+
 `supabase` CLI is now linked (`supabase link --project-ref eopfwwergisvskxqvsqe`); future migrations apply via `supabase db push` after `repair --status applied <history>` if needed.
 
 Row shapes mirrored in [lib/data/types.ts](lib/data/types.ts). Schema is snake_case; keep DB columns and TS types in sync.
