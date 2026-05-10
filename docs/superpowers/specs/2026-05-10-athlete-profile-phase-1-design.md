@@ -259,11 +259,11 @@ export type IntakePayload = {
 };
 ```
 
-### Migration: `supabase/migrations/0009_athlete_profile.sql`
+### Migration: `supabase/migrations/0010_athlete_profile.sql`
 
 Single migration. Apply via `supabase db push` (CLI is linked per CLAUDE.md). The full schema above lives in this single file.
 
-**Migration-numbering note:** if the in-flight health-tab PR introduces a migration that claims `0009`, this spec's migration becomes `0010` and the file is renamed at implementation time. No design impact.
+**Migration-numbering note:** confirmed during pre-implementation re-scan (2026-05-10). Health-tab merged with `0009_body_measurements.sql`, so this spec's migration is `0010_athlete_profile.sql`. No further design impact.
 
 ## Form wizard (6 steps)
 
@@ -573,7 +573,7 @@ Section label uses the existing `SectionLabel` component pattern in `ProfileClie
 ### To create
 
 ```
-supabase/migrations/0009_athlete_profile.sql
+supabase/migrations/0010_athlete_profile.sql
 
 app/onboarding/page.tsx
 app/onboarding/loading.tsx
