@@ -12,8 +12,8 @@ import {
   updateDraftProfile,
 } from "@/app/onboarding/actions";
 import { StepHealth } from "@/components/onboarding/StepHealth";
-// import { StepTraining } from "@/components/onboarding/StepTraining";      // Task 11
-// import { StepLifestyle } from "@/components/onboarding/StepLifestyle";    // Task 12
+import { StepTraining } from "@/components/onboarding/StepTraining";
+import { StepLifestyle } from "@/components/onboarding/StepLifestyle";
 // import { StepNutrition } from "@/components/onboarding/StepNutrition";    // Task 12
 // import { StepSleep } from "@/components/onboarding/StepSleep";            // Task 13
 // import { StepGoals } from "@/components/onboarding/StepGoals";            // Task 13
@@ -102,7 +102,6 @@ export function OnboardingWizard({ prefill, userId }: { prefill: WizardPrefill; 
           fieldErrors={fieldErrors}
         />
       )}
-      {/* step === 2 — StepTraining (Task 11)
       {step === 2 && (
         <StepTraining
           value={intake.training}
@@ -114,8 +113,7 @@ export function OnboardingWizard({ prefill, userId }: { prefill: WizardPrefill; 
           totalSteps={TOTAL_STEPS}
           fieldErrors={fieldErrors}
         />
-      )} */}
-      {/* step === 3 — StepLifestyle (Task 12)
+      )}
       {step === 3 && (
         <StepLifestyle
           value={intake.lifestyle}
@@ -126,7 +124,7 @@ export function OnboardingWizard({ prefill, userId }: { prefill: WizardPrefill; 
           totalSteps={TOTAL_STEPS}
           fieldErrors={fieldErrors}
         />
-      )} */}
+      )}
       {/* step === 4 — StepNutrition (Task 12)
       {step === 4 && (
         <StepNutrition
