@@ -6,6 +6,7 @@ import { WeekStrip } from "@/components/layout/WeekStrip";
 import { ReadinessHero } from "@/components/dashboard/ReadinessHero";
 import { CoachEntryCard } from "@/components/dashboard/CoachEntryCard";
 import { RecentLiftsCard, type RecentSession } from "@/components/dashboard/RecentLiftsCard";
+import { BodyTile } from "@/components/dashboard/BodyTile";
 import { MetricCard } from "@/components/charts/MetricCard";
 import { ImpactDonut } from "@/components/dashboard/ImpactDonut";
 import { InstallHint } from "@/components/layout/InstallHint";
@@ -226,6 +227,8 @@ export function TodayClient({
         <CoachEntryCard headline={mode.desc} thumbnailColor={modeColorLight(mode.color)} thumbnailGlyph={"▲"} meta="Coach · 2 min read" />
 
         <RecentLiftsCard sessions={recentSessions} />
+
+        <BodyTile userId={userId} />
 
         <Suspense fallback={null}>{weeklyRollups}</Suspense>
       </div>
