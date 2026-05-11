@@ -156,8 +156,23 @@ export async function fetchBriefInputs(
   let sessionType: string;
   let intensityModifier: IntensityModifier = {};
   if (trainingWeek && isWeekStartCoveringToday(trainingWeek.week_start, today)) {
-    const sessionPlan = (trainingWeek.session_plan ?? {}) as Record<Weekday, string>;
-    sessionType = sessionPlan[sessionKey] ?? WEEKLY_SESSIONS[weeklyKey] ?? "REST";
+    // NOTE: session_plan key convention is inconsistent in this codebase.
+    // - supabase/migrations/0008_weekly_planning.sql comment says 3-letter ("Mon")
+    // - lib/data/types.ts:Weekday is "Mon" | "Tue" | ...
+    // - components/coach/WeekPlanCard.tsx reads with 3-letter keys (likely broken
+    //   against current live data)
+    // - The chat coach's PLAN_WEEK_PROMPT committed with full names ("Monday")
+    // We try both forms to be safe. Long-term, normalize on one convention and
+    // migrate existing rows.
+    const sessionPlan = (trainingWeek.session_plan ?? {}) as Record<string, string>;
+    // Try full weekday name first (current live data convention from the AI
+    // planning bot), then 3-letter abbreviation (migration spec convention),
+    // then fall back to the static WEEKLY_SESSIONS map.
+    sessionType =
+      sessionPlan[weeklyKey] ??
+      sessionPlan[sessionPlanKey(weeklyKey)] ??
+      WEEKLY_SESSIONS[weeklyKey] ??
+      "REST";
     intensityModifier = (trainingWeek.intensity_modifier ?? {}) as IntensityModifier;
   } else {
     sessionType = WEEKLY_SESSIONS[weeklyKey] ?? "REST";
