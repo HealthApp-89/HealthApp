@@ -1930,11 +1930,8 @@ export async function executeProposePlan(opts: {
     };
   }
 
-  // Render markdown. TODO Task 14: switch to plan-aware signature once
-  // renderProfileMarkdown is extended to accept { intake, plan, version,
-  // acknowledgedAt }. For now the Phase 1 signature renders intake only;
-  // plan_payload is still persisted to the row for Phase 2 readers.
-  const renderedMd = renderProfileMarkdown(intake, draft.version as number, null, null);
+  // Render markdown with the generated plan payload.
+  const renderedMd = renderProfileMarkdown({ intake, plan: plan_payload, version: draft.version as number, acknowledgedAt: null, supersedesVersion: null });
 
   const { error: updErr } = await opts.supabase
     .from("athlete_profile_documents")

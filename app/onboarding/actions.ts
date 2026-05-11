@@ -254,7 +254,7 @@ export async function renderDraftMarkdown(
   // wizard is a client component and we want the function importable
   // without bundling it into the client. The "use server" file scope
   // ensures only the result crosses the wire.
-  return renderProfileMarkdown(intake, version, null, supersedesVersion);
+  return renderProfileMarkdown({ intake, plan: null, version, acknowledgedAt: null, supersedesVersion });
 }
 
 /** Read helper used by the wizard to determine what version the next draft
