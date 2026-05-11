@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { COLOR } from "@/lib/ui/theme";
+import { readSessionForDay } from "@/lib/coach/session-plan-reader";
 import type { Weekday } from "@/lib/data/types";
 
 const ORDER: Weekday[] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -55,7 +56,7 @@ export function WeekPlanProposalCard({
       </div>
       <div style={{ marginTop: "8px" }}>
         {ORDER.map((d) => {
-          const t = proposal.session_plan[d] ?? "—";
+          const t = readSessionForDay(proposal.session_plan, d) ?? "—";
           const isRest = t.toLowerCase().includes("rest") || t === "—";
           return (
             <div

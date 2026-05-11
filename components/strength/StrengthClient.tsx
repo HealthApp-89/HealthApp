@@ -25,6 +25,7 @@ import { useProfile } from "@/lib/query/hooks/useProfile";
 import { useTrainingWeek } from "@/lib/query/hooks/useTrainingWeek";
 import { weekdayInUserTz } from "@/lib/time";
 import { queryKeys } from "@/lib/query/keys";
+import { readSessionForDay } from "@/lib/coach/session-plan-reader";
 import type { DailyLog, Weekday } from "@/lib/data/types";
 
 type View = "today" | "recent" | "date";
@@ -106,7 +107,7 @@ export function StrengthClient({
     Friday: "Fri", Saturday: "Sat", Sunday: "Sun",
   };
   const todayWeekdayKey = WEEKDAY_MAP[weekdayInUserTz()];
-  const committedSessionType = committedWeek?.session_plan?.[todayWeekdayKey] ?? null;
+  const committedSessionType = readSessionForDay(committedWeek?.session_plan ?? null, todayWeekdayKey) ?? null;
   const committedRirTarget   = committedWeek?.rir_target ?? null;
   const committedPhase       = committedWeek?.research_phase ?? null;
 

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Card, SectionLabel } from "@/components/ui/Card";
 import { COLOR } from "@/lib/ui/theme";
 import { useTrainingWeek } from "@/lib/query/hooks/useTrainingWeek";
+import { readSessionForDay } from "@/lib/coach/session-plan-reader";
 import type { Weekday } from "@/lib/data/types";
 
 const ORDER: Weekday[] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -27,7 +28,7 @@ export function WeekPlanCard({
 
       <div style={{ marginTop: "10px" }}>
         {ORDER.map((d) => {
-          const t = week.session_plan[d] ?? "—";
+          const t = readSessionForDay(week.session_plan, d) ?? "—";
           const isRest = t.toLowerCase().includes("rest") || t === "—";
           return (
             <div
