@@ -110,7 +110,7 @@ with mode='append'.
 Four quick chip turns (rapid, ~1 turn each):
   Turn 1: "How direct do you want me to be?" [blunt / balanced / softer]
           → set_directness(value)
-  Turn 2: "Check-in cadence?" [daily / weekly / on-demand]
+  Turn 2: "Check-in cadence?" [daily / weekly / on_demand]
           → set_cadence(value)
   Turn 3: "Are you a morning person or night owl?" [lark / neutral / owl]
           → set_chronotype(value)
