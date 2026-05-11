@@ -176,11 +176,9 @@ export async function buildSystemPrompt(args: {
   } else if (args.mode === "setup_block") {
     sections.push(SETUP_BLOCK_PROMPT);
   } else if (args.mode === "intake") {
+    sections.push(INTAKE_PROMPT);
     const intakeCtx = await fetchIntakeContext(args.supabase, args.userId);
-    if (intakeCtx) {
-      sections.push(INTAKE_PROMPT);
-      sections.push(intakeCtx);
-    }
+    if (intakeCtx) sections.push(intakeCtx);
   }
 
   return sections.join("\n\n---\n\n");
@@ -263,11 +261,14 @@ async function fetchIntakeContext(
 
   const intake = draft.intake_payload as IntakePayload;
 
-  // Pull supporting data for sanity checks
+  // Pull supporting data for sanity checks. Anchor the 8-day window to the
+  // user's local "today" rather than UTC now, matching how the other helpers
+  // in this file compute date bounds (consistency + correctness for users in
+  // non-UTC timezones near midnight).
   const today = todayInUserTz();
-  const eightDaysAgo = new Date();
-  eightDaysAgo.setUTCDate(eightDaysAgo.getUTCDate() - 8);
-  const sinceDate = eightDaysAgo.toISOString().slice(0, 10);
+  const sinceDate = new Date(new Date(today).getTime() - 8 * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
 
   const { data: logs } = await supabase
     .from("daily_logs")
