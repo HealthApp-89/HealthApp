@@ -119,10 +119,24 @@ export async function POST(request: Request) {
         if (k === "date") continue;
         if (!ALLOWED_DAY_FIELDS.has(k)) continue;
         if (v === null || v === undefined) continue;
-        if (INT_DAY_FIELDS.has(k) && typeof v === "number") {
-          row[k] = Math.round(v);
+        // iOS Shortcuts often serializes Dictionary values as JSON strings
+        // even when the underlying HealthKit Magic Variable is numeric (e.g.
+        // `"8421"` for steps). Coerce numeric strings up-front so a Postgres
+        // type-mismatch on one field doesn't 500 the entire batch. Empty
+        // strings (an empty HealthKit sample) are dropped rather than written
+        // as NaN. `notes` is the only ALLOWED_DAY_FIELDS member that stays
+        // textual; everything else maps to a numeric column.
+        let val: unknown = v;
+        if (typeof v === "string" && k !== "notes") {
+          if (v.trim() === "") continue;
+          const n = Number(v);
+          if (!Number.isFinite(n)) continue;
+          val = n;
+        }
+        if (INT_DAY_FIELDS.has(k) && typeof val === "number") {
+          row[k] = Math.round(val);
         } else {
-          row[k] = v;
+          row[k] = val;
         }
       }
       rows.push(row);
@@ -131,7 +145,13 @@ export async function POST(request: Request) {
       const { error } = await sr
         .from("daily_logs")
         .upsert(rows, { onConflict: "user_id,date" });
-      if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+      if (error) {
+        // Surface the Postgres error in Vercel logs — Shortcuts swallows the
+        // 500 response body unless the user added a "Show Result" step, so
+        // without this an iOS-side type bug is invisible.
+        console.error("[ingest/health] daily_logs upsert failed:", error.message, "rows:", rows);
+        return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+      }
       result.days_upserted = rows.length;
     }
   }
@@ -155,8 +175,18 @@ export async function POST(request: Request) {
       for (const [k, v] of Object.entries(w)) {
         if (!ALLOWED_WORKOUT_FIELDS.has(k)) continue;
         if (v === null || v === undefined) continue;
-        if (k === "duration_min" && typeof v === "number") {
-          row[k] = Math.round(v);
+        // Same Shortcuts stringification quirk as the days loop above: a
+        // stringified `duration_min` from a Magic Variable would otherwise
+        // 500 the workouts upsert against the int column.
+        if (k === "duration_min") {
+          let n: number | null = null;
+          if (typeof v === "number") n = v;
+          else if (typeof v === "string" && v.trim() !== "") {
+            const parsed = Number(v);
+            if (Number.isFinite(parsed)) n = parsed;
+          }
+          if (n === null) continue;
+          row[k] = Math.round(n);
         } else {
           row[k] = v;
         }
@@ -167,7 +197,10 @@ export async function POST(request: Request) {
       const { error } = await sr
         .from("workouts")
         .upsert(rows, { onConflict: "user_id,external_id" });
-      if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+      if (error) {
+        console.error("[ingest/health] workouts upsert failed:", error.message, "rows:", rows);
+        return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+      }
       result.workouts_upserted = rows.length;
     }
   }
