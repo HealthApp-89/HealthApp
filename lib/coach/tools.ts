@@ -19,7 +19,9 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { signApprovalToken, verifyApprovalToken } from "@/lib/coach/approval-token";
-import type { TrainingBlock, TrainingWeek } from "@/lib/data/types";
+import type { IntakePayload, PlanPayload, TrainingBlock, TrainingWeek } from "@/lib/data/types";
+import { buildPlanPayload } from "@/lib/coach/plan-builder";
+import { renderProfileMarkdown } from "@/lib/coach/profile-renderer";
 import {
   epley,
   hardSetCount,
@@ -1091,7 +1093,7 @@ type ProposeWeekPlanInput = {
 // Next.js routes share the same Node process for sequential requests within a
 // short window, so the propose_* result can be retrieved by the matching commit_*
 // call in the next assistant turn without a DB round-trip.
-const _proposalCache = new Map<string, { kind: "block" | "week"; payload: unknown }>();
+const _proposalCache = new Map<string, { kind: "block" | "week" | "plan"; payload: unknown }>();
 
 // ── propose_block executor ────────────────────────────────────────────────────
 
@@ -1282,5 +1284,785 @@ export async function executeCommitWeekPlan(opts: {
     ok: true,
     data: data as TrainingWeek,
     meta: { ms: Date.now() - t0, result_rows: 1, range_days: 7, truncated: false },
+  };
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Phase 2 — coaching plan intake tools
+// ────────────────────────────────────────────────────────────────────────────
+//
+// All Phase 2 tools write to the user's draft athlete_profile_documents row.
+// The route handler resolves draftDocId from the chat session and injects it
+// alongside userId. Security invariants (mirror the file-header rules):
+//   - Tool input schemas NEVER include user_id or draft_doc_id; both are
+//     route-injected. The model cannot supply them.
+//   - Every query is triple-scoped: .eq("id", draftDocId), .eq("user_id",
+//     userId), .eq("status", "draft"). This blocks cross-user / wrong-doc /
+//     already-acknowledged writes even if the doc id somehow leaked.
+//   - Input enum/type validation runs BEFORE any query.
+
+// ── Beat 1: Sanity correction tools (no HMAC — single-field writes) ─────────
+
+export const APPLY_GOAL_TARGET_TOOL = {
+  name: "apply_goal_target",
+  description:
+    "Beat 1 sanity-correction tool. Apply a corrected goal target (from the goal_contradiction finding's proposed_target) to intake_payload.goals. Use when user taps 'Use proposed target' chip.",
+  input_schema: {
+    type: "object" as const,
+    required: ["target_value", "target_unit", "rationale"],
+    properties: {
+      target_value: { type: "number", minimum: 0 },
+      target_unit: { type: "string", minLength: 1, maxLength: 16 },
+      rationale: {
+        type: "string",
+        minLength: 1,
+        maxLength: 500,
+        description: "Brief rationale (1 sentence) appended to goals.why_narrative as audit trail.",
+      },
+    },
+  },
+};
+
+export const APPLY_BEDTIME_CORRECTION_TOOL = {
+  name: "apply_bedtime_correction",
+  description:
+    "Beat 1 sanity-correction tool. Apply a corrected typical_bedtime (from the sleep_efficiency finding's proposed_bedtime) to intake_payload.sleep_recovery.",
+  input_schema: {
+    type: "object" as const,
+    required: ["typical_bedtime"],
+    properties: {
+      typical_bedtime: {
+        type: "string",
+        pattern: "^([01]\\d|2[0-3]):[0-5]\\d$",
+        description: "HH:MM in 24-hour format.",
+      },
+    },
+  },
+};
+
+export const APPLY_MACROS_CORRECTION_TOOL = {
+  name: "apply_macros_correction",
+  description:
+    "Beat 1 sanity-correction tool. Apply corrected macros (from the macros_gap finding) to intake_payload.nutrition. Either 'match actual' (uses rolling 7d kcal) or 'hit target' (keeps stated values).",
+  input_schema: {
+    type: "object" as const,
+    required: ["kcal", "protein_g", "carb_g", "fat_g"],
+    properties: {
+      kcal: { type: "number", minimum: 0 },
+      protein_g: { type: "number", minimum: 0 },
+      carb_g: { type: "number", minimum: 0 },
+      fat_g: { type: "number", minimum: 0 },
+    },
+  },
+};
+
+export const APPLY_PROTEIN_CORRECTION_TOOL = {
+  name: "apply_protein_correction",
+  description:
+    "Beat 1 sanity-correction tool. Apply corrected protein + fat (from protein_floor finding) to intake_payload.nutrition.current_macros. Keeps kcal stable.",
+  input_schema: {
+    type: "object" as const,
+    required: ["protein_g", "fat_g"],
+    properties: {
+      protein_g: { type: "number", minimum: 0 },
+      fat_g: { type: "number", minimum: 0 },
+    },
+  },
+};
+
+const SANITY_OVERRIDE_KEYS = [
+  "goal_kept_despite_low_target",
+  "sleep_efficiency_acknowledged",
+  "macros_gap_acknowledged",
+  "protein_floor_acknowledged",
+] as const;
+type SanityOverrideKey = (typeof SANITY_OVERRIDE_KEYS)[number];
+
+export const SET_SANITY_OVERRIDE_TOOL = {
+  name: "set_sanity_override",
+  description:
+    "Beat 1 sanity-correction tool. User chose to override (not apply) a finding. Writes the matching flag to intake_payload.sanity_overrides.",
+  input_schema: {
+    type: "object" as const,
+    required: ["key"],
+    properties: {
+      key: { type: "string", enum: SANITY_OVERRIDE_KEYS },
+    },
+  },
+};
+
+// ── Beats 2-5: Slot setters (no HMAC — single-field writes) ─────────────────
+
+export const SET_GOAL_NARRATIVE_CHAT_TOOL = {
+  name: "set_goal_narrative_chat",
+  description:
+    "Beat 2 slot setter. Write the chat-deepened goal narrative (3-5 sentences synthesizing form why_narrative + chat answers) to intake_payload.goal_narrative_chat.",
+  input_schema: {
+    type: "object" as const,
+    required: ["text"],
+    properties: { text: { type: "string", minLength: 20, maxLength: 4000 } },
+  },
+};
+
+const DIRECTNESS_VALUES = ["blunt", "balanced", "softer"] as const;
+type DirectnessValue = (typeof DIRECTNESS_VALUES)[number];
+
+export const SET_DIRECTNESS_TOOL = {
+  name: "set_directness",
+  description:
+    "Beat 4 slot setter. Write coach directness preference to intake_payload.coaching_preferences.directness.",
+  input_schema: {
+    type: "object" as const,
+    required: ["value"],
+    properties: { value: { type: "string", enum: DIRECTNESS_VALUES } },
+  },
+};
+
+const CADENCE_VALUES = ["daily", "weekly", "on_demand"] as const;
+type CadenceValue = (typeof CADENCE_VALUES)[number];
+
+export const SET_CADENCE_TOOL = {
+  name: "set_cadence",
+  description:
+    "Beat 4 slot setter. Write check-in cadence preference to intake_payload.coaching_preferences.cadence.",
+  input_schema: {
+    type: "object" as const,
+    required: ["value"],
+    properties: { value: { type: "string", enum: CADENCE_VALUES } },
+  },
+};
+
+const CHRONOTYPE_VALUES = ["lark", "neutral", "owl"] as const;
+type ChronotypeValue = (typeof CHRONOTYPE_VALUES)[number];
+
+export const SET_CHRONOTYPE_TOOL = {
+  name: "set_chronotype",
+  description:
+    "Beat 4 slot setter. Write chronotype (lark/neutral/owl) to intake_payload.sleep_recovery.chronotype.",
+  input_schema: {
+    type: "object" as const,
+    required: ["value"],
+    properties: { value: { type: "string", enum: CHRONOTYPE_VALUES } },
+  },
+};
+
+const UNPROMPTED_ACTION_VALUES = [
+  "suggest_revisions",
+  "nudge_on_drift",
+  "flag_macros",
+  "flag_sleep",
+] as const;
+type UnpromptedActionValue = (typeof UNPROMPTED_ACTION_VALUES)[number];
+
+export const SET_UNPROMPTED_ACTIONS_TOOL = {
+  name: "set_unprompted_actions",
+  description:
+    "Beat 4 slot setter. Write allowed unprompted coach actions to intake_payload.coaching_preferences.unprompted_actions.",
+  input_schema: {
+    type: "object" as const,
+    required: ["actions"],
+    properties: {
+      actions: {
+        type: "array",
+        items: { type: "string", enum: UNPROMPTED_ACTION_VALUES },
+        maxItems: UNPROMPTED_ACTION_VALUES.length,
+      },
+    },
+  },
+};
+
+const FREE_FORM_MODES = ["append", "replace"] as const;
+type FreeFormMode = (typeof FREE_FORM_MODES)[number];
+
+export const SET_FREE_FORM_CONSTRAINTS_TOOL = {
+  name: "set_free_form_constraints",
+  description:
+    "Beat 3 or Beat 5 slot setter. Write or append to intake_payload.free_form_constraints. Use mode='append' to add after existing text; 'replace' to overwrite.",
+  input_schema: {
+    type: "object" as const,
+    required: ["text", "mode"],
+    properties: {
+      text: { type: "string", minLength: 1, maxLength: 4000 },
+      mode: { type: "string", enum: FREE_FORM_MODES },
+    },
+  },
+};
+
+// ── End-of-intake — HMAC-gated ──────────────────────────────────────────────
+
+export const PROPOSE_PLAN_TOOL = {
+  name: "propose_plan",
+  description:
+    "Terminal-of-intake tool. Server runs plan-builder from current intake_payload state. Validates all sanity findings have been addressed (each has apply_* OR sanity_override). On success: writes plan_payload + rendered_md to the draft athlete_profile_documents row and returns an HMAC approval_token. On unresolved sanity findings: returns error listing the unaddressed findings.",
+  input_schema: {
+    type: "object" as const,
+    properties: {},
+    required: [],
+  },
+};
+
+export const COMMIT_PLAN_TOOL = {
+  name: "commit_plan",
+  description:
+    "Atomic acknowledge tool. Verifies HMAC token from propose_plan. Flips draft athlete_profile_documents row to active; supersedes any prior active row. revalidatePath /profile, /coach, /onboarding.",
+  input_schema: {
+    type: "object" as const,
+    required: ["token"],
+    properties: { token: { type: "string", minLength: 32 } },
+  },
+};
+
+// ── patchIntake helper (load-modify-write a single field on the draft) ─────
+
+/** Load the user's draft athlete_profile_documents row, apply `patcher` to
+ *  the intake_payload, write it back. Triple-scoped on (id, user_id,
+ *  status='draft') so the executor cannot accidentally mutate an acknowledged
+ *  doc or another user's row. Returns a ToolResult shape consistent with the
+ *  rest of the file. */
+async function patchIntake(opts: {
+  supabase: SupabaseClient;
+  userId: string;
+  draftDocId: string;
+  patcher: (intake: IntakePayload) => IntakePayload;
+}): Promise<ToolResult<{ ok: true }>> {
+  const t0 = Date.now();
+  const { data, error } = await opts.supabase
+    .from("athlete_profile_documents")
+    .select("intake_payload")
+    .eq("id", opts.draftDocId)
+    .eq("user_id", opts.userId)
+    .eq("status", "draft")
+    .maybeSingle();
+  if (error) {
+    return { ok: false, error: { error: `load_failed: ${error.message}` }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  if (!data) {
+    return { ok: false, error: { error: "draft_not_found" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  const current = data.intake_payload as IntakePayload;
+  const next = opts.patcher(current);
+  const { error: updErr } = await opts.supabase
+    .from("athlete_profile_documents")
+    .update({ intake_payload: next, updated_at: new Date().toISOString() })
+    .eq("id", opts.draftDocId)
+    .eq("user_id", opts.userId)
+    .eq("status", "draft");
+  if (updErr) {
+    return { ok: false, error: { error: `update_failed: ${updErr.message}` }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  return {
+    ok: true,
+    data: { ok: true },
+    meta: { ms: Date.now() - t0, result_rows: 1, range_days: 0, truncated: false },
+  };
+}
+
+// ── Executors: Beat 1 sanity-correction tools ───────────────────────────────
+
+export async function executeApplyGoalTarget(opts: {
+  supabase: SupabaseClient;
+  userId: string;
+  draftDocId: string;
+  input: unknown;
+}): Promise<ToolResult<{ ok: true }>> {
+  const t0 = Date.now();
+  const i = (opts.input ?? {}) as Record<string, unknown>;
+  if (typeof i.target_value !== "number" || !Number.isFinite(i.target_value) || i.target_value < 0) {
+    return { ok: false, error: { error: "target_value must be a non-negative number" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  if (typeof i.target_unit !== "string" || i.target_unit.length < 1 || i.target_unit.length > 16) {
+    return { ok: false, error: { error: "target_unit required (1-16 chars)" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  if (typeof i.rationale !== "string" || i.rationale.length < 1 || i.rationale.length > 500) {
+    return { ok: false, error: { error: "rationale required (1-500 chars)" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  const target_value = i.target_value;
+  const target_unit = i.target_unit;
+  const rationale = i.rationale;
+  return patchIntake({
+    supabase: opts.supabase,
+    userId: opts.userId,
+    draftDocId: opts.draftDocId,
+    patcher: (intake) => ({
+      ...intake,
+      goals: {
+        ...intake.goals,
+        target_value,
+        target_unit,
+        why_narrative: `${intake.goals.why_narrative ?? ""}${intake.goals.why_narrative ? "\n\n" : ""}[Updated target during intake: ${rationale}]`,
+      },
+    }),
+  });
+}
+
+export async function executeApplyBedtimeCorrection(opts: {
+  supabase: SupabaseClient;
+  userId: string;
+  draftDocId: string;
+  input: unknown;
+}): Promise<ToolResult<{ ok: true }>> {
+  const t0 = Date.now();
+  const i = (opts.input ?? {}) as Record<string, unknown>;
+  if (typeof i.typical_bedtime !== "string" || !/^([01]\d|2[0-3]):[0-5]\d$/.test(i.typical_bedtime)) {
+    return { ok: false, error: { error: "typical_bedtime must match HH:MM 24-hour" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  const typical_bedtime = i.typical_bedtime;
+  return patchIntake({
+    supabase: opts.supabase,
+    userId: opts.userId,
+    draftDocId: opts.draftDocId,
+    patcher: (intake) => ({
+      ...intake,
+      sleep_recovery: { ...intake.sleep_recovery, typical_bedtime },
+    }),
+  });
+}
+
+export async function executeApplyMacrosCorrection(opts: {
+  supabase: SupabaseClient;
+  userId: string;
+  draftDocId: string;
+  input: unknown;
+}): Promise<ToolResult<{ ok: true }>> {
+  const t0 = Date.now();
+  const i = (opts.input ?? {}) as Record<string, unknown>;
+  for (const k of ["kcal", "protein_g", "carb_g", "fat_g"] as const) {
+    const v = i[k];
+    if (typeof v !== "number" || !Number.isFinite(v) || v < 0) {
+      return { ok: false, error: { error: `${k} must be a non-negative number` }, meta: { ms: Date.now() - t0, range_days: 0 } };
+    }
+  }
+  const kcal = i.kcal as number;
+  const protein_g = i.protein_g as number;
+  const carb_g = i.carb_g as number;
+  const fat_g = i.fat_g as number;
+  return patchIntake({
+    supabase: opts.supabase,
+    userId: opts.userId,
+    draftDocId: opts.draftDocId,
+    patcher: (intake) => ({
+      ...intake,
+      nutrition: {
+        ...intake.nutrition,
+        current_kcal: kcal,
+        current_macros: { protein_g, carb_g, fat_g },
+      },
+    }),
+  });
+}
+
+export async function executeApplyProteinCorrection(opts: {
+  supabase: SupabaseClient;
+  userId: string;
+  draftDocId: string;
+  input: unknown;
+}): Promise<ToolResult<{ ok: true }>> {
+  const t0 = Date.now();
+  const i = (opts.input ?? {}) as Record<string, unknown>;
+  for (const k of ["protein_g", "fat_g"] as const) {
+    const v = i[k];
+    if (typeof v !== "number" || !Number.isFinite(v) || v < 0) {
+      return { ok: false, error: { error: `${k} must be a non-negative number` }, meta: { ms: Date.now() - t0, range_days: 0 } };
+    }
+  }
+  const protein_g = i.protein_g as number;
+  const fat_g = i.fat_g as number;
+  return patchIntake({
+    supabase: opts.supabase,
+    userId: opts.userId,
+    draftDocId: opts.draftDocId,
+    patcher: (intake) => ({
+      ...intake,
+      nutrition: {
+        ...intake.nutrition,
+        current_macros: {
+          ...intake.nutrition.current_macros,
+          protein_g,
+          fat_g,
+        },
+      },
+    }),
+  });
+}
+
+export async function executeSetSanityOverride(opts: {
+  supabase: SupabaseClient;
+  userId: string;
+  draftDocId: string;
+  input: unknown;
+}): Promise<ToolResult<{ ok: true }>> {
+  const t0 = Date.now();
+  const i = (opts.input ?? {}) as Record<string, unknown>;
+  if (typeof i.key !== "string" || !(SANITY_OVERRIDE_KEYS as readonly string[]).includes(i.key)) {
+    return { ok: false, error: { error: `key must be one of: ${SANITY_OVERRIDE_KEYS.join(", ")}` }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  const key = i.key as SanityOverrideKey;
+  return patchIntake({
+    supabase: opts.supabase,
+    userId: opts.userId,
+    draftDocId: opts.draftDocId,
+    patcher: (intake) => ({
+      ...intake,
+      sanity_overrides: { ...(intake.sanity_overrides ?? {}), [key]: true },
+    }),
+  });
+}
+
+// ── Executors: Beats 2-5 slot setters ───────────────────────────────────────
+
+export async function executeSetGoalNarrativeChat(opts: {
+  supabase: SupabaseClient;
+  userId: string;
+  draftDocId: string;
+  input: unknown;
+}): Promise<ToolResult<{ ok: true }>> {
+  const t0 = Date.now();
+  const i = (opts.input ?? {}) as Record<string, unknown>;
+  if (typeof i.text !== "string" || i.text.length < 20 || i.text.length > 4000) {
+    return { ok: false, error: { error: "text required (20-4000 chars)" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  const text = i.text;
+  return patchIntake({
+    supabase: opts.supabase,
+    userId: opts.userId,
+    draftDocId: opts.draftDocId,
+    patcher: (intake) => ({ ...intake, goal_narrative_chat: text }),
+  });
+}
+
+export async function executeSetDirectness(opts: {
+  supabase: SupabaseClient;
+  userId: string;
+  draftDocId: string;
+  input: unknown;
+}): Promise<ToolResult<{ ok: true }>> {
+  const t0 = Date.now();
+  const i = (opts.input ?? {}) as Record<string, unknown>;
+  if (typeof i.value !== "string" || !(DIRECTNESS_VALUES as readonly string[]).includes(i.value)) {
+    return { ok: false, error: { error: `value must be one of: ${DIRECTNESS_VALUES.join(", ")}` }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  const value = i.value as DirectnessValue;
+  return patchIntake({
+    supabase: opts.supabase,
+    userId: opts.userId,
+    draftDocId: opts.draftDocId,
+    patcher: (intake) => ({
+      ...intake,
+      coaching_preferences: {
+        directness: value,
+        cadence: intake.coaching_preferences?.cadence ?? "weekly",
+        unprompted_actions: intake.coaching_preferences?.unprompted_actions ?? [],
+      },
+    }),
+  });
+}
+
+export async function executeSetCadence(opts: {
+  supabase: SupabaseClient;
+  userId: string;
+  draftDocId: string;
+  input: unknown;
+}): Promise<ToolResult<{ ok: true }>> {
+  const t0 = Date.now();
+  const i = (opts.input ?? {}) as Record<string, unknown>;
+  if (typeof i.value !== "string" || !(CADENCE_VALUES as readonly string[]).includes(i.value)) {
+    return { ok: false, error: { error: `value must be one of: ${CADENCE_VALUES.join(", ")}` }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  const value = i.value as CadenceValue;
+  return patchIntake({
+    supabase: opts.supabase,
+    userId: opts.userId,
+    draftDocId: opts.draftDocId,
+    patcher: (intake) => ({
+      ...intake,
+      coaching_preferences: {
+        directness: intake.coaching_preferences?.directness ?? "balanced",
+        cadence: value,
+        unprompted_actions: intake.coaching_preferences?.unprompted_actions ?? [],
+      },
+    }),
+  });
+}
+
+export async function executeSetChronotype(opts: {
+  supabase: SupabaseClient;
+  userId: string;
+  draftDocId: string;
+  input: unknown;
+}): Promise<ToolResult<{ ok: true }>> {
+  const t0 = Date.now();
+  const i = (opts.input ?? {}) as Record<string, unknown>;
+  if (typeof i.value !== "string" || !(CHRONOTYPE_VALUES as readonly string[]).includes(i.value)) {
+    return { ok: false, error: { error: `value must be one of: ${CHRONOTYPE_VALUES.join(", ")}` }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  const value = i.value as ChronotypeValue;
+  return patchIntake({
+    supabase: opts.supabase,
+    userId: opts.userId,
+    draftDocId: opts.draftDocId,
+    patcher: (intake) => ({
+      ...intake,
+      sleep_recovery: { ...intake.sleep_recovery, chronotype: value },
+    }),
+  });
+}
+
+export async function executeSetUnpromptedActions(opts: {
+  supabase: SupabaseClient;
+  userId: string;
+  draftDocId: string;
+  input: unknown;
+}): Promise<ToolResult<{ ok: true }>> {
+  const t0 = Date.now();
+  const i = (opts.input ?? {}) as Record<string, unknown>;
+  if (!Array.isArray(i.actions)) {
+    return { ok: false, error: { error: "actions must be an array" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  const allowed = UNPROMPTED_ACTION_VALUES as readonly string[];
+  for (const a of i.actions) {
+    if (typeof a !== "string" || !allowed.includes(a)) {
+      return { ok: false, error: { error: `each action must be one of: ${UNPROMPTED_ACTION_VALUES.join(", ")}` }, meta: { ms: Date.now() - t0, range_days: 0 } };
+    }
+  }
+  // De-dupe while preserving order
+  const seen = new Set<string>();
+  const actions: UnpromptedActionValue[] = [];
+  for (const a of i.actions as string[]) {
+    if (!seen.has(a)) {
+      seen.add(a);
+      actions.push(a as UnpromptedActionValue);
+    }
+  }
+  return patchIntake({
+    supabase: opts.supabase,
+    userId: opts.userId,
+    draftDocId: opts.draftDocId,
+    patcher: (intake) => ({
+      ...intake,
+      coaching_preferences: {
+        directness: intake.coaching_preferences?.directness ?? "balanced",
+        cadence: intake.coaching_preferences?.cadence ?? "weekly",
+        unprompted_actions: actions,
+      },
+    }),
+  });
+}
+
+export async function executeSetFreeFormConstraints(opts: {
+  supabase: SupabaseClient;
+  userId: string;
+  draftDocId: string;
+  input: unknown;
+}): Promise<ToolResult<{ ok: true }>> {
+  const t0 = Date.now();
+  const i = (opts.input ?? {}) as Record<string, unknown>;
+  if (typeof i.text !== "string" || i.text.length < 1 || i.text.length > 4000) {
+    return { ok: false, error: { error: "text required (1-4000 chars)" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  if (typeof i.mode !== "string" || !(FREE_FORM_MODES as readonly string[]).includes(i.mode)) {
+    return { ok: false, error: { error: `mode must be one of: ${FREE_FORM_MODES.join(", ")}` }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  const text = i.text;
+  const mode = i.mode as FreeFormMode;
+  return patchIntake({
+    supabase: opts.supabase,
+    userId: opts.userId,
+    draftDocId: opts.draftDocId,
+    patcher: (intake) => {
+      if (mode === "replace") {
+        return { ...intake, free_form_constraints: text };
+      }
+      // append: separator only when prior text is non-empty
+      const prior = intake.free_form_constraints ?? "";
+      const sep = prior.length > 0 ? "\n\n" : "";
+      return { ...intake, free_form_constraints: `${prior}${sep}${text}` };
+    },
+  });
+}
+
+// ── Executors: end-of-intake — HMAC-gated ───────────────────────────────────
+
+export async function executeProposePlan(opts: {
+  supabase: SupabaseClient;
+  userId: string;
+  draftDocId: string;
+  input: unknown;
+}): Promise<
+  ToolResult<{ approval_token: string; plan_payload: PlanPayload }>
+> {
+  const t0 = Date.now();
+
+  // Load draft (id + user_id + status='draft' triple-scoped)
+  const { data: draft, error: loadErr } = await opts.supabase
+    .from("athlete_profile_documents")
+    .select("intake_payload, version")
+    .eq("id", opts.draftDocId)
+    .eq("user_id", opts.userId)
+    .eq("status", "draft")
+    .maybeSingle();
+  if (loadErr) {
+    return { ok: false, error: { error: `load_failed: ${loadErr.message}` }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  if (!draft) {
+    return { ok: false, error: { error: "draft_not_found" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+
+  const intake = draft.intake_payload as IntakePayload;
+
+  // Build plan + check sanity status. runSanityChecks already skips findings
+  // whose override flag is true, so any remaining findings are unaddressed.
+  let buildResult;
+  try {
+    buildResult = await buildPlanPayload(opts.supabase, opts.userId, intake);
+  } catch (e) {
+    return { ok: false, error: { error: `plan_build_failed: ${(e as Error).message}` }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  const { plan_payload, sanity_findings } = buildResult;
+
+  if (sanity_findings.length > 0) {
+    return {
+      ok: false,
+      error: {
+        error: "sanity_findings_unaddressed",
+        hint: `unaddressed: ${sanity_findings.map((f) => f.type).join(", ")}`,
+      },
+      meta: { ms: Date.now() - t0, range_days: 0 },
+    };
+  }
+
+  // Render markdown with the generated plan payload.
+  const renderedMd = renderProfileMarkdown({ intake, plan: plan_payload, version: draft.version as number, acknowledgedAt: null, supersedesVersion: null });
+
+  const { error: updErr } = await opts.supabase
+    .from("athlete_profile_documents")
+    .update({
+      plan_payload,
+      rendered_md: renderedMd,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", opts.draftDocId)
+    .eq("user_id", opts.userId)
+    .eq("status", "draft");
+  if (updErr) {
+    return { ok: false, error: { error: `update_failed: ${updErr.message}` }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+
+  const tokenPayload = { doc_id: opts.draftDocId, plan_payload };
+  const token = signApprovalToken({
+    userId: opts.userId,
+    action: "plan",
+    payload: tokenPayload,
+  });
+  _proposalCache.set(token, { kind: "plan", payload: tokenPayload });
+
+  return {
+    ok: true,
+    data: { approval_token: token, plan_payload },
+    meta: { ms: Date.now() - t0, result_rows: 1, range_days: 0, truncated: false },
+  };
+}
+
+export async function executeCommitPlan(opts: {
+  supabase: SupabaseClient;
+  userId: string;
+  draftDocId: string;
+  input: unknown;
+}): Promise<ToolResult<{ doc_id: string }>> {
+  const t0 = Date.now();
+  const i = (opts.input ?? {}) as Record<string, unknown>;
+  const token = i.token;
+
+  if (typeof token !== "string" || token.length < 32) {
+    return { ok: false, error: { error: "token required (min 32 chars)" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+
+  // Load draft to recompute payload hash (cache may have evicted in cold-start)
+  const { data: draft, error: loadErr } = await opts.supabase
+    .from("athlete_profile_documents")
+    .select("plan_payload")
+    .eq("id", opts.draftDocId)
+    .eq("user_id", opts.userId)
+    .eq("status", "draft")
+    .maybeSingle();
+  if (loadErr) {
+    return { ok: false, error: { error: `load_failed: ${loadErr.message}` }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  if (!draft) {
+    return { ok: false, error: { error: "draft_not_found" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  if (draft.plan_payload === null) {
+    return { ok: false, error: { error: "plan_payload missing; call propose_plan first" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+
+  try {
+    verifyApprovalToken({
+      token,
+      userId: opts.userId,
+      action: "plan",
+      payload: { doc_id: opts.draftDocId, plan_payload: draft.plan_payload },
+    });
+  } catch (e) {
+    return { ok: false, error: { error: `token verification failed: ${(e as Error).message}` }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+
+  // App-level supersede (mirrors Phase 1's non-transactional flow): find prior
+  // active row, mark superseded, then flip draft → active.
+  const { data: priorActive, error: priorErr } = await opts.supabase
+    .from("athlete_profile_documents")
+    .select("id")
+    .eq("user_id", opts.userId)
+    .eq("status", "active")
+    .maybeSingle();
+  if (priorErr) {
+    return { ok: false, error: { error: `prior_active_lookup_failed: ${priorErr.message}` }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+
+  const now = new Date().toISOString();
+  if (priorActive) {
+    const { error: supErr } = await opts.supabase
+      .from("athlete_profile_documents")
+      .update({
+        status: "superseded",
+        superseded_at: now,
+        superseded_by: opts.draftDocId,
+      })
+      .eq("id", priorActive.id)
+      .eq("user_id", opts.userId)
+      .eq("status", "active");
+    if (supErr) {
+      return { ok: false, error: { error: `supersede_failed: ${supErr.message}` }, meta: { ms: Date.now() - t0, range_days: 0 } };
+    }
+  }
+
+  const { error: ackErr } = await opts.supabase
+    .from("athlete_profile_documents")
+    .update({ status: "active", acknowledged_at: now, updated_at: now })
+    .eq("id", opts.draftDocId)
+    .eq("user_id", opts.userId)
+    .eq("status", "draft");
+  if (ackErr) {
+    return { ok: false, error: { error: `acknowledge_failed: ${ackErr.message}` }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+
+  _proposalCache.delete(token);
+
+  // Invalidate ISR caches that read athlete_profile_documents. Dynamic import
+  // so this module stays usable from non-route contexts (scripts, tests, etc.)
+  // that don't have next/cache available.
+  try {
+    const { revalidatePath } = await import("next/cache");
+    revalidatePath("/profile");
+    revalidatePath("/coach");
+    revalidatePath("/onboarding");
+  } catch {
+    // Non-fatal: in non-Next contexts (or if import resolves but the call
+    // fails outside a request) the caller will just see slightly stale ISR
+    // until the next natural revalidate.
+  }
+
+  return {
+    ok: true,
+    data: { doc_id: opts.draftDocId },
+    meta: { ms: Date.now() - t0, result_rows: 1, range_days: 0, truncated: false },
   };
 }

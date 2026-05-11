@@ -34,7 +34,7 @@ export function ReviewAndAcknowledge({
 
   // Auto-render whenever the intake changes (deterministic, runs in browser).
   useEffect(() => {
-    const md = renderProfileMarkdown(intake, version, null, supersedesVersion);
+    const md = renderProfileMarkdown({ intake, plan: null, version, acknowledgedAt: null, supersedesVersion });
     setAutoMd(md);
     if (!editMode) setEditedMd(md); // keep edited in sync until user enters edit mode
   }, [intake, version, supersedesVersion, editMode]);

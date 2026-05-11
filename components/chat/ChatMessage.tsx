@@ -6,6 +6,8 @@ import type { ChatMessage as ChatMessageType } from "@/lib/chat/types";
 import { renderMarkdownSubset } from "./markdown";
 import { WeekPlanProposalCard, type WeekProposal } from "./WeekPlanProposalCard";
 import { BlockProposalCard, type BlockProposal } from "./BlockProposalCard";
+import { PlanProposalCard } from "./PlanProposalCard";
+import type { PlanPayload } from "@/lib/data/types";
 
 export function ChatMessage({
   message,
@@ -34,6 +36,9 @@ export function ChatMessage({
   );
   const hasCommittedWeek = toolCalls.some(
     (c) => c.name === "commit_week_plan" && !c.error,
+  );
+  const hasCommittedPlan = toolCalls.some(
+    (c) => c.name === "commit_plan" && !c.error,
   );
 
   return (
@@ -85,6 +90,27 @@ export function ChatMessage({
         {!isUser &&
           toolCalls.map((call, i) => {
             if (!call.result) return null;
+            // propose_plan uses a different shape: { approval_token, plan_payload }
+            // (no `preview` key). Branch on tool name before destructuring.
+            if (call.name === "propose_plan") {
+              const r = call.result as {
+                approval_token?: string;
+                plan_payload?: PlanPayload;
+              };
+              if (!r.approval_token || !r.plan_payload) return null;
+              return (
+                <PlanProposalCard
+                  key={i}
+                  plan={r.plan_payload}
+                  approval_token={r.approval_token}
+                  committed={hasCommittedPlan}
+                  onApprove={(token) =>
+                    onSendUserMessage?.(`[approve:${token}]`)
+                  }
+                />
+              );
+            }
+
             const result = call.result as {
               preview?: unknown;
               approval_token?: string;

@@ -35,7 +35,7 @@ function payloadHash(payload: unknown): string {
  *  matching commit_* call. */
 export function signApprovalToken(args: {
   userId: string;
-  action: "block" | "week";
+  action: "block" | "week" | "plan";
   payload: unknown;
 }): string {
   const ts = Date.now();
@@ -50,7 +50,7 @@ export function signApprovalToken(args: {
 export function verifyApprovalToken(args: {
   token: string;
   userId: string;
-  action: "block" | "week";
+  action: "block" | "week" | "plan";
   payload: unknown;
 }): { ok: true; payloadHash: string } {
   const parts = args.token.split(".");

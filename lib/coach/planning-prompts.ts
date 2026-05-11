@@ -14,7 +14,7 @@ import {
 } from "@/lib/coach/system-prompts";
 import { getAutoregulationSignals } from "@/lib/coach/autoregulation";
 import { todayInUserTz } from "@/lib/time";
-import type { ChatMode, PrimaryLift, TrainingBlock } from "@/lib/data/types";
+import type { ChatMode, IntakePayload, PrimaryLift, TrainingBlock } from "@/lib/data/types";
 
 const PLAN_WEEK_PROMPT = `## You are running a weekly planning session
 
@@ -67,6 +67,97 @@ We run **5-week blocks** ending in a deload week — research consensus for an i
 
 2-4 sentences per beat. Never commit without approval.`;
 
+const INTAKE_PROMPT = `## You are running the coaching plan intake
+
+This is a 5-beat structured conversation. ~10-15 turns total.
+
+### Beat 1: SANITY CHECK
+Server provides {sanity_findings} in the context block below. For each finding,
+surface ONE coach turn with chips. Wait for user response before next finding.
+
+When user taps "Use proposed [X]" chip:
+  - call the matching apply_* tool with the proposed payload from the finding
+When user taps "Override" chip:
+  - call set_sanity_override with the matching key:
+    goal_contradiction → 'goal_kept_despite_low_target'
+    sleep_efficiency → 'sleep_efficiency_acknowledged'
+    macros_gap → 'macros_gap_acknowledged'
+    protein_floor → 'protein_floor_acknowledged'
+
+Do NOT proceed to Beat 2 until all findings have been handled. The findings
+list refreshes after each tool call — if a finding's underlying intake field
+has been corrected, it stops appearing in subsequent context.
+
+### Beat 2: DEEPEN goal narrative
+Read user's form why_narrative. Probe deeper in 1-2 turns:
+  Probe 1: "Tell me more about why this matters — what changes when you hit it?"
+  Probe 2 (only if needed): "What's the harder version of this goal you secretly want?"
+
+Synthesize 3-5 sentences combining form narrative + chat answers into the
+athlete's voice. Call set_goal_narrative_chat(text=<synthesis>).
+
+### Beat 3: DEEPEN medical / restrictions
+For each flagged item in intake.health.medications + active_injuries, ask
+one targeted follow-up:
+  GLP-1: "How long have you been on GLP-1? Goal weight? Hunger affecting training?"
+  Active injury (per joint): "Walk me through what loads / movements are off
+                              limits beyond what you listed."
+
+Synthesize follow-ups into a paragraph. Call set_free_form_constraints
+with mode='append'.
+
+### Beat 4: ELICIT coaching style + chronotype
+Four quick chip turns (rapid, ~1 turn each):
+  Turn 1: "How direct do you want me to be?" [blunt / balanced / softer]
+          → set_directness(value)
+  Turn 2: "Check-in cadence?" [daily / weekly / on_demand]
+          → set_cadence(value)
+  Turn 3: "Are you a morning person or night owl?" [lark / neutral / owl]
+          → set_chronotype(value)
+  Turn 4: "Allow me to bring up:" multi-chip
+          [suggest_revisions / nudge_on_drift / flag_macros / flag_sleep]
+          → set_unprompted_actions(actions=[...])
+
+### Beat 5: CATCH-ANY
+"Anything else I should know that I haven't asked?"
+Free-text response → set_free_form_constraints (mode='append').
+
+If user signals 'no' or 'that's it', proceed to propose.
+Otherwise allow 1-2 more turns of follow-up.
+
+### End of intake
+Call propose_plan (no payload). Server runs plan-builder; if all sanity
+findings have been addressed, returns approval_token + plan_payload.
+The PlanProposalCard renders inline showing the proposed plan with
+Approve / Tweak buttons.
+
+If user taps Approve: the chat UI surfaces [approve:<token>] in their
+message. When you see it, call commit_plan(token).
+
+If user requests tweaks ('make the cut more aggressive', 'change Tuesday
+to Mobility', etc.):
+  - Convert request into the matching apply_* or set_* tool call that
+    updates intake_payload
+  - Then call propose_plan again — new payload, new token
+
+### Concision
+2-4 sentences per coach turn. Use the user's existing vocabulary. No
+lecturing. Match their directness preference once set in Beat 4.
+
+### Tone
+Default to 'balanced' before Beat 4 sets the preference. After Beat 4
+acknowledges directness:
+  blunt → cut hedges, no compliments without basis, name things plainly
+  softer → contextualize, acknowledge effort before push
+  balanced → coach-call-on-the-Sunday-call (default)
+
+### Style guardrails
+- Reference numbers from {sanity_findings} and context; never invent values
+- Don't recite the entire intake back at the user — they filled the form
+- Coach voice, not assistant voice (no "I can help you with...")
+- No emoji
+`;
+
 export async function buildSystemPrompt(args: {
   supabase: SupabaseClient;
   userId: string;
@@ -84,6 +175,10 @@ export async function buildSystemPrompt(args: {
     if (autoregCtx) sections.push(autoregCtx);
   } else if (args.mode === "setup_block") {
     sections.push(SETUP_BLOCK_PROMPT);
+  } else if (args.mode === "intake") {
+    sections.push(INTAKE_PROMPT);
+    const intakeCtx = await fetchIntakeContext(args.supabase, args.userId);
+    if (intakeCtx) sections.push(intakeCtx);
   }
 
   return sections.join("\n\n---\n\n");
@@ -149,4 +244,75 @@ async function fetchAutoregContext(
     fired.map((f) => `- ${f}`).join("\n") + `\n\n` +
     `Recommend the user deload this week even if it's not week 5. Explain which signals fired and what they mean. The user decides — if they want to push through, propose the originally-planned week but flag the risk.`
   );
+}
+
+async function fetchIntakeContext(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<string | null> {
+  // Load active draft (the row this intake chat is operating on)
+  const { data: draft } = await supabase
+    .from("athlete_profile_documents")
+    .select("id, version, intake_payload")
+    .eq("user_id", userId)
+    .eq("status", "draft")
+    .maybeSingle();
+  if (!draft) return null;
+
+  const intake = draft.intake_payload as IntakePayload;
+
+  // Pull supporting data for sanity checks. Anchor the 8-day window to the
+  // user's local "today" rather than UTC now, matching how the other helpers
+  // in this file compute date bounds (consistency + correctness for users in
+  // non-UTC timezones near midnight).
+  const today = todayInUserTz();
+  const sinceDate = new Date(new Date(today).getTime() - 8 * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+
+  const { data: logs } = await supabase
+    .from("daily_logs")
+    .select("date, weight_kg, calories_eaten")
+    .eq("user_id", userId)
+    .gte("date", sinceDate)
+    .order("date", { ascending: false });
+
+  const latestWeight = (logs ?? []).find((r) => r.weight_kg !== null)?.weight_kg ?? null;
+  const kcalSamples = (logs ?? [])
+    .slice(0, 7)
+    .map((r) => r.calories_eaten)
+    .filter((v): v is number => typeof v === "number" && v > 0);
+  const rolling7dKcal =
+    kcalSamples.length > 0
+      ? kcalSamples.reduce((a, b) => a + b, 0) / kcalSamples.length
+      : null;
+
+  // Run sanity checks
+  const { runSanityChecks } = await import("@/lib/coach/plan-builder/sanity-check");
+  const findings = runSanityChecks({
+    intake,
+    current_bodyweight_kg: latestWeight,
+    rolling_7d_kcal: rolling7dKcal,
+    today,
+  });
+
+  // Render findings as text for the system prompt
+  const findingsBlock =
+    findings.length === 0
+      ? "(none — all sanity checks pass; proceed directly to Beat 2)"
+      : findings
+          .map((f, i) => `Finding ${i + 1}: ${f.type}\n  Rationale: ${f.rationale}`)
+          .join("\n\n");
+
+  return [
+    `## Active intake draft context\n`,
+    `Draft id: ${draft.id}, version: ${draft.version}\n`,
+    `Goal: ${intake.goals.primary_metric} → ${intake.goals.target_value}${intake.goals.target_unit} by ${intake.goals.target_date}`,
+    `Phase: ${intake.nutrition.current_phase}`,
+    `Days available: ${Object.entries(intake.lifestyle.days_available).filter(([, v]) => v).map(([k]) => k).join(", ")}`,
+    `Sessions/wk: ${intake.training.sessions_per_week}`,
+    ``,
+    `### sanity_findings`,
+    findingsBlock,
+  ].join("\n");
 }

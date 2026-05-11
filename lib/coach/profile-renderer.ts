@@ -12,16 +12,18 @@
 // the markdown template later, OLD acknowledged docs still display from
 // their stored rendered_md — they don't re-render.
 
-import type { IntakePayload } from "@/lib/data/types";
+import type { IntakePayload, PlanPayload } from "@/lib/data/types";
 
 // ── Public API ───────────────────────────────────────────────────────────────
 
-export function renderProfileMarkdown(
-  intake: IntakePayload,
-  version: number,
-  acknowledgedAt: string | null,
-  supersedesVersion: number | null,
-): string {
+export function renderProfileMarkdown(args: {
+  intake: IntakePayload;
+  plan?: PlanPayload | null;
+  version: number;
+  acknowledgedAt: string | null;
+  supersedesVersion: number | null;
+}): string {
+  const { intake, plan, version, acknowledgedAt, supersedesVersion } = args;
   const ackLine = renderAckLine(acknowledgedAt, supersedesVersion);
 
   const sections: string[] = [
@@ -36,10 +38,17 @@ export function renderProfileMarkdown(
     renderLifestyleSection(intake),
     renderNutritionSection(intake),
     renderSleepSection(intake),
-    `---`,
-    ``,
-    `*This profile is the foundation for upcoming coaching plans (v2+ adds AI-generated periodization, sleep, and nutrition prescriptions).*`,
   ];
+
+  if (plan) {
+    sections.push(`---`, ``, `# Coaching plan`, ``, renderPlanSections(plan));
+  } else {
+    sections.push(
+      `---`,
+      ``,
+      `*This profile is the foundation for upcoming coaching plans (v2+ adds AI-generated periodization, sleep, and nutrition prescriptions).*`,
+    );
+  }
 
   return sections.join("\n");
 }
@@ -265,4 +274,136 @@ function compactHealth(intake: IntakePayload): string {
 
 function anyPr(prs: IntakePayload["training"]["best_ever_pr"]): boolean {
   return prs.squat !== null || prs.bench !== null || prs.deadlift !== null || prs.ohp !== null;
+}
+
+// ── Plan section helpers (renderPlan* prefix avoids collision with intake helpers) ──
+
+function renderPlanSections(plan: PlanPayload): string {
+  const sections = [
+    renderPlanGoalSection(plan.goal),
+    renderPlanPeriodizationSection(plan.periodization),
+    renderPlanStrengthSection(plan.strength),
+    renderPlanNutritionSection(plan.nutrition),
+    renderPlanSleepSection(plan.sleep),
+    renderPlanRecoverySection(plan.recovery),
+    renderPlanCoachingAgreementSection(plan.coaching_agreement),
+  ];
+  return sections.join("\n\n");
+}
+
+function renderPlanGoalSection(goal: PlanPayload["goal"]): string {
+  const feasibility = goal.feasibility_note ? `\n\n> ${goal.feasibility_note}` : "";
+  return [
+    "## Goal",
+    "",
+    `**${goal.primary_metric}** → **${goal.target_value}${goal.target_unit}** by ${goal.target_date}`,
+    "",
+    goal.narrative_summary,
+    feasibility,
+  ].join("\n");
+}
+
+function renderPlanPeriodizationSection(p: PlanPayload["periodization"]): string {
+  const rir = p.rir_arc
+    .map((r) => `W${r.week}: ${r.rir === null ? "deload" : `RIR ${r.rir}`}`)
+    .join(", ");
+  return [
+    "## Periodization",
+    "",
+    `**${p.block_length_weeks}-week blocks** ending in deload. ~${p.blocks_to_goal_date} blocks to goal date.`,
+    `Rotation: ${p.rotation_rule.replace(/_/g, " ")}`,
+    `RIR arc: ${rir}`,
+  ].join("\n");
+}
+
+function renderPlanStrengthSection(s: PlanPayload["strength"]): string {
+  const days = Object.entries(s.day_pattern)
+    .filter(([, v]) => v !== "REST")
+    .map(([day, type]) => `- ${day}: ${type}`)
+    .join("\n");
+  const volume = Object.entries(s.weekly_volume_targets)
+    .map(([lift, t]) => `- ${lift}: ${t.reps_per_week} reps/wk, ${t.sets_per_week} sets/wk`)
+    .join("\n");
+  return [
+    "## Strength (template)",
+    "",
+    `**${s.sessions_per_week} sessions/wk**`,
+    "",
+    days,
+    "",
+    "**Weekly volume targets:**",
+    volume,
+    "",
+    `**Progression:** ${s.progression_rule}`,
+    ...(s.notes ? ["", s.notes] : []),
+  ].join("\n");
+}
+
+function renderPlanNutritionSection(n: PlanPayload["nutrition"]): string {
+  const refeed = n.refeed_cadence_days
+    ? `\n**Refeed every ${n.refeed_cadence_days} days:** +${n.refeed_uplift?.kcal} kcal, +${n.refeed_uplift?.carb_g}g carbs`
+    : "";
+  const uplift = n.training_day_uplift
+    ? `\n**Training day uplift:** +${n.training_day_uplift.kcal} kcal, +${n.training_day_uplift.carb_g}g carbs`
+    : "";
+  return [
+    "## Nutrition",
+    "",
+    `**Phase:** ${n.phase}`,
+    `**Calories:** ${n.kcal_target} kcal (range ${n.kcal_range[0]}-${n.kcal_range[1]})`,
+    `**Protein:** ${n.protein_g}g (${n.protein_g_per_kg_bw} g/kg BW)`,
+    `**Carbs:** ${n.carb_g}g · **Fat:** ${n.fat_g}g`,
+    `**Alcohol:** ${n.hard_rules.alcohol_policy.replace(/_/g, " ")}`,
+    `**Caffeine:** cap ${n.hard_rules.caffeine_cap_mg_per_day} mg/day, last dose ${n.hard_rules.caffeine_last_dose_hours_before_bed}h before bed`,
+    refeed,
+    uplift,
+    ...(n.notes ? ["", n.notes] : []),
+  ].join("\n");
+}
+
+function renderPlanSleepSection(sl: PlanPayload["sleep"]): string {
+  const h = sl.hygiene_rules;
+  return [
+    "## Sleep",
+    "",
+    `**Target:** ${sl.target_hours_min}-${sl.target_hours_max}h (chronotype: ${sl.chronotype})`,
+    `**Schedule:** wake ${sl.wake_target} → bed ${sl.bedtime_target}`,
+    `**Efficiency target:** ${(sl.efficiency_target * 100).toFixed(0)}% · **latency:** <${sl.latency_target_min} min`,
+    "",
+    "**Hygiene rules:**",
+    `- Caffeine cutoff: ${h.caffeine_cutoff_hours_before_bed}h before bed`,
+    `- Alcohol cutoff: ${h.alcohol_cutoff_hours_before_bed}h before bed`,
+    `- Last meal: ${h.last_meal_cutoff_hours_before_bed}h before bed`,
+    `- Screens: stop ${h.screen_cutoff_minutes_before_bed} min before bed`,
+    `- Morning light: ${h.morning_light_exposure_minutes} min within 30 min of waking`,
+    `- Weekend bed/wake within ${h.weekend_consistency_within_minutes} min of weekday`,
+  ].join("\n");
+}
+
+function renderPlanRecoverySection(r: PlanPayload["recovery"]): string {
+  return [
+    "## Recovery",
+    "",
+    `**Mobility:** ${r.mobility_minutes_per_week} min/wk`,
+    "",
+    "**Deload triggers:**",
+    ...r.deload_triggers.map((t) => `- ${t}`),
+    "",
+    `**Reactivity:** ${r.reactivity_protocol}`,
+  ].join("\n");
+}
+
+function renderPlanCoachingAgreementSection(c: PlanPayload["coaching_agreement"]): string {
+  const unprompted =
+    c.unprompted_actions_allowed.length === 0
+      ? "(none)"
+      : c.unprompted_actions_allowed.join(", ");
+  return [
+    "## Coaching agreement",
+    "",
+    `**Cadence:** ${c.cadence}`,
+    `**Directness:** ${c.directness}`,
+    `**Unprompted actions allowed:** ${unprompted}`,
+    `**Re-evaluation:** every ${c.re_evaluation_cadence_weeks} weeks`,
+  ].join("\n");
 }
