@@ -51,15 +51,20 @@ export function Fab({ userId }: { userId: string }) {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [chatState, setChatState] = useState<ChatState>({ open: false, mode: "coach" });
   const [chatPlanMode, setChatPlanMode] = useState<ChatMode>("default");
+  const [chatDraftDocId, setChatDraftDocId] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     function onOpenChat(e: Event) {
-      const detail = (e as CustomEvent).detail as { mode?: ChatMode } | undefined;
+      const detail = (e as CustomEvent).detail as
+        | { mode?: ChatMode; doc?: string }
+        | undefined;
       // Default to "default" so the desktop "+ New → Ask coach" entry can
       // dispatch this same event without a mode payload. CoachClient still
       // dispatches with mode === "plan_week" | "setup_block".
+      // AthleteProfilePanel dispatches with mode === "intake" + doc=<id>.
       const m: ChatMode = detail?.mode ?? "default";
       setChatPlanMode(m);
+      setChatDraftDocId(detail?.doc);
       setChatState({ open: true, mode: "coach" });
     }
     window.addEventListener("open-chat", onOpenChat);
@@ -114,8 +119,10 @@ export function Fab({ userId }: { userId: string }) {
           onClose={() => {
             setChatState((s) => ({ ...s, open: false }));
             setChatPlanMode("default");
+            setChatDraftDocId(undefined);
           }}
           initialMode={chatPlanMode}
+          draftDocId={chatDraftDocId}
         />
       )}
     </>

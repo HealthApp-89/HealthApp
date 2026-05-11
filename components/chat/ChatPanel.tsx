@@ -125,6 +125,7 @@ export default function ChatPanel({
   userId,
   initialMode = "default",
   initialModeContext,
+  draftDocId,
 }: {
   onClose: () => void;
   /** Initial conversation lane; tab clicks at runtime override this. */
@@ -132,6 +133,10 @@ export default function ChatPanel({
   userId: string;
   initialMode?: ChatMode;
   initialModeContext?: string;
+  /** Athlete-profile draft doc id, required when initialMode='intake'.
+   *  Threaded through to /api/chat/messages as body.doc so the route can
+   *  inject it into the Phase 2 tool executors' ToolCtx. */
+  draftDocId?: string;
 }) {
   const [mode, setMode] = useState<ChatMode>(initialMode);
   const [composerHint, setComposerHint] = useState<string | undefined>(undefined);
@@ -241,7 +246,7 @@ export default function ChatPanel({
       try {
         for await (const ev of postSse(
           "/api/chat/messages",
-          { content, image_ids: imageIds, mode },
+          { content, image_ids: imageIds, mode, doc: draftDocId },
           { signal: ac.signal },
         )) {
           if (ev.type === "delta") {
@@ -309,7 +314,7 @@ export default function ChatPanel({
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [mode],
+    [mode, draftDocId],
   );
 
   const onRetry = useCallback(
@@ -636,7 +641,9 @@ export default function ChatPanel({
       ? "Tell the coach how you're feeling…"
       : mode === "setup_block"
         ? "What do you want to focus on this block?"
-        : undefined);
+        : mode === "intake"
+          ? "Talk through your plan…"
+          : undefined);
 
   return (
     <div
