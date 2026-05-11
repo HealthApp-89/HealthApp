@@ -13,9 +13,9 @@ import type {
   PrimaryLift,
   TrainingBlock,
   TrainingWeek,
-  Weekday,
 } from "@/lib/data/types";
 import { WEEKLY_SESSIONS } from "@/lib/coach/sessionPlans";
+import { readSessionForDay } from "@/lib/coach/session-plan-reader";
 import { weekdayInUserTz } from "@/lib/time";
 import { getTodayTargets, type TodayTargets } from "@/lib/morning/brief/get-today-targets";
 import type { BriefInputs, YesterdayWorkoutSummary, WhoopBaselineForBand } from "@/lib/morning/brief/assembler";
@@ -45,16 +45,6 @@ function weeklySessionKey(today: string): string {
   return weekdayInUserTz(new Date(`${today}T12:00:00Z`));
 }
 
-/** Maps "Monday".."Sunday" → "mon".."sun" for training_weeks.session_plan
- *  jsonb keys (per 0008_weekly_planning convention). */
-function sessionPlanKey(weekday: string): Weekday {
-  const map: Record<string, Weekday> = {
-    Monday: "Mon", Tuesday: "Tue", Wednesday: "Wed", Thursday: "Thu",
-    Friday: "Fri", Saturday: "Sat", Sunday: "Sun",
-  };
-  return map[weekday] ?? "Mon";
-}
-
 function yesterdayOf(today: string): string {
   const d = new Date(`${today}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() - 1);
@@ -68,7 +58,6 @@ export async function fetchBriefInputs(
 ): Promise<BriefInputs> {
   const yesterday = yesterdayOf(today);
   const weeklyKey = weeklySessionKey(today);  // "Monday".."Sunday"
-  const sessionKey = sessionPlanKey(weeklyKey); // "Mon".."Sun"
 
   // Parallel reads (Promise.all):
   // 1. Active training_blocks (for primary_lift)
@@ -156,21 +145,11 @@ export async function fetchBriefInputs(
   let sessionType: string;
   let intensityModifier: IntensityModifier = {};
   if (trainingWeek && isWeekStartCoveringToday(trainingWeek.week_start, today)) {
-    // NOTE: session_plan key convention is inconsistent in this codebase.
-    // - supabase/migrations/0008_weekly_planning.sql comment says 3-letter ("Mon")
-    // - lib/data/types.ts:Weekday is "Mon" | "Tue" | ...
-    // - components/coach/WeekPlanCard.tsx reads with 3-letter keys (likely broken
-    //   against current live data)
-    // - The chat coach's PLAN_WEEK_PROMPT committed with full names ("Monday")
-    // We try both forms to be safe. Long-term, normalize on one convention and
-    // migrate existing rows.
+    // Dual-key defensive lookup — see lib/coach/session-plan-reader.ts for the
+    // full explanation of the 3-letter vs full-name key convention drift.
     const sessionPlan = (trainingWeek.session_plan ?? {}) as Record<string, string>;
-    // Try full weekday name first (current live data convention from the AI
-    // planning bot), then 3-letter abbreviation (migration spec convention),
-    // then fall back to the static WEEKLY_SESSIONS map.
     sessionType =
-      sessionPlan[weeklyKey] ??
-      sessionPlan[sessionPlanKey(weeklyKey)] ??
+      readSessionForDay(sessionPlan, weeklyKey) ??
       WEEKLY_SESSIONS[weeklyKey] ??
       "REST";
     intensityModifier = (trainingWeek.intensity_modifier ?? {}) as IntensityModifier;
