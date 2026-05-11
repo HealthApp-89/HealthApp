@@ -1589,7 +1589,7 @@ export async function executeApplyGoalTarget(opts: {
         ...intake.goals,
         target_value,
         target_unit,
-        why_narrative: `${intake.goals.why_narrative}\n\n[Updated target during intake: ${rationale}]`,
+        why_narrative: `${intake.goals.why_narrative ?? ""}${intake.goals.why_narrative ? "\n\n" : ""}[Updated target during intake: ${rationale}]`,
       },
     }),
   });
