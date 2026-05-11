@@ -14,7 +14,7 @@ import type { Weekday } from "@/lib/data/types";
 
 /** Maps short weekday → full weekday name. The reverse map is also useful but
  *  not needed since `weekdayInUserTz()` already returns full names. */
-const SHORT_TO_FULL: Record<Weekday, string> = {
+export const SHORT_TO_FULL: Record<Weekday, string> = {
   Mon: "Monday",
   Tue: "Tuesday",
   Wed: "Wednesday",
