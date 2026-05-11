@@ -62,7 +62,7 @@ The user has a v1 active doc with `plan_payload = null` (Phase 1 ships intake on
    - Goal contradiction fires (target 100 < current 102). Coach proposes ~115kg by Aug 8 (current × (1 + months_to_target × 4% per month)). Chip: "Use proposed target" or "Keep mine (override)".
    - Sleep efficiency fires (21:30 bedtime + 06:30 wake = 9h in bed, 7h slept = 78% efficiency). Coach proposes bedtime 23:00. Chip: "Use suggested bedtime" or "Override".
    - Macros gap doesn't fire (user is at 2085 ± 5% of target).
-   - Protein floor doesn't fire (168g / 103.5kg BW = 1.62g/kg, just above 1.6 floor — user's doctor's clinical minimum). Plan-builder then prescribes **186g** for the cut (1.8 g/kg × 103.5kg), bumping protein +18g and reducing fat ~8g to keep kcal stable.
+   - Protein floor doesn't fire (168g / 103.5kg BW = 1.62g/kg, just above the 1.6 floor — user's doctor's clinical minimum). Plan-builder prescribes **166g** for the cut (1.6 g/kg × 103.5kg) — matches user's current intake within 2g. No actionable delta.
 4. **Beats 2-5 capture chat-elicited slots.** Goal narrative deepened, GLP-1 follow-up, coaching style + chronotype + unprompted-action preferences, catch-any. All written to `intake_payload` in place — the existing draft row.
 
    The current v1 row is `status='active'`. To run intake chat against it, we need to either:
@@ -259,7 +259,7 @@ export type PlanPayload = {
     phase: "cut" | "maintain" | "lean_bulk" | "recomp";
     kcal_target: number;
     kcal_range: [number, number];       // ±5%
-    protein_g_per_kg_bw: number;        // cut: 1.8; maintain: 1.6; bulk: 1.6 (floor 1.6 g/kg BW per clinical guidance)
+    protein_g_per_kg_bw: number;        // cut: 1.6; maintain: 1.6; bulk: 1.6 (clinical floor at 1.6 g/kg BW for all phases per user's doctor)
     protein_g: number;                  // derived: protein_g_per_kg_bw × current bodyweight at acknowledgment
     carb_g: number;
     fat_g: number;
@@ -579,7 +579,7 @@ Each `compose*` is a pure function:
   - `phase`: from `intake.nutrition.current_phase`
   - `kcal_target`: from `intake.nutrition.current_kcal` (after Beat 1 corrections)
   - `kcal_range`: `[target × 0.95, target × 1.05]`
-  - `protein_g_per_kg_bw`: phase-dependent — cut: 1.8; maintain: 1.6; lean_bulk: 1.6 (floor 1.6 throughout per clinical guidance)
+  - `protein_g_per_kg_bw`: phase-dependent — cut: 1.6; maintain: 1.6; lean_bulk: 1.6 (clinical floor 1.6 throughout per user's doctor)
   - `protein_g`: `protein_g_per_kg_bw × bodyweight` (latest `daily_logs.weight_kg`)
   - `carb_g`, `fat_g`: split remaining kcal — phase-dependent ratios:
     - Cut: 40C / 30F (more carbs for training preservation)
@@ -741,8 +741,8 @@ Mirrors `WeekPlanProposalCard.tsx` pattern. Renders the proposed `plan_payload` 
 ├─────────────────────────────────────┤
 │  NUTRITION                           │
 │  Cut · 2085 kcal (±5%)               │
-│  ▸ 186g protein (1.8g/kg BW,         │
-│    above 1.6 clinical floor)         │
+│  ▸ 166g protein (1.6g/kg BW,         │
+│    at clinical floor)                │
 │  ▸ 145g carb · 78g fat               │
 │  ▸ Refeed every 6 days (+500 kcal,   │
 │    +100g carbs)                      │
@@ -868,7 +868,7 @@ Same posture as Phase 1 + morning brief: no test runner, but probe scripts + man
 
 2. **`scripts/probe-plan-builder.mjs`** — exercises `buildPlanPayload()` against the user's v1 intake after Beat 1 corrections applied (target = 115kg, bedtime = 22:30). Expected output:
    - `goal.target_value: 115`
-   - `nutrition.phase: "cut"`, `kcal_target: 2085`, `protein_g ≈ 186` (1.8g/kg × 103.5kg BW), `refeed_cadence_days: 6`
+   - `nutrition.phase: "cut"`, `kcal_target: 2085`, `protein_g ≈ 166` (1.6g/kg × 103.5kg BW), `refeed_cadence_days: 6`
    - `sleep.wake_target: "06:30"`, `bedtime_target: "22:00"` (06:30 − 8.5h)
    - `strength.sessions_per_week: 4`, `day_pattern: {Mon:"Legs",Tue:"Chest",Thu:"Back",Fri:"Mobility"}`
    - `coaching_agreement.directness: "balanced"` (or whatever was set)
@@ -894,7 +894,7 @@ Same posture as Phase 1 + morning brief: no test runner, but probe scripts + man
 10. **Inspect plan visually** — verify:
     - Goal target = 115kg (Beat 1 correction applied)
     - Bedtime = 22:00 or 22:30 (sleep correction applied + chronotype-derived adjustment)
-    - Protein = ~186g (1.8g/kg BW, above 1.6 clinical floor)
+    - Protein = ~166g (1.6g/kg BW, at clinical floor)
     - Refeed cadence = 6 days
     - Strength template = 4 sessions Mon/Tue/Thu/Fri
 11. **Tap Approve** → `[approve:<token>]` sent, commit_plan fires, v2 → active.
