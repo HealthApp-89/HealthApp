@@ -360,7 +360,7 @@ If `|target_kcal - rolling_7d_kcal| / target_kcal > 0.10`:
 
 ### 4. Protein floor (for cuts)
 
-Floor is **1.6 g/kg bodyweight** across all phases — user's clinical recommendation. Plan-builder may prescribe higher than floor for specific phases (cut → 1.8 default); sanity check fires only when CURRENT intake falls below the 1.6 floor.
+Floor is **1.6 g/kg bodyweight** across all phases — user's clinical recommendation. Plan-builder prescribes the floor as the target across all phases (cut, maintain, lean_bulk all default to 1.6); sanity check fires only when CURRENT intake falls below the 1.6 floor.
 
 For `nutrition.current_phase === "cut"`:
 - Read latest bodyweight from `daily_logs.weight_kg` (most recent non-null)
