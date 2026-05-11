@@ -3,17 +3,15 @@
 import { useState, useTransition, type MouseEvent } from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
-import dynamic from "next/dynamic";
 import { COLOR, RADIUS, SHADOW } from "@/lib/ui/theme";
-import { MorningTrigger } from "@/components/morning/MorningTrigger";
 
-// Lazy-load the chat panel — same pattern as the mobile FAB
-// (components/layout/Fab.tsx). Server-side render is disabled because
-// ChatPanel uses browser APIs (visualViewport, FormData, etc.).
-const ChatPanel = dynamic(() => import("@/components/chat/ChatPanel"), {
-  ssr: false,
-  loading: () => null,
-});
+// The morning auto-pop trigger and the ChatPanel mount both live in the
+// Fab component (single owner). Desktop "Ask coach" dispatches the
+// existing "open-chat" event into Fab — it works at all viewports
+// because Fab's plumbing isn't gated by responsive classes, while
+// TopNav's <header> is `hidden md:flex` (a previous duplicate
+// MorningTrigger here mounted ChatPanel into that hidden header,
+// which made the morning intake invisible on mobile portrait).
 
 const TABS = [
   { href: "/",        label: "Today" },
@@ -37,17 +35,14 @@ const SHEET: SheetItem[] = [
   { kind: "link",   label: "Manage connections", href: "/profile" },
 ];
 
-type ChatState = { open: boolean; mode: "coach" | "morning_intake" };
-
 /**
  * Desktop-only top nav. Hidden below md.
  */
-export function TopNav({ userId }: { userId: string }) {
+export function TopNav() {
   const pathname = usePathname();
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [chatState, setChatState] = useState<ChatState>({ open: false, mode: "coach" });
   // Optimistic active-tab state. See BottomNav for the rationale — `pathname`
   // doesn't update until navigation completes, so without this the active
   // pill stays on the previous tab for the entire server round-trip.
@@ -187,7 +182,9 @@ export function TopNav({ userId }: { userId: string }) {
                     type="button"
                     onClick={() => {
                       setMenuOpen(false);
-                      setChatState({ open: true, mode: "coach" });
+                      // Hand off to Fab's single ChatPanel owner via the
+                      // existing custom event (no mode → "default" coach).
+                      window.dispatchEvent(new CustomEvent("open-chat"));
                     }}
                     style={{
                       ...baseStyle,
@@ -220,17 +217,6 @@ export function TopNav({ userId }: { userId: string }) {
           </div>
         )}
       </div>
-      <MorningTrigger
-        userId={userId}
-        onShouldOpen={() => setChatState({ open: true, mode: "morning_intake" })}
-      />
-      {chatState.open && (
-        <ChatPanel
-          initialKind={chatState.mode}
-          userId={userId}
-          onClose={() => setChatState((s) => ({ ...s, open: false }))}
-        />
-      )}
     </header>
   );
 }
