@@ -83,7 +83,7 @@ export type ChatMessageRow = {
   tool_calls: ToolCallLog[] | null;
   /** Default 'coach' for the existing free-form chat thread; 'morning_intake'
    *  segregates the daily check-in conversation in ChatPanel. */
-  kind: "coach" | "morning_intake";
+  kind: "coach" | "morning_intake" | "morning_brief";
   /** Chip definitions / rendering hints for the morning intake bot. NULL on
    *  free-form coach turns. */
   ui: MorningUI | null;
@@ -113,7 +113,10 @@ export type IntakeState =
   | "awaiting_feel"
   | "awaiting_sickness_notes"
   | "awaiting_whoop"
-  | "delivered";
+  | "delivered"
+  | "assembling_brief"
+  | "brief_delivered"
+  | "brief_failed";
 
 export type FatigueLevel = "none" | "some" | "heavy";
 export type SorenessSeverity = "mild" | "sharp";
@@ -393,4 +396,71 @@ export type AthleteProfileDocument = {
   superseded_by: string | null;
   created_at: string;
   updated_at: string;
+};
+
+// ── Morning brief (extends 0007_morning_intake via 0011_morning_brief) ───────
+
+export type MorningBriefVariant = "training" | "rest";
+
+export type MorningBriefExercise = {
+  name: string;            // "Squat (Barbell)"
+  sets: number;            // 3
+  reps: number;            // 6
+  kg: number | null;       // 62.5 for prescribed lifts; null for bodyweight/duration
+  note?: string;           // "Do BEFORE Incline DB" or undefined
+};
+
+export type MorningBriefRecap = {
+  yesterday_date: string;                // "YYYY-MM-DD"
+  sleep_hours: number | null;
+  kcal_actual: number | null;
+  kcal_target: number;
+  protein_actual_g: number | null;
+  protein_target_g: number;
+  trained_yesterday: string | null;      // "Legs" | "REST" | null
+  top_e1rm_yesterday: { lift: string; kg: number } | null;
+};
+
+export type MorningBriefMacros = {
+  kcal_target: number;
+  protein_target_g: number;
+  carb_target_g: number;
+  fat_target_g: number;
+};
+
+export type MorningBriefReadiness = {
+  score: number | null;                       // 1-10 from checkins.readiness
+  hrv: number | null;                         // from daily_logs[today].hrv
+  recovery: number | null;                    // 0-100 from daily_logs[today].recovery
+  band: "low" | "moderate" | "high";          // derived from score + hrv vs baselines
+};
+
+export type MorningBriefTonight = {
+  sleep_target_hours: number;
+  bedtime_target: string;                     // "HH:mm"
+};
+
+export type MorningBriefCard = {
+  variant: MorningBriefVariant;
+  readiness: MorningBriefReadiness;
+  recap: MorningBriefRecap;
+  session: {
+    type: string;                             // "Legs" | "Chest" | "Back" | "Mobility" | "REST"
+    start_time: string | null;                // "13:00" for training; null for rest
+    exercises: MorningBriefExercise[];        // empty for rest
+  };
+  macros: MorningBriefMacros;
+  advice_md: string;                          // AI-generated 2-4 sentences markdown
+  tonight: MorningBriefTonight;
+};
+
+/** Computed deterministically by lib/morning/brief/flags.ts. Passed to the
+ *  AI prompt as named booleans so coaching logic stays in versioned TS code,
+ *  not in a prompt string. Each flag is one threshold check or regex match. */
+export type AdviceFlags = {
+  has_glp1: boolean;
+  alcohol_low_readiness_warning: boolean;
+  has_active_injuries: boolean;
+  poor_sleep_efficiency: boolean;
+  missed_protein_yesterday: boolean;
 };

@@ -34,6 +34,9 @@ export function decideIntakeAction(
   }
   switch (todayRow.intake_state) {
     case "delivered":
+    case "assembling_brief":
+    case "brief_delivered":
+    case "brief_failed":
       return { action: "skip" };
     case "awaiting_whoop":
       return { action: "open", mode: "resume_whoop" };
