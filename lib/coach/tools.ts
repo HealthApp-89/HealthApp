@@ -2045,6 +2045,21 @@ export async function executeCommitPlan(opts: {
   }
 
   _proposalCache.delete(token);
+
+  // Invalidate ISR caches that read athlete_profile_documents. Dynamic import
+  // so this module stays usable from non-route contexts (scripts, tests, etc.)
+  // that don't have next/cache available.
+  try {
+    const { revalidatePath } = await import("next/cache");
+    revalidatePath("/profile");
+    revalidatePath("/coach");
+    revalidatePath("/onboarding");
+  } catch {
+    // Non-fatal: in non-Next contexts (or if import resolves but the call
+    // fails outside a request) the caller will just see slightly stale ISR
+    // until the next natural revalidate.
+  }
+
   return {
     ok: true,
     data: { doc_id: opts.draftDocId },

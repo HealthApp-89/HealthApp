@@ -93,7 +93,30 @@ export type ChatMessageRow = {
 };
 
 export type ToolCallLog = {
-  name: "query_daily_logs" | "query_workouts" | "query_training_blocks" | "query_training_weeks" | "get_autoregulation_signals" | "compute_adherence" | "propose_block" | "commit_block" | "propose_week_plan" | "commit_week_plan";
+  name:
+    | "query_daily_logs"
+    | "query_workouts"
+    | "query_training_blocks"
+    | "query_training_weeks"
+    | "get_autoregulation_signals"
+    | "compute_adherence"
+    | "propose_block"
+    | "commit_block"
+    | "propose_week_plan"
+    | "commit_week_plan"
+    | "apply_goal_target"
+    | "apply_bedtime_correction"
+    | "apply_macros_correction"
+    | "apply_protein_correction"
+    | "set_sanity_override"
+    | "set_goal_narrative_chat"
+    | "set_directness"
+    | "set_cadence"
+    | "set_chronotype"
+    | "set_unprompted_actions"
+    | "set_free_form_constraints"
+    | "propose_plan"
+    | "commit_plan";
   input: Record<string, unknown>;
   ms: number;
   result_rows: number;

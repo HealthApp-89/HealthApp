@@ -34,6 +34,19 @@ import {
   COMMIT_BLOCK_TOOL,
   PROPOSE_WEEK_PLAN_TOOL,
   COMMIT_WEEK_PLAN_TOOL,
+  APPLY_GOAL_TARGET_TOOL,
+  APPLY_BEDTIME_CORRECTION_TOOL,
+  APPLY_MACROS_CORRECTION_TOOL,
+  APPLY_PROTEIN_CORRECTION_TOOL,
+  SET_SANITY_OVERRIDE_TOOL,
+  SET_GOAL_NARRATIVE_CHAT_TOOL,
+  SET_DIRECTNESS_TOOL,
+  SET_CADENCE_TOOL,
+  SET_CHRONOTYPE_TOOL,
+  SET_UNPROMPTED_ACTIONS_TOOL,
+  SET_FREE_FORM_CONSTRAINTS_TOOL,
+  PROPOSE_PLAN_TOOL,
+  COMMIT_PLAN_TOOL,
   executeQueryDailyLogs,
   executeQueryWorkouts,
   executeQueryTrainingBlocks,
@@ -44,6 +57,19 @@ import {
   executeCommitBlock,
   executeProposeWeekPlan,
   executeCommitWeekPlan,
+  executeApplyGoalTarget,
+  executeApplyBedtimeCorrection,
+  executeApplyMacrosCorrection,
+  executeApplyProteinCorrection,
+  executeSetSanityOverride,
+  executeSetGoalNarrativeChat,
+  executeSetDirectness,
+  executeSetCadence,
+  executeSetChronotype,
+  executeSetUnpromptedActions,
+  executeSetFreeFormConstraints,
+  executeProposePlan,
+  executeCommitPlan,
   type ToolResult,
 } from "@/lib/coach/tools";
 import type { ChatMode, ToolCallLog } from "@/lib/data/types";
@@ -56,6 +82,8 @@ const PERSIST_RESULT_TOOLS = new Set([
   "commit_block",
   "propose_week_plan",
   "commit_week_plan",
+  "propose_plan",
+  "commit_plan",
 ]);
 function shouldPersistResult(name: string): boolean {
   return PERSIST_RESULT_TOOLS.has(name);
@@ -91,6 +119,10 @@ export type RunChatStreamOpts = {
   /** Chat mode — controls which tools are exposed to the model.
    *  Default mode hides propose_ and commit_ tools to prevent accidental plan writes. */
   mode?: ChatMode;
+  /** Athlete-profile draft document id; required for intake-mode tools
+   *  (apply_*, set_*, propose_plan, commit_plan). Caller sets this when
+   *  serving an /onboarding chat turn. Null/undefined in default/planning modes. */
+  draftDocId?: string | null;
 };
 
 export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<ChatStreamYield> {
@@ -124,16 +156,57 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
     COMMIT_BLOCK_TOOL,
     PROPOSE_WEEK_PLAN_TOOL,
     COMMIT_WEEK_PLAN_TOOL,
+    APPLY_GOAL_TARGET_TOOL,
+    APPLY_BEDTIME_CORRECTION_TOOL,
+    APPLY_MACROS_CORRECTION_TOOL,
+    APPLY_PROTEIN_CORRECTION_TOOL,
+    SET_SANITY_OVERRIDE_TOOL,
+    SET_GOAL_NARRATIVE_CHAT_TOOL,
+    SET_DIRECTNESS_TOOL,
+    SET_CADENCE_TOOL,
+    SET_CHRONOTYPE_TOOL,
+    SET_UNPROMPTED_ACTIONS_TOOL,
+    SET_FREE_FORM_CONSTRAINTS_TOOL,
+    PROPOSE_PLAN_TOOL,
+    COMMIT_PLAN_TOOL,
   ];
 
-  // In default mode, hide the planning-write tools to prevent accidental
-  // invocation from casual conversation. plan_week + setup_block expose all.
-  const toolsForMode =
-    opts.mode === "plan_week" || opts.mode === "setup_block"
-      ? allTools
-      : allTools.filter(
-          (t) => !t.name.startsWith("propose_") && !t.name.startsWith("commit_"),
-        );
+  // Mode-scoped tool partitioning:
+  //   plan_week / setup_block — weekly-planning tools (propose_block,
+  //     commit_block, propose_week_plan, commit_week_plan) plus reads; intake
+  //     tools (apply_*, set_*, propose_plan, commit_plan) are hidden.
+  //   intake — onboarding wizard chat: 2 read tools (daily_logs + workouts)
+  //     + 13 Phase 2 intake tools. Weekly-planning tools are hidden.
+  //   default — only read tools; all propose_/commit_/apply_/set_ are hidden
+  //     to prevent accidental writes from casual conversation.
+  let toolsForMode: typeof allTools;
+  if (opts.mode === "plan_week" || opts.mode === "setup_block") {
+    toolsForMode = allTools.filter(
+      (t) =>
+        !t.name.startsWith("apply_") &&
+        !t.name.startsWith("set_") &&
+        t.name !== "propose_plan" &&
+        t.name !== "commit_plan",
+    );
+  } else if (opts.mode === "intake") {
+    toolsForMode = allTools.filter(
+      (t) =>
+        t.name === "query_daily_logs" ||
+        t.name === "query_workouts" ||
+        t.name.startsWith("apply_") ||
+        t.name.startsWith("set_") ||
+        t.name === "propose_plan" ||
+        t.name === "commit_plan",
+    );
+  } else {
+    toolsForMode = allTools.filter(
+      (t) =>
+        !t.name.startsWith("propose_") &&
+        !t.name.startsWith("commit_") &&
+        !t.name.startsWith("apply_") &&
+        !t.name.startsWith("set_"),
+    );
+  }
 
   while (true) {
     const forceText = invocations >= MAX_TOOL_INVOCATIONS;
@@ -283,6 +356,122 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
             input: block.input,
             chatMessageId: opts.assistantMessageId ?? null,
           });
+        } else if (
+          block.name === "apply_goal_target" ||
+          block.name === "apply_bedtime_correction" ||
+          block.name === "apply_macros_correction" ||
+          block.name === "apply_protein_correction" ||
+          block.name === "set_sanity_override" ||
+          block.name === "set_goal_narrative_chat" ||
+          block.name === "set_directness" ||
+          block.name === "set_cadence" ||
+          block.name === "set_chronotype" ||
+          block.name === "set_unprompted_actions" ||
+          block.name === "set_free_form_constraints" ||
+          block.name === "propose_plan" ||
+          block.name === "commit_plan"
+        ) {
+          // All Phase 2 intake-mode tools require a draft document id.
+          const draftDocId = opts.draftDocId ?? "";
+          if (draftDocId.length === 0) {
+            result = {
+              ok: false,
+              error: { error: "draftDocId required for intake-mode tools" },
+              meta: { ms: Date.now() - t0, range_days: 0 },
+            };
+          } else if (block.name === "apply_goal_target") {
+            result = await executeApplyGoalTarget({
+              supabase: opts.sr,
+              userId: opts.userId,
+              draftDocId,
+              input: block.input,
+            });
+          } else if (block.name === "apply_bedtime_correction") {
+            result = await executeApplyBedtimeCorrection({
+              supabase: opts.sr,
+              userId: opts.userId,
+              draftDocId,
+              input: block.input,
+            });
+          } else if (block.name === "apply_macros_correction") {
+            result = await executeApplyMacrosCorrection({
+              supabase: opts.sr,
+              userId: opts.userId,
+              draftDocId,
+              input: block.input,
+            });
+          } else if (block.name === "apply_protein_correction") {
+            result = await executeApplyProteinCorrection({
+              supabase: opts.sr,
+              userId: opts.userId,
+              draftDocId,
+              input: block.input,
+            });
+          } else if (block.name === "set_sanity_override") {
+            result = await executeSetSanityOverride({
+              supabase: opts.sr,
+              userId: opts.userId,
+              draftDocId,
+              input: block.input,
+            });
+          } else if (block.name === "set_goal_narrative_chat") {
+            result = await executeSetGoalNarrativeChat({
+              supabase: opts.sr,
+              userId: opts.userId,
+              draftDocId,
+              input: block.input,
+            });
+          } else if (block.name === "set_directness") {
+            result = await executeSetDirectness({
+              supabase: opts.sr,
+              userId: opts.userId,
+              draftDocId,
+              input: block.input,
+            });
+          } else if (block.name === "set_cadence") {
+            result = await executeSetCadence({
+              supabase: opts.sr,
+              userId: opts.userId,
+              draftDocId,
+              input: block.input,
+            });
+          } else if (block.name === "set_chronotype") {
+            result = await executeSetChronotype({
+              supabase: opts.sr,
+              userId: opts.userId,
+              draftDocId,
+              input: block.input,
+            });
+          } else if (block.name === "set_unprompted_actions") {
+            result = await executeSetUnpromptedActions({
+              supabase: opts.sr,
+              userId: opts.userId,
+              draftDocId,
+              input: block.input,
+            });
+          } else if (block.name === "set_free_form_constraints") {
+            result = await executeSetFreeFormConstraints({
+              supabase: opts.sr,
+              userId: opts.userId,
+              draftDocId,
+              input: block.input,
+            });
+          } else if (block.name === "propose_plan") {
+            result = await executeProposePlan({
+              supabase: opts.sr,
+              userId: opts.userId,
+              draftDocId,
+              input: block.input,
+            });
+          } else {
+            // block.name === "commit_plan"
+            result = await executeCommitPlan({
+              supabase: opts.sr,
+              userId: opts.userId,
+              draftDocId,
+              input: block.input,
+            });
+          }
         } else {
           result = {
             ok: false,

@@ -118,7 +118,7 @@ const UNATTACHED_WINDOW_MIN = 15;
 const DAILY_USER_MSG_CAP = 200;
 const MODEL = "claude-sonnet-4-5";
 
-type SendBody = { content?: string; image_ids?: string[]; mode?: string };
+type SendBody = { content?: string; image_ids?: string[]; mode?: string; doc?: string };
 
 export async function POST(req: Request) {
   const supabase = await createSupabaseServerClient();
@@ -140,7 +140,9 @@ export async function POST(req: Request) {
   const imageIds = Array.isArray(body.image_ids) ? body.image_ids : [];
 
   const requestedMode: ChatMode | null =
-    body.mode === "plan_week" || body.mode === "setup_block" ? body.mode : null;
+    body.mode === "plan_week" || body.mode === "setup_block" || body.mode === "intake"
+      ? body.mode
+      : null;
 
   if (content.length === 0 && imageIds.length === 0) {
     return NextResponse.json({ ok: false, reason: "empty" }, { status: 400 });
@@ -234,9 +236,21 @@ export async function POST(req: Request) {
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
-    if (prior?.mode === "plan_week" || prior?.mode === "setup_block") {
+    if (
+      prior?.mode === "plan_week" ||
+      prior?.mode === "setup_block" ||
+      prior?.mode === "intake"
+    ) {
       effectiveMode = prior.mode;
     }
+  }
+
+  // Parse optional doc reference (UUID string passed by the intake-mode UI).
+  // Simple validation: non-empty, length ≤ 64. RLS-scoped reads in the
+  // executors verify ownership.
+  let draftDocId: string | null = null;
+  if (typeof body.doc === "string" && body.doc.length > 0 && body.doc.length <= 64) {
+    draftDocId = body.doc;
   }
 
   // Stamp both rows with the resolved mode.
@@ -399,6 +413,7 @@ export async function POST(req: Request) {
           toolCallSink,
           assistantMessageId: assistantId,
           mode: effectiveMode,
+          draftDocId,
         })) {
           if (req.signal.aborted) {
             aborted = true;
