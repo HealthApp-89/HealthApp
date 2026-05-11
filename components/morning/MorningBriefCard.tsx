@@ -1,16 +1,54 @@
 "use client";
 
 import type { CSSProperties } from "react";
+import { useMemo } from "react";
 import { COLOR, RADIUS } from "@/lib/ui/theme";
-import type { MorningBriefCard as MorningBriefCardData } from "@/lib/data/types";
+import type { MorningBriefCard as MorningBriefCardData, Weekday } from "@/lib/data/types";
 import { BriefRecapStats } from "@/components/morning/BriefRecapStats";
 import { BriefSessionList } from "@/components/morning/BriefSessionList";
 import { BriefRestActions } from "@/components/morning/BriefRestActions";
 import { BriefMacrosGrid } from "@/components/morning/BriefMacrosGrid";
 import { BriefAdvice } from "@/components/morning/BriefAdvice";
 import { BriefTonight } from "@/components/morning/BriefTonight";
+import { BriefCoachSuggestion } from "@/components/morning/BriefCoachSuggestion";
+import { useTrainingWeek } from "@/lib/query/hooks/useTrainingWeek";
+import { readSessionForDay } from "@/lib/coach/session-plan-reader";
+import { todayInUserTz, weekdayInUserTz } from "@/lib/time";
 
-export function MorningBriefCard({ card }: { card: MorningBriefCardData }) {
+const FULL_TO_SHORT_INLINE: Record<string, Weekday> = {
+  Monday: "Mon",
+  Tuesday: "Tue",
+  Wednesday: "Wed",
+  Thursday: "Thu",
+  Friday: "Fri",
+  Saturday: "Sat",
+  Sunday: "Sun",
+};
+
+function weekStartOfInline(today: string): string {
+  const d = new Date(today + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+  return d.toISOString().slice(0, 10);
+}
+
+export function MorningBriefCard({
+  userId,
+  card,
+}: {
+  userId: string;
+  card: MorningBriefCardData;
+}) {
+  const today = useMemo(() => todayInUserTz(), []);
+  const weekStart = useMemo(() => weekStartOfInline(today), [today]);
+  const sourceDay = useMemo<Weekday>(() => {
+    const full = weekdayInUserTz(new Date(`${today}T12:00:00Z`));
+    return FULL_TO_SHORT_INLINE[full] ?? "Mon";
+  }, [today]);
+  const { data: liveWeek } = useTrainingWeek(userId, weekStart);
+  const liveType =
+    liveWeek && readSessionForDay(liveWeek.session_plan as Record<string, string>, sourceDay);
+  const isSwapped = !!liveType && liveType !== card.session.type;
+
   return (
     <article
       style={{
@@ -34,10 +72,17 @@ export function MorningBriefCard({ card }: { card: MorningBriefCardData }) {
       {card.variant === "training" ? (
         <>
           <SectionLabel>
-            Today · {card.session.type}
+            Today ·{" "}
+            <span style={{ textDecoration: isSwapped ? "line-through" : "none" }}>
+              {card.session.type}
+            </span>
             {card.session.start_time ? ` · ${card.session.start_time}` : null}
           </SectionLabel>
-          <BriefSessionList exercises={card.session.exercises} />
+          <BriefSessionList
+            session={card.session}
+            isSwapped={isSwapped}
+            liveType={liveType ?? null}
+          />
         </>
       ) : (
         <>
@@ -52,6 +97,13 @@ export function MorningBriefCard({ card }: { card: MorningBriefCardData }) {
       <BriefAdvice md={card.advice_md} />
       <Divider />
       <BriefTonight tonight={card.tonight} />
+      {card.coach_suggestion && (
+        <BriefCoachSuggestion
+          userId={userId}
+          briefSessionType={card.session.type}
+          suggestion={card.coach_suggestion}
+        />
+      )}
     </article>
   );
 }

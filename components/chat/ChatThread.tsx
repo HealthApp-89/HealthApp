@@ -8,12 +8,14 @@ import { MorningBriefCard as MorningBriefCardComponent } from "@/components/morn
 import type { MorningBriefCard } from "@/lib/data/types";
 
 export function ChatThread({
+  userId,
   messages,
   onLoadOlder,
   onRetry,
   onSendUserMessage,
   onFocusComposer,
 }: {
+  userId: string;
   messages: ChatMessage[];
   onLoadOlder: (beforeIso: string) => Promise<{ added: number }>;
   onRetry: (messageId: string) => void;
@@ -108,6 +110,7 @@ export function ChatThread({
         ) : it.m.kind === "morning_brief" ? (
           <MorningBriefCardComponent
             key={it.m.id}
+            userId={userId}
             card={it.m.ui as MorningBriefCard}
           />
         ) : (
