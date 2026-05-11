@@ -3,8 +3,14 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import type { DailyLog } from "@/lib/data/types";
 
+// Wide projection — every column on `DailyLog` (lib/data/types.ts). When you
+// add a column to the type, add it here too: a missing column makes the field
+// silently absent from the returned row, which shows up in the UI as a
+// permanently-empty input even when the sync writer is populating the DB
+// correctly. Trends has its own narrower projection (TREND_COLS below) for
+// payload size; everywhere else expects the full shape.
 const COLS =
-  "user_id, date, hrv, resting_hr, recovery, spo2, skin_temp_c, strain, sleep_hours, sleep_score, deep_sleep_hours, rem_sleep_hours, weight_kg, body_fat_pct, steps, calories, calories_eaten, protein_g, carbs_g, fat_g, respiratory_rate, notes, source, updated_at";
+  "user_id, date, hrv, resting_hr, recovery, spo2, skin_temp_c, strain, sleep_hours, sleep_score, deep_sleep_hours, rem_sleep_hours, weight_kg, body_fat_pct, fat_mass_kg, fat_free_mass_kg, muscle_mass_kg, bone_mass_kg, hydration_kg, steps, calories, active_calories, distance_km, exercise_min, calories_eaten, protein_g, carbs_g, fat_g, respiratory_rate, notes, source, updated_at";
 
 /**
  * Server variant takes the supabase client as an argument so the caller (a
