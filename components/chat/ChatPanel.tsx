@@ -554,7 +554,30 @@ export default function ChatPanel({
   );
 
   const onAction = useCallback(
-    async (action: "whoop_sync" | "skip_whoop" | "retry_recommendation") => {
+    async (action: "whoop_sync" | "skip_whoop" | "retry_recommendation" | "retry_brief") => {
+      if (action === "retry_brief") {
+        const tempId = `stub-${crypto.randomUUID()}`;
+        dispatch({ type: "append_assistant_stub", id: tempId });
+        try {
+          const res = await fetch("/api/chat/morning/retry-brief", { method: "POST" });
+          dispatch({ type: "remove_id", id: tempId });
+          if (res.ok) {
+            const json = (await res.json()) as { ok: true; message: ChatMessage };
+            dispatch({ type: "add_message", message: json.message });
+          } else {
+            const errorId = `err-${crypto.randomUUID()}`;
+            dispatch({ type: "append_assistant_stub", id: errorId });
+            dispatch({ type: "finalize_assistant", id: errorId, status: "error", error: "Retry failed — please try again." });
+          }
+        } catch (e) {
+          dispatch({ type: "remove_id", id: tempId });
+          const errorId = `err-${crypto.randomUUID()}`;
+          dispatch({ type: "append_assistant_stub", id: errorId });
+          dispatch({ type: "finalize_assistant", id: errorId, status: "error", error: String(e) });
+        }
+        queryClient.invalidateQueries({ queryKey: queryKeys.checkin.one(userId, today) });
+        return;
+      }
       if (action === "whoop_sync") {
         try {
           const res = await fetch("/api/whoop/sync", { method: "GET" });

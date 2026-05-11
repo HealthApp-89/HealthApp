@@ -36,8 +36,9 @@ export function decideIntakeAction(
     case "delivered":
     case "assembling_brief":
     case "brief_delivered":
-    case "brief_failed":
       return { action: "skip" };
+    case "brief_failed":
+      return { action: "open", mode: "resume_whoop" };
     case "awaiting_whoop":
       return { action: "open", mode: "resume_whoop" };
     case "pending":

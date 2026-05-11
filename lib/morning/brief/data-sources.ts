@@ -11,7 +11,6 @@ import type {
   DailyLog,
   IntensityModifier,
   PrimaryLift,
-  Profile,
   TrainingBlock,
   TrainingWeek,
   Weekday,

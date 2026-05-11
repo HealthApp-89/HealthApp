@@ -26,7 +26,7 @@ export function BriefRecapStats({ recap }: { recap: MorningBriefRecap }) {
       label: "Trained",
       value: recap.trained_yesterday ?? "—",
       sub: recap.top_e1rm_yesterday
-        ? `${recap.top_e1rm_yesterday.lift} ${recap.top_e1rm_yesterday.kg}`
+        ? `${recap.top_e1rm_yesterday.lift} ${recap.top_e1rm_yesterday.kg}kg`
         : undefined,
     },
   ];

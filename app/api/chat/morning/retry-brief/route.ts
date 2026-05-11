@@ -75,10 +75,18 @@ export async function POST() {
     return NextResponse.json({ ok: false, reason: "insert_failed" }, { status: 500 });
   }
 
-  await sr.from("checkins").upsert(
-    { user_id: user.id, date: today, intake_state: "brief_delivered" },
-    { onConflict: "user_id,date" },
-  );
+  try {
+    const { error: stateErr } = await sr.from("checkins").upsert(
+      { user_id: user.id, date: today, intake_state: "brief_delivered" },
+      { onConflict: "user_id,date" },
+    );
+    if (stateErr) {
+      console.error("[morning brief retry] final state upsert failed (brief inserted, state may be stranded at assembling_brief)", stateErr);
+      // Don't fail the request — the brief is delivered.
+    }
+  } catch (stateErr) {
+    console.error("[morning brief retry] final state upsert threw (brief inserted, state may be stranded at assembling_brief)", stateErr);
+  }
 
   return NextResponse.json({ ok: true, message: inserted });
 }

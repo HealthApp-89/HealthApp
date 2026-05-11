@@ -19,7 +19,7 @@ import {
   createSupabaseServerClient,
   createSupabaseServiceRoleClient,
 } from "@/lib/supabase/server";
-import { todayInUserTz } from "@/lib/time";
+import { todayInUserTz, ymdInUserTz } from "@/lib/time";
 import type { CheckinRow, DailyLog, MorningBriefCard } from "@/lib/data/types";
 import { buildMorningBrief } from "@/lib/morning/brief";
 
@@ -45,6 +45,11 @@ export async function POST(req: Request) {
     .maybeSingle<CheckinRow>();
   if (!row) {
     return NextResponse.json({ ok: false, reason: "no_row" }, { status: 409 });
+  }
+
+  // Sick guard: never produce a training-variant brief for a declared-sick user.
+  if (row.sick === true) {
+    return NextResponse.json({ ok: false, reason: "sick_path" }, { status: 409 });
   }
 
   // Idempotency: brief already delivered for today
@@ -93,6 +98,16 @@ export async function POST(req: Request) {
       { user_id: user.id, date: today, intake_state: "brief_failed" },
       { onConflict: "user_id,date" },
     );
+    // Insert a retry chip so the user can tap to retry from the morning panel.
+    await sr.from("chat_messages").insert({
+      user_id: user.id,
+      role: "assistant",
+      kind: "morning_intake",
+      content: "I had trouble generating today's brief. Tap to retry.",
+      ui: {
+        chips: [{ label: "Try again", action: "retry_brief" }],
+      },
+    });
     return NextResponse.json({ ok: false, reason: "brief_failed" }, { status: 500 });
   }
 
@@ -118,10 +133,20 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, reason: "insert_failed" }, { status: 500 });
   }
 
-  await sr.from("checkins").upsert(
-    { user_id: user.id, date: today, intake_state: "brief_delivered" },
-    { onConflict: "user_id,date" },
-  );
+  try {
+    const { error: stateErr } = await sr.from("checkins").upsert(
+      { user_id: user.id, date: today, intake_state: "brief_delivered" },
+      { onConflict: "user_id,date" },
+    );
+    if (stateErr) {
+      console.error("[morning brief] final state upsert failed (brief inserted, state may be stranded at assembling_brief)", stateErr);
+      // Don't fail the request — the brief is delivered. Future requests will see
+      // intake_state='assembling_brief' but a brief row exists; recommendation
+      // route's idempotency check handles this via the existing-message lookup.
+    }
+  } catch (stateErr) {
+    console.error("[morning brief] final state upsert threw (brief inserted, state may be stranded at assembling_brief)", stateErr);
+  }
 
   return NextResponse.json({ ok: true, message: inserted });
 }
@@ -131,16 +156,19 @@ async function loadExistingBriefMessage(
   userId: string,
   today: string,
 ) {
+  // Pull the most recent morning_brief; verify its date matches today in user-tz.
   const { data } = await sr
     .from("chat_messages")
     .select("id, role, kind, content, ui, created_at")
     .eq("user_id", userId)
     .eq("kind", "morning_brief")
-    .gte("created_at", `${today}T00:00:00Z`)
-    .lte("created_at", `${today}T23:59:59Z`)
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
+  if (!data) return null;
+  // Use ymdInUserTz to verify the row's created_at corresponds to user-tz today.
+  const rowDate = ymdInUserTz(new Date(data.created_at as string));
+  if (rowDate !== today) return null;
   return data;
 }
 
