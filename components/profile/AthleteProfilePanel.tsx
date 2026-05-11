@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
-import { useState } from "react";
+import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { COLOR } from "@/lib/ui/theme";
 import { Card } from "@/components/ui/Card";
 import type { AthleteProfileDocument } from "@/lib/data/types";
@@ -9,6 +10,7 @@ import { AthleteProfileHistory } from "@/components/profile/AthleteProfileHistor
 import { useAthleteProfile } from "@/lib/query/hooks/useAthleteProfile";
 import { useAthleteProfileHistory } from "@/lib/query/hooks/useAthleteProfileHistory";
 import { useAthleteProfileDraft } from "@/lib/query/hooks/useAthleteProfileDraft";
+import { startPlanIntake } from "@/app/onboarding/start-plan-intake";
 
 export function AthleteProfilePanel({ userId }: { userId: string }) {
   const { data: active, isLoading: loadingActive } = useAthleteProfile(userId);
@@ -103,6 +105,8 @@ export function AthleteProfilePanel({ userId }: { userId: string }) {
         </Card>
       )}
 
+      {active && active.plan_payload === null && <GeneratePlanCta />}
+
       {history.length > 1 && <AthleteProfileHistory docs={history} />}
 
       {viewing && viewing.rendered_md && (
@@ -119,6 +123,62 @@ export function AthleteProfilePanel({ userId }: { userId: string }) {
 function summarizeGoal(d: AthleteProfileDocument): string {
   const g = d.intake_payload.goals;
   return `Goal: ${g.primary_metric} → ${g.target_value}${g.target_unit} by ${g.target_date}`;
+}
+
+function GeneratePlanCta() {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+
+  function handleClick() {
+    setError(null);
+    startTransition(async () => {
+      const result = await startPlanIntake();
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      router.push(`/coach?mode=intake&doc=${result.doc_id}`);
+    });
+  }
+
+  return (
+    <Card variant="compact" style={{ borderColor: COLOR.accent, background: COLOR.accentSoft }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: COLOR.textStrong }}>
+          Your profile is set — now generate the coaching plan
+        </div>
+        <div style={{ fontSize: 12, color: COLOR.textMid, lineHeight: 1.5 }}>
+          A short chat turns the intake into prescribed sleep, nutrition, and
+          strength targets the coach references on every reply.
+        </div>
+        <button
+          type="button"
+          onClick={handleClick}
+          disabled={pending}
+          style={{
+            marginTop: 4,
+            padding: "8px 14px",
+            background: COLOR.accent,
+            color: "#fff",
+            border: "none",
+            borderRadius: 999,
+            fontSize: 12,
+            fontWeight: 700,
+            cursor: pending ? "wait" : "pointer",
+            alignSelf: "flex-start",
+          }}
+        >
+          {pending ? "Starting…" : "Generate plan →"}
+        </button>
+        {error && (
+          <div style={{ fontSize: 11, color: "#dc2626" }}>
+            Could not start plan intake: {error}
+          </div>
+        )}
+      </div>
+    </Card>
+  );
 }
 
 function btn(variant: "primary" | "secondary"): React.CSSProperties {

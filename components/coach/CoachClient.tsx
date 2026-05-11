@@ -105,6 +105,15 @@ export function CoachClient({
       const url = new URL(window.location.href);
       url.searchParams.delete("mode");
       window.history.replaceState({}, "", url.toString());
+    } else if (m === "intake") {
+      const doc = search.get("doc") ?? undefined;
+      window.dispatchEvent(
+        new CustomEvent("open-chat", { detail: { mode: m, doc } }),
+      );
+      const url = new URL(window.location.href);
+      url.searchParams.delete("mode");
+      url.searchParams.delete("doc");
+      window.history.replaceState({}, "", url.toString());
     }
   }, [search]);
 
