@@ -219,7 +219,7 @@ export type TrainingWeek = {
 
 // ── chat mode (extends existing ChatMessageRow) ──────────────────────────────
 
-export type ChatMode = "default" | "plan_week" | "setup_block";
+export type ChatMode = "default" | "plan_week" | "setup_block" | "intake";
 
 // ── body_measurements ────────────────────────────────────────────────────────
 
@@ -282,7 +282,7 @@ export type AthleteProfileStatus = "draft" | "active" | "superseded" | "discarde
  *  Schema is snake_case to mirror what gets stored in Postgres jsonb.
  *  `schema_version` discriminates future migrations of this shape. */
 export type IntakePayload = {
-  schema_version: 1;
+  schema_version: 1 | 2;
   health: {
     conditions: {
       cardiac: boolean;
@@ -371,6 +371,8 @@ export type IntakePayload = {
     awakenings: "none" | "1_2" | "3_plus";
     mobility_work: string;
     soreness_frequency: "rare" | "common" | "always";
+    // NEW Phase 2 field — populated by Beat 4 chat
+    chronotype?: "lark" | "neutral" | "owl";
   };
   goals: {
     primary_type: "strength" | "body_comp" | "performance" | "health";
@@ -379,6 +381,168 @@ export type IntakePayload = {
     target_unit: string;
     target_date: string; // "YYYY-MM-DD"
     why_narrative: string;
+  };
+
+  // ── New in Phase 2 (optional; populated by chat) ─────────────────────────
+  goal_narrative_chat?: string;
+
+  coaching_preferences?: {
+    directness: "blunt" | "balanced" | "softer";
+    cadence: "daily" | "weekly" | "on_demand";
+    unprompted_actions: Array<
+      "suggest_revisions" | "nudge_on_drift" | "flag_macros" | "flag_sleep"
+    >;
+  };
+
+  free_form_constraints?: string;
+
+  sanity_overrides?: {
+    goal_kept_despite_low_target?: boolean;
+    sleep_efficiency_acknowledged?: boolean;
+    macros_gap_acknowledged?: boolean;
+    protein_floor_acknowledged?: boolean;
+  };
+};
+
+// ── Sanity-check finding from plan-builder (Beat 1 input) ───────────────────
+export type SanityFinding =
+  | {
+      type: "goal_contradiction";
+      current_e1rm: number;
+      target_value: number;
+      proposed_target: number;
+      target_unit: string;
+      lift: "squat" | "bench" | "deadlift" | "ohp";
+      months_to_target: number;
+      rationale: string;
+    }
+  | {
+      type: "sleep_efficiency";
+      time_in_bed_h: number;
+      avg_sleep_h: number;
+      current_efficiency: number;
+      proposed_bedtime: string;
+      rationale: string;
+    }
+  | {
+      type: "macros_gap";
+      target_kcal: number;
+      actual_7d_kcal: number;
+      gap_pct: number;
+      options: Array<"match_actual" | "hit_target">;
+      rationale: string;
+    }
+  | {
+      type: "protein_floor";
+      current_protein_g: number;
+      current_per_kg_bw: number;
+      floor: 1.6;
+      bodyweight: number;
+      proposed_protein_g: number;
+      proposed_fat_g: number;
+      rationale: string;
+    };
+
+// ── PlanPayload — Phase 2 prescribed coaching plan jsonb ────────────────────
+
+export type PlanPayload = {
+  schema_version: 1;
+
+  athlete_snapshot: {
+    name: string | null;
+    age: number | null;
+    height_cm: number | null;
+    training_age: "beginner" | "intermediate" | "advanced";
+    derived_at: string;       // ISO timestamp
+  };
+
+  goal: {
+    type: "strength" | "body_comp" | "performance" | "health";
+    primary_metric: string;
+    target_value: number;
+    target_unit: string;
+    target_date: string;
+    narrative_summary: string;
+    feasibility_note: string | null;
+  };
+
+  periodization: {
+    block_length_weeks: number;
+    blocks_to_goal_date: number;
+    deload_cadence_weeks: number;
+    rir_arc: Array<{ week: number; rir: number | null }>;
+    rotation_rule: "fixed_split" | "rotate_primary" | "specialization";
+  };
+
+  strength: {
+    sessions_per_week: number;
+    day_pattern: { [weekday: string]: string };
+    template_session_types: Array<
+      "Chest" | "Legs" | "Back" | "Mobility" | "REST"
+    >;
+    weekly_volume_targets: {
+      [primary_lift: string]: { reps_per_week: number; sets_per_week: number };
+    };
+    progression_rule: string;
+    notes: string | null;
+  };
+
+  nutrition: {
+    phase: "cut" | "maintain" | "lean_bulk" | "recomp";
+    kcal_target: number;
+    kcal_range: [number, number];
+    protein_g_per_kg_bw: number;
+    protein_g: number;
+    carb_g: number;
+    fat_g: number;
+    training_day_uplift: { kcal: number; carb_g: number } | null;
+    refeed_cadence_days: number | null;
+    refeed_uplift: { kcal: number; carb_g: number } | null;
+    hard_rules: {
+      alcohol_policy: "none" | "training_day_only" | "weekend_allowed";
+      caffeine_cap_mg_per_day: number;
+      caffeine_last_dose_hours_before_bed: number;
+      tracking_tolerance_missed_days_per_week: number;
+    };
+    notes: string | null;
+  };
+
+  sleep: {
+    chronotype: "lark" | "neutral" | "owl";
+    target_hours_min: number;
+    target_hours_max: number;
+    wake_target: string;
+    bedtime_target: string;
+    efficiency_target: number;
+    latency_target_min: number;
+    hygiene_rules: {
+      caffeine_cutoff_hours_before_bed: number;
+      alcohol_cutoff_hours_before_bed: number;
+      last_meal_cutoff_hours_before_bed: number;
+      screen_cutoff_minutes_before_bed: number;
+      intense_exercise_cutoff_hours_before_bed: number;
+      morning_light_exposure_minutes: number;
+      weekend_consistency_within_minutes: number;
+    };
+    concern_triggers: {
+      avg_sleep_below_h: number;
+      efficiency_below: number;
+      latency_above_min: number;
+      consecutive_short_nights: number;
+    };
+  };
+
+  recovery: {
+    mobility_minutes_per_week: number;
+    deload_triggers: string[];
+    reactivity_protocol: string;
+  };
+
+  coaching_agreement: {
+    cadence: "daily" | "weekly" | "on_demand";
+    directness: "blunt" | "balanced" | "softer";
+    unprompted_actions_allowed: string[];
+    re_evaluation_cadence_weeks: number;
   };
 };
 
@@ -389,7 +553,7 @@ export type AthleteProfileDocument = {
   version: number;
   status: AthleteProfileStatus;
   intake_payload: IntakePayload;
-  plan_payload: unknown | null; // populated in Phase 2
+  plan_payload: PlanPayload | null; // populated in Phase 2
   rendered_md: string | null;
   acknowledged_at: string | null;
   superseded_at: string | null;
