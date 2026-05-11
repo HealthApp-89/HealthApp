@@ -149,14 +149,17 @@ function checkMacrosGap(inputs: SanityCheckInputs): SanityFinding | null {
   const target = intake.nutrition.current_kcal;
   if (target <= 0) return null;
 
-  const gap = (target - rolling_7d_kcal) / target;
+  // Sign convention: gap is (actual - target) / target, so undershooting the
+  // target yields a NEGATIVE pct and overshooting yields a POSITIVE pct.
+  // Matches the convention in the design spec ("gap_pct: -13% for undershoot").
+  const gap = (rolling_7d_kcal - target) / target;
   if (Math.abs(gap) <= 0.1) return null; // within 10% — close enough
 
   return {
     type: "macros_gap",
     target_kcal: target,
     actual_7d_kcal: Math.round(rolling_7d_kcal),
-    gap_pct: Math.round(gap * 1000) / 10, // e.g., -12.5
+    gap_pct: Math.round(gap * 1000) / 10, // e.g., -12.5 (undershoot)
     options: ["match_actual", "hit_target"],
     rationale: `Stated target ${target} kcal, but rolling 7d actual ${Math.round(rolling_7d_kcal)} kcal (${gap >= 0 ? "+" : ""}${(gap * 100).toFixed(0)}%). Either lower target to match reality, or commit to hitting the stated target as a behavior change.`,
   };

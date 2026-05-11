@@ -246,10 +246,13 @@ export async function POST(req: Request) {
   }
 
   // Parse optional doc reference (UUID string passed by the intake-mode UI).
-  // Simple validation: non-empty, length ≤ 64. RLS-scoped reads in the
-  // executors verify ownership.
+  // Defense-in-depth: format-validate against UUID before passing to executors.
+  // The (id, user_id, status='draft') triple-eq in each executor enforces
+  // ownership, but a clean UUID gate avoids surfacing malformed-input DB
+  // errors as opaque "draft_not_found" surface text.
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   let draftDocId: string | null = null;
-  if (typeof body.doc === "string" && body.doc.length > 0 && body.doc.length <= 64) {
+  if (typeof body.doc === "string" && UUID_RE.test(body.doc)) {
     draftDocId = body.doc;
   }
 
