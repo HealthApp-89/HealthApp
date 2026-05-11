@@ -311,7 +311,7 @@ function renderPlanPeriodizationSection(p: PlanPayload["periodization"]): string
     "## Periodization",
     "",
     `**${p.block_length_weeks}-week blocks** ending in deload. ~${p.blocks_to_goal_date} blocks to goal date.`,
-    `Rotation: ${p.rotation_rule.replace("_", " ")}`,
+    `Rotation: ${p.rotation_rule.replace(/_/g, " ")}`,
     `RIR arc: ${rir}`,
   ].join("\n");
 }
@@ -335,7 +335,7 @@ function renderPlanStrengthSection(s: PlanPayload["strength"]): string {
     volume,
     "",
     `**Progression:** ${s.progression_rule}`,
-    s.notes ? `\n${s.notes}` : "",
+    ...(s.notes ? ["", s.notes] : []),
   ].join("\n");
 }
 
@@ -357,7 +357,7 @@ function renderPlanNutritionSection(n: PlanPayload["nutrition"]): string {
     `**Caffeine:** cap ${n.hard_rules.caffeine_cap_mg_per_day} mg/day, last dose ${n.hard_rules.caffeine_last_dose_hours_before_bed}h before bed`,
     refeed,
     uplift,
-    n.notes ? `\n${n.notes}` : "",
+    ...(n.notes ? ["", n.notes] : []),
   ].join("\n");
 }
 
