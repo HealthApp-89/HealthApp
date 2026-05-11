@@ -229,6 +229,12 @@ export type TrainingWeek = {
   /** YYYY-MM-DD, always a Monday (UTC). */
   week_start: string;
   session_plan: SessionPlan;
+  /** Snapshot of session_plan at the moment of the first mid-week edit. NULL on
+   *  rows that have never been edited (the common case). Set by the /swap
+   *  endpoint on first mutation; never updated thereafter. Reset to NULL when an
+   *  identity-restore swap returns session_plan to the original state.
+   *  Adherence reads `coalesce(original_session_plan, session_plan)`. */
+  original_session_plan: SessionPlan | null;
   weekly_focus: string | null;
   intensity_modifier: IntensityModifier;
   rir_target: number | null;
@@ -642,6 +648,17 @@ export type MorningBriefCard = {
   };
   macros: MorningBriefMacros;
   advice_md: string;                          // AI-generated 2-4 sentences markdown
+  /** Deterministically set by lib/morning/brief/assembler.ts when band='low'
+   *  AND today's session is non-REST/non-Mobility AND a training_weeks row
+   *  exists for this week. Renders as a yellow chip below BriefTonight. The
+   *  "acknowledged" state (after the user taps Swap) is derived client-side
+   *  from training_weeks.session_plan[today] !== card.session.type — the jsonb
+   *  in chat_messages.ui is NEVER rewritten on swap.
+   *
+   *  By the time the chip renders the acknowledged state, the swap has already
+   *  mutated `session_plan`, so the inequality is the correct signal — clients
+   *  do NOT need to compare against `original_session_plan`. */
+  coach_suggestion: MorningBriefCoachSuggestion;
   tonight: MorningBriefTonight;
 };
 
@@ -654,4 +671,56 @@ export type AdviceFlags = {
   has_active_injuries: boolean;
   poor_sleep_efficiency: boolean;
   missed_protein_yesterday: boolean;
+  /** True when MorningBriefCard.coach_suggestion?.kind === 'swap_to_mobility'.
+   *  Tells the advice-prompt that a swap chip is visible — prose should
+   *  explain WHY (signals fired), not re-decide WHETHER to swap, and should
+   *  drop workout-anchored eating timing. */
+  coach_swap_suggested: boolean;
 };
+
+// ── Schedule flexibility (migration 0012) ────────────────────────────────────
+
+export type SwapAction = "swap" | "replace";
+
+export type SwapConflict = {
+  /** The day with the new placement that conflicts. */
+  day: Weekday;
+  /** The adjacent day (day ± 1) causing the conflict. */
+  neighbor_day: Weekday;
+  /** The session type that would be duplicated across two adjacent days. */
+  session_type: string;
+};
+
+export type SwapBody =
+  | { action: "swap"; source_day: Weekday; target_day: Weekday }
+  | { action: "replace"; source_day: Weekday; session_type: string };
+
+export type SwapResult = {
+  week: TrainingWeek;
+  swap: {
+    source_day: Weekday;
+    action: SwapAction;
+    /** Session type at source_day before the operation. */
+    before: string;
+    /** Session type at source_day after the operation. For action='swap',
+     *  this is the previous target_day value. */
+    after: string;
+  };
+};
+
+/** Structured 409 response body returned by `POST /api/training-weeks/[week_start]/swap`
+ *  when conflicts are detected and the client did NOT pass `?confirm=true`. Not an
+ *  exception — clients receive this as the JSON body of a 4xx response and use it to
+ *  populate the warning UI. The mutation hook re-throws it as a `SwapErrorWithPreview`
+ *  for ergonomic consumer handling (see Task 6). */
+export type SwapConflictResponse = {
+  conflicts: SwapConflict[];
+  /** The plan that would be written if the client retries with ?confirm=true. */
+  preview_plan: SessionPlan;
+};
+
+// ── Morning brief coach_suggestion (consumed by Schedule flexibility) ────────
+
+export type MorningBriefCoachSuggestion =
+  | { kind: "swap_to_mobility"; rationale: "low_readiness" }
+  | null;

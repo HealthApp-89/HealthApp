@@ -63,6 +63,8 @@ export function assembleBriefExceptAdvice(
     session: composeSession(variant, inputs),
     macros: composeMacros(inputs),
     tonight: composeTonight(inputs),
+    // Placeholder — Task 9 wires pickCoachSuggestion(band, sessionType, hasTrainingWeek).
+    coach_suggestion: null,
   };
 }
 

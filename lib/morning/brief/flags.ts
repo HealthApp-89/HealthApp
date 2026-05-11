@@ -45,6 +45,8 @@ export function computeAdviceFlags(inputs: FlagInputs): AdviceFlags {
     has_active_injuries: injuries.length > 0,
     poor_sleep_efficiency,
     missed_protein_yesterday,
+    // Placeholder — Task 10 wires inputs.card.coach_suggestion?.kind === "swap_to_mobility".
+    coach_swap_suggested: false,
   };
 }
 
