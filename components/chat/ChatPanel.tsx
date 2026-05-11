@@ -703,6 +703,7 @@ export default function ChatPanel({
       )}
       {state.loaded && (
         <ChatThread
+          userId={userId}
           messages={state.messages}
           onLoadOlder={loadOlder}
           onRetry={onRetry}

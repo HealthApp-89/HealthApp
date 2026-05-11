@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { Card, SectionLabel } from "@/components/ui/Card";
 import { COLOR } from "@/lib/ui/theme";
 import { useTrainingWeek } from "@/lib/query/hooks/useTrainingWeek";
 import { readSessionForDay } from "@/lib/coach/session-plan-reader";
+import { DaySwapSheet } from "@/components/strength/DaySwapSheet";
 import type { Weekday } from "@/lib/data/types";
 
 const ORDER: Weekday[] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -17,6 +19,7 @@ export function WeekPlanCard({
   weekStart: string;
 }) {
   const { data: week } = useTrainingWeek(userId, weekStart);
+  const [sheetOpenForDay, setSheetOpenForDay] = useState<Weekday | null>(null);
   if (!week) return null;
 
   return (
@@ -31,14 +34,26 @@ export function WeekPlanCard({
           const t = readSessionForDay(week.session_plan, d) ?? "—";
           const isRest = t.toLowerCase().includes("rest") || t === "—";
           return (
-            <div
+            <button
               key={d}
+              type="button"
+              onClick={() => setSheetOpenForDay(d)}
               style={{
                 display: "flex",
+                width: "100%",
+                alignItems: "center",
                 justifyContent: "space-between",
                 padding: "5px 0",
+                borderTop: "none",
+                borderLeft: "none",
+                borderRight: "none",
                 borderBottom: `1px solid ${COLOR.divider}`,
+                background: "transparent",
+                color: "inherit",
                 fontSize: "12px",
+                textAlign: "left",
+                fontFamily: "inherit",
+                cursor: "pointer",
               }}
             >
               <span style={{ width: "44px", color: COLOR.textMuted, fontWeight: 600 }}>{d}</span>
@@ -56,7 +71,7 @@ export function WeekPlanCard({
                   RIR {week.rir_target}
                 </span>
               )}
-            </div>
+            </button>
           );
         })}
       </div>
@@ -79,6 +94,16 @@ export function WeekPlanCard({
       >
         Re-open planning chat →
       </Link>
+
+      {sheetOpenForDay && (
+        <DaySwapSheet
+          userId={userId}
+          weekStart={weekStart}
+          sourceDay={sheetOpenForDay}
+          plan={week.session_plan}
+          onClose={() => setSheetOpenForDay(null)}
+        />
+      )}
     </Card>
   );
 }

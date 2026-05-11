@@ -56,10 +56,38 @@ function matches(planned: string | null, actual: string | null): boolean {
   return false;
 }
 
+/** Per-day adherence verdict.
+ *  - 'rest': planned was REST AND no workout AND no swap (honored rest).
+ *  - 'as_planned': workout type matches the originally-committed session.
+ *  - 'swapped': mid-week edit was honored. Two sub-cases:
+ *    a. swapped_to matches the actual workout (e.g., Chest → Mobility, did mobility)
+ *    b. swapped_to is REST AND no workout (e.g., Chest → REST as a deliberate skip)
+ *  - 'missed': nothing else — the athlete committed to something and didn't deliver. */
+export type AdherenceDayStatus = "as_planned" | "swapped" | "missed" | "rest";
+
+/** One row per day in the AdherenceResult.days array. AI consumers use this to
+ *  produce prose like "you planned Chest, swapped to Mobility, did the walk"
+ *  rather than just "Tuesday: planned Chest, actual nothing". */
+export type AdherenceDay = {
+  day: Weekday;
+  /** From original_session_plan if the week has been edited; else from
+   *  session_plan. Anchored to the Sunday commitment regardless of swaps. */
+  planned: string;
+  /** Current session_plan[day] when it differs from planned (a swap happened).
+   *  Null when planned === current. */
+  swapped_to: string | null;
+  /** workouts[date].type for this day, or null if no workout was logged. */
+  actual: string | null;
+  status: AdherenceDayStatus;
+};
+
 export type AdherenceResult = {
   week_start: string;
   planned: Partial<Record<Weekday, string>>;
   actual: Partial<Record<Weekday, string>>;
+  /** Per-day enriched view. AI consumers of compute_adherence use this to
+   *  produce prose distinguishing swapped from missed. */
+  days: AdherenceDay[];
   sessions_planned: number;
   sessions_done: number;
   sessions_on_plan: number;
@@ -83,12 +111,17 @@ export async function computeAdherence(
   // 1. Plan
   const { data: weekRow, error: weekErr } = await supabase
     .from("training_weeks")
-    .select("session_plan")
+    .select("session_plan, original_session_plan")
     .eq("user_id", userId)
     .eq("week_start", weekStart)
     .maybeSingle();
   if (weekErr) throw weekErr;
-  const planned = (weekRow?.session_plan ?? {}) as Partial<Record<Weekday, string>>;
+  const originalPlan = (weekRow?.original_session_plan ?? null) as Partial<Record<Weekday, string>> | null;
+  const currentPlan = (weekRow?.session_plan ?? {}) as Partial<Record<Weekday, string>>;
+  /** Anchor `planned` to the original committed plan when it exists. Mid-week
+   *  swaps populate original_session_plan via the /swap endpoint, so this read
+   *  ensures adherence math doesn't retroactively flatter the recap. */
+  const planned = (originalPlan ?? currentPlan) as Partial<Record<Weekday, string>>;
 
   // 2. Actual workouts in window with sets for volume math
   const { data: workouts, error: woErr } = await supabase
@@ -106,17 +139,43 @@ export async function computeAdherence(
     if (!actual[wd]) actual[wd] = w.type ?? "Workout";
   }
 
-  // 3. Adherence counts
+  // 3. Adherence counts + per-day breakdown
   let sessions_planned = 0;
   let sessions_done = 0;
   let sessions_on_plan = 0;
+  const days: AdherenceDay[] = [];
   for (const wd of WEEKDAYS) {
     const p = planned[wd] ?? null;
+    const c = currentPlan[wd] ?? null;
     const a = actual[wd] ?? null;
-    const pIsRest = p && tokens(p).includes("rest");
+    const pIsRest = !!p && tokens(p).includes("rest");
     if (p && !pIsRest) sessions_planned += 1;
     if (a) sessions_done += 1;
     if (p && a && matches(p, a)) sessions_on_plan += 1;
+
+    // Per-day status derivation
+    const swapped_to = p && c && p !== c ? c : null;
+    let status: AdherenceDayStatus;
+    if (pIsRest && !a && !swapped_to) {
+      status = "rest";
+    } else if (p && a && matches(p, a)) {
+      status = "as_planned";
+    } else if (swapped_to && a && matches(swapped_to, a)) {
+      status = "swapped";
+    } else if (swapped_to && !a && tokens(swapped_to).includes("rest")) {
+      // Planned non-rest, swapped to REST, no workout — honoring the swap, not missed.
+      status = "swapped";
+    } else {
+      status = "missed";
+    }
+
+    days.push({
+      day: wd,
+      planned: p ?? "",
+      swapped_to,
+      actual: a,
+      status,
+    });
   }
   const adherence_pct = sessions_planned === 0 ? 0 : Math.round((sessions_on_plan / sessions_planned) * 100);
   const done_pct      = sessions_planned === 0 ? 0 : Math.round((sessions_done / sessions_planned) * 100);
@@ -155,6 +214,7 @@ export async function computeAdherence(
     week_start: weekStart,
     planned,
     actual,
+    days,
     sessions_planned,
     sessions_done,
     sessions_on_plan,
