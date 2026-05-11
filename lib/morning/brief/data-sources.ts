@@ -178,6 +178,7 @@ export async function fetchBriefInputs(
     todayLog: todayLogRes.data as DailyLog | null,
     whoopBaselines: (profileRes.data as { whoop_baselines?: WhoopBaselineForBand } | null)?.whoop_baselines ?? null,
     activeProfile: activeAthleteProfileRes.data as AthleteProfileDocument | null,
+    hasTrainingWeek: trainingWeek !== null && isWeekStartCoveringToday(trainingWeek.week_start, today),
   };
 }
 

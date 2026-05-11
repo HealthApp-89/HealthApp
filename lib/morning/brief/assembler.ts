@@ -6,6 +6,7 @@
 
 import type {
   MorningBriefCard,
+  MorningBriefCoachSuggestion,
   MorningBriefExercise,
   MorningBriefVariant,
   MorningBriefRecap,
@@ -49,22 +50,29 @@ export type BriefInputs = {
   todayLog: DailyLog | null;                   // for HRV / recovery
   whoopBaselines: WhoopBaselineForBand | null;
   activeProfile: AthleteProfileDocument | null;
+  /** True iff a training_weeks row exists for the week containing today.
+   *  Gates the coach_suggestion chip — if false, the chip's POST would 404. */
+  hasTrainingWeek: boolean;
 };
 
 export function assembleBriefExceptAdvice(
   inputs: BriefInputs,
 ): Omit<MorningBriefCard, "advice_md"> {
   const variant: MorningBriefVariant = pickVariant(inputs.sessionType);
+  const readiness = composeReadiness(inputs);
 
   return {
     variant,
-    readiness: composeReadiness(inputs),
+    readiness,
     recap: composeRecap(inputs),
     session: composeSession(variant, inputs),
     macros: composeMacros(inputs),
     tonight: composeTonight(inputs),
-    // Placeholder — Task 9 wires pickCoachSuggestion(band, sessionType, hasTrainingWeek).
-    coach_suggestion: null,
+    coach_suggestion: pickCoachSuggestion(
+      readiness.band,
+      inputs.sessionType,
+      inputs.hasTrainingWeek,
+    ),
   };
 }
 
@@ -82,6 +90,25 @@ function composeReadiness(inputs: BriefInputs): MorningBriefReadiness {
     recovery,
     band: deriveReadinessBand(score, hrv, inputs.whoopBaselines),
   };
+}
+
+/** Deterministic trigger for the morning brief's coach_suggestion chip.
+ *  Fires only when:
+ *  - A training_weeks row exists for today (so the swap POST can target it).
+ *  - Readiness band is 'low'.
+ *  - Today's session is not already REST or Mobility.
+ *  All other cases return null and no chip renders.
+ */
+export function pickCoachSuggestion(
+  band: "low" | "moderate" | "high",
+  sessionType: string,
+  hasTrainingWeek: boolean,
+): MorningBriefCoachSuggestion {
+  if (!hasTrainingWeek) return null;
+  if (band !== "low") return null;
+  const lower = sessionType.toLowerCase().trim();
+  if (lower === "rest" || lower === "mobility") return null;
+  return { kind: "swap_to_mobility", rationale: "low_readiness" };
 }
 
 /** Two-signal triangulation. Mirrors the convention in
