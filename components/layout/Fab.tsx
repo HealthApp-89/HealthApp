@@ -37,8 +37,15 @@ type ChatState = { open: boolean; mode: "coach" | "morning_intake" };
  * to do this from a separate corner button; consolidated here so the
  * bottom-right of every page isn't permanently occluded.
  *
- * Listens for the custom "open-chat" event dispatched by CoachClient
- * when the URL contains ?mode=plan_week|setup_block.
+ * Single owner of the morning intake auto-pop and the ChatPanel mount.
+ * Listens for the custom "open-chat" event dispatched by:
+ *   - CoachClient, when the URL contains ?mode=plan_week|setup_block
+ *   - TopNav's desktop "+ New → Ask coach" menu item (no mode → "default")
+ *
+ * Note on the morning auto-pop: the trigger lives here (not in TopNav)
+ * because TopNav's <header> is `hidden md:flex`, and a ChatPanel rendered
+ * as its descendant is `display:none` on mobile portrait — `position:
+ * fixed` does not escape an ancestor `display: none`.
  */
 export function Fab({ userId }: { userId: string }) {
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -48,11 +55,12 @@ export function Fab({ userId }: { userId: string }) {
   useEffect(() => {
     function onOpenChat(e: Event) {
       const detail = (e as CustomEvent).detail as { mode?: ChatMode } | undefined;
-      const m = detail?.mode;
-      if (m === "plan_week" || m === "setup_block") {
-        setChatPlanMode(m);
-        setChatState({ open: true, mode: "coach" });
-      }
+      // Default to "default" so the desktop "+ New → Ask coach" entry can
+      // dispatch this same event without a mode payload. CoachClient still
+      // dispatches with mode === "plan_week" | "setup_block".
+      const m: ChatMode = detail?.mode ?? "default";
+      setChatPlanMode(m);
+      setChatState({ open: true, mode: "coach" });
     }
     window.addEventListener("open-chat", onOpenChat);
     return () => window.removeEventListener("open-chat", onOpenChat);

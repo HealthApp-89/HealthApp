@@ -1,19 +1,16 @@
 // components/layout/TopNavGate.tsx
-import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { TopNav } from "./TopNav";
 
 /**
- * Server component — fetches the authenticated user once (alongside the
- * matching FabGate) and threads `userId` into TopNav so the chat panel
- * can use TanStack Query hooks (useCheckin, useDailyLogs) for the
- * morning intake flow. Unauthenticated routes (/login, /privacy) still
- * render TopNav with an empty userId string — the morning hooks are
- * gated by `mode === "morning_intake"` and never fire in coach mode.
+ * Server wrapper for the desktop top nav. Previously fetched the
+ * authenticated user to thread `userId` into TopNav for an in-header
+ * MorningTrigger / ChatPanel — those have moved to <Fab> (single owner)
+ * because the desktop header is `hidden md:flex`, which made any
+ * ChatPanel rendered as a descendant invisible on mobile portrait.
+ *
+ * Kept as a thin server boundary in case TopNav grows server-side data
+ * needs again; cheap to delete if it stays trivial.
  */
-export async function TopNavGate() {
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  return <TopNav userId={user?.id ?? ""} />;
+export function TopNavGate() {
+  return <TopNav />;
 }
