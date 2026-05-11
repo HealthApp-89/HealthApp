@@ -4,6 +4,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ChatMessage } from "@/lib/chat/types";
 import { ChatMessage as ChatMessageView } from "./ChatMessage";
+import { MorningBriefCard as MorningBriefCardComponent } from "@/components/morning/MorningBriefCard";
+import type { MorningBriefCard } from "@/lib/data/types";
 
 export function ChatThread({
   messages,
@@ -103,6 +105,11 @@ export function ChatThread({
             <div className="text-[10px] uppercase tracking-wider text-white/30">{it.label}</div>
             <div className="flex-1 h-px bg-white/[0.06]" />
           </div>
+        ) : it.m.kind === "morning_brief" ? (
+          <MorningBriefCardComponent
+            key={it.m.id}
+            card={it.m.ui as MorningBriefCard}
+          />
         ) : (
           <ChatMessageView
             key={it.m.id}

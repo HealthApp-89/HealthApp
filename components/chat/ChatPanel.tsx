@@ -48,7 +48,9 @@ type Action =
   | { type: "finalize_assistant"; id: string; status: "done" | "error"; error?: string; partial?: boolean }
   | { type: "replace_id"; tempId: string; serverId: string }
   | { type: "remove_temp_user"; tempId: string }
-  | { type: "wait"; message: string | null };
+  | { type: "wait"; message: string | null }
+  | { type: "add_message"; message: ChatMessage }
+  | { type: "remove_id"; id: string };
 
 function reducer(state: State, action: Action): State {
   switch (action.type) {
@@ -108,6 +110,10 @@ function reducer(state: State, action: Action): State {
       return { ...state, messages: state.messages.filter((m) => m.id !== action.tempId) };
     case "wait":
       return { ...state, inFlightWaitMessage: action.message };
+    case "add_message":
+      return { ...state, messages: [...state.messages, action.message] };
+    case "remove_id":
+      return { ...state, messages: state.messages.filter((m) => m.id !== action.id) };
     default:
       return state;
   }
@@ -340,23 +346,42 @@ export default function ChatPanel({
       dispatch({ type: "append_assistant_stub", id: tempId });
       let parkedSilently = false;
       try {
-        for await (const ev of postSse("/api/chat/morning/recommendation", body)) {
-          if (ev.type === "delta") {
-            dispatch({ type: "append_delta", id: tempId, text: ev.text });
-          } else if (ev.type === "done") {
-            dispatch({ type: "replace_id", tempId, serverId: ev.message_id });
-            dispatch({ type: "finalize_assistant", id: ev.message_id, status: "done" });
-          } else if (ev.type === "error") {
-            if (ev.message === "awaiting_whoop") {
-              // Server returned 425 — recommendation can't be delivered yet.
-              // The intake route already inserted a parked WHOOP-sync turn,
-              // so just finalize the empty stub silently.
-              parkedSilently = true;
-              dispatch({ type: "finalize_assistant", id: tempId, status: "done" });
-            } else {
-              dispatch({ type: "finalize_assistant", id: tempId, status: "error", error: ev.message });
-            }
+        const res = await fetch("/api/chat/morning/recommendation", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+
+        if (res.status === 425) {
+          // awaiting_whoop — recommendation can't be delivered yet.
+          // Remove the placeholder stub and refetch so the server-inserted
+          // SYNC_WHOOP_PROMPT turn appears.
+          parkedSilently = true;
+          dispatch({ type: "remove_id", id: tempId });
+        } else if (!res.ok) {
+          const json = await res.json().catch(() => ({} as { reason?: string; message?: unknown }));
+          const reason = (json as { reason?: string }).reason ?? "unknown";
+
+          if (reason === "already_delivered" && (json as { message?: unknown }).message) {
+            // 409 already_delivered with message payload: render the existing brief.
+            dispatch({ type: "remove_id", id: tempId });
+            dispatch({
+              type: "add_message",
+              message: (json as { message: ChatMessage }).message,
+            });
+          } else if (reason === "brief_failed") {
+            // 500 brief_failed — remove placeholder; retry chip surfaces via the
+            // existing morning intake polling layer when intake_state='brief_failed'.
+            dispatch({ type: "remove_id", id: tempId });
+          } else {
+            // Other failures: surface a generic error bubble (existing pattern).
+            dispatch({ type: "finalize_assistant", id: tempId, status: "error" });
           }
+        } else {
+          // 200 success: add the returned message to local state directly.
+          const json = (await res.json()) as { ok: true; message: ChatMessage };
+          dispatch({ type: "remove_id", id: tempId });
+          dispatch({ type: "add_message", message: json.message });
         }
       } catch (e) {
         dispatch({ type: "finalize_assistant", id: tempId, status: "error", error: String(e) });

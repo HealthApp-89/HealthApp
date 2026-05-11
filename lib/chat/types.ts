@@ -44,7 +44,7 @@ export type ChatMessage = {
   updated_at: string;
   images: ChatMessageImage[];
   /** Default 'coach'. ChatPanel filters its render by this. */
-  kind: "coach" | "morning_intake";
+  kind: "coach" | "morning_intake" | "morning_brief";
   /** Chips / rendering hints for morning_intake turns. */
   ui: MorningUI | null;
   /** Persisted tool-call logs. Populated only for assistant messages that
