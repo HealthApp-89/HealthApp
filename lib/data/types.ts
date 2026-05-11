@@ -408,6 +408,10 @@ export type MorningBriefExercise = {
   reps: number;            // 6
   kg: number | null;       // 62.5 for prescribed lifts; null for bodyweight/duration
   note?: string;           // "Do BEFORE Incline DB" or undefined
+  /** Minimum non-zero loadable increment for this exercise (e.g., 2.5 for barbell,
+   *  2 for dumbbells). Present only when the exercise has increment metadata.
+   *  Surfaced in the AI advice prompt so the coach recommends valid progressions. */
+  min_increment_kg?: number;
 };
 
 export type MorningBriefRecap = {
