@@ -36,6 +36,8 @@ Apply in order via Supabase Dashboard → SQL Editor:
 
 10. [supabase/migrations/0011_morning_brief.sql](supabase/migrations/0011_morning_brief.sql) — extends morning-intake state machine with `assembling_brief` / `brief_delivered` / `brief_failed`; adds `'morning_brief'` to `chat_messages.kind` for the post-intake daily plan card.
 
+11. [supabase/migrations/0012_schedule_flexibility.sql](supabase/migrations/0012_schedule_flexibility.sql) — adds nullable `training_weeks.original_session_plan jsonb` for mid-week swap audit; populated on first edit via `coalesce(original_session_plan, session_plan)`; reset to NULL on identity-restore. Adherence reads `coalesce(...)` so the Sunday recap stays anchored to the Sunday commitment.
+
 `supabase` CLI is now linked (`supabase link --project-ref eopfwwergisvskxqvsqe`); future migrations apply via `supabase db push` after `repair --status applied <history>` if needed.
 
 Row shapes mirrored in [lib/data/types.ts](lib/data/types.ts). Schema is snake_case; keep DB columns and TS types in sync.
