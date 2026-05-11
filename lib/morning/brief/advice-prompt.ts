@@ -80,6 +80,8 @@ ${flagsBlock}
 
 Write the Advice block of today's brief. 2-4 sentences. Markdown allowed for bold/italic only.
 
+When suggesting weight progressions, use the listed "min increment" per exercise — don't recommend jumps smaller than that value. E.g., if min increment is 2.5kg, the next step from 60kg is 62.5kg — never 61kg or 61.5kg.
+
 Cover (in this order, but only what's relevant):
 1. ONE coaching observation tying readiness to today's session. If poor_sleep_efficiency is true, probe the sleep gap ("you're in bed X hours but sleeping Y — push bedtime earlier / address latency").
 2. Eating timing anchored to the session start (training days): pre-workout (~90 min before) + post (within 90 min after). Include ONE specific food example per window.
@@ -106,6 +108,14 @@ function buildDataBlock(card: Omit<MorningBriefCard, "advice_md">): string {
   lines.push(`- Variant: ${card.variant}`);
   if (card.variant === "training") {
     lines.push(`- Session: ${card.session.type} at ${card.session.start_time ?? "unscheduled"}`);
+    if (card.session.exercises.length > 0) {
+      lines.push("- Exercises (sets × reps @ kg; min increment in parentheses):");
+      for (const ex of card.session.exercises) {
+        const weightPart = ex.kg != null ? ` @ ${ex.kg}kg` : "";
+        const incrementPart = ex.min_increment_kg != null ? ` (min increment: ${ex.min_increment_kg}kg)` : "";
+        lines.push(`  - ${ex.name}: ${ex.sets} × ${ex.reps}${weightPart}${incrementPart}`);
+      }
+    }
   } else {
     lines.push("- Session: REST");
   }

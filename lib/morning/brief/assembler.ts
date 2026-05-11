@@ -19,6 +19,7 @@ import type {
   AthleteProfileDocument,
 } from "@/lib/data/types";
 import { SESSION_PLANS, type PlannedExercise } from "@/lib/coach/sessionPlans";
+import { roundToValidWeight, minNonZeroIncrement } from "@/lib/coach/weight-rounding";
 import type { TodayTargets } from "@/lib/morning/brief/get-today-targets";
 
 /** Yesterday's workout summary — pre-aggregated by the data source. */
@@ -168,8 +169,11 @@ function composeExercises(
         liftFromKey !== null && liftFromKey === primaryLift
           ? (modifier[liftFromKey] ?? 1.0)
           : 1.0;
-      const scaledKg =
-        p.baseKg != null ? Math.round(p.baseKg * liftModifier * 2) / 2 : null;
+      let scaledKg: number | null = null;
+      if (p.baseKg != null) {
+        const target = p.baseKg * liftModifier;
+        scaledKg = p.increment ? roundToValidWeight(target, p.increment) : Math.round(target * 2) / 2;
+      }
       const result: MorningBriefExercise = {
         name: p.name,
         sets: p.sets ?? 3,
@@ -177,6 +181,7 @@ function composeExercises(
         kg: scaledKg,
       };
       if (p.note) result.note = p.note;
+      if (p.increment) result.min_increment_kg = minNonZeroIncrement(p.increment);
       return result;
     });
 }
