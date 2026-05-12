@@ -155,6 +155,7 @@ export default function ChatPanel({
   const abortRef = useRef<AbortController | null>(null);
   const recommendationRunningRef = useRef(false);
   const startFiredRef = useRef(false);
+  const intakeStartFiredRef = useRef(false);
 
   // Load history on mount or when currentMode changes.
   useEffect(() => {
@@ -536,6 +537,37 @@ export default function ChatPanel({
       }
     })();
   }, [currentMode, state.loaded, state.messages.length]);
+
+  // When the coach intake mode (mode='intake') is opened, auto-send a
+  // starter user turn so the AI surfaces Beat 1 per INTAKE_PROMPT. Without
+  // this kickoff the chat sits empty — there's no state-machine driver on
+  // the coach lane (unlike morning intake which has its own kickoff hook).
+  //
+  // The naive guard `state.messages.length > 0` doesn't work because the
+  // chat panel loads the last 50 coach messages, so any prior coach activity
+  // would skip the kickoff. Real guard: only skip if the very last loaded
+  // message is itself a recent intake-mode turn (the user is resuming an
+  // in-flight intake conversation).
+  useEffect(() => {
+    if (currentMode !== "coach") return;
+    if (mode !== "intake") return;
+    if (!state.loaded) return;
+    if (intakeStartFiredRef.current) return;
+    if (!draftDocId) return;
+
+    // If the most recent loaded message is a recent intake-mode turn,
+    // treat as resume — let the user type to continue.
+    const last = state.messages[state.messages.length - 1];
+    const RESUME_WINDOW_MS = 24 * 60 * 60 * 1000;
+    const isResume =
+      last &&
+      last.mode === "intake" &&
+      Date.now() - new Date(last.created_at).getTime() < RESUME_WINDOW_MS;
+    if (isResume) return;
+
+    intakeStartFiredRef.current = true;
+    void send("Let's start.", []);
+  }, [currentMode, mode, state.loaded, state.messages, draftDocId, send]);
 
   const onSlotAnswer = useCallback(
     async (slot: string, value: string | number | string[]) => {
