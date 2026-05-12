@@ -2207,6 +2207,10 @@ export async function executeSetGlp1TaperStarted(opts: {
     return { ok: false, error: { error: "taper_started_on must be a YYYY-MM-DD date string" }, meta: { ms: Date.now() - t0, range_days: 0 } };
   }
   const taper_started_on = i.taper_started_on;
+  // Plausibility: reject dates more than 7 days in the future (model hallucination guard).
+  if (Date.parse(taper_started_on) > Date.now() + 7 * 86_400_000) {
+    return { ok: false, error: { error: "taper_started_on must be today or within 7 days" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
 
   const { data: active, error: loadErr } = await opts.supabase
     .from("athlete_profile_documents")
@@ -2267,6 +2271,10 @@ export async function executeMarkGlp1Discontinued(opts: {
     return { ok: false, error: { error: "end_date must be a YYYY-MM-DD date string" }, meta: { ms: Date.now() - t0, range_days: 0 } };
   }
   const end_date = i.end_date;
+  // Plausibility: reject dates more than 7 days in the future (model hallucination guard).
+  if (Date.parse(end_date) > Date.now() + 7 * 86_400_000) {
+    return { ok: false, error: { error: "end_date must be today or within 7 days" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
 
   const { data: active, error: loadErr } = await opts.supabase
     .from("athlete_profile_documents")
@@ -2285,6 +2293,15 @@ export async function executeMarkGlp1Discontinued(opts: {
   const plan = active.plan_payload as PlanPayload;
   if (!plan || plan.nutrition.glp1 === null) {
     return { ok: false, error: { error: "active plan is not GLP-1 mode" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  // Idempotency: don't overwrite a previously-recorded discontinuation date.
+  // Historical record stays preserved; user must explicitly revise via re-plan.
+  if (plan.nutrition.glp1.expected_end !== null) {
+    return {
+      ok: false,
+      error: { error: "GLP-1 already marked discontinued; end_date is locked to preserve history" },
+      meta: { ms: Date.now() - t0, range_days: 0 },
+    };
   }
 
   const nextPlan: PlanPayload = {

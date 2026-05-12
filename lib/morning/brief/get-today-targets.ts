@@ -218,10 +218,14 @@ export async function getTodayTargets(
         classical.find((s) => s.start_week <= elapsedWeeks && elapsedWeeks < s.end_week) ??
         classical[classical.length - 1];
 
-      // training_day_uplift is { kcal, carb_g } (no fat_g);
-      // rest_day_delta is { kcal, carb_g, fat_g }.
-      const uplift = plan.nutrition.training_day_uplift;
-      const restDelta = plan.nutrition.rest_day_delta;
+      // training_day_uplift / rest_day_delta only apply during sustained cut
+      // blocks. Diet-break and reverse phases own their full macro budget;
+      // applying a +200 kcal training uplift on top of a +400 diet-break kcal
+      // would compound to +600 (nutritionally wrong, contradicts the spec's
+      // "+400 to carbs" framing). Maintain phase also runs uplift-free.
+      const applyDeltas = step.mode === "cut";
+      const uplift = applyDeltas ? plan.nutrition.training_day_uplift : null;
+      const restDelta = applyDeltas ? plan.nutrition.rest_day_delta : null;
       const kcalDelta = is_training_day ? (uplift?.kcal ?? 0) : (restDelta?.kcal ?? 0);
       const carbDelta = is_training_day ? (uplift?.carb_g ?? 0) : (restDelta?.carb_g ?? 0);
       const fatDelta = is_training_day ? 0 : (restDelta?.fat_g ?? 0);

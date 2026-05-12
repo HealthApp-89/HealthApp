@@ -11,6 +11,7 @@ import { useAthleteProfile } from "@/lib/query/hooks/useAthleteProfile";
 import { useAthleteProfileHistory } from "@/lib/query/hooks/useAthleteProfileHistory";
 import { useAthleteProfileDraft } from "@/lib/query/hooks/useAthleteProfileDraft";
 import { startPlanIntake } from "@/app/onboarding/start-plan-intake";
+import { GLP1_MED_REGEX } from "@/lib/morning/brief/flags";
 
 export function AthleteProfilePanel({ userId }: { userId: string }) {
   const { data: active, isLoading: loadingActive } = useAthleteProfile(userId);
@@ -186,8 +187,9 @@ function GeneratePlanCta() {
 }
 
 function hasGlp1InMedications(meds: string): boolean {
-  const re = /\b(glp-?1|semaglutide|tirzepatide|ozempic|wegovy|mounjaro|zepbound)\b/i;
-  return re.test(meds);
+  // Single source of truth: same regex as brief/flags.ts so /profile and the
+  // morning brief agree on what counts as a GLP-1 mention.
+  return GLP1_MED_REGEX.test(meds);
 }
 
 function RegeneratePlanWithGlp1Cta() {

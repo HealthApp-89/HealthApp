@@ -13,8 +13,12 @@ import type {
 import type { TodayTargets } from "@/lib/morning/brief/get-today-targets";
 
 /** Matches GLP-1 + brand-name variants. Case-insensitive, word-boundaries
- *  on the abbreviation so "GLPNotADrug" doesn't fire. */
-const GLP1_REGEX = /\b(glp[-\s]?1|ozempic|wegovy|mounjaro|zepbound|semaglutide|tirzepatide|liraglutide|saxenda)\b/i;
+ *  on the abbreviation so "GLPNotADrug" doesn't fire. Also exported for
+ *  the /profile regenerate-with-GLP-1 CTA gate — single source of truth so
+ *  both surfaces detect the same medications. */
+export const GLP1_MED_REGEX =
+  /\b(glp[-\s]?1|ozempic|wegovy|mounjaro|zepbound|semaglutide|tirzepatide|liraglutide|saxenda)\b/i;
+const GLP1_REGEX = GLP1_MED_REGEX;
 
 export type FlagInputs = {
   activeProfile: AthleteProfileDocument | null;
