@@ -4,6 +4,7 @@
 // POST — added in next task (SSE streaming).
 
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import {
   createSupabaseServerClient,
   createSupabaseServiceRoleClient,
@@ -471,6 +472,27 @@ export async function POST(req: Request) {
             updated_at: new Date().toISOString(),
           })
           .eq("id", assistantId);
+
+        // Revalidate /coach and /strength after successful write tools.
+        // Without this, useTrainingWeek's 60s staleTime would mask a fresh
+        // commit_week_plan / commit_block / commit_plan write for up to a
+        // minute after the user approved it in chat. revalidatePath busts
+        // the Next.js cache for the route on next navigation; TanStack
+        // queries hydrated server-side from a fresh load see the new data.
+        if (!errored) {
+          const COMMIT_TOOLS = new Set([
+            "commit_week_plan",
+            "commit_block",
+            "commit_plan",
+          ]);
+          const committed = toolCallSink.some(
+            (c) => COMMIT_TOOLS.has(c.name) && c.error === null,
+          );
+          if (committed) {
+            revalidatePath("/coach");
+            revalidatePath("/strength");
+          }
+        }
 
         // Emit terminal SSE events for the client.
         if (errored) {
