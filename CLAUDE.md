@@ -112,5 +112,6 @@ Coach planning tools require `COACH_TOOL_SECRET` (32+ char random; generate with
 
 ## Scripts
 
-- [scripts/backfill-whoop.mjs](scripts/backfill-whoop.mjs) — pull full WHOOP history into `daily_logs` (manual fields preserved). Uses service role; needs the env vars above.
+- [scripts/rekey-whoop.mts](scripts/rekey-whoop.mts) — re-fetch WHOOP records and re-key `daily_logs` rows via the canonical `buildWhoopDayRows` builder. Use for full-history backfill (`--since 2024-01-01 --yes`) or a focused window (default last 30 days). Prints a date-level diff and prompts before clearing. Uses service role; same env vars as the sync route. Run via the alias-loader: `node --import ./scripts/alias-loader.mjs --experimental-strip-types --env-file=.env.local scripts/rekey-whoop.mts [--since YYYY-MM-DD] [--yes]`.
+- [scripts/audit-strain-2026.mjs](scripts/audit-strain-2026.mjs) — read-only audit of `daily_logs.strain` for 2026-04 → 2026-05 against the WHOOP-app's "Day Strain" view. Kept as the regression check for the day-keying fix (PR #50); template for future column audits when WHOOP-app screenshots are available.
 - [scripts/import-seed.mjs](scripts/import-seed.mjs) — seed from `seed-data.json`.
