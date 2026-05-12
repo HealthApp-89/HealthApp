@@ -3,7 +3,8 @@
 import type { CSSProperties } from "react";
 import { useMemo } from "react";
 import { COLOR, RADIUS } from "@/lib/ui/theme";
-import type { MorningBriefCard as MorningBriefCardData, Weekday } from "@/lib/data/types";
+import { fmtNum } from "@/lib/ui/score";
+import type { MorningBriefCard as MorningBriefCardData, MorningBriefHydration, Weekday } from "@/lib/data/types";
 import { BriefRecapStats } from "@/components/morning/BriefRecapStats";
 import { BriefSessionList } from "@/components/morning/BriefSessionList";
 import { BriefRestActions } from "@/components/morning/BriefRestActions";
@@ -90,6 +91,13 @@ export function MorningBriefCard({
           <BriefRestActions bedtime={card.tonight.bedtime_target} />
         </>
       )}
+      {card.hydration && (
+        <>
+          <Divider />
+          <SectionLabel>Hydration today</SectionLabel>
+          <BriefHydration hydration={card.hydration} />
+        </>
+      )}
       <Divider />
       <SectionLabel>Macros today</SectionLabel>
       <BriefMacrosGrid macros={card.macros} />
@@ -105,6 +113,56 @@ export function MorningBriefCard({
         />
       )}
     </article>
+  );
+}
+
+function BriefHydration({ hydration }: { hydration: MorningBriefHydration }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: 8,
+        }}
+      >
+        <div
+          style={{
+            background: COLOR.accentSoft,
+            borderRadius: RADIUS.pill,
+            padding: "10px 12px",
+            display: "flex",
+            flexDirection: "column",
+            gap: 2,
+          }}
+          aria-label={`Water: ${fmtNum(hydration.water_ml)} ml`}
+        >
+          <div style={{ fontSize: 16, fontWeight: 700, color: COLOR.textStrong, lineHeight: 1.2 }}>
+            {fmtNum(hydration.water_ml)} ml
+          </div>
+          <div style={{ fontSize: 11, color: COLOR.accentDeep, fontWeight: 600 }}>Water</div>
+        </div>
+        <div
+          style={{
+            background: COLOR.accentSoft,
+            borderRadius: RADIUS.pill,
+            padding: "10px 12px",
+            display: "flex",
+            flexDirection: "column",
+            gap: 2,
+          }}
+          aria-label={`Sodium: ${fmtNum(hydration.sodium_mg)} mg`}
+        >
+          <div style={{ fontSize: 16, fontWeight: 700, color: COLOR.textStrong, lineHeight: 1.2 }}>
+            {fmtNum(hydration.sodium_mg)} mg
+          </div>
+          <div style={{ fontSize: 11, color: COLOR.accentDeep, fontWeight: 600 }}>Sodium</div>
+        </div>
+      </div>
+      <div style={{ fontSize: 12, color: COLOR.textMuted, fontStyle: "italic" }}>
+        {hydration.note}
+      </div>
+    </div>
   );
 }
 

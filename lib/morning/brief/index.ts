@@ -27,11 +27,13 @@ export async function buildMorningBrief(
   const flags = computeAdviceFlags({
     activeProfile: inputs.activeProfile,
     card: partial,
+    targets: inputs.todayTargets,
   });
   const advice_md = await generateAdvice({
     activeProfile: inputs.activeProfile,
     card: partial,
     flags,
+    targets: inputs.todayTargets,
   });
   return { ...partial, advice_md };
 }

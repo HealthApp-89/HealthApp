@@ -2066,3 +2066,272 @@ export async function executeCommitPlan(opts: {
     meta: { ms: Date.now() - t0, result_rows: 1, range_days: 0, truncated: false },
   };
 }
+
+// ── GLP-1 chat tools: schemas ────────────────────────────────────────────────
+
+const GLP1_MEDICATION_VALUES = ["semaglutide", "tirzepatide", "compounded"] as const;
+type Glp1Medication = (typeof GLP1_MEDICATION_VALUES)[number];
+
+const GLP1_INJECTION_DAY_VALUES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
+type Glp1InjectionDay = (typeof GLP1_INJECTION_DAY_VALUES)[number];
+
+const GLP1_INJECTION_TIME_VALUES = ["morning", "evening", "night"] as const;
+type Glp1InjectionTime = (typeof GLP1_INJECTION_TIME_VALUES)[number];
+
+const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+export const SET_GLP1_STATUS_TOOL = {
+  name: "set_glp1_status",
+  description:
+    "Beat 3 GLP-1 follow-up tool. Captures medication, dose, schedule, and taper milestones from the user and writes them to intake_payload.health.glp1_status on the draft doc.",
+  input_schema: {
+    type: "object" as const,
+    required: ["medication", "dose_mg", "injection_day", "injection_time", "started_on"],
+    properties: {
+      medication: { type: "string", enum: GLP1_MEDICATION_VALUES },
+      dose_mg: { type: "number", minimum: 0.1, maximum: 20 },
+      injection_day: { type: "string", enum: GLP1_INJECTION_DAY_VALUES },
+      injection_time: { type: "string", enum: GLP1_INJECTION_TIME_VALUES },
+      started_on: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
+      expected_taper_start: { type: ["string", "null"], pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
+      expected_end: { type: ["string", "null"], pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
+      doctor_protocol_notes: { type: ["string", "null"] },
+    },
+  },
+};
+
+export const SET_GLP1_TAPER_STARTED_TOOL = {
+  name: "set_glp1_taper_started",
+  description:
+    "Milestone tool. Mutates the active athlete_profile_documents row in-place to record that the GLP-1 taper has begun (nutrition.glp1.taper_started_on). Only valid when the active plan is in GLP-1 mode.",
+  input_schema: {
+    type: "object" as const,
+    required: ["taper_started_on"],
+    properties: {
+      taper_started_on: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
+    },
+  },
+};
+
+export const MARK_GLP1_DISCONTINUED_TOOL = {
+  name: "mark_glp1_discontinued",
+  description:
+    "Milestone tool. Mutates the active athlete_profile_documents row in-place to set the GLP-1 end date (nutrition.glp1.expected_end) and surfaces a CTA string for the AI to relay verbatim in chat.",
+  input_schema: {
+    type: "object" as const,
+    required: ["end_date"],
+    properties: {
+      end_date: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
+    },
+  },
+};
+
+// ── GLP-1 chat tools: executors ──────────────────────────────────────────────
+
+export async function executeSetGlp1Status(opts: {
+  supabase: SupabaseClient;
+  userId: string;
+  draftDocId: string;
+  input: unknown;
+}): Promise<ToolResult<{ ok: true }>> {
+  const t0 = Date.now();
+  const i = (opts.input ?? {}) as Record<string, unknown>;
+
+  if (typeof i.medication !== "string" || !(GLP1_MEDICATION_VALUES as readonly string[]).includes(i.medication)) {
+    return { ok: false, error: { error: `medication must be one of: ${GLP1_MEDICATION_VALUES.join(", ")}` }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  if (typeof i.dose_mg !== "number" || !Number.isFinite(i.dose_mg) || i.dose_mg < 0.1 || i.dose_mg > 20) {
+    return { ok: false, error: { error: "dose_mg must be a number between 0.1 and 20" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  if (typeof i.injection_day !== "string" || !(GLP1_INJECTION_DAY_VALUES as readonly string[]).includes(i.injection_day)) {
+    return { ok: false, error: { error: `injection_day must be one of: ${GLP1_INJECTION_DAY_VALUES.join(", ")}` }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  if (typeof i.injection_time !== "string" || !(GLP1_INJECTION_TIME_VALUES as readonly string[]).includes(i.injection_time)) {
+    return { ok: false, error: { error: `injection_time must be one of: ${GLP1_INJECTION_TIME_VALUES.join(", ")}` }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  if (typeof i.started_on !== "string" || !ISO_DATE_PATTERN.test(i.started_on)) {
+    return { ok: false, error: { error: "started_on must be a YYYY-MM-DD date string" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  if (i.expected_taper_start !== undefined && i.expected_taper_start !== null) {
+    if (typeof i.expected_taper_start !== "string" || !ISO_DATE_PATTERN.test(i.expected_taper_start)) {
+      return { ok: false, error: { error: "expected_taper_start must be a YYYY-MM-DD date string or null" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+    }
+  }
+  if (i.expected_end !== undefined && i.expected_end !== null) {
+    if (typeof i.expected_end !== "string" || !ISO_DATE_PATTERN.test(i.expected_end)) {
+      return { ok: false, error: { error: "expected_end must be a YYYY-MM-DD date string or null" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+    }
+  }
+
+  const medication = i.medication as Glp1Medication;
+  const dose_mg = i.dose_mg;
+  const injection_day = i.injection_day as Glp1InjectionDay;
+  const injection_time = i.injection_time as Glp1InjectionTime;
+  const started_on = i.started_on;
+  const expected_taper_start = (i.expected_taper_start ?? null) as string | null;
+  const expected_end = (i.expected_end ?? null) as string | null;
+  const doctor_protocol_notes = (i.doctor_protocol_notes ?? null) as string | null;
+
+  return patchIntake({
+    supabase: opts.supabase,
+    userId: opts.userId,
+    draftDocId: opts.draftDocId,
+    patcher: (intake) => ({
+      ...intake,
+      health: {
+        ...intake.health,
+        glp1_status: {
+          medication,
+          dose_mg,
+          injection_day,
+          injection_time,
+          started_on,
+          expected_taper_start,
+          expected_end,
+          doctor_protocol_notes,
+        },
+      },
+    }),
+  });
+}
+
+export async function executeSetGlp1TaperStarted(opts: {
+  supabase: SupabaseClient;
+  userId: string;
+  input: unknown;
+}): Promise<ToolResult<{ ok: true; doc_id: string }>> {
+  const t0 = Date.now();
+  const i = (opts.input ?? {}) as Record<string, unknown>;
+
+  if (typeof i.taper_started_on !== "string" || !ISO_DATE_PATTERN.test(i.taper_started_on)) {
+    return { ok: false, error: { error: "taper_started_on must be a YYYY-MM-DD date string" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  const taper_started_on = i.taper_started_on;
+  // Plausibility: reject dates more than 7 days in the future (model hallucination guard).
+  if (Date.parse(taper_started_on) > Date.now() + 7 * 86_400_000) {
+    return { ok: false, error: { error: "taper_started_on must be today or within 7 days" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+
+  const { data: active, error: loadErr } = await opts.supabase
+    .from("athlete_profile_documents")
+    .select("id, plan_payload")
+    .eq("user_id", opts.userId)
+    .eq("status", "active")
+    .limit(1)
+    .maybeSingle();
+  if (loadErr) {
+    return { ok: false, error: { error: `load_failed: ${loadErr.message}` }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  if (!active) {
+    return { ok: false, error: { error: "no_active_doc: no acknowledged plan found" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+
+  const plan = active.plan_payload as PlanPayload;
+  if (!plan || plan.nutrition.glp1 === null) {
+    return { ok: false, error: { error: "active plan is not GLP-1 mode" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+
+  const nextPlan: PlanPayload = {
+    ...plan,
+    nutrition: {
+      ...plan.nutrition,
+      glp1: {
+        ...plan.nutrition.glp1,
+        taper_started_on,
+      },
+    },
+  };
+
+  const { error: updErr } = await opts.supabase
+    .from("athlete_profile_documents")
+    .update({ plan_payload: nextPlan, updated_at: new Date().toISOString() })
+    .eq("id", active.id)
+    .eq("user_id", opts.userId)
+    .eq("status", "active");
+  if (updErr) {
+    return { ok: false, error: { error: `update_failed: ${updErr.message}` }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+
+  return {
+    ok: true,
+    data: { ok: true, doc_id: active.id as string },
+    meta: { ms: Date.now() - t0, result_rows: 1, range_days: 0, truncated: false },
+  };
+}
+
+export async function executeMarkGlp1Discontinued(opts: {
+  supabase: SupabaseClient;
+  userId: string;
+  input: unknown;
+}): Promise<ToolResult<{ ok: true; doc_id: string; cta: string }>> {
+  const t0 = Date.now();
+  const i = (opts.input ?? {}) as Record<string, unknown>;
+
+  if (typeof i.end_date !== "string" || !ISO_DATE_PATTERN.test(i.end_date)) {
+    return { ok: false, error: { error: "end_date must be a YYYY-MM-DD date string" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  const end_date = i.end_date;
+  // Plausibility: reject dates more than 7 days in the future (model hallucination guard).
+  if (Date.parse(end_date) > Date.now() + 7 * 86_400_000) {
+    return { ok: false, error: { error: "end_date must be today or within 7 days" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+
+  const { data: active, error: loadErr } = await opts.supabase
+    .from("athlete_profile_documents")
+    .select("id, plan_payload")
+    .eq("user_id", opts.userId)
+    .eq("status", "active")
+    .limit(1)
+    .maybeSingle();
+  if (loadErr) {
+    return { ok: false, error: { error: `load_failed: ${loadErr.message}` }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  if (!active) {
+    return { ok: false, error: { error: "no_active_doc: no acknowledged plan found" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+
+  const plan = active.plan_payload as PlanPayload;
+  if (!plan || plan.nutrition.glp1 === null) {
+    return { ok: false, error: { error: "active plan is not GLP-1 mode" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  // Idempotency: don't overwrite a previously-recorded discontinuation date.
+  // Historical record stays preserved; user must explicitly revise via re-plan.
+  if (plan.nutrition.glp1.expected_end !== null) {
+    return {
+      ok: false,
+      error: { error: "GLP-1 already marked discontinued; end_date is locked to preserve history" },
+      meta: { ms: Date.now() - t0, range_days: 0 },
+    };
+  }
+
+  const nextPlan: PlanPayload = {
+    ...plan,
+    nutrition: {
+      ...plan.nutrition,
+      glp1: {
+        ...plan.nutrition.glp1,
+        expected_end: end_date,
+      },
+    },
+  };
+
+  const { error: updErr } = await opts.supabase
+    .from("athlete_profile_documents")
+    .update({ plan_payload: nextPlan, updated_at: new Date().toISOString() })
+    .eq("id", active.id)
+    .eq("user_id", opts.userId)
+    .eq("status", "active");
+  if (updErr) {
+    return { ok: false, error: { error: `update_failed: ${updErr.message}` }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+
+  return {
+    ok: true,
+    data: {
+      ok: true,
+      doc_id: active.id as string,
+      cta: "GLP-1 era done. Want to plan your next phase? Start a fresh intake for maintenance, reverse diet, or a classical cut.",
+    },
+    meta: { ms: Date.now() - t0, result_rows: 1, range_days: 0, truncated: false },
+  };
+}

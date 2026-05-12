@@ -10,17 +10,56 @@ import type {
   AthleteProfileDocument,
   MorningBriefCard,
 } from "@/lib/data/types";
+import type { TodayTargets } from "@/lib/morning/brief/get-today-targets";
 
 /** Matches GLP-1 + brand-name variants. Case-insensitive, word-boundaries
- *  on the abbreviation so "GLPNotADrug" doesn't fire. */
-const GLP1_REGEX = /\b(glp[-\s]?1|ozempic|wegovy|mounjaro|zepbound|semaglutide|tirzepatide|liraglutide|saxenda)\b/i;
+ *  on the abbreviation so "GLPNotADrug" doesn't fire. Also exported for
+ *  the /profile regenerate-with-GLP-1 CTA gate — single source of truth so
+ *  both surfaces detect the same medications. */
+export const GLP1_MED_REGEX =
+  /\b(glp[-\s]?1|ozempic|wegovy|mounjaro|zepbound|semaglutide|tirzepatide|liraglutide|saxenda)\b/i;
+const GLP1_REGEX = GLP1_MED_REGEX;
 
 export type FlagInputs = {
   activeProfile: AthleteProfileDocument | null;
   /** A partially-assembled card — needs readiness.band and recap.protein_actual_g
    *  + macros.protein_target_g; doesn't need advice_md. */
   card: Omit<MorningBriefCard, "advice_md">;
+  /** Pass the result of getTodayTargets() so the glp1 flag can read mode +
+   *  deficit alarm state without re-querying daily_logs. null when no active
+   *  athlete profile exists. */
+  targets: TodayTargets | null;
 };
+
+/** Computes the structured GLP-1 flag from the athlete profile's health.glp1_status
+ *  (for active/medication/dose) and TodayTargets (for mode + deficit alarm state).
+ *
+ *  When glp1_status is absent, `active` is false but `mode` is still threaded
+ *  through so Task 6 can branch on classical + diet_break. */
+function computeGlp1Flag(
+  activeProfile: AthleteProfileDocument | null,
+  targets: TodayTargets | null,
+): AdviceFlags["glp1"] {
+  const status = activeProfile?.intake_payload.health.glp1_status ?? null;
+  if (!status) {
+    return {
+      active: false,
+      medication: null,
+      dose_mg: null,
+      mode: targets?.mode ?? null,
+      deficit_alarm_triggered: false,
+      rolling_7d_avg_deficit: null,
+    };
+  }
+  return {
+    active: true,
+    medication: status.medication,
+    dose_mg: status.dose_mg,
+    mode: targets?.mode ?? null,
+    deficit_alarm_triggered: targets?.deficit_alarm?.triggered ?? false,
+    rolling_7d_avg_deficit: targets?.deficit_alarm?.rolling_7d_avg_deficit ?? null,
+  };
+}
 
 export function computeAdviceFlags(inputs: FlagInputs): AdviceFlags {
   const meds = inputs.activeProfile?.intake_payload.health.medications ?? "";
@@ -39,8 +78,13 @@ export function computeAdviceFlags(inputs: FlagInputs): AdviceFlags {
   const missed_protein_yesterday =
     proteinActual !== null && proteinTarget > 0 && proteinActual < proteinTarget * 0.9;
 
+  // GLP-1 detection falls back to medication-string regex when glp1_status is
+  // absent (older profiles captured before the structured field existed).
+  const glp1Flag = computeGlp1Flag(inputs.activeProfile, inputs.targets);
+  const glp1Active = glp1Flag.active || GLP1_REGEX.test(meds);
+
   return {
-    has_glp1: GLP1_REGEX.test(meds),
+    glp1: { ...glp1Flag, active: glp1Active },
     alcohol_low_readiness_warning: drinks > 0 && inputs.card.readiness.band === "low",
     has_active_injuries: injuries.length > 0,
     poor_sleep_efficiency,

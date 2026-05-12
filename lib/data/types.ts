@@ -116,7 +116,10 @@ export type ToolCallLog = {
     | "set_unprompted_actions"
     | "set_free_form_constraints"
     | "propose_plan"
-    | "commit_plan";
+    | "commit_plan"
+    | "set_glp1_status"
+    | "set_glp1_taper_started"
+    | "mark_glp1_discontinued";
   input: Record<string, unknown>;
   ms: number;
   result_rows: number;
@@ -325,6 +328,16 @@ export type IntakePayload = {
     recent_illness_injury: string;
     active_injuries: Array<{ joint: string; restriction: string }>;
     allergies: string;
+    glp1_status?: {
+      medication: "semaglutide" | "tirzepatide" | "compounded";
+      dose_mg: number;
+      injection_day: "Mon" | "Tue" | "Wed" | "Thu" | "Fri" | "Sat" | "Sun";
+      injection_time: "morning" | "evening" | "night";
+      started_on: string;                  // ISO YYYY-MM-DD
+      expected_taper_start: string | null;
+      expected_end: string | null;
+      doctor_protocol_notes: string | null;
+    } | null;
   };
   training: {
     years_lifting: number;
@@ -534,6 +547,41 @@ export type PlanPayload = {
       tracking_tolerance_missed_days_per_week: number;
     };
     notes: string | null;
+
+    glp1: {
+      medication: "semaglutide" | "tirzepatide" | "compounded";
+      dose_mg: number;
+      injection_day: "Mon" | "Tue" | "Wed" | "Thu" | "Fri" | "Sat" | "Sun";
+      injection_time: "morning" | "evening" | "night";
+      started_on: string;
+      expected_taper_start: string | null;
+      taper_started_on: string | null;
+      expected_end: string | null;
+      deficit_alarm_pct: number;
+      deficit_alarm_kcal: number;
+      protein_g_per_kg_bw: number;
+      per_meal_protein_floor_g: number;
+      hydration_training_day_ml: number;
+      sodium_training_day_mg: number;
+      tdee_estimate_kcal: number;        // cached at composer time
+    } | null;
+
+    classical_phases: Array<{
+      start_week: number;
+      end_week: number;
+      mode: "cut" | "diet_break" | "reverse" | "maintain";
+      kcal: number;
+      protein_g: number;
+      carb_g: number;
+      fat_g: number;
+      rationale: string;
+    }> | null;
+
+    rest_day_delta: {
+      kcal: number;
+      carb_g: number;
+      fat_g: number;
+    } | null;
   };
 
   sleep: {
@@ -637,6 +685,13 @@ export type MorningBriefTonight = {
   bedtime_target: string;                     // "HH:mm"
 };
 
+export type MorningBriefHydration = {
+  water_ml: number;
+  sodium_mg: number;
+  /** Context note explaining the hydration recommendation. */
+  note: string;
+};
+
 export type MorningBriefCard = {
   variant: MorningBriefVariant;
   readiness: MorningBriefReadiness;
@@ -646,6 +701,9 @@ export type MorningBriefCard = {
     start_time: string | null;                // "13:00" for training; null for rest
     exercises: MorningBriefExercise[];        // empty for rest
   };
+  /** Present when GLP-1 mode is active and today is a training day.
+   *  Rendered above the Macros section. null/undefined otherwise. */
+  hydration?: MorningBriefHydration | null;
   macros: MorningBriefMacros;
   advice_md: string;                          // AI-generated 2-4 sentences markdown
   /** Deterministically set by lib/morning/brief/assembler.ts when band='low'
@@ -666,7 +724,20 @@ export type MorningBriefCard = {
  *  AI prompt as named booleans so coaching logic stays in versioned TS code,
  *  not in a prompt string. Each flag is one threshold check or regex match. */
 export type AdviceFlags = {
-  has_glp1: boolean;
+  /** Structured GLP-1 flag. `active` mirrors the old `has_glp1` boolean;
+   *  the additional fields carry mode + 7-day deficit state from TodayTargets
+   *  so the Advice prompt can branch without re-querying daily_logs. */
+  glp1: {
+    active: boolean;
+    medication: string | null;
+    dose_mg: number | null;
+    /** Resolved nutrition mode from TodayTargets. null when no active profile. */
+    mode: ResolvedNutritionMode | null;
+    /** True when the 7-day rolling deficit exceeds the GLP-1 alarm threshold. */
+    deficit_alarm_triggered: boolean;
+    /** Rolling 7-day average deficit in kcal/day; null when insufficient data. */
+    rolling_7d_avg_deficit: number | null;
+  };
   alcohol_low_readiness_warning: boolean;
   has_active_injuries: boolean;
   poor_sleep_efficiency: boolean;
@@ -724,3 +795,11 @@ export type SwapConflictResponse = {
 export type MorningBriefCoachSuggestion =
   | { kind: "swap_to_mobility"; rationale: "low_readiness" }
   | null;
+
+// ── GLP-1-aware nutrition helper types ──────────────────────────────────────
+
+export type Glp1Config = NonNullable<PlanPayload["nutrition"]["glp1"]>;
+export type Glp1Status = NonNullable<IntakePayload["health"]["glp1_status"]>;
+export type PhaseStep = NonNullable<PlanPayload["nutrition"]["classical_phases"]>[number];
+export type RestDayDelta = NonNullable<PlanPayload["nutrition"]["rest_day_delta"]>;
+export type ResolvedNutritionMode = "glp1_active" | "glp1_tapering" | "classical" | "steady_state";

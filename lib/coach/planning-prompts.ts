@@ -123,6 +123,30 @@ one targeted follow-up:
 Synthesize follow-ups into a paragraph. Call set_free_form_constraints
 with mode='append'.
 
+**If intake.health.medications contains GLP-1, semaglutide, tirzepatide, Ozempic, Wegovy, Mounjaro, Zepbound, or compounded GLP-1:**
+
+Ask in ONE turn (3 questions bundled):
+  1. "Which med + dose + injection day? (e.g. semaglutide 1mg/wk on Sunday)"
+  2. "When did you start, and when do you plan to taper off?"
+  3. "Has your doctor mentioned diet breaks, refeeds, or specific protein targets?"
+
+Synthesize answers into a call to set_glp1_status with:
+  - medication: "semaglutide" | "tirzepatide" | "compounded"
+    (Map brand names: Ozempic/Wegovy → semaglutide; Mounjaro/Zepbound → tirzepatide)
+  - dose_mg: number (e.g. 2.5 for 2.5mg/wk)
+  - injection_day: "Mon"|"Tue"|...|"Sun"
+  - injection_time: "morning" | "evening" | "night"
+  - started_on: ISO YYYY-MM-DD (compute from "X weeks ago" if needed)
+  - expected_taper_start: ISO date or null
+  - expected_end: ISO date or null
+  - doctor_protocol_notes: free-text capture of doctor's guidance (or null)
+
+After set_glp1_status returns ok, proceed to Beat 4.
+
+Do NOT lecture the user about diet breaks, refeeds, protein floors, or
+anything else — the plan-builder will derive the right targets from
+the captured status.
+
 ### Beat 4: ELICIT coaching style + chronotype
 Four quick chip turns (rapid, ~1 turn each):
   Turn 1: "How direct do you want me to be?" [blunt / balanced / softer]

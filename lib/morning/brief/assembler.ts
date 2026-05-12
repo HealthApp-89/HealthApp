@@ -8,6 +8,7 @@ import type {
   MorningBriefCard,
   MorningBriefCoachSuggestion,
   MorningBriefExercise,
+  MorningBriefHydration,
   MorningBriefVariant,
   MorningBriefRecap,
   MorningBriefMacros,
@@ -66,6 +67,7 @@ export function assembleBriefExceptAdvice(
     readiness,
     recap: composeRecap(inputs),
     session: composeSession(variant, inputs),
+    hydration: composeHydration(inputs),
     macros: composeMacros(inputs),
     tonight: composeTonight(inputs),
     coach_suggestion: pickCoachSuggestion(
@@ -141,6 +143,16 @@ function composeRecap(inputs: BriefInputs): MorningBriefRecap {
     protein_target_g: t?.protein_g ?? 0,
     trained_yesterday: inputs.yesterdayWorkout?.type ?? null,
     top_e1rm_yesterday: inputs.yesterdayWorkout?.top_e1rm ?? null,
+  };
+}
+
+function composeHydration(inputs: BriefInputs): MorningBriefHydration | null {
+  const t = inputs.todayTargets;
+  if (t?.hydration_target_ml == null || !t.is_training_day) return null;
+  return {
+    water_ml: t.hydration_target_ml,
+    sodium_mg: t.sodium_target_mg ?? 0,
+    note: "GLP-1 can suppress thirst — front-load water & sodium around session.",
   };
 }
 

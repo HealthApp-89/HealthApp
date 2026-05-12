@@ -11,6 +11,12 @@ import { useState } from "react";
 import { COLOR, RADIUS } from "@/lib/ui/theme";
 import type { PlanPayload } from "@/lib/data/types";
 
+function modeOfPlan(plan: PlanPayload): "glp1" | "classical" | "steady" {
+  if (plan.nutrition.glp1) return "glp1";
+  if (plan.nutrition.classical_phases?.length) return "classical";
+  return "steady";
+}
+
 export function PlanProposalCard({
   plan,
   approval_token,
@@ -98,32 +104,120 @@ export function PlanProposalCard({
         </p>
       </PlanSection>
 
-      <PlanSection title="Nutrition">
-        <KeyVal label="Phase" value={plan.nutrition.phase} />
-        <KeyVal
-          label="Calories"
-          value={`${plan.nutrition.kcal_target} kcal (${plan.nutrition.kcal_range[0]}-${plan.nutrition.kcal_range[1]})`}
-        />
-        <KeyVal
-          label="Protein"
-          value={`${plan.nutrition.protein_g}g (${plan.nutrition.protein_g_per_kg_bw} g/kg BW)`}
-        />
-        <KeyVal
-          label="Carbs / Fat"
-          value={`${plan.nutrition.carb_g}g / ${plan.nutrition.fat_g}g`}
-        />
-        {plan.nutrition.refeed_cadence_days &&
-          plan.nutrition.refeed_uplift && (
-            <KeyVal
-              label="Refeed"
-              value={`every ${plan.nutrition.refeed_cadence_days} days (+${plan.nutrition.refeed_uplift.kcal} kcal)`}
-            />
-          )}
-        <KeyVal
-          label="Alcohol"
-          value={plan.nutrition.hard_rules.alcohol_policy.replace(/_/g, " ")}
-        />
-      </PlanSection>
+      {(() => {
+        const mode = modeOfPlan(plan);
+        return (
+          <PlanSection title="Nutrition">
+            {mode === "glp1" && plan.nutrition.glp1 && (
+              <>
+                <KeyVal
+                  label="Mode"
+                  value={`GLP-1-aware · ${plan.nutrition.glp1.medication} ${plan.nutrition.glp1.dose_mg}mg/wk`}
+                />
+                <KeyVal label="Phase" value={plan.nutrition.phase} />
+                <KeyVal
+                  label="Calories"
+                  value={`${plan.nutrition.kcal_target} kcal (alarm at >${plan.nutrition.glp1.deficit_alarm_kcal} deficit)`}
+                />
+                <KeyVal
+                  label="Protein"
+                  value={`${plan.nutrition.protein_g}g (${plan.nutrition.glp1.protein_g_per_kg_bw} g/kg BW)`}
+                />
+                <KeyVal
+                  label="Carbs / Fat"
+                  value={`${plan.nutrition.carb_g}g / ${plan.nutrition.fat_g}g`}
+                />
+                <KeyVal
+                  label="Hydration"
+                  value={`${plan.nutrition.glp1.hydration_training_day_ml} ml + ${plan.nutrition.glp1.sodium_training_day_mg} mg Na on training days`}
+                />
+                <KeyVal label="Started" value={plan.nutrition.glp1.started_on} />
+                {plan.nutrition.glp1.expected_taper_start && (
+                  <KeyVal
+                    label="Expected taper"
+                    value={plan.nutrition.glp1.expected_taper_start}
+                  />
+                )}
+                {plan.nutrition.glp1.expected_end && (
+                  <KeyVal
+                    label="Expected end"
+                    value={plan.nutrition.glp1.expected_end}
+                  />
+                )}
+              </>
+            )}
+
+            {mode === "classical" && plan.nutrition.classical_phases && (
+              <>
+                <KeyVal label="Mode" value="Classical phase-of-phases" />
+                <KeyVal label="Phase today" value={plan.nutrition.phase} />
+                <KeyVal
+                  label="Calories"
+                  value={`${plan.nutrition.kcal_target} kcal`}
+                />
+                <KeyVal
+                  label="Protein"
+                  value={`${plan.nutrition.protein_g}g (${plan.nutrition.protein_g_per_kg_bw} g/kg BW)`}
+                />
+                <KeyVal
+                  label="Carbs / Fat"
+                  value={`${plan.nutrition.carb_g}g / ${plan.nutrition.fat_g}g`}
+                />
+                <KeyVal
+                  label="Sequence"
+                  value={plan.nutrition.classical_phases
+                    .map((s) => `W${s.start_week}-${s.end_week} ${s.mode}`)
+                    .join(" · ")}
+                />
+                {plan.nutrition.refeed_cadence_days && (
+                  <KeyVal
+                    label="Refeed"
+                    value={`every ${plan.nutrition.refeed_cadence_days} days`}
+                  />
+                )}
+                {plan.nutrition.rest_day_delta && (
+                  <KeyVal
+                    label="Rest-day delta"
+                    value={`${plan.nutrition.rest_day_delta.kcal} kcal / ${plan.nutrition.rest_day_delta.carb_g}g carbs`}
+                  />
+                )}
+              </>
+            )}
+
+            {mode === "steady" && (
+              <>
+                <KeyVal label="Phase" value={plan.nutrition.phase} />
+                <KeyVal
+                  label="Calories"
+                  value={`${plan.nutrition.kcal_target} kcal (${plan.nutrition.kcal_range[0]}-${plan.nutrition.kcal_range[1]})`}
+                />
+                <KeyVal
+                  label="Protein"
+                  value={`${plan.nutrition.protein_g}g (${plan.nutrition.protein_g_per_kg_bw} g/kg BW)`}
+                />
+                <KeyVal
+                  label="Carbs / Fat"
+                  value={`${plan.nutrition.carb_g}g / ${plan.nutrition.fat_g}g`}
+                />
+                {plan.nutrition.refeed_cadence_days &&
+                  plan.nutrition.refeed_uplift && (
+                    <KeyVal
+                      label="Refeed"
+                      value={`every ${plan.nutrition.refeed_cadence_days} days (+${plan.nutrition.refeed_uplift.kcal} kcal)`}
+                    />
+                  )}
+                <KeyVal
+                  label="Alcohol"
+                  value={plan.nutrition.hard_rules.alcohol_policy.replace(
+                    /_/g,
+                    " ",
+                  )}
+                />
+              </>
+            )}
+          </PlanSection>
+        );
+      })()}
 
       <PlanSection title="Sleep">
         <KeyVal

@@ -107,7 +107,14 @@ export async function buildPlanPayload(
   const goal = composeGoal(intake);
   const periodization = composePeriodization(intake);
   const strength = composeStrengthTemplate(intake, activeBlock, recentE1RMs);
-  const nutrition = composeNutrition(intake, bodyweightForComposers);
+  // TODO Task 4: thread acknowledged_on from caller (commit_plan tool has the
+  // active profile version's acknowledged_on; resolveMode handles null gracefully).
+  const nutrition = composeNutrition({
+    intake,
+    goal,
+    bodyweight_kg: bodyweightForComposers,
+    acknowledged_on: null,
+  });
   const sleep = composeSleep(intake);
   const recovery = composeRecovery(intake);
   const coaching_agreement = composeCoachingAgreement(intake);
