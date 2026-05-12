@@ -170,8 +170,19 @@ try {
 }
 console.log(`  recovery: ${recovery.length}, cycles: ${cycles.length}, sleep: ${sleep.length}`);
 
-const rows = buildWhoopDayRows(userId, recovery, cycles, sleep);
+const { rows, skipped: builderSkipped } = buildWhoopDayRows(userId, recovery, cycles, sleep);
 console.log(`  builder produced ${rows.length} day-rows`);
+if (
+  builderSkipped.cycles ||
+  builderSkipped.sleep ||
+  builderSkipped.recovery ||
+  builderSkipped.badTzOffset
+) {
+  console.log(
+    `  builder skipped: cycles=${builderSkipped.cycles} sleep=${builderSkipped.sleep} ` +
+      `recovery=${builderSkipped.recovery} badTzOffset=${builderSkipped.badTzOffset}`,
+  );
+}
 
 // ── Snapshot before-state ────────────────────────────────────────────────────
 const SNAPSHOT_COLS =
