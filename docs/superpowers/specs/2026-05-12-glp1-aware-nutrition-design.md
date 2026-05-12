@@ -10,7 +10,7 @@
 
 Phase 2's coaching plan models nutrition as a single steady-state — one `kcal_target`, one set of macros, one `phase`. The expert review (Phase 2 spec Section 2) flagged two related deferrals: scheduled diet breaks every 8 weeks of cutting, and a reverse-diet ramp at the end. The original Tier 2-A pitch was to land both as a `phase_sequence` over time.
 
-Live testing surfaced that the user (the one we are designing for) is on a **GLP-1 agonist** (Ozempic 2.5mg/wk, week 5 of a 4-month plan with progressive taper). A literature review (see `Research synthesis`, below) showed the classic RD/bodybuilding playbook does **not** transfer cleanly to GLP-1-mediated weight loss:
+Live testing surfaced that the user (the one we are designing for) is on a **GLP-1 agonist** (Mounjaro / tirzepatide 2.5 mg/wk, Sunday PM injection, week 5 of a 4-month plan with progressive taper). A literature review (see `Research synthesis`, below) showed the classic RD/bodybuilding playbook does **not** transfer cleanly to GLP-1-mediated weight loss:
 
 - Scheduled diet breaks lack mechanistic justification — the leptin/ghrelin signals refeeds restore are pharmacologically modulated by semaglutide/tirzepatide, so a planned +400 kcal day fights the medication.
 - Reverse dieting still matters at end-of-treatment (regain after discontinuation is well documented: STEP-1 11.6pp regain in 1 yr; SURMOUNT-4 82.5% regain ≥25% in 1 yr) but its shape is **dose-taper-anchored**, not calendar-driven.
@@ -342,10 +342,10 @@ Mode-conditional Nutrition section in `components/chat/PlanProposalCard.tsx`:
 **GLP-1 mode:**
 ```
 Nutrition · GLP-1-aware
-  Medication      semaglutide 2.5mg/wk (Sun PM)
+  Medication      tirzepatide 2.5mg/wk (Sun PM) — Mounjaro
   Phase           cut
   Calories        1850 kcal (alarm at >2550 deficit; relaxed during taper)
-  Protein         186g (1.8 g/kg BW; cross-check 2.0 g/kg FFM)
+  Protein         206g (2.0 g/kg BW; tirzepatide elevated floor — cross-check 2.0 g/kg FFM)
   Carbs / Fat     180g / 55g
   Hydration       3.5L + 1g Na on training days
   Started         2026-04-07 · Expected taper: 2026-08-10 · End: 2026-09-12
