@@ -33,6 +33,7 @@ export async function buildMorningBrief(
     activeProfile: inputs.activeProfile,
     card: partial,
     flags,
+    targets: inputs.todayTargets,
   });
   return { ...partial, advice_md };
 }

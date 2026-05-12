@@ -682,6 +682,13 @@ export type MorningBriefTonight = {
   bedtime_target: string;                     // "HH:mm"
 };
 
+export type MorningBriefHydration = {
+  water_ml: number;
+  sodium_mg: number;
+  /** Context note explaining the hydration recommendation. */
+  note: string;
+};
+
 export type MorningBriefCard = {
   variant: MorningBriefVariant;
   readiness: MorningBriefReadiness;
@@ -691,6 +698,9 @@ export type MorningBriefCard = {
     start_time: string | null;                // "13:00" for training; null for rest
     exercises: MorningBriefExercise[];        // empty for rest
   };
+  /** Present when GLP-1 mode is active and today is a training day.
+   *  Rendered above the Macros section. null/undefined otherwise. */
+  hydration?: MorningBriefHydration | null;
   macros: MorningBriefMacros;
   advice_md: string;                          // AI-generated 2-4 sentences markdown
   /** Deterministically set by lib/morning/brief/assembler.ts when band='low'
