@@ -15,6 +15,8 @@ import { useWithingsTokens } from "@/lib/query/hooks/useWithingsTokens";
 import { useIngestToken } from "@/lib/query/hooks/useIngestToken";
 import { useDailyLogs } from "@/lib/query/hooks/useDailyLogs";
 import { AthleteProfilePanel } from "@/components/profile/AthleteProfilePanel";
+import { LabPromptCard } from "@/components/profile/LabPromptCard";
+import { useAthleteProfile } from "@/lib/query/hooks/useAthleteProfile";
 
 export function ProfileClient({
   userId,
@@ -36,6 +38,8 @@ export function ProfileClient({
   const { data: withingsTokens = null } = useWithingsTokens(userId);
   const { data: ingestToken = null } = useIngestToken(userId);
   const { data: logs = [] } = useDailyLogs(userId, baselineFrom, baselineTo);
+  const { data: activeProfile } = useAthleteProfile(userId);
+  const showLabCard = activeProfile?.plan_payload?.nutrition?.glp1 != null;
 
   return (
     <div style={{ maxWidth: "640px", margin: "0 auto", padding: "12px 8px 16px" }}>
@@ -108,8 +112,9 @@ export function ProfileClient({
       </div>
 
       <SectionLabel>Coaching plan</SectionLabel>
-      <div style={{ padding: "0 8px 14px" }}>
+      <div style={{ padding: "0 8px 14px", display: "flex", flexDirection: "column", gap: "8px" }}>
         <AthleteProfilePanel userId={userId} />
+        {showLabCard && <LabPromptCard userId={userId} />}
       </div>
 
       <SectionLabel>Connected sources</SectionLabel>
