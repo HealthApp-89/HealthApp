@@ -340,6 +340,88 @@ function renderPlanStrengthSection(s: PlanPayload["strength"]): string {
 }
 
 function renderPlanNutritionSection(n: PlanPayload["nutrition"]): string {
+  if (n.glp1) return renderGlp1NutritionMarkdown(n);
+  if (n.classical_phases?.length) return renderClassicalNutritionMarkdown(n);
+  return renderSteadyNutritionMarkdown(n);
+}
+
+function renderGlp1NutritionMarkdown(n: PlanPayload["nutrition"]): string {
+  const g = n.glp1!;
+  const lines: string[] = [
+    "## Nutrition (GLP-1-aware)",
+    "",
+    `**Medication:** ${g.medication} ${g.dose_mg} mg — injection ${g.injection_day} ${g.injection_time}`,
+    `**Started:** ${g.started_on}`,
+  ];
+  if (g.expected_taper_start) lines.push(`**Expected taper start:** ${g.expected_taper_start}`);
+  if (g.taper_started_on) lines.push(`**Taper started on:** ${g.taper_started_on}`);
+  if (g.expected_end) lines.push(`**Expected end:** ${g.expected_end}`);
+  lines.push(
+    "",
+    `**Phase:** ${n.phase}`,
+    `**Calories:** ${n.kcal_target} kcal (range ${n.kcal_range[0]}–${n.kcal_range[1]})`,
+    `**Protein:** ${n.protein_g}g (${g.protein_g_per_kg_bw} g/kg BW · ≥${g.per_meal_protein_floor_g}g per meal)`,
+    `**Carbs:** ${n.carb_g}g · **Fat:** ${n.fat_g}g`,
+    "",
+    `**Deficit alarm:** <${g.deficit_alarm_kcal} kcal/day (${g.deficit_alarm_pct}% of TDEE) · TDEE estimate: ${g.tdee_estimate_kcal} kcal`,
+    "",
+    `**Hydration (training days):** ${g.hydration_training_day_ml} ml water · ${g.sodium_training_day_mg} mg sodium`,
+    "",
+    `**Alcohol:** ${n.hard_rules.alcohol_policy.replace(/_/g, " ")}`,
+  );
+  if (n.notes) lines.push("", n.notes);
+  return lines.join("\n");
+}
+
+function renderClassicalNutritionMarkdown(n: PlanPayload["nutrition"]): string {
+  const phases = n.classical_phases!;
+  const sequenceStrip = phases
+    .map((p) => `W${p.start_week}–${p.end_week} ${p.mode.replace(/_/g, " ")}`)
+    .join(" · ");
+
+  // Resolve "today's phase" as the first phase (Phase 1 renders static document)
+  const today = phases[0];
+
+  const lines: string[] = [
+    "## Nutrition (classical phase-of-phases)",
+    "",
+    `**Sequence:** ${sequenceStrip}`,
+    "",
+    `**Today's targets (${today.mode.replace(/_/g, " ")}):**`,
+    `Phase: ${today.mode.replace(/_/g, " ")}`,
+    `Calories: ${today.kcal} kcal`,
+    `Protein: ${today.protein_g}g (${n.protein_g_per_kg_bw} g/kg BW)`,
+    `Carbs: ${today.carb_g}g · Fat: ${today.fat_g}g`,
+  ];
+
+  if (n.training_day_uplift) {
+    lines.push(
+      "",
+      `**Training-day uplift:** +${n.training_day_uplift.kcal} kcal, +${n.training_day_uplift.carb_g}g carbs`,
+    );
+  }
+
+  if (n.rest_day_delta) {
+    lines.push(
+      "",
+      `**Rest-day delta:** ${n.rest_day_delta.kcal >= 0 ? "+" : ""}${n.rest_day_delta.kcal} kcal, ${n.rest_day_delta.carb_g >= 0 ? "+" : ""}${n.rest_day_delta.carb_g}g carbs, ${n.rest_day_delta.fat_g >= 0 ? "+" : ""}${n.rest_day_delta.fat_g}g fat`,
+    );
+  }
+
+  if (n.refeed_cadence_days) {
+    lines.push(
+      "",
+      `**Refeed every ${n.refeed_cadence_days} days:** +${n.refeed_uplift?.kcal} kcal, +${n.refeed_uplift?.carb_g}g carbs`,
+    );
+  }
+
+  lines.push("", `**Alcohol:** ${n.hard_rules.alcohol_policy.replace(/_/g, " ")}`);
+
+  if (n.notes) lines.push("", n.notes);
+  return lines.join("\n");
+}
+
+function renderSteadyNutritionMarkdown(n: PlanPayload["nutrition"]): string {
   const refeed = n.refeed_cadence_days
     ? `\n**Refeed every ${n.refeed_cadence_days} days:** +${n.refeed_uplift?.kcal} kcal, +${n.refeed_uplift?.carb_g}g carbs`
     : "";
