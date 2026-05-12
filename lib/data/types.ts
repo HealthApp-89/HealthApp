@@ -325,6 +325,16 @@ export type IntakePayload = {
     recent_illness_injury: string;
     active_injuries: Array<{ joint: string; restriction: string }>;
     allergies: string;
+    glp1_status?: {
+      medication: "semaglutide" | "tirzepatide" | "compounded";
+      dose_mg: number;
+      injection_day: "Mon" | "Tue" | "Wed" | "Thu" | "Fri" | "Sat" | "Sun";
+      injection_time: "morning" | "evening" | "night";
+      started_on: string;                  // ISO YYYY-MM-DD
+      expected_taper_start: string | null;
+      expected_end: string | null;
+      doctor_protocol_notes: string | null;
+    } | null;
   };
   training: {
     years_lifting: number;
@@ -534,6 +544,41 @@ export type PlanPayload = {
       tracking_tolerance_missed_days_per_week: number;
     };
     notes: string | null;
+
+    glp1: {
+      medication: "semaglutide" | "tirzepatide" | "compounded";
+      dose_mg: number;
+      injection_day: "Mon" | "Tue" | "Wed" | "Thu" | "Fri" | "Sat" | "Sun";
+      injection_time: "morning" | "evening" | "night";
+      started_on: string;
+      expected_taper_start: string | null;
+      taper_started_on: string | null;
+      expected_end: string | null;
+      deficit_alarm_pct: number;
+      deficit_alarm_kcal: number;
+      protein_g_per_kg_bw: number;
+      per_meal_protein_floor_g: number;
+      hydration_training_day_ml: number;
+      sodium_training_day_mg: number;
+      tdee_estimate_kcal: number;        // cached at composer time
+    } | null;
+
+    classical_phases: Array<{
+      start_week: number;
+      end_week: number;
+      mode: "cut" | "diet_break" | "reverse" | "maintain";
+      kcal: number;
+      protein_g: number;
+      carb_g: number;
+      fat_g: number;
+      rationale: string;
+    }> | null;
+
+    rest_day_delta: {
+      kcal: number;
+      carb_g: number;
+      fat_g: number;
+    } | null;
   };
 
   sleep: {
@@ -724,3 +769,11 @@ export type SwapConflictResponse = {
 export type MorningBriefCoachSuggestion =
   | { kind: "swap_to_mobility"; rationale: "low_readiness" }
   | null;
+
+// ── GLP-1-aware nutrition helper types ──────────────────────────────────────
+
+export type Glp1Config = NonNullable<PlanPayload["nutrition"]["glp1"]>;
+export type Glp1Status = NonNullable<IntakePayload["health"]["glp1_status"]>;
+export type PhaseStep = NonNullable<PlanPayload["nutrition"]["classical_phases"]>[number];
+export type RestDayDelta = NonNullable<PlanPayload["nutrition"]["rest_day_delta"]>;
+export type ResolvedNutritionMode = "glp1_active" | "glp1_tapering" | "classical" | "steady_state";

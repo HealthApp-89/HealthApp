@@ -65,6 +65,9 @@ export function composeNutrition(
     refeed_uplift: refeedUplift,
     hard_rules: composeHardRules(intake),
     notes: null, // populated by AI narrative pass
+    glp1: null,             // populated by GLP-1 composer (Task 3)
+    classical_phases: null, // populated by classical-phase composer (Task 3)
+    rest_day_delta: null,   // populated by rest-day composer (Task 3)
   };
 }
 

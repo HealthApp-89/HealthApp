@@ -14,7 +14,7 @@
 // "your intake baseline says…").
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { IntakePayload, PlanPayload } from "@/lib/data/types";
+import type { IntakePayload, PlanPayload, ResolvedNutritionMode } from "@/lib/data/types";
 
 export type TodayTargets = {
   kcal: number;
@@ -26,6 +26,18 @@ export type TodayTargets = {
   phase: "cut" | "maintain" | "lean_bulk" | "recomp" | "unsure";
   /** Which artifact fed these numbers. */
   source: "plan" | "intake";
+
+  // ── GLP-1-aware nutrition fields (Task 2 — defaults set; logic in Task 4) ──
+  mode: ResolvedNutritionMode;
+  is_training_day: boolean;
+  deficit_alarm: {
+    threshold_kcal_per_day: number;
+    rolling_7d_avg_intake: number | null;
+    rolling_7d_avg_deficit: number | null;
+    triggered: boolean;
+  } | null;
+  hydration_target_ml: number | null;
+  sodium_target_mg: number | null;
 };
 
 /** Returns null when the user has no active athlete_profile_documents row
@@ -57,6 +69,12 @@ export async function getTodayTargets(
         (plan.sleep.target_hours_min + plan.sleep.target_hours_max) / 2,
       phase: plan.nutrition.phase,
       source: "plan",
+      // GLP-1-aware fields — logic resolved in Task 4; defaults until then.
+      mode: "steady_state",
+      is_training_day: false,
+      deficit_alarm: null,
+      hydration_target_ml: null,
+      sodium_target_mg: null,
     };
   }
 
@@ -71,5 +89,11 @@ export async function getTodayTargets(
     sleep_hours_target: payload.sleep_recovery.avg_sleep_hours,
     phase: payload.nutrition.current_phase,
     source: "intake",
+    // GLP-1-aware fields — logic resolved in Task 4; defaults until then.
+    mode: "steady_state",
+    is_training_day: false,
+    deficit_alarm: null,
+    hydration_target_ml: null,
+    sodium_target_mg: null,
   };
 }
