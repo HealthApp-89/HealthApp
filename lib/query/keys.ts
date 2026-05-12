@@ -84,4 +84,7 @@ export const queryKeys = {
     /** Wide invalidation prefix — use after any write. */
     all: (userId: string) => ["athlete-profile", userId] as const,
   },
+  labAcks: {
+    one: (userId: string) => ["labAcks", userId] as const,
+  },
 } as const;
