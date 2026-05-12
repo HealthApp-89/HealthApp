@@ -116,7 +116,10 @@ export type ToolCallLog = {
     | "set_unprompted_actions"
     | "set_free_form_constraints"
     | "propose_plan"
-    | "commit_plan";
+    | "commit_plan"
+    | "set_glp1_status"
+    | "set_glp1_taper_started"
+    | "mark_glp1_discontinued";
   input: Record<string, unknown>;
   ms: number;
   result_rows: number;
