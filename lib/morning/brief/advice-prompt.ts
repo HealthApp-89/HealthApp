@@ -88,7 +88,7 @@ Cover (in this order, but only what's relevant):
 3. Hydration one-liner.
 
 Conditional rules:
-- If has_glp1 is true: in the eating section, note that hunger cues may be blunted; suggest setting a reminder for the pre-workout meal rather than "eat when hungry".
+- If glp1.active is true: in the eating section, note that hunger cues may be blunted; suggest setting a reminder for the pre-workout meal rather than "eat when hungry". If glp1.deficit_alarm_triggered is also true, note that the 7-day rolling deficit (see glp1.rolling_7d_avg_deficit in Flags) is high — recommend adding a carb-heavy meal around the session and prioritising ~30g protein per meal.
 - If alcohol_low_readiness_warning is true: mention pushing protein earlier in the day to compensate for overnight protein-synthesis suppression.
 - If has_active_injuries is true: note "modify per restriction" on relevant exercises rather than the prescribed weight.
 - If missed_protein_yesterday is true: open the eating section with a brief "yesterday's protein came in short — let's hit it cleanly today" before the timing.
@@ -153,7 +153,15 @@ function buildDataBlock(card: Omit<MorningBriefCard, "advice_md">): string {
 }
 
 function buildFlagsBlock(flags: AdviceFlags): string {
-  return Object.entries(flags)
-    .map(([k, v]) => `- ${k}: ${v}`)
-    .join("\n");
+  const lines: string[] = [];
+  // Expand the nested glp1 object so each sub-field renders as its own line.
+  for (const [subKey, subVal] of Object.entries(flags.glp1)) {
+    lines.push(`- glp1.${subKey}: ${subVal}`);
+  }
+  // All other flags are scalar.
+  const { glp1: _glp1, ...rest } = flags;
+  for (const [k, v] of Object.entries(rest)) {
+    lines.push(`- ${k}: ${v}`);
+  }
+  return lines.join("\n");
 }

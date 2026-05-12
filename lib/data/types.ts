@@ -711,7 +711,20 @@ export type MorningBriefCard = {
  *  AI prompt as named booleans so coaching logic stays in versioned TS code,
  *  not in a prompt string. Each flag is one threshold check or regex match. */
 export type AdviceFlags = {
-  has_glp1: boolean;
+  /** Structured GLP-1 flag. `active` mirrors the old `has_glp1` boolean;
+   *  the additional fields carry mode + 7-day deficit state from TodayTargets
+   *  so the Advice prompt can branch without re-querying daily_logs. */
+  glp1: {
+    active: boolean;
+    medication: string | null;
+    dose_mg: number | null;
+    /** Resolved nutrition mode from TodayTargets. null when no active profile. */
+    mode: ResolvedNutritionMode | null;
+    /** True when the 7-day rolling deficit exceeds the GLP-1 alarm threshold. */
+    deficit_alarm_triggered: boolean;
+    /** Rolling 7-day average deficit in kcal/day; null when insufficient data. */
+    rolling_7d_avg_deficit: number | null;
+  };
   alcohol_low_readiness_warning: boolean;
   has_active_injuries: boolean;
   poor_sleep_efficiency: boolean;
