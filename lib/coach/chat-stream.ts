@@ -47,6 +47,9 @@ import {
   SET_FREE_FORM_CONSTRAINTS_TOOL,
   PROPOSE_PLAN_TOOL,
   COMMIT_PLAN_TOOL,
+  SET_GLP1_STATUS_TOOL,
+  SET_GLP1_TAPER_STARTED_TOOL,
+  MARK_GLP1_DISCONTINUED_TOOL,
   executeQueryDailyLogs,
   executeQueryWorkouts,
   executeQueryTrainingBlocks,
@@ -70,6 +73,9 @@ import {
   executeSetFreeFormConstraints,
   executeProposePlan,
   executeCommitPlan,
+  executeSetGlp1Status,
+  executeSetGlp1TaperStarted,
+  executeMarkGlp1Discontinued,
   type ToolResult,
 } from "@/lib/coach/tools";
 import type { ChatMode, ToolCallLog } from "@/lib/data/types";
@@ -169,16 +175,23 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
     SET_FREE_FORM_CONSTRAINTS_TOOL,
     PROPOSE_PLAN_TOOL,
     COMMIT_PLAN_TOOL,
+    SET_GLP1_STATUS_TOOL,
+    SET_GLP1_TAPER_STARTED_TOOL,
+    MARK_GLP1_DISCONTINUED_TOOL,
   ];
 
   // Mode-scoped tool partitioning:
   //   plan_week / setup_block — weekly-planning tools (propose_block,
   //     commit_block, propose_week_plan, commit_week_plan) plus reads; intake
   //     tools (apply_*, set_*, propose_plan, commit_plan) are hidden.
+  //     GLP-1 tools are also hidden (mark_glp1_discontinued doesn't start
+  //     with "set_" so must be excluded explicitly).
   //   intake — onboarding wizard chat: 2 read tools (daily_logs + workouts)
-  //     + 13 Phase 2 intake tools. Weekly-planning tools are hidden.
-  //   default — only read tools; all propose_/commit_/apply_/set_ are hidden
-  //     to prevent accidental writes from casual conversation.
+  //     + 13 Phase 2 intake tools + set_glp1_status. Weekly-planning tools
+  //     and the active-doc GLP-1 tools are hidden.
+  //   default — read tools + set_glp1_taper_started + mark_glp1_discontinued
+  //     (milestone tools that mutate the active plan during normal coach
+  //     chat). All other propose_/commit_/apply_/set_ are still hidden.
   let toolsForMode: typeof allTools;
   if (opts.mode === "plan_week" || opts.mode === "setup_block") {
     toolsForMode = allTools.filter(
@@ -186,7 +199,8 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
         !t.name.startsWith("apply_") &&
         !t.name.startsWith("set_") &&
         t.name !== "propose_plan" &&
-        t.name !== "commit_plan",
+        t.name !== "commit_plan" &&
+        t.name !== "mark_glp1_discontinued",
     );
   } else if (opts.mode === "intake") {
     toolsForMode = allTools.filter(
@@ -194,7 +208,7 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
         t.name === "query_daily_logs" ||
         t.name === "query_workouts" ||
         t.name.startsWith("apply_") ||
-        t.name.startsWith("set_") ||
+        (t.name.startsWith("set_") && t.name !== "set_glp1_taper_started") ||
         t.name === "propose_plan" ||
         t.name === "commit_plan",
     );
@@ -204,7 +218,10 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
         !t.name.startsWith("propose_") &&
         !t.name.startsWith("commit_") &&
         !t.name.startsWith("apply_") &&
-        !t.name.startsWith("set_"),
+        (
+          !t.name.startsWith("set_") ||
+          t.name === "set_glp1_taper_started"
+        ),
     );
   }
 
@@ -356,6 +373,18 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
             input: block.input,
             chatMessageId: opts.assistantMessageId ?? null,
           });
+        } else if (block.name === "set_glp1_taper_started") {
+          result = await executeSetGlp1TaperStarted({
+            supabase: opts.sr,
+            userId: opts.userId,
+            input: block.input,
+          });
+        } else if (block.name === "mark_glp1_discontinued") {
+          result = await executeMarkGlp1Discontinued({
+            supabase: opts.sr,
+            userId: opts.userId,
+            input: block.input,
+          });
         } else if (
           block.name === "apply_goal_target" ||
           block.name === "apply_bedtime_correction" ||
@@ -368,10 +397,12 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
           block.name === "set_chronotype" ||
           block.name === "set_unprompted_actions" ||
           block.name === "set_free_form_constraints" ||
+          block.name === "set_glp1_status" ||
           block.name === "propose_plan" ||
           block.name === "commit_plan"
         ) {
-          // All Phase 2 intake-mode tools require a draft document id.
+          // All Phase 2 intake-mode tools (including set_glp1_status) require
+          // a draft document id.
           const draftDocId = opts.draftDocId ?? "";
           if (draftDocId.length === 0) {
             result = {
@@ -451,6 +482,13 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
             });
           } else if (block.name === "set_free_form_constraints") {
             result = await executeSetFreeFormConstraints({
+              supabase: opts.sr,
+              userId: opts.userId,
+              draftDocId,
+              input: block.input,
+            });
+          } else if (block.name === "set_glp1_status") {
+            result = await executeSetGlp1Status({
               supabase: opts.sr,
               userId: opts.userId,
               draftDocId,
