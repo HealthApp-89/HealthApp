@@ -107,6 +107,10 @@ export function AthleteProfilePanel({ userId }: { userId: string }) {
 
       {active && active.plan_payload === null && <GeneratePlanCta />}
 
+      {active && active.plan_payload?.nutrition.glp1 == null && hasGlp1InMedications(active.intake_payload.health.medications) && (
+        <RegeneratePlanWithGlp1Cta />
+      )}
+
       {history.length > 1 && <AthleteProfileHistory docs={history} />}
 
       {viewing && viewing.rendered_md && (
@@ -176,6 +180,58 @@ function GeneratePlanCta() {
             Could not start plan intake: {error}
           </div>
         )}
+      </div>
+    </Card>
+  );
+}
+
+function hasGlp1InMedications(meds: string): boolean {
+  const re = /\b(glp-?1|semaglutide|tirzepatide|ozempic|wegovy|mounjaro|zepbound)\b/i;
+  return re.test(meds);
+}
+
+function RegeneratePlanWithGlp1Cta() {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  return (
+    <Card variant="compact" style={{ borderColor: COLOR.accent, background: COLOR.accentSoft }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: COLOR.textStrong }}>
+          Your plan isn&apos;t GLP-1-aware yet
+        </div>
+        <div style={{ fontSize: 12, color: COLOR.textMid, lineHeight: 1.5 }}>
+          Your intake mentions a GLP-1 medication, but your current coaching plan was generated before
+          GLP-1-aware logic existed. Regenerate to get protein floor raised to 1.8&nbsp;g/kg BW, deficit
+          alarm, hydration prompts, and lab-prompt module.
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            startTransition(async () => {
+              const result = await startPlanIntake();
+              if (!result.ok) {
+                alert(`Could not start: ${result.error}`);
+                return;
+              }
+              router.push(`/coach?mode=intake&doc=${result.doc_id}`);
+            });
+          }}
+          disabled={pending}
+          style={{
+            marginTop: 4,
+            padding: "8px 14px",
+            background: COLOR.accent,
+            color: "#fff",
+            border: "none",
+            borderRadius: 999,
+            fontSize: 12,
+            fontWeight: 700,
+            cursor: pending ? "wait" : "pointer",
+            alignSelf: "flex-start",
+          }}
+        >
+          {pending ? "Starting…" : "Regenerate with GLP-1 awareness →"}
+        </button>
       </div>
     </Card>
   );
