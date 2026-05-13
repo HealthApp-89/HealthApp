@@ -119,7 +119,8 @@ export type ToolCallLog = {
     | "commit_plan"
     | "set_glp1_status"
     | "set_glp1_taper_started"
-    | "mark_glp1_discontinued";
+    | "mark_glp1_discontinued"
+    | "regenerate_morning_brief";
   input: Record<string, unknown>;
   ms: number;
   result_rows: number;

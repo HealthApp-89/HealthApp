@@ -50,6 +50,7 @@ import {
   SET_GLP1_STATUS_TOOL,
   SET_GLP1_TAPER_STARTED_TOOL,
   MARK_GLP1_DISCONTINUED_TOOL,
+  REGENERATE_MORNING_BRIEF_TOOL,
   executeQueryDailyLogs,
   executeQueryWorkouts,
   executeQueryTrainingBlocks,
@@ -76,6 +77,7 @@ import {
   executeSetGlp1Status,
   executeSetGlp1TaperStarted,
   executeMarkGlp1Discontinued,
+  executeRegenerateMorningBrief,
   type ToolResult,
 } from "@/lib/coach/tools";
 import type { ChatMode, ToolCallLog } from "@/lib/data/types";
@@ -178,6 +180,7 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
     SET_GLP1_STATUS_TOOL,
     SET_GLP1_TAPER_STARTED_TOOL,
     MARK_GLP1_DISCONTINUED_TOOL,
+    REGENERATE_MORNING_BRIEF_TOOL,
   ];
 
   // Mode-scoped tool partitioning:
@@ -200,7 +203,8 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
         !t.name.startsWith("set_") &&
         t.name !== "propose_plan" &&
         t.name !== "commit_plan" &&
-        t.name !== "mark_glp1_discontinued",
+        t.name !== "mark_glp1_discontinued" &&
+        t.name !== "regenerate_morning_brief",
     );
   } else if (opts.mode === "intake") {
     toolsForMode = allTools.filter(
@@ -213,6 +217,9 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
         t.name === "commit_plan",
     );
   } else {
+    // default mode — coach lane normal chat. Surfaces the milestone-style
+    // active-plan mutators (set_glp1_taper_started, mark_glp1_discontinued)
+    // plus regenerate_morning_brief for the user-challenges-brief flow.
     toolsForMode = allTools.filter(
       (t) =>
         !t.name.startsWith("propose_") &&
@@ -381,6 +388,12 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
           });
         } else if (block.name === "mark_glp1_discontinued") {
           result = await executeMarkGlp1Discontinued({
+            supabase: opts.sr,
+            userId: opts.userId,
+            input: block.input,
+          });
+        } else if (block.name === "regenerate_morning_brief") {
+          result = await executeRegenerateMorningBrief({
             supabase: opts.sr,
             userId: opts.userId,
             input: block.input,

@@ -38,7 +38,14 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const before = url.searchParams.get("before"); // ISO timestamp, exclusive
   const kindRaw = url.searchParams.get("kind") ?? "coach";
-  const kinds = kindRaw === "morning_intake" ? ["morning_intake", "morning_brief"] : ["coach"];
+  // Coach lane includes morning_brief so the regenerate_morning_brief tool's
+  // refreshed card renders inline in normal coach chat (the original brief
+  // also surfaces here — minor history duplication is acceptable; gives the
+  // user context for what's already known).
+  const kinds =
+    kindRaw === "morning_intake"
+      ? ["morning_intake", "morning_brief"]
+      : ["coach", "morning_brief"];
   const limitRaw = parseInt(url.searchParams.get("limit") ?? "", 10);
   const limit = Math.min(MAX_LIMIT, Number.isFinite(limitRaw) && limitRaw > 0 ? limitRaw : DEFAULT_LIMIT);
 

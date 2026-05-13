@@ -21,7 +21,7 @@ import {
 } from "@/lib/supabase/server";
 import { todayInUserTz, ymdInUserTz } from "@/lib/time";
 import type { CheckinRow, DailyLog, MorningBriefCard } from "@/lib/data/types";
-import { buildMorningBrief } from "@/lib/morning/brief";
+import { buildMorningBrief, composeBriefContentFallback } from "@/lib/morning/brief";
 
 export const dynamic = "force-dynamic";
 
@@ -112,7 +112,7 @@ export async function POST(req: Request) {
   }
 
   // Write the assistant message
-  const contentSummary = composeContentFallback(card);
+  const contentSummary = composeBriefContentFallback(card);
   const { data: inserted, error: insertErr } = await sr
     .from("chat_messages")
     .insert({
@@ -172,11 +172,5 @@ async function loadExistingBriefMessage(
   return data;
 }
 
-/** Plain-text fallback for `chat_messages.content`. Renders in chat history
- *  lists / clients that don't know how to consume `kind='morning_brief'`. */
-function composeContentFallback(card: MorningBriefCard): string {
-  const sessionLine = card.variant === "training"
-    ? `Today: ${card.session.type} at ${card.session.start_time}`
-    : "Today: REST";
-  return `Morning brief — ${sessionLine}. Readiness ${card.readiness.band}. Tap to view the full card.`;
-}
+// composeContentFallback moved to lib/morning/brief/index.ts so the
+// regenerate_morning_brief chat tool can reuse it.

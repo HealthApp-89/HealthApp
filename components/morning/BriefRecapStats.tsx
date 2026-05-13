@@ -1,26 +1,27 @@
 "use client";
 
 import { COLOR } from "@/lib/ui/theme";
+import { fmtNum } from "@/lib/ui/score";
 import type { MorningBriefRecap } from "@/lib/data/types";
 
 export function BriefRecapStats({ recap }: { recap: MorningBriefRecap }) {
   const stats: Array<{ label: string; value: string; sub?: string }> = [
     {
       label: "Sleep",
-      value: recap.sleep_hours !== null ? `${recap.sleep_hours}h` : "—",
+      value: recap.sleep_hours !== null ? `${fmtNum(recap.sleep_hours)}h` : "—",
     },
     {
       label: "Kcal",
-      value: recap.kcal_actual !== null ? `${recap.kcal_actual}` : "—",
-      sub: recap.kcal_target > 0 ? `/${recap.kcal_target}` : undefined,
+      value: recap.kcal_actual !== null ? fmtNum(recap.kcal_actual) : "—",
+      sub: recap.kcal_target > 0 ? `/${fmtNum(recap.kcal_target)}` : undefined,
     },
     {
       label: "Protein",
       value:
         recap.protein_actual_g !== null
-          ? `${recap.protein_actual_g}g`
+          ? `${fmtNum(recap.protein_actual_g)}g`
           : "—",
-      sub: recap.protein_target_g > 0 ? `/${recap.protein_target_g}g` : undefined,
+      sub: recap.protein_target_g > 0 ? `/${fmtNum(recap.protein_target_g)}g` : undefined,
     },
     {
       label: "Trained",

@@ -112,6 +112,10 @@ function reducer(state: State, action: Action): State {
     case "wait":
       return { ...state, inFlightWaitMessage: action.message };
     case "add_message":
+      // Idempotent — silently no-op if a message with this id is already in
+      // state. Defends against the post-stream refetch (which may add a row
+      // we already optimistically inserted) from creating duplicate keys.
+      if (state.messages.some((m) => m.id === action.message.id)) return state;
       return { ...state, messages: [...state.messages, action.message] };
     case "remove_id":
       return { ...state, messages: state.messages.filter((m) => m.id !== action.id) };
@@ -294,7 +298,10 @@ export default function ChatPanel({
             const finalizedId = ev.message_id;
             void (async () => {
               try {
-                const r = await fetch(`/api/chat/messages?limit=3&kind=coach`);
+                // limit=5 covers: (a) the assistant turn we just finalized,
+                // (b) any morning_brief row the regenerate_morning_brief tool
+                // inserted as a side effect, (c) a small buffer.
+                const r = await fetch(`/api/chat/messages?limit=5&kind=coach`);
                 const j = (await r.json()) as { ok: boolean; messages?: ChatMessage[] };
                 if (j.ok && j.messages) {
                   const fresh = j.messages.find((m) => m.id === finalizedId);
@@ -308,6 +315,20 @@ export default function ChatPanel({
                         content: fresh.content,
                       },
                     });
+                  }
+                  // Add any messages we haven't seen locally — e.g. a fresh
+                  // morning_brief row inserted by regenerate_morning_brief as a
+                  // side effect of this turn. Filter to rows newer than our
+                  // finalized assistant turn so we don't re-add older history.
+                  const finalizedAt = fresh?.created_at ?? null;
+                  const sinceMs = finalizedAt
+                    ? new Date(finalizedAt).getTime() - 5000  // 5s slack for clock skew
+                    : Date.now() - 60_000;
+                  for (const m of j.messages) {
+                    if (m.id === finalizedId) continue;
+                    if (state.messages.some((existing) => existing.id === m.id)) continue;
+                    if (new Date(m.created_at).getTime() < sinceMs) continue;
+                    dispatch({ type: "add_message", message: m });
                   }
                 }
               } catch {

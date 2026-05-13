@@ -40,7 +40,19 @@ your reply.
 
 These are in-place milestone updates on the active plan — they do not
 require a re-plan ceremony. Use them whenever the user mentions the
-transition; don't ask them to repeat the information in /profile.`;
+transition; don't ask them to repeat the information in /profile.
+
+## Morning brief refresh
+
+If the user challenges data in today's morning brief ("the brief used
+yesterday's WHOOP sleep", "those macros are wrong", "recreate the brief
+with today's numbers") or explicitly asks for a refresh, call
+regenerate_morning_brief. The tool re-runs the brief pipeline with the
+latest data and inserts a fresh structured card inline in chat. After
+the tool returns, surface the cta string from the tool result verbatim
+in your reply so the user knows the card refreshed below — do NOT
+re-describe the brief contents in markdown text (that would duplicate
+what the card already shows).`;
 
 export const SCHEMA_EXPLAINER = `# Reference: how the data you receive is shaped
 
