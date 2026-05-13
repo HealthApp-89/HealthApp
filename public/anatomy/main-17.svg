@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="369" viewBox="0 0 200 369">
+  <!-- Left posterior deltoid (anatomical right, viewer's left) -->
+  <path d="M 55 54 C 48 60, 44 70, 46 82 C 52 88, 64 88, 72 82 C 76 72, 72 58, 64 54 C 60 52, 56 52, 55 54 Z" fill="#fc0000"/>
+  <!-- Right posterior deltoid (anatomical left, viewer's right) -->
+  <path d="M 145 54 C 152 60, 156 70, 154 82 C 148 88, 136 88, 128 82 C 124 72, 128 58, 136 54 C 140 52, 144 52, 145 54 Z" fill="#fc0000"/>
+</svg>
