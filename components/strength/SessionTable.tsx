@@ -7,7 +7,11 @@ import { Card } from "@/components/ui/Card";
 import { fmtNum } from "@/lib/ui/score";
 import { COLOR } from "@/lib/ui/theme";
 import { useMemo, useState } from "react";
-import { aggregateSessionMuscles } from "@/lib/coach/exercise-muscles";
+import {
+  aggregateSessionMuscles,
+  getExerciseMuscles,
+  type AggregatedMuscles,
+} from "@/lib/coach/exercise-muscles";
 import { MuscleMap } from "@/components/strength/anatomy/MuscleMap";
 import { MuscleLegendPills } from "@/components/strength/anatomy/MuscleLegendPills";
 
@@ -23,10 +27,26 @@ export function SessionTable({ session }: Props) {
   const workingSets = session.sets;
   const allBodyweight = session.vol === 0 && session.bwReps > 0;
   const [expanded, setExpanded] = useState(false);
-  const muscles = useMemo(
-    () => aggregateSessionMuscles(session.exercises, session.type),
-    [session.exercises, session.type],
-  );
+  const [selectedExerciseName, setSelectedExerciseName] = useState<string | null>(null);
+
+  const displayedMuscles = useMemo<AggregatedMuscles>(() => {
+    if (selectedExerciseName) {
+      const m = getExerciseMuscles(selectedExerciseName);
+      if (m) return { primary: m.primary, secondary: m.secondary };
+    }
+    return aggregateSessionMuscles(session.exercises, session.type);
+  }, [selectedExerciseName, session.exercises, session.type]);
+
+  const handleToggleExpanded = () => {
+    setExpanded((prev) => {
+      if (prev) setSelectedExerciseName(null);
+      return !prev;
+    });
+  };
+
+  const handleSelectExercise = (name: string) => {
+    setSelectedExerciseName((prev) => (prev === name ? null : name));
+  };
 
   return (
     <Card tintColor={wc}>
@@ -56,12 +76,22 @@ export function SessionTable({ session }: Props) {
         </div>
       </div>
 
-      <MuscleMap primary={muscles.primary} secondary={muscles.secondary} accent={wc} />
-      <MuscleLegendPills primary={muscles.primary} secondary={muscles.secondary} accent={wc} />
+      <MuscleMap primary={displayedMuscles.primary} secondary={displayedMuscles.secondary} accent={wc} />
+      <MuscleLegendPills primary={displayedMuscles.primary} secondary={displayedMuscles.secondary} accent={wc} />
+
+      {selectedExerciseName && (
+        <div
+          className="mt-2 text-center text-[10px] font-mono"
+          style={{ color: COLOR.textFaint }}
+        >
+          Showing muscles for{" "}
+          <span style={{ color: COLOR.textMid }}>{selectedExerciseName}</span>
+        </div>
+      )}
 
       <button
         type="button"
-        onClick={() => setExpanded((e) => !e)}
+        onClick={handleToggleExpanded}
         aria-expanded={expanded}
         className="mt-2.5 flex w-full items-center justify-center gap-1.5 border-t border-dashed pt-2.5 text-[11px] transition-colors hover:opacity-80"
         style={{ borderColor: COLOR.divider, color: COLOR.textMuted }}
@@ -88,9 +118,19 @@ export function SessionTable({ session }: Props) {
           </div>
         ) : (
           <div className="mt-3 flex flex-col gap-3">
-            {session.exercises.map((e) => (
-              <ExerciseBlock key={`${e.name}-${e.position}`} exercise={e} />
-            ))}
+            {session.exercises.map((e) => {
+              const isMapped = getExerciseMuscles(e.name) !== null;
+              return (
+                <ExerciseBlock
+                  key={`${e.name}-${e.position}`}
+                  exercise={e}
+                  isSelected={selectedExerciseName === e.name}
+                  isMapped={isMapped}
+                  accent={wc}
+                  onSelect={() => handleSelectExercise(e.name)}
+                />
+              );
+            })}
           </div>
         )
       )}
@@ -98,7 +138,19 @@ export function SessionTable({ session }: Props) {
   );
 }
 
-function ExerciseBlock({ exercise: e }: { exercise: WorkoutExercise }) {
+function ExerciseBlock({
+  exercise: e,
+  isSelected,
+  isMapped,
+  accent,
+  onSelect,
+}: {
+  exercise: WorkoutExercise;
+  isSelected: boolean;
+  isMapped: boolean;
+  accent: string;
+  onSelect: () => void;
+}) {
   // Per-exercise summary line. Weighted exercises show top weighted set + kg vol;
   // bodyweight exercises show top reps in a single set + total reps for the day.
   let summary: string | null = null;
@@ -120,10 +172,19 @@ function ExerciseBlock({ exercise: e }: { exercise: WorkoutExercise }) {
     if (totalReps > 0) summary = `top ${topReps} reps · ${totalReps} reps total`;
   }
 
-  return (
-    <div>
+  const interactive = isMapped;
+  const bgColor = isSelected
+    ? `color-mix(in srgb, ${accent} 14%, transparent)`
+    : "transparent";
+  const nameOpacity = isMapped ? 1 : 0.55;
+
+  const inner = (
+    <div className="p-2 rounded-md transition-colors" style={{ background: bgColor }}>
       <div className="flex justify-between items-baseline mb-1.5 gap-2">
-        <span className="text-[12px] font-semibold" style={{ color: COLOR.textStrong }}>
+        <span
+          className="text-[12px] font-semibold"
+          style={{ color: COLOR.textStrong, opacity: nameOpacity }}
+        >
           {e.name}
         </span>
         {summary && (
@@ -193,5 +254,18 @@ function ExerciseBlock({ exercise: e }: { exercise: WorkoutExercise }) {
         </table>
       </div>
     </div>
+  );
+
+  if (!interactive) return inner;
+
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      aria-pressed={isSelected}
+      className="block w-full text-left cursor-pointer hover:opacity-95 transition-opacity"
+    >
+      {inner}
+    </button>
   );
 }
