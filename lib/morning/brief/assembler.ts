@@ -134,9 +134,16 @@ function deriveReadinessBand(
 
 function composeRecap(inputs: BriefInputs): MorningBriefRecap {
   const t = inputs.todayTargets;
+  // Sleep source: TODAY's daily_log row (not yesterday's). PR #50 keys WHOOP
+  // cycles by the *waking* day, so last-night's sleep lives on today's row.
+  // Yesterday's row holds the night BEFORE last — which would render as a
+  // 24h-stale number in the "yesterday" recap block. Falls back to yesterday's
+  // row if today's hasn't been populated yet (early morning, pre-WHOOP-sync).
+  const sleepHours =
+    inputs.todayLog?.sleep_hours ?? inputs.yesterdayLog?.sleep_hours ?? null;
   return {
     yesterday_date: inputs.yesterday,
-    sleep_hours: inputs.yesterdayLog?.sleep_hours ?? null,
+    sleep_hours: sleepHours,
     kcal_actual: inputs.yesterdayLog?.calories_eaten ?? null,
     kcal_target: t?.kcal ?? 0,
     protein_actual_g: inputs.yesterdayLog?.protein_g ?? null,

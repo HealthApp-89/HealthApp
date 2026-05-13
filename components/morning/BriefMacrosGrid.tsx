@@ -1,14 +1,15 @@
 "use client";
 
 import { COLOR } from "@/lib/ui/theme";
+import { fmtNum } from "@/lib/ui/score";
 import type { MorningBriefMacros } from "@/lib/data/types";
 
 export function BriefMacrosGrid({ macros }: { macros: MorningBriefMacros }) {
   const cells: Array<{ label: string; value: string }> = [
-    { label: "Calories", value: `${macros.kcal_target} kcal` },
-    { label: "Protein", value: `${macros.protein_target_g}g` },
-    { label: "Carb", value: `${macros.carb_target_g}g` },
-    { label: "Fat", value: `${macros.fat_target_g}g` },
+    { label: "Calories", value: `${fmtNum(macros.kcal_target)} kcal` },
+    { label: "Protein", value: `${fmtNum(macros.protein_target_g)}g` },
+    { label: "Carb", value: `${fmtNum(macros.carb_target_g)}g` },
+    { label: "Fat", value: `${fmtNum(macros.fat_target_g)}g` },
   ];
   return (
     <div

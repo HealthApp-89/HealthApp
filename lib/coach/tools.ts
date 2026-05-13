@@ -2335,3 +2335,86 @@ export async function executeMarkGlp1Discontinued(opts: {
     meta: { ms: Date.now() - t0, result_rows: 1, range_days: 0, truncated: false },
   };
 }
+
+// ────────────────────────────────────────────────────────────────────────────
+// regenerate_morning_brief — fresh structured brief card when user challenges
+// data in normal coach chat ("the brief used wrong WHOOP sleep", etc.).
+// Inserts a NEW chat_messages row with kind='morning_brief' so the structured
+// card re-renders inline. Does not touch the checkin state machine — original
+// brief stays in history; this is a refresh, not a re-issue.
+// ────────────────────────────────────────────────────────────────────────────
+
+export const REGENERATE_MORNING_BRIEF_TOOL = {
+  name: "regenerate_morning_brief",
+  description:
+    "Regenerate today's morning brief with the latest data and insert a fresh card in the chat. Call when the user challenges the brief's data (e.g. wrong WHOOP sleep, stale macros) or explicitly asks to refresh it. Returns the new chat_message id; surface the cta string verbatim in your reply so the user knows the card was refreshed below.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      reason: {
+        type: "string",
+        description: "Brief (one sentence) reason for the refresh — surfaced in observability logs only.",
+      },
+    },
+    required: [],
+  },
+};
+
+export async function executeRegenerateMorningBrief(opts: {
+  supabase: SupabaseClient;
+  userId: string;
+  input: unknown;
+}): Promise<ToolResult<{ ok: true; message_id: string; cta: string }>> {
+  const t0 = Date.now();
+  // input.reason is informational only; not validated beyond shape
+  const i = (opts.input ?? {}) as Record<string, unknown>;
+  void i; // intentionally unused
+
+  // Dynamic imports to avoid pulling the brief pipeline into modules that
+  // import tools.ts without needing it (matches the next/cache pattern used
+  // by executeCommitPlan).
+  const { buildMorningBrief, composeBriefContentFallback } = await import(
+    "@/lib/morning/brief"
+  );
+
+  let card;
+  try {
+    card = await buildMorningBrief(opts.supabase, opts.userId);
+  } catch (e) {
+    return {
+      ok: false,
+      error: { error: `brief_generation_failed: ${(e as Error).message}` },
+      meta: { ms: Date.now() - t0, range_days: 0 },
+    };
+  }
+
+  const contentSummary = composeBriefContentFallback(card);
+  const { data: inserted, error: insertErr } = await opts.supabase
+    .from("chat_messages")
+    .insert({
+      user_id: opts.userId,
+      role: "assistant",
+      kind: "morning_brief",
+      content: contentSummary,
+      ui: card,
+    })
+    .select("id")
+    .single();
+  if (insertErr || !inserted) {
+    return {
+      ok: false,
+      error: { error: `insert_failed: ${insertErr?.message ?? "no row"}` },
+      meta: { ms: Date.now() - t0, range_days: 0 },
+    };
+  }
+
+  return {
+    ok: true,
+    data: {
+      ok: true,
+      message_id: inserted.id as string,
+      cta: "Refreshed today's brief with the latest data — see the updated card below.",
+    },
+    meta: { ms: Date.now() - t0, result_rows: 1, range_days: 0, truncated: false },
+  };
+}

@@ -37,3 +37,14 @@ export async function buildMorningBrief(
   });
   return { ...partial, advice_md };
 }
+
+/** Plain-text fallback for `chat_messages.content`. Renders in chat history
+ *  lists / clients that don't know how to consume `kind='morning_brief'`.
+ *  Shared between the morning recommendation route and the
+ *  regenerate_morning_brief chat tool. */
+export function composeBriefContentFallback(card: MorningBriefCard): string {
+  const sessionLine = card.variant === "training"
+    ? `Today: ${card.session.type} at ${card.session.start_time}`
+    : "Today: REST";
+  return `Morning brief — ${sessionLine}. Readiness ${card.readiness.band}. Tap to view the full card.`;
+}
