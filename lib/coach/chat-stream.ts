@@ -193,8 +193,9 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
   //   plan_week / setup_block — weekly-planning tools (propose_block,
   //     commit_block, propose_week_plan, commit_week_plan) plus reads; intake
   //     tools (apply_*, set_*, propose_plan, commit_plan) are hidden.
-  //     GLP-1 tools are also hidden (mark_glp1_discontinued doesn't start
-  //     with "set_" so must be excluded explicitly).
+  //     GLP-1 and mobility tools are also hidden (mark_glp1_discontinued,
+  //     mark_mobility_done, unmark_mobility_done don't start with "set_"
+  //     so must be excluded explicitly).
   //   intake — onboarding wizard chat: 2 read tools (daily_logs + workouts)
   //     + 13 Phase 2 intake tools + set_glp1_status. Weekly-planning tools
   //     and the active-doc GLP-1 tools are hidden.
