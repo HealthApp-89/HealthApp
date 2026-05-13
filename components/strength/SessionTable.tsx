@@ -1,9 +1,15 @@
+"use client";
+
 import type { WorkoutSession, WorkoutExercise } from "@/lib/data/workouts";
 import { est1rm } from "@/lib/ui/score";
 import { WCOLORS } from "@/lib/ui/colors";
 import { Card } from "@/components/ui/Card";
 import { fmtNum } from "@/lib/ui/score";
 import { COLOR } from "@/lib/ui/theme";
+import { useMemo, useState } from "react";
+import { aggregateSessionMuscles } from "@/lib/coach/exercise-muscles";
+import { MuscleMap } from "@/components/strength/anatomy/MuscleMap";
+import { MuscleLegendPills } from "@/components/strength/anatomy/MuscleLegendPills";
 
 type Props = {
   session: WorkoutSession;
@@ -16,6 +22,11 @@ export function SessionTable({ session }: Props) {
   const wc = WCOLORS[session.type ?? "Other"] ?? "#888";
   const workingSets = session.sets;
   const allBodyweight = session.vol === 0 && session.bwReps > 0;
+  const [expanded, setExpanded] = useState(false);
+  const muscles = useMemo(
+    () => aggregateSessionMuscles(session.exercises, session.type),
+    [session.exercises, session.type],
+  );
 
   return (
     <Card tintColor={wc}>
@@ -45,16 +56,43 @@ export function SessionTable({ session }: Props) {
         </div>
       </div>
 
-      {session.exercises.length === 0 ? (
-        <div className="text-xs italic py-6 text-center" style={{ color: COLOR.textMuted }}>
-          No exercises in this session.
-        </div>
-      ) : (
-        <div className="flex flex-col gap-3">
-          {session.exercises.map((e) => (
-            <ExerciseBlock key={`${e.name}-${e.position}`} exercise={e} />
-          ))}
-        </div>
+      <MuscleMap primary={muscles.primary} secondary={muscles.secondary} accent={wc} />
+      <MuscleLegendPills primary={muscles.primary} secondary={muscles.secondary} accent={wc} />
+
+      <button
+        type="button"
+        onClick={() => setExpanded((e) => !e)}
+        aria-expanded={expanded}
+        className="mt-2.5 flex w-full items-center justify-center gap-1.5 border-t border-dashed pt-2.5 text-[11px] transition-colors hover:opacity-80"
+        style={{ borderColor: COLOR.divider, color: COLOR.textMuted }}
+      >
+        <svg
+          className={`h-3 w-3 transition-transform ${expanded ? "rotate-180" : ""}`}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="m6 9 6 6 6-6" />
+        </svg>
+        {expanded ? "Hide exercises" : "Tap for exercises"}
+      </button>
+
+      {expanded && (
+        session.exercises.length === 0 ? (
+          <div className="mt-3 text-xs italic py-6 text-center" style={{ color: COLOR.textMuted }}>
+            No exercises in this session.
+          </div>
+        ) : (
+          <div className="mt-3 flex flex-col gap-3">
+            {session.exercises.map((e) => (
+              <ExerciseBlock key={`${e.name}-${e.position}`} exercise={e} />
+            ))}
+          </div>
+        )
       )}
     </Card>
   );

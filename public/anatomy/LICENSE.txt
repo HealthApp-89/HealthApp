@@ -1,0 +1,15 @@
+Anatomical body SVGs sourced from the wger Workout Manager project.
+  https://github.com/wger-project/wger
+
+Files:
+  front.svg, back.svg                            — base body illustrations
+  main-1.svg through main-16.svg                 — per-muscle overlay shapes
+  main-17.svg                                    — posterior deltoid overlay (Apex Health, derivative)
+
+Licensed under Creative Commons Attribution-ShareAlike 4.0 International
+(CC BY-SA 4.0).
+  https://creativecommons.org/licenses/by-sa/4.0/
+
+Attribution: wger project contributors.
+Modifications: recolored at runtime via CSS mask-image; main-17.svg added
+as a derivative work.
