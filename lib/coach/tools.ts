@@ -2496,22 +2496,30 @@ export async function executeMarkMobilityDone(opts: {
   }
   const was_already_done = existing !== null;
 
-  // Upsert against the partial-unique index workouts_user_external_id_idx.
-  const { error: upErr } = await opts.supabase
-    .from("workouts")
-    .upsert(
-      {
+  // Insert only when the row doesn't already exist. We deliberately avoid
+  // .upsert({ onConflict: "user_id,external_id" }) here: the matching index
+  // workouts_user_external_id_idx is *partial* (WHERE external_id IS NOT NULL),
+  // and supabase-js cannot emit the required WHERE predicate on the ON
+  // CONFLICT target, so Postgres rejects it with "no unique or exclusion
+  // constraint matching the ON CONFLICT specification". Re-marking the same
+  // day is a true no-op (none of the row's fields are user-editable through
+  // this tool), so a conditional insert correctly expresses the semantics
+  // and mirrors the delete-then-insert pattern used by the Strong ingest
+  // route for this same table.
+  if (!was_already_done) {
+    const { error: insErr } = await opts.supabase
+      .from("workouts")
+      .insert({
         user_id: opts.userId,
         date,
         type: "Mobility",
         notes,
         source: "chat",
         external_id,
-      },
-      { onConflict: "user_id,external_id" },
-    );
-  if (upErr) {
-    return { ok: false, error: { error: `upsert_failed: ${upErr.message}` }, meta: { ms: Date.now() - t0, range_days: 0 } };
+      });
+    if (insErr) {
+      return { ok: false, error: { error: `insert_failed: ${insErr.message}` }, meta: { ms: Date.now() - t0, range_days: 0 } };
+    }
   }
 
   return {
