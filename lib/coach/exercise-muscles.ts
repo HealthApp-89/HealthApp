@@ -246,3 +246,12 @@ export function aggregateSessionMuscles(
 
   return { primary, secondary };
 }
+
+/**
+ * Return the static muscle mapping for an exercise, or null if the exercise
+ * name isn't in EXERCISE_MUSCLES. Used by the session card to highlight only
+ * one exercise's muscles when the user clicks it.
+ */
+export function getExerciseMuscles(name: string): MuscleMapping | null {
+  return EXERCISE_MUSCLES[normalizeExerciseName(name)] ?? null;
+}
