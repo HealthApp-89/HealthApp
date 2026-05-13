@@ -50,7 +50,8 @@ type Action =
   | { type: "remove_temp_user"; tempId: string }
   | { type: "wait"; message: string | null }
   | { type: "add_message"; message: ChatMessage }
-  | { type: "remove_id"; id: string };
+  | { type: "remove_id"; id: string }
+  | { type: "patch_message"; id: string; patch: Partial<ChatMessage> };
 
 function reducer(state: State, action: Action): State {
   switch (action.type) {
@@ -114,6 +115,13 @@ function reducer(state: State, action: Action): State {
       return { ...state, messages: [...state.messages, action.message] };
     case "remove_id":
       return { ...state, messages: state.messages.filter((m) => m.id !== action.id) };
+    case "patch_message":
+      return {
+        ...state,
+        messages: state.messages.map((m) =>
+          m.id === action.id ? { ...m, ...action.patch } : m,
+        ),
+      };
     default:
       return state;
   }
@@ -277,6 +285,35 @@ export default function ChatPanel({
               status: "done",
               partial: ev.partial,
             });
+            // The SSE stream emits tool_call_start/done but NOT result payloads
+            // (would bloat the wire). The route's finally block persists
+            // tool_calls to the DB just before emitting `done`. Pull them back
+            // here so inline proposal cards (propose_plan, propose_block,
+            // propose_week_plan) render on the freshly-finalized message
+            // without forcing a page reload.
+            const finalizedId = ev.message_id;
+            void (async () => {
+              try {
+                const r = await fetch(`/api/chat/messages?limit=3&kind=coach`);
+                const j = (await r.json()) as { ok: boolean; messages?: ChatMessage[] };
+                if (j.ok && j.messages) {
+                  const fresh = j.messages.find((m) => m.id === finalizedId);
+                  if (fresh) {
+                    dispatch({
+                      type: "patch_message",
+                      id: finalizedId,
+                      patch: {
+                        tool_calls: fresh.tool_calls ?? null,
+                        ui: fresh.ui ?? null,
+                        content: fresh.content,
+                      },
+                    });
+                  }
+                }
+              } catch {
+                // Best-effort: card stays hidden until user reloads. Not blocking.
+              }
+            })();
           } else if (ev.type === "error") {
             // Two cases: 409 in-flight (no stub created), or mid-stream error.
             if (ev.message === "in_flight_stream") {
