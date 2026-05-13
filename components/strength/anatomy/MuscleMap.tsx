@@ -1,3 +1,5 @@
+"use client";
+
 import type { MuscleId } from "@/lib/coach/exercise-muscles";
 import { BodyView } from "./BodyView";
 

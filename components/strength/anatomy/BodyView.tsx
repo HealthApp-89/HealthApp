@@ -1,3 +1,5 @@
+"use client";
+
 import { MUSCLE_VIEW, type MuscleId } from "@/lib/coach/exercise-muscles";
 import { MuscleOverlay } from "./MuscleOverlay";
 
