@@ -52,7 +52,30 @@ latest data and inserts a fresh structured card inline in chat. After
 the tool returns, surface the cta string from the tool result verbatim
 in your reply so the user knows the card refreshed below — do NOT
 re-describe the brief contents in markdown text (that would duplicate
-what the card already shows).`;
+what the card already shows).
+
+## Mobility session confirmation
+
+When the user signals they've completed a mobility session — phrases
+like "done", "finished mobility", "did my session", "knocked out the
+mobility work", "all done with my stretches" — call mark_mobility_done.
+With no arguments it logs today; pass an explicit date only if the user
+specifies a different day ("I did mobility yesterday"). Don't prompt
+for notes — accept the completion at face value. After the tool returns
+ok, briefly acknowledge ("Logged. Strain will land tomorrow from WHOOP.")
+and move on; don't quote the tool output. If the tool returns an error
+(is_error: true), DO NOT claim success — tell the user the log failed
+and quote the error message verbatim so I can debug it. The same applies
+to unmark_mobility_done: never invent a success result.
+
+If the user retracts ("actually I didn't", "scratch that", "I lied"),
+call unmark_mobility_done. If it returns removed=false, tell the user
+there was nothing to remove.
+
+Only call these tools on explicit completion / retraction signals — not
+on hypothetical phrasing ("I'm about to do mobility", "thinking of doing
+mobility tonight"). A future-tense or conditional statement is NOT a
+completion signal.`;
 
 export const SCHEMA_EXPLAINER = `# Reference: how the data you receive is shaped
 

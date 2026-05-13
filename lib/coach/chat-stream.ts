@@ -50,6 +50,8 @@ import {
   SET_GLP1_STATUS_TOOL,
   SET_GLP1_TAPER_STARTED_TOOL,
   MARK_GLP1_DISCONTINUED_TOOL,
+  MARK_MOBILITY_DONE_TOOL,
+  UNMARK_MOBILITY_DONE_TOOL,
   REGENERATE_MORNING_BRIEF_TOOL,
   executeQueryDailyLogs,
   executeQueryWorkouts,
@@ -77,6 +79,8 @@ import {
   executeSetGlp1Status,
   executeSetGlp1TaperStarted,
   executeMarkGlp1Discontinued,
+  executeMarkMobilityDone,
+  executeUnmarkMobilityDone,
   executeRegenerateMorningBrief,
   type ToolResult,
 } from "@/lib/coach/tools";
@@ -180,6 +184,8 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
     SET_GLP1_STATUS_TOOL,
     SET_GLP1_TAPER_STARTED_TOOL,
     MARK_GLP1_DISCONTINUED_TOOL,
+    MARK_MOBILITY_DONE_TOOL,
+    UNMARK_MOBILITY_DONE_TOOL,
     REGENERATE_MORNING_BRIEF_TOOL,
   ];
 
@@ -187,8 +193,9 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
   //   plan_week / setup_block — weekly-planning tools (propose_block,
   //     commit_block, propose_week_plan, commit_week_plan) plus reads; intake
   //     tools (apply_*, set_*, propose_plan, commit_plan) are hidden.
-  //     GLP-1 tools are also hidden (mark_glp1_discontinued doesn't start
-  //     with "set_" so must be excluded explicitly).
+  //     GLP-1 and mobility tools are also hidden (mark_glp1_discontinued,
+  //     mark_mobility_done, unmark_mobility_done don't start with "set_"
+  //     so must be excluded explicitly).
   //   intake — onboarding wizard chat: 2 read tools (daily_logs + workouts)
   //     + 13 Phase 2 intake tools + set_glp1_status. Weekly-planning tools
   //     and the active-doc GLP-1 tools are hidden.
@@ -204,6 +211,8 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
         t.name !== "propose_plan" &&
         t.name !== "commit_plan" &&
         t.name !== "mark_glp1_discontinued" &&
+        t.name !== "mark_mobility_done" &&
+        t.name !== "unmark_mobility_done" &&
         t.name !== "regenerate_morning_brief",
     );
   } else if (opts.mode === "intake") {
@@ -388,6 +397,18 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
           });
         } else if (block.name === "mark_glp1_discontinued") {
           result = await executeMarkGlp1Discontinued({
+            supabase: opts.sr,
+            userId: opts.userId,
+            input: block.input,
+          });
+        } else if (block.name === "mark_mobility_done") {
+          result = await executeMarkMobilityDone({
+            supabase: opts.sr,
+            userId: opts.userId,
+            input: block.input,
+          });
+        } else if (block.name === "unmark_mobility_done") {
+          result = await executeUnmarkMobilityDone({
             supabase: opts.sr,
             userId: opts.userId,
             input: block.input,

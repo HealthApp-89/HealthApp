@@ -2418,3 +2418,152 @@ export async function executeRegenerateMorningBrief(opts: {
     meta: { ms: Date.now() - t0, result_rows: 1, range_days: 0, truncated: false },
   };
 }
+
+// ── Mobility chat tools: schemas ─────────────────────────────────────────────
+
+export const MARK_MOBILITY_DONE_TOOL = {
+  name: "mark_mobility_done",
+  description:
+    "User confirmation that a mobility session is complete (today by default; pass `date` for explicit backdates the user mentions). Inserts a workouts row with type='Mobility' and source='chat' so adherence sees the session. Idempotent on (user_id, external_id) where external_id = `chat-mobility-${date}`. Call when the user signals completion (e.g., 'done', 'finished mobility', 'did my session'). Do NOT call without an explicit completion signal.",
+  input_schema: {
+    type: "object" as const,
+    required: [],
+    properties: {
+      date:  { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$", description: "YYYY-MM-DD in user's local TZ. Defaults to today." },
+      notes: { type: ["string", "null"], maxLength: 280 },
+    },
+  },
+};
+
+export const UNMARK_MOBILITY_DONE_TOOL = {
+  name: "unmark_mobility_done",
+  description:
+    "User retracts a previous mobility confirmation ('actually didn't do it', 'scratch that'). Deletes the chat-inserted workouts row for the given date. NEVER deletes Strong CSV imports — guarded by source='chat' filter. Returns removed=false if nothing was deleted.",
+  input_schema: {
+    type: "object" as const,
+    required: [],
+    properties: {
+      date: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$", description: "YYYY-MM-DD in user's local TZ. Defaults to today." },
+    },
+  },
+};
+
+// ── Mobility chat tools: executors ───────────────────────────────────────────
+
+export async function executeMarkMobilityDone(opts: {
+  supabase: SupabaseClient;
+  userId: string;
+  input: unknown;
+}): Promise<ToolResult<{ ok: true; date: string; was_already_done: boolean }>> {
+  const t0 = Date.now();
+  const i = (opts.input ?? {}) as Record<string, unknown>;
+
+  // Resolve date: default to today in user TZ; validate shape if provided.
+  const today = todayInUserTz();
+  let date: string;
+  if (i.date === undefined || i.date === null) {
+    date = today;
+  } else if (typeof i.date === "string" && ISO_DATE_PATTERN.test(i.date)) {
+    date = i.date;
+  } else {
+    return { ok: false, error: { error: "date must be a YYYY-MM-DD string or omitted" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+
+  // No future-dating.
+  if (date > today) {
+    return { ok: false, error: { error: `date ${date} is in the future (today is ${today})` }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+
+  // Optional notes — accept string or null/undefined.
+  let notes: string | null = null;
+  if (typeof i.notes === "string") {
+    notes = i.notes.slice(0, 280);
+  } else if (i.notes !== undefined && i.notes !== null) {
+    return { ok: false, error: { error: "notes must be a string or null" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+
+  const external_id = `chat-mobility-${date}`;
+
+  // Look up first so we can report was_already_done accurately.
+  const { data: existing, error: selErr } = await opts.supabase
+    .from("workouts")
+    .select("id")
+    .eq("user_id", opts.userId)
+    .eq("external_id", external_id)
+    .maybeSingle();
+  if (selErr) {
+    return { ok: false, error: { error: `select_failed: ${selErr.message}` }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  const was_already_done = existing !== null;
+
+  // Insert only when the row doesn't already exist. We deliberately avoid
+  // .upsert({ onConflict: "user_id,external_id" }) here: the matching index
+  // workouts_user_external_id_idx is *partial* (WHERE external_id IS NOT NULL),
+  // and supabase-js cannot emit the required WHERE predicate on the ON
+  // CONFLICT target, so Postgres rejects it with "no unique or exclusion
+  // constraint matching the ON CONFLICT specification". Re-marking the same
+  // day is a true no-op (none of the row's fields are user-editable through
+  // this tool), so a conditional insert correctly expresses the semantics
+  // and mirrors the delete-then-insert pattern used by the Strong ingest
+  // route for this same table.
+  if (!was_already_done) {
+    const { error: insErr } = await opts.supabase
+      .from("workouts")
+      .insert({
+        user_id: opts.userId,
+        date,
+        type: "Mobility",
+        notes,
+        source: "chat",
+        external_id,
+      });
+    if (insErr) {
+      return { ok: false, error: { error: `insert_failed: ${insErr.message}` }, meta: { ms: Date.now() - t0, range_days: 0 } };
+    }
+  }
+
+  return {
+    ok: true,
+    data: { ok: true, date, was_already_done },
+    meta: { ms: Date.now() - t0, result_rows: 1, range_days: 0, truncated: false },
+  };
+}
+
+export async function executeUnmarkMobilityDone(opts: {
+  supabase: SupabaseClient;
+  userId: string;
+  input: unknown;
+}): Promise<ToolResult<{ ok: true; removed: boolean }>> {
+  const t0 = Date.now();
+  const i = (opts.input ?? {}) as Record<string, unknown>;
+
+  const today = todayInUserTz();
+  let date: string;
+  if (i.date === undefined || i.date === null) {
+    date = today;
+  } else if (typeof i.date === "string" && ISO_DATE_PATTERN.test(i.date)) {
+    date = i.date;
+  } else {
+    return { ok: false, error: { error: "date must be a YYYY-MM-DD string or omitted" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+
+  const external_id = `chat-mobility-${date}`;
+
+  // Delete ONLY when source='chat'. Strong CSV imports are never touched.
+  const { data: deleted, error: delErr } = await opts.supabase
+    .from("workouts")
+    .delete()
+    .eq("user_id", opts.userId)
+    .eq("external_id", external_id)
+    .eq("source", "chat")
+    .select("id");
+  if (delErr) {
+    return { ok: false, error: { error: `delete_failed: ${delErr.message}` }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+
+  return {
+    ok: true,
+    data: { ok: true, removed: (deleted?.length ?? 0) > 0 },
+    meta: { ms: Date.now() - t0, result_rows: deleted?.length ?? 0, range_days: 0, truncated: false },
+  };
+}
