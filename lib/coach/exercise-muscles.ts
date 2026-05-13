@@ -2,6 +2,8 @@
 // Muscle IDs mirror the wger project (https://github.com/wger-project/wger).
 // We add id 17 (posterior deltoid) which wger doesn't ship separately.
 
+import type { WorkoutExercise } from "@/lib/data/workouts";
+
 export const MUSCLE_ID = {
   Biceps: 1,
   FrontDelts: 2,
@@ -154,3 +156,93 @@ export const TYPE_FALLBACK: Record<string, MuscleMapping> = {
   Legs:        { primary: [M.Quads, M.Glutes, M.Hams],    secondary: [M.Calves, M.Abs] },
   "Full Body": { primary: [M.Chest, M.Lats, M.Quads],     secondary: [M.FrontDelts, M.Glutes, M.Abs] },
 };
+
+const BODYWEIGHT_PROXY_KG = 70;
+const PRIMARY_THRESHOLD = 0.15;
+
+/** Normalize for lookup: lowercase, strip equipment parens, collapse whitespace. */
+export function normalizeExerciseName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/\([^)]*\)/g, "") // drop "(Barbell)", "(Dumbbell)", etc.
+    .replace(/[^a-z0-9 ]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export type AggregatedMuscles = {
+  primary: MuscleId[];
+  secondary: MuscleId[];
+};
+
+/** Working volume of an exercise, summed over non-warmup sets. Bodyweight sets use a 70 kg proxy. */
+function workingVolume(ex: WorkoutExercise): number {
+  let v = 0;
+  for (const s of ex.sets) {
+    if (s.warmup) continue;
+    const kg = s.kg ?? BODYWEIGHT_PROXY_KG;
+    const reps = s.reps ?? 0;
+    v += kg * reps;
+  }
+  return v;
+}
+
+/**
+ * Roll up per-exercise muscle hits into session-level primary/secondary.
+ *
+ * Algorithm:
+ *   - For each mapped exercise, compute its working volume and its share of total mapped volume.
+ *   - Sum each muscle's primary-share contribution across exercises.
+ *   - A muscle is session-primary if its primary share >= 15% of total mapped volume.
+ *   - A muscle is session-secondary if it appears anywhere (primary or secondary in any exercise)
+ *     and isn't already session-primary.
+ *   - If no exercises mapped (or all warmup-only), fall back to TYPE_FALLBACK[fallbackType].
+ */
+export function aggregateSessionMuscles(
+  exercises: WorkoutExercise[],
+  fallbackType: string | null,
+): AggregatedMuscles {
+  type Row = { volume: number; mapping: MuscleMapping };
+  const rows: Row[] = [];
+  let totalVolume = 0;
+
+  for (const ex of exercises) {
+    const key = normalizeExerciseName(ex.name);
+    const mapping = EXERCISE_MUSCLES[key];
+    if (!mapping) continue;
+    const v = workingVolume(ex);
+    if (v <= 0) continue;
+    rows.push({ volume: v, mapping });
+    totalVolume += v;
+  }
+
+  if (totalVolume === 0) {
+    const fb = fallbackType ? TYPE_FALLBACK[fallbackType] : null;
+    return fb
+      ? { primary: [...fb.primary], secondary: [...fb.secondary] }
+      : { primary: [], secondary: [] };
+  }
+
+  const primaryScore = new Map<MuscleId, number>();
+  const appearsAnywhere = new Set<MuscleId>();
+
+  for (const { volume, mapping } of rows) {
+    const share = volume / totalVolume;
+    for (const m of mapping.primary) {
+      primaryScore.set(m, (primaryScore.get(m) ?? 0) + share);
+      appearsAnywhere.add(m);
+    }
+    for (const m of mapping.secondary) {
+      appearsAnywhere.add(m);
+    }
+  }
+
+  const primary: MuscleId[] = [];
+  for (const [m, score] of primaryScore) {
+    if (score >= PRIMARY_THRESHOLD) primary.push(m);
+  }
+  const primarySet = new Set(primary);
+  const secondary = [...appearsAnywhere].filter((m) => !primarySet.has(m));
+
+  return { primary, secondary };
+}
