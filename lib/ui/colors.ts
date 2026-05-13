@@ -15,6 +15,14 @@ export const WCOLORS: Record<string, string> = {
   Cardio:     "#ca8a04",  // mustard
   Mobility:   "#0ea5e9",  // sky
   Other:      "#9094a8",  // muted
+
+  // Compound session labels seen in the user's Strong exports — without these,
+  // they fall through to "Other" (grey).
+  "Arms & Shoulders": "#eab308",  // yellow — mixed upper-body push
+  "Legs And Arms":    "#eab308",  // yellow — mixed lower + upper
+  "Chest Triceps":    "#f97316",  // alias → Chest
+  "Back Biceps":      "#4f5dff",  // alias → Back
+  "Lower Body":       "#14b870",  // alias → Legs
 };
 
 export type DailyLogKey =
