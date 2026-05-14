@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 import { COLOR, RADIUS, SHADOW } from "@/lib/ui/theme";
 import { BottomSheet } from "@/components/ui/BottomSheet";
@@ -138,6 +139,7 @@ function FabSheet({
   onAskCoach: () => void;
 }) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [busy, setBusy] = useState(false);
 
   async function onUploadFile(file: File, endpoint: string) {
@@ -151,6 +153,15 @@ function FabSheet({
         alert(`Upload failed (${res.status})`);
         return;
       }
+      // Invalidate client-side caches that depend on workout data. Uses a
+      // predicate so we don't need userId at this layer — matches any
+      // muscleVolume or workouts query key regardless of user.
+      // Pairs with the existing IngestPanel invalidation (PR #73) so the
+      // strength tab refreshes consistently whether uploaded via FAB or /profile.
+      queryClient.invalidateQueries({
+        predicate: (q) =>
+          q.queryKey[0] === "muscleVolume" || q.queryKey[0] === "workouts",
+      });
       router.refresh();
       success = true;
     } finally {
