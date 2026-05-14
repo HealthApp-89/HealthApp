@@ -702,6 +702,15 @@ export type MorningBriefCard = {
     type: string;                             // "Legs" | "Chest" | "Back" | "Mobility" | "REST"
     start_time: string | null;                // "13:00" for training; null for rest
     exercises: MorningBriefExercise[];        // empty for rest
+    /** Top-2 muscle volume flags that fire today. Empty/undefined when none
+     *  fire or when active plan lacks muscle_volume. Rendered as a static
+     *  inline indicator under the session details. */
+    volume_gaps?: Array<{
+      group: TargetedMuscleGroup;
+      actual: number;
+      target: number;
+      label: "below_mev" | "near_mrv";
+    }>;
   };
   /** Present when GLP-1 mode is active and today is a training day.
    *  Rendered above the Macros section. null/undefined otherwise. */
