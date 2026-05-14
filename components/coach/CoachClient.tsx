@@ -11,6 +11,8 @@ import { WeekPlanCard } from "@/components/coach/WeekPlanCard";
 import { PlanWeekCTA } from "@/components/coach/PlanWeekCTA";
 import { useBlockProgress } from "@/lib/query/hooks/useBlockProgress";
 import { useTrainingWeek } from "@/lib/query/hooks/useTrainingWeek";
+import { useCoachRecent } from "@/lib/query/hooks/useCoachRecent";
+import { Card } from "@/components/ui/Card";
 import { weekdayInUserTz, formatHeaderDate } from "@/lib/time";
 
 const ChatPanel = dynamic(() => import("@/components/chat/ChatPanel"), {
@@ -43,6 +45,7 @@ export function CoachClient({
 
   const { data: blockProgress } = useBlockProgress(userId);
   const { data: trainingWeek } = useTrainingWeek(userId, targetMonday);
+  const { data: recent } = useCoachRecent(userId);
 
   const modeParam = search.get("mode");
   const initialChatMode: ChatMode = isChatMode(modeParam) ? modeParam : "default";
@@ -126,25 +129,78 @@ export function CoachClient({
         )}
       </div>
 
-      {/* Chat surface — embedded in-flow, no overlay chrome. */}
-      <div
-        style={{
-          flex: 1,
-          display: "flex",
-          flexDirection: "column",
-          minHeight: 0,
-          marginTop: 10,
-        }}
-      >
-        <ChatPanel
-          userId={userId}
-          initialKind="coach"
-          initialMode={initialChatMode}
-          initialModeContext={initialModeContext}
-          draftDocId={draftDocId}
-          embedded
-        />
-      </div>
+      {activeView === "recent" ? (
+        /* Recent tab — newest-first list of days that received a morning brief. */
+        <div
+          style={{
+            padding: "12px",
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+          }}
+        >
+          {(recent ?? []).map((d) => (
+            <Card key={d.day} variant="compact">
+              <div
+                style={{
+                  fontSize: 13,
+                  fontWeight: 700,
+                  color: COLOR.textStrong,
+                }}
+              >
+                {new Date(d.day + "T12:00:00Z").toLocaleDateString([], {
+                  weekday: "long",
+                  month: "short",
+                  day: "numeric",
+                })}
+              </div>
+              {d.band ? (
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: COLOR.textMuted,
+                    marginTop: 2,
+                    textTransform: "capitalize",
+                  }}
+                >
+                  {d.band.replace(/_/g, " ")}
+                </div>
+              ) : null}
+            </Card>
+          ))}
+          {recent && recent.length === 0 ? (
+            <div
+              style={{
+                fontSize: 12,
+                color: COLOR.textMuted,
+                padding: "12px 4px",
+              }}
+            >
+              No recent briefs yet.
+            </div>
+          ) : null}
+        </div>
+      ) : (
+        /* Chat surface — embedded in-flow, no overlay chrome. */
+        <div
+          style={{
+            flex: 1,
+            display: "flex",
+            flexDirection: "column",
+            minHeight: 0,
+            marginTop: 10,
+          }}
+        >
+          <ChatPanel
+            userId={userId}
+            initialKind="coach"
+            initialMode={initialChatMode}
+            initialModeContext={initialModeContext}
+            draftDocId={draftDocId}
+            embedded
+          />
+        </div>
+      )}
 
     </div>
   );
