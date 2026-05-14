@@ -5,14 +5,17 @@
 //     athlete_profile_documents.rendered_md at acknowledgment time. Byte-
 //     stable for the lifetime of the version (never regenerated).
 //   - renderProfileSummary(): the condensed string injected into the coach
-//     AI's snapshot prefix on every turn. ~250 tokens, designed for cache
-//     density.
+//     AI's snapshot prefix on every turn. ~250 tokens baseline; ~400 tokens
+//     when an active plan includes muscle_volume (10-muscle table appended).
+//     Designed for cache density.
 //
 // No AI in either path. Deterministic transformations only. If you change
 // the markdown template later, OLD acknowledged docs still display from
 // their stored rendered_md — they don't re-render.
 
-import type { IntakePayload, PlanPayload } from "@/lib/data/types";
+import type { IntakePayload, PlanPayload, StrengthMuscleVolume } from "@/lib/data/types";
+import { TARGETED_MUSCLE_GROUPS } from "@/lib/data/types";
+import { targetSetsForWeek } from "@/lib/coach/volume-landmarks";
 
 // ── Public API ───────────────────────────────────────────────────────────────
 
@@ -53,7 +56,12 @@ export function renderProfileMarkdown(args: {
   return sections.join("\n");
 }
 
-export function renderProfileSummary(intake: IntakePayload, version: number): string {
+export function renderProfileSummary(
+  intake: IntakePayload,
+  version: number,
+  plan?: PlanPayload | null,
+  currentBlockWeek?: number | null,
+): string {
   const g = intake.goals;
   const t = intake.training;
   const l = intake.lifestyle;
@@ -69,7 +77,7 @@ export function renderProfileSummary(intake: IntakePayload, version: number): st
     n.alcohol_drinks_per_week > 0 ? ` Alcohol ${n.alcohol_drinks_per_week}/wk.` : "";
   const travelLine = l.travel_frequency !== "none" ? ` Travel: ${l.travel_frequency}.` : "";
 
-  return [
+  const lines: string[] = [
     `## Athlete profile (v${version})`,
     ``,
     `Goal: ${g.primary_type} — ${g.primary_metric} ${g.target_value}${g.target_unit} by ${g.target_date}. Why: "${why}".`,
@@ -85,7 +93,14 @@ export function renderProfileSummary(intake: IntakePayload, version: number): st
     `Sleep baseline: ${sr.avg_sleep_hours}h, window ${sr.typical_bedtime}-${sr.typical_wake_time}. Soreness ${sr.soreness_frequency}.`,
     ``,
     `Job: ${l.job_demands}, stress ${l.stress_self_rating}/5.${travelLine}`,
-  ].join("\n");
+  ];
+
+  if (plan?.strength.muscle_volume) {
+    lines.push("");
+    lines.push(renderMuscleVolume(plan.strength.muscle_volume, currentBlockWeek ?? null));
+  }
+
+  return lines.join("\n");
 }
 
 // ── Section helpers ─────────────────────────────────────────────────────────
@@ -278,11 +293,11 @@ function anyPr(prs: IntakePayload["training"]["best_ever_pr"]): boolean {
 
 // ── Plan section helpers (renderPlan* prefix avoids collision with intake helpers) ──
 
-function renderPlanSections(plan: PlanPayload): string {
+function renderPlanSections(plan: PlanPayload, currentBlockWeek: number | null = null): string {
   const sections = [
     renderPlanGoalSection(plan.goal),
     renderPlanPeriodizationSection(plan.periodization),
-    renderPlanStrengthSection(plan.strength),
+    renderPlanStrengthSection(plan.strength, currentBlockWeek),
     renderPlanNutritionSection(plan.nutrition),
     renderPlanSleepSection(plan.sleep),
     renderPlanRecoverySection(plan.recovery),
@@ -316,7 +331,7 @@ function renderPlanPeriodizationSection(p: PlanPayload["periodization"]): string
   ].join("\n");
 }
 
-function renderPlanStrengthSection(s: PlanPayload["strength"]): string {
+function renderPlanStrengthSection(s: PlanPayload["strength"], currentBlockWeek: number | null = null): string {
   const days = Object.entries(s.day_pattern)
     .filter(([, v]) => v !== "REST")
     .map(([day, type]) => `- ${day}: ${type}`)
@@ -324,7 +339,7 @@ function renderPlanStrengthSection(s: PlanPayload["strength"]): string {
   const volume = Object.entries(s.weekly_volume_targets)
     .map(([lift, t]) => `- ${lift}: ${t.reps_per_week} reps/wk, ${t.sets_per_week} sets/wk`)
     .join("\n");
-  return [
+  const lines = [
     "## Strength (template)",
     "",
     `**${s.sessions_per_week} sessions/wk**`,
@@ -336,7 +351,12 @@ function renderPlanStrengthSection(s: PlanPayload["strength"]): string {
     "",
     `**Progression:** ${s.progression_rule}`,
     ...(s.notes ? ["", s.notes] : []),
-  ].join("\n");
+  ];
+  if (s.muscle_volume) {
+    lines.push("");
+    lines.push(renderMuscleVolume(s.muscle_volume, currentBlockWeek));
+  }
+  return lines.join("\n");
 }
 
 function renderPlanNutritionSection(n: PlanPayload["nutrition"]): string {
@@ -488,4 +508,38 @@ function renderPlanCoachingAgreementSection(c: PlanPayload["coaching_agreement"]
     `**Unprompted actions allowed:** ${unprompted}`,
     `**Re-evaluation:** every ${c.re_evaluation_cadence_weeks} weeks`,
   ].join("\n");
+}
+
+/** Emit a markdown block for the coach AI's system prompt summarizing the
+ *  per-muscle volume bands + this-week targets. Injected into the active-plan
+ *  rendering used by SCHEMA_EXPLAINER. */
+export function renderMuscleVolume(
+  muscleVolume: StrengthMuscleVolume,
+  currentBlockWeek: number | null,
+): string {
+  const lines: string[] = ["**Muscle volume (weekly sets/wk · band MEV/MAV/MRV):**"];
+  for (const g of TARGETED_MUSCLE_GROUPS) {
+    const band = muscleVolume.bands[g];
+    const thisWeek =
+      currentBlockWeek !== null
+        ? targetSetsForWeek(band, muscleVolume.ramp_recipe, currentBlockWeek)
+        : null;
+    const status =
+      band.source === "literature_with_ramp_floor"
+        ? "⚠ below MEV — ramp gradually"
+        : band.source === "literature_adjusted_up"
+          ? `band raised from history (8wk avg ${band.history_8wk_avg})`
+          : "in band";
+    const weekStr = thisWeek !== null ? ` · this week target ${thisWeek}` : "";
+    lines.push(
+      `- ${g}: ${band.history_8wk_avg} actual · ${band.mev} / ${band.mav[0]}-${band.mav[1]} / ${band.mrv} · ${status}${weekStr}`,
+    );
+  }
+  if (muscleVolume.unmapped_exercises.length > 0) {
+    lines.push("");
+    lines.push(
+      `_Note: ${muscleVolume.unmapped_exercises.length} Strong exercises unmapped to muscle taxonomy (${muscleVolume.unmapped_exercises.slice(0, 5).join(", ")}${muscleVolume.unmapped_exercises.length > 5 ? "…" : ""}) — counted as 0 toward volume._`,
+    );
+  }
+  return lines.join("\n");
 }

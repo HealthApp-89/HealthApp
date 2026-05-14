@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { COLOR } from "@/lib/ui/theme";
 import { Card } from "@/components/ui/Card";
 import type { AthleteProfileDocument } from "@/lib/data/types";
+import { TARGETED_MUSCLE_GROUPS } from "@/lib/data/types";
 import { AthleteProfileViewModal } from "@/components/profile/AthleteProfileViewModal";
 import { AthleteProfileHistory } from "@/components/profile/AthleteProfileHistory";
 import { useAthleteProfile } from "@/lib/query/hooks/useAthleteProfile";
@@ -93,6 +94,34 @@ export function AthleteProfilePanel({ userId }: { userId: string }) {
             <div style={{ fontSize: 12, color: COLOR.textMuted }}>
               {summarizeGoal(active)}
             </div>
+
+            {active.plan_payload?.strength?.muscle_volume && (() => {
+              const mv = active.plan_payload.strength.muscle_volume!;
+              const nBelowMev = TARGETED_MUSCLE_GROUPS.filter(
+                (g) => mv.bands[g].source === "literature_with_ramp_floor",
+              ).length;
+              const nRaised = TARGETED_MUSCLE_GROUPS.filter(
+                (g) => mv.bands[g].source === "literature_adjusted_up",
+              ).length;
+              const tone =
+                nBelowMev > 0
+                  ? "needs attention"
+                  : nRaised > 0
+                    ? "band raised from history"
+                    : "all in band";
+              return (
+                <div style={{ marginTop: 4, fontSize: 12, color: COLOR.textMuted }}>
+                  Muscle volume: {TARGETED_MUSCLE_GROUPS.length} muscles · {tone}
+                  {nBelowMev > 0 ? ` · ${nBelowMev} below MEV` : ""}
+                  <Link
+                    href="/strength?view=by_muscle"
+                    style={{ marginLeft: 8, color: COLOR.accent, textDecoration: "none" }}
+                  >
+                    view details →
+                  </Link>
+                </div>
+              );
+            })()}
 
             <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
               <button type="button" onClick={() => setViewing(active)} style={btn("secondary")}>

@@ -13,7 +13,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { loadWorkouts } from "@/lib/data/workouts-server";
 import { nowInUserTz, relativeDateLabel, todayInUserTz } from "@/lib/time";
 import { renderProfileSummary } from "@/lib/coach/profile-renderer";
-import type { IntakePayload } from "@/lib/data/types";
+import type { IntakePayload, PlanPayload } from "@/lib/data/types";
 
 type ProfileRow = {
   name?: string | null;
@@ -93,7 +93,7 @@ export async function buildSnapshot(inputs: SnapshotInputs): Promise<SnapshotRes
     loadWorkouts(userId),
     supabase
       .from("athlete_profile_documents")
-      .select("version, intake_payload")
+      .select("version, intake_payload, plan_payload")
       .eq("user_id", userId)
       .eq("status", "active")
       .maybeSingle(),
@@ -148,7 +148,12 @@ export async function buildSnapshot(inputs: SnapshotInputs): Promise<SnapshotRes
     `BASELINES: ${JSON.stringify(p?.whoop_baselines ?? {})}`,
     `TRAINING PLAN: ${JSON.stringify(p?.training_plan ?? {})}`,
     ...(athleteProfileRow
-      ? [``, renderProfileSummary(athleteProfileRow.intake_payload as IntakePayload, athleteProfileRow.version as number)]
+      ? [``, renderProfileSummary(
+          athleteProfileRow.intake_payload as IntakePayload,
+          athleteProfileRow.version as number,
+          (athleteProfileRow.plan_payload as PlanPayload | null) ?? null,
+          null, // currentBlockWeek — snapshot has no block-week context yet; future PR can thread it
+        )]
       : []),
     ``,
     `DAILY LOGS (${since} → ${until ?? today}):`,

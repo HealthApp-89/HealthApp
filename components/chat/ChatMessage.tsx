@@ -190,6 +190,7 @@ export function ChatMessage({
                   plan={r.plan_payload}
                   approval_token={r.approval_token}
                   committed={hasCommittedPlan}
+                  currentBlockWeek={null}
                   onApprove={(token) =>
                     onSendUserMessage?.(`[approve:${token}]`)
                   }
