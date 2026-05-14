@@ -23,7 +23,7 @@ const ITEMS: SheetItem[] = [
   { kind: "link",   label: "Log entry",          icon: "✎",  href: "/log" },
   { kind: "chat",   label: "Ask coach",          icon: "💬" },
   { kind: "link",   label: "Strength",           icon: "💪", href: "/strength?view=today" },
-  { kind: "link",   label: "Body",               icon: "📏", href: "/health" },
+  { kind: "link",   label: "Body",               icon: "📏", href: "/health?view=log" },
   { kind: "upload", label: "Upload Strong CSV",  icon: "⬆",  accept: ".csv", endpoint: "/api/ingest/strong" },
   { kind: "link",   label: "Manage connections", icon: "🔗", href: "/profile" },
 ];
