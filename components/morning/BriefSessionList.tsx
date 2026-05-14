@@ -12,12 +12,17 @@ export function BriefSessionList({
   isSwapped: boolean;
   liveType: string | null;
 }) {
-  const { exercises } = session;
+  const { exercises, volume_gaps } = session;
 
   if (exercises.length === 0) {
     return (
-      <div style={{ fontSize: 13, color: COLOR.textMuted, fontStyle: "italic" }}>
-        No exercises planned for this session type.
+      <div>
+        <div style={{ fontSize: 13, color: COLOR.textMuted, fontStyle: "italic" }}>
+          No exercises planned for this session type.
+        </div>
+        {volume_gaps && volume_gaps.length > 0 && (
+          <VolumeGapsBanner gaps={volume_gaps} />
+        )}
       </div>
     );
   }
@@ -82,6 +87,9 @@ export function BriefSessionList({
           </div>
         ))}
       </div>
+      {volume_gaps && volume_gaps.length > 0 && (
+        <VolumeGapsBanner gaps={volume_gaps} />
+      )}
       {isSwapped && (
         <p
           style={{
@@ -98,6 +106,36 @@ export function BriefSessionList({
           for the new session.
         </p>
       )}
+    </div>
+  );
+}
+
+function VolumeGapsBanner({
+  gaps,
+}: {
+  gaps: NonNullable<MorningBriefCard["session"]["volume_gaps"]>;
+}) {
+  const gapText = gaps
+    .map(
+      (g) =>
+        `${g.group} (${g.actual}/wk vs ${g.target} ${g.label === "below_mev" ? "MEV" : "MRV"})`,
+    )
+    .join(", ");
+  return (
+    <div
+      role="note"
+      style={{
+        marginTop: 12,
+        padding: "10px 12px",
+        background: COLOR.warningSoft,
+        border: `1px solid ${COLOR.warning}`,
+        borderRadius: 8,
+        fontSize: 13,
+        color: COLOR.warningDeep,
+      }}
+    >
+      ⚠ <strong>Volume gaps:</strong> {gapText}{" "}
+      <span style={{ fontStyle: "italic" }}>— coach details below.</span>
     </div>
   );
 }
