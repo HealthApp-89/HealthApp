@@ -138,8 +138,9 @@ export default function ChatPanel({
   initialMode = "default",
   initialModeContext,
   draftDocId,
+  embedded = false,
 }: {
-  onClose: () => void;
+  onClose?: () => void;
   /** Initial conversation lane; tab clicks at runtime override this. */
   initialKind?: "coach" | "morning_intake";
   userId: string;
@@ -149,6 +150,10 @@ export default function ChatPanel({
    *  Threaded through to /api/chat/messages as body.doc so the route can
    *  inject it into the Phase 2 tool executors' ToolCtx. */
   draftDocId?: string;
+  /** When true, render feed + composer in-flow (no fixed overlay chrome).
+   *  Used by /coach page to host chat as a primary surface. The FAB-summoned
+   *  overlay path leaves this unset and gets the legacy overlay UI. */
+  embedded?: boolean;
 }) {
   const [mode, setMode] = useState<ChatMode>(initialMode);
   const [composerHint, setComposerHint] = useState<string | undefined>(undefined);
@@ -734,6 +739,108 @@ export default function ChatPanel({
         : mode === "intake"
           ? "Talk through your plan…"
           : undefined);
+
+  // Embedded mode: render feed + composer in-flow (no overlay chrome).
+  // Used by /coach. FAB-summoned overlay path falls through to the legacy
+  // return below.
+  if (embedded) {
+    return (
+      <div
+        ref={panelRef}
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          flex: 1,
+          minHeight: 0,
+        }}
+      >
+        <ModeBanner
+          mode={mode}
+          context={initialModeContext}
+          onExit={() => setMode("default")}
+        />
+
+        {!state.loaded && (
+          <div
+            style={{
+              flex: 1,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: COLOR.textMuted,
+              fontSize: 13,
+            }}
+          >
+            loading…
+          </div>
+        )}
+        {state.loaded && (
+          <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
+            <ChatThread
+              userId={userId}
+              messages={state.messages}
+              onLoadOlder={loadOlder}
+              onRetry={onRetry}
+              onSendUserMessage={(text) => void send(text, [])}
+              onFocusComposer={(p) => setComposerHint(p)}
+            />
+          </div>
+        )}
+
+        {state.inFlightWaitMessage && (
+          <div
+            style={{
+              padding: "8px 14px",
+              fontSize: 11,
+              color: COLOR.warning,
+              borderTop: `1px solid ${COLOR.divider}`,
+              background: COLOR.warningSoft,
+            }}
+          >
+            {state.inFlightWaitMessage}
+          </div>
+        )}
+
+        {currentMode === "morning_intake" &&
+          (() => {
+            const last = state.messages[state.messages.length - 1];
+            if (!last || last.role !== "assistant" || last.status !== "done") return null;
+            if (!last.ui || !last.ui.chips || last.ui.chips.length === 0) return null;
+            return (
+              <ChatChips
+                key={last.id}
+                ui={last.ui}
+                onSlotAnswer={onSlotAnswer}
+                onAction={onAction}
+              />
+            );
+          })()}
+
+        {(() => {
+          const last = state.messages[state.messages.length - 1];
+          const hideComposer =
+            currentMode === "morning_intake" &&
+            !!last?.ui?.chips &&
+            last.ui.chips.length > 0 &&
+            !last.ui.allow_text;
+          if (hideComposer) return null;
+
+          const isMorningTextTurn =
+            currentMode === "morning_intake" &&
+            last?.role === "assistant" &&
+            last?.ui?.allow_text === true;
+
+          return (
+            <ChatComposer
+              disabled={state.inFlightAssistantId !== null}
+              onSend={isMorningTextTurn ? (content) => sendMorningFreeText(content) : send}
+              placeholder={currentMode === "coach" ? composerPlaceholder : undefined}
+            />
+          );
+        })()}
+      </div>
+    );
+  }
 
   return (
     <div

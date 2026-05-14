@@ -3,14 +3,11 @@ import { HydrationBoundary, dehydrate } from "@tanstack/react-query";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { makeServerQueryClient } from "@/lib/query/queryClient";
 import { queryKeys } from "@/lib/query/keys";
-import { fetchInsightsDailyServer } from "@/lib/query/fetchers/insightsDaily";
-import { fetchWeeklyReviewServer } from "@/lib/query/fetchers/weeklyReview";
-import { fetchRecommendationsServer } from "@/lib/query/fetchers/recommendations";
 import { computeBlockProgress } from "@/lib/query/fetchers/blockProgress";
 import { fetchTrainingWeekServer } from "@/lib/query/fetchers/trainingWeek";
 import { CoachClient } from "@/components/coach/CoachClient";
 import { type CoachView } from "@/components/coach/CoachNav";
-import { reviewWindow, recommendationWeekStart, planningTargetMonday } from "@/lib/coach/week";
+import { planningTargetMonday } from "@/lib/coach/week";
 import { todayInUserTz } from "@/lib/time";
 
 function userTzNoon(): Date {
@@ -35,27 +32,12 @@ export default async function CoachPage(props: {
 
   const todayDate = todayInUserTz();
   const noon = userTzNoon();
-  const { start: weekStart, end: weekEnd, mode: weekMode, daysRemaining } = reviewWindow(noon);
-  const recsTargetWeek = recommendationWeekStart(noon);
   const targetMonday = planningTargetMonday(noon);
 
-  // Prefetch all three views' data so any tab tap is a cache hit. Server has
-  // no client cache to consult, so this is one Supabase round-trip per view —
-  // worth it because the user is already paying for the page render.
+  // Prefetch the two banner queries shown above the chat feed. Recent-view
+  // history is loaded by the chat surface itself (no prefetch needed).
   const queryClient = makeServerQueryClient();
   await Promise.all([
-    queryClient.prefetchQuery({
-      queryKey: queryKeys.insights.daily(user.id, todayDate),
-      queryFn: () => fetchInsightsDailyServer(supabase, user.id),
-    }),
-    queryClient.prefetchQuery({
-      queryKey: queryKeys.insights.weeklyReview(user.id, weekEnd),
-      queryFn: () => fetchWeeklyReviewServer(supabase, user.id, weekEnd),
-    }),
-    queryClient.prefetchQuery({
-      queryKey: queryKeys.recommendations.week(user.id, recsTargetWeek),
-      queryFn: () => fetchRecommendationsServer(supabase, user.id, recsTargetWeek),
-    }),
     queryClient.prefetchQuery({
       queryKey: queryKeys.blockProgress.active(user.id),
       queryFn: () => computeBlockProgress(supabase, user.id),
@@ -71,11 +53,7 @@ export default async function CoachPage(props: {
       <CoachClient
         userId={user.id}
         todayDate={todayDate}
-        weekStart={weekStart}
-        weekEnd={weekEnd}
-        weekMode={weekMode}
-        daysRemaining={daysRemaining}
-        recsTargetWeek={recsTargetWeek}
+        targetMonday={targetMonday}
         initialView={initialView}
       />
     </HydrationBoundary>
