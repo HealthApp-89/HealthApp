@@ -72,8 +72,8 @@ export function targetSetsForWeek(
   weekOfBlock: number,
 ): number {
   if (weekOfBlock <= 0) return Math.round(band.mev * recipe.start_pct);
+  if (weekOfBlock > 5) return Math.round(band.mev * recipe.peak_pct); // clamp extended blocks
   if (weekOfBlock === 5) return Math.round(band.mev * recipe.deload_pct);
-  if (weekOfBlock >= 5) return Math.round(band.mev * recipe.peak_pct);
   // Linear interpolation across weeks 1-4
   const t = (weekOfBlock - 1) / 3; // 0..1
   const pct = recipe.start_pct + (recipe.peak_pct - recipe.start_pct) * t;
