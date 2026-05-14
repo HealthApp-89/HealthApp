@@ -60,12 +60,28 @@ export async function startPlanIntake(): Promise<
   delete draftIntake.free_form_constraints;
   delete draftIntake.sanity_overrides;
 
+  // Compute next version as MAX(version) + 1 across ALL statuses for this
+  // user — not active.version + 1. The unique index on (user_id, version)
+  // doesn't filter on status, so a discarded row at version N still occupies
+  // that slot. If the user's prior intake stalled and was later discarded,
+  // a naive active.version + 1 collides with that row's version. Pull the
+  // true high-water mark instead.
+  const { data: maxRow, error: maxErr } = await sr
+    .from("athlete_profile_documents")
+    .select("version")
+    .eq("user_id", user.id)
+    .order("version", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (maxErr) return { ok: false, error: maxErr.message };
+  const nextVersion = (maxRow?.version ?? active.version) + 1;
+
   // Create the draft row at the next version number
   const { data: draft, error: insErr } = await sr
     .from("athlete_profile_documents")
     .insert({
       user_id: user.id,
-      version: active.version + 1,
+      version: nextVersion,
       status: "draft",
       intake_payload: draftIntake,
     })
