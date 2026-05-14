@@ -171,6 +171,7 @@ export function ProfileClient({
       <SectionLabel>Ingest tokens</SectionLabel>
       <div style={{ padding: "0 8px 14px" }}>
         <IngestPanel
+          userId={userId}
           tokenPrefix={ingestToken?.token_prefix ?? null}
           createdAt={ingestToken?.created_at ?? null}
           lastUsedAt={ingestToken?.last_used_at ?? null}
