@@ -8,6 +8,8 @@ import type {
   AdviceFlags,
   AthleteProfileDocument,
   MorningBriefCard,
+  MuscleVolumeFlag,
+  StrengthMuscleVolume,
 } from "@/lib/data/types";
 import type { TodayTargets } from "@/lib/morning/brief/get-today-targets";
 
@@ -23,6 +25,10 @@ export type AdviceContext = {
   /** GLP-1-aware targets from getTodayTargets(). Provides today_phase_mode,
    *  deficit_alarm threshold, and other mode-conditional context. */
   targets: TodayTargets | null;
+  /** NEW: top-2 muscle-volume flags + the underlying StrengthMuscleVolume
+   *  so the prompt can reference band numbers and rationale. */
+  muscleVolumeFlags?: MuscleVolumeFlag[];
+  muscleVolume?: StrengthMuscleVolume | null;
 };
 
 /** Throws on Anthropic failures (rate limit, network, malformed). Orchestrator
@@ -66,6 +72,10 @@ function buildSystemPrompt(ctx: AdviceContext): string {
   const dataBlock = buildDataBlock(ctx.card);
   const flagsBlock = buildFlagsBlock(ctx.flags);
   const coachingContext = buildCoachingContext(ctx.flags, ctx.targets);
+  const muscleVolumeBlock = buildMuscleVolumeBlock(
+    ctx.muscleVolumeFlags,
+    ctx.muscleVolume,
+  );
 
   return `You are this athlete's coach delivering today's morning brief — the catch-up after the morning intake.
 
@@ -80,7 +90,7 @@ ${dataBlock}
 ## Flags
 
 ${flagsBlock}
-${coachingContext ? `\n## Coaching context\n\n${coachingContext}` : ""}
+${coachingContext ? `\n## Coaching context\n\n${coachingContext}` : ""}${muscleVolumeBlock ? `\n${muscleVolumeBlock}` : ""}
 
 ## Your task
 
@@ -213,4 +223,44 @@ function buildFlagsBlock(flags: AdviceFlags): string {
     lines.push(`- ${k}: ${v}`);
   }
   return lines.join("\n");
+}
+
+/** Builds the optional MUSCLE VOLUME CONTEXT section. Returns empty string
+ *  when no flags fire or muscleVolume is absent. */
+function buildMuscleVolumeBlock(
+  flags: MuscleVolumeFlag[] | undefined,
+  muscleVolume: StrengthMuscleVolume | null | undefined,
+): string {
+  if (!flags || flags.length === 0 || !muscleVolume) return "";
+
+  const lines: string[] = [
+    "=== MUSCLE VOLUME CONTEXT ===",
+  ];
+  for (const flag of flags) {
+    const band = muscleVolume.bands[flag.group];
+    lines.push(
+      `- ${flag.group}: ${describeFlag(flag)}. Band: MEV ${band.mev} / MAV ${band.mav[0]}-${band.mav[1]} / MRV ${band.mrv}. Plan source: ${band.source}. Rationale: ${band.rationale}`,
+    );
+  }
+  lines.push("");
+  lines.push("Coaching directives:");
+  lines.push(
+    "- For below_mev_* flags: suggest ONE concrete exercise + set count to close the gap today. Fit into the planned session (e.g., face-pulls before cooldown). Cap at +3 sets per gap; abrupt large jumps trigger soreness, not adaptation.",
+  );
+  lines.push(
+    "- For near_mrv flags: recommend dropping the LAST exercise/set of today's session. Frame as autoregulation, not failure.",
+  );
+
+  return lines.join("\n");
+}
+
+function describeFlag(flag: MuscleVolumeFlag): string {
+  switch (flag.kind) {
+    case "below_mev_persistent":
+      return `8wk avg ${flag.actual_8wk} sets/wk is below MEV (${flag.mev}) — systematic under-training`;
+    case "below_mev_recent":
+      return `week-to-date ${flag.actual_wtd} sets vs target ${flag.target_this_week} this week (${flag.days_left} days left to rescue)`;
+    case "near_mrv":
+      return `week-to-date ${flag.actual_wtd} sets approaching MRV (${flag.mrv}) — consider backing off`;
+  }
 }

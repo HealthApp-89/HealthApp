@@ -11,11 +11,12 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { todayInUserTz } from "@/lib/time";
-import type { MorningBriefCard } from "@/lib/data/types";
+import type { MorningBriefCard, MuscleVolumeFlag, StrengthMuscleVolume } from "@/lib/data/types";
 import { fetchBriefInputs } from "@/lib/morning/brief/data-sources";
 import { assembleBriefExceptAdvice } from "@/lib/morning/brief/assembler";
-import { computeAdviceFlags } from "@/lib/morning/brief/flags";
+import { computeAdviceFlags, evaluateMuscleVolumeGapsForBrief } from "@/lib/morning/brief/flags";
 import { generateAdvice } from "@/lib/morning/brief/advice-prompt";
+import { fetchMuscleVolumeServer } from "@/lib/query/fetchers/muscleVolume";
 
 export async function buildMorningBrief(
   supabase: SupabaseClient,
@@ -23,7 +24,49 @@ export async function buildMorningBrief(
 ): Promise<MorningBriefCard> {
   const today = todayInUserTz();
   const inputs = await fetchBriefInputs(supabase, userId, today);
-  const partial = assembleBriefExceptAdvice(inputs);
+
+  // Muscle-volume context — only when the active plan carries muscle_volume.
+  let muscleVolumeFlags: MuscleVolumeFlag[] = [];
+  const muscleVolume: StrengthMuscleVolume | null =
+    (inputs.activeProfile?.plan_payload as { strength?: { muscle_volume?: StrengthMuscleVolume } } | null)
+      ?.strength?.muscle_volume ?? null;
+
+  if (muscleVolume) {
+    try {
+      const mvSnapshot = await fetchMuscleVolumeServer(supabase, userId, today);
+      // Sessions that aren't actual training: REST (planned), Mobility
+      // (recovery), Sick (schedule-flexibility swap). The recommendation
+      // route's sick-guard runs against checkin.sick, not session_plan;
+      // a per-day "Sick" entry in session_plan still reaches this composer.
+      const isTrainingDay =
+        inputs.sessionType !== "REST" &&
+        inputs.sessionType !== "Mobility" &&
+        inputs.sessionType !== "Sick";
+      const daysLeftInWeek = computeDaysLeftInWeek(today);
+      const todayWeekday = weekdayLabelFor(today);
+      muscleVolumeFlags = evaluateMuscleVolumeGapsForBrief({
+        snapshot: mvSnapshot,
+        muscleVolume,
+        currentBlockWeek: null, // future PR threads active-block context
+        isTrainingDay,
+        todayWeekday,
+        daysLeftInWeek,
+      });
+    } catch (err) {
+      // Degrade gracefully: a snapshot fetch failure shouldn't kill the
+      // entire brief. Log and proceed without volume flags — the rest of
+      // the brief is still valuable, and the volume layer will reappear
+      // tomorrow when the snapshot works again.
+      console.error(
+        "[brief] fetchMuscleVolumeServer failed — proceeding without volume flags",
+        err,
+      );
+      muscleVolumeFlags = [];
+    }
+  }
+
+  const enrichedInputs = { ...inputs, muscleVolumeFlags };
+  const partial = assembleBriefExceptAdvice(enrichedInputs);
   const flags = computeAdviceFlags({
     activeProfile: inputs.activeProfile,
     card: partial,
@@ -34,8 +77,22 @@ export async function buildMorningBrief(
     card: partial,
     flags,
     targets: inputs.todayTargets,
+    muscleVolumeFlags,
+    muscleVolume,
   });
   return { ...partial, advice_md };
+}
+
+function weekdayLabelFor(iso: string): "Mon" | "Tue" | "Wed" | "Thu" | "Fri" | "Sat" | "Sun" {
+  const labels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+  const d = new Date(iso + "T00:00:00Z");
+  return labels[d.getUTCDay()] as "Mon" | "Tue" | "Wed" | "Thu" | "Fri" | "Sat" | "Sun";
+}
+
+function computeDaysLeftInWeek(iso: string): number {
+  // Week is Sun-Sat. If today is Wed (day 3), 6 - 3 = 3 days left (Thu, Fri, Sat).
+  const d = new Date(iso + "T00:00:00Z");
+  return 6 - d.getUTCDay();
 }
 
 /** Plain-text fallback for `chat_messages.content`. Renders in chat history
