@@ -55,7 +55,12 @@ export function renderProfileMarkdown(args: {
   return sections.join("\n");
 }
 
-export function renderProfileSummary(intake: IntakePayload, version: number): string {
+export function renderProfileSummary(
+  intake: IntakePayload,
+  version: number,
+  plan?: PlanPayload | null,
+  currentBlockWeek?: number | null,
+): string {
   const g = intake.goals;
   const t = intake.training;
   const l = intake.lifestyle;
@@ -71,7 +76,7 @@ export function renderProfileSummary(intake: IntakePayload, version: number): st
     n.alcohol_drinks_per_week > 0 ? ` Alcohol ${n.alcohol_drinks_per_week}/wk.` : "";
   const travelLine = l.travel_frequency !== "none" ? ` Travel: ${l.travel_frequency}.` : "";
 
-  return [
+  const lines: string[] = [
     `## Athlete profile (v${version})`,
     ``,
     `Goal: ${g.primary_type} — ${g.primary_metric} ${g.target_value}${g.target_unit} by ${g.target_date}. Why: "${why}".`,
@@ -87,7 +92,14 @@ export function renderProfileSummary(intake: IntakePayload, version: number): st
     `Sleep baseline: ${sr.avg_sleep_hours}h, window ${sr.typical_bedtime}-${sr.typical_wake_time}. Soreness ${sr.soreness_frequency}.`,
     ``,
     `Job: ${l.job_demands}, stress ${l.stress_self_rating}/5.${travelLine}`,
-  ].join("\n");
+  ];
+
+  if (plan?.strength.muscle_volume) {
+    lines.push("");
+    lines.push(renderMuscleVolume(plan.strength.muscle_volume, currentBlockWeek ?? null));
+  }
+
+  return lines.join("\n");
 }
 
 // ── Section helpers ─────────────────────────────────────────────────────────
