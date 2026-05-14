@@ -106,11 +106,7 @@ export function composeGlp1Config(
   intake: IntakePayload,
   currentBodyweightKg: number,
 ): Glp1Config {
-  // Protein floor by medication:
-  //   semaglutide → 1.8 g/kg actual BW
-  //   tirzepatide → 2.0 g/kg actual BW
-  //   compounded  → 1.8 (conservative — assume semaglutide-like)
-  const proteinFloor = status.medication === "tirzepatide" ? 2.0 : 1.8;
+  const proteinFloor = computeGlp1ProteinFloor(status.medication, status.dose_mg);
 
   return {
     medication: status.medication,
@@ -129,6 +125,40 @@ export function composeGlp1Config(
     sodium_training_day_mg: 1000,
     tdee_estimate_kcal: estimateTdeeKcal(intake, currentBodyweightKg),
   };
+}
+
+// ── GLP-1 protein floor (dose-aware) ────────────────────────────────────────
+
+/**
+ * Resolve the per-kg-BW protein floor for GLP-1 mode given drug + dose.
+ *
+ * Tirzepatide is dose-tiered per medRxiv 2026 (Greater lean-body-mass decline
+ * with tirzepatide than semaglutide): each +1 mg/wk dose was associated with
+ * an additional 0.45% LBM decrement (R² = 0.87). The 2.0 g/kg figure from
+ * PMC12536186's case series was validated against a cohort titrated to 15 mg,
+ * not the 2.5 mg starter / off-label-chronic dose. We tier 2.5 / mid / ≥10
+ * accordingly:
+ *
+ *   ≤ 2.5 mg/wk  (FDA starter dose; off-label chronic micro-dose)  → 1.8 g/kg BW
+ *   5–7.5 mg/wk  (low-therapeutic)                                  → 1.9 g/kg BW
+ *   ≥ 10 mg/wk   (mid-to-max therapeutic; PMC12536186-validated)    → 2.0 g/kg BW
+ *
+ * Semaglutide stays flat at 1.8 g/kg BW: PMC12536186's only studied chronic
+ * dose was 2.4 mg/wk, and the absolute dose range (0.25–2.4 mg) is too narrow
+ * for a defensible mid-tier.
+ *
+ * Compounded stays at 1.8 (conservative — varying actives, assume
+ * semaglutide-like). Dose tiering for compounded is intentionally not applied:
+ * the same dose_mg can correspond to different actives.
+ */
+export function computeGlp1ProteinFloor(
+  medication: Glp1Status["medication"],
+  dose_mg: number,
+): number {
+  if (medication !== "tirzepatide") return 1.8;
+  if (dose_mg <= 2.5) return 1.8;
+  if (dose_mg < 10) return 1.9;
+  return 2.0;
 }
 
 // ── Classical phase sequence composer ───────────────────────────────────────

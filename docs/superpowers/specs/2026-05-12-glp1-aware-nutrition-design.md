@@ -86,7 +86,7 @@ type Glp1Config = {
   // tunable thresholds
   deficit_alarm_pct: number;               // default 0.25
   deficit_alarm_kcal: number;              // default 700
-  protein_g_per_kg_bw: number;             // default 1.8 (semaglutide), 2.0 (tirzepatide)
+  protein_g_per_kg_bw: number;             // dose-tiered — see computeGlp1ProteinFloor
   per_meal_protein_floor_g: number;        // default 25
   hydration_training_day_ml: number;       // default 3500
   sodium_training_day_mg: number;          // default 1000
@@ -244,7 +244,7 @@ else:
 **`composeGlp1Config(glp1_status, nutrition)`:**
 - `medication` ← from intake
 - `dose_mg`, `injection_day`, `injection_time` ← from intake
-- `protein_g_per_kg_bw` ← 1.8 (semaglutide) / 2.0 (tirzepatide) / 1.8 (compounded, conservative)
+- `protein_g_per_kg_bw` ← dose-tiered (see `computeGlp1ProteinFloor`): semaglutide & compounded flat at 1.8; tirzepatide tiers 1.8 (≤2.5 mg/wk) / 1.9 (5–7.5 mg/wk) / 2.0 (≥10 mg/wk) per medRxiv 2026 dose-response slope
 - `deficit_alarm_pct = 0.25`, `deficit_alarm_kcal = 700`, `per_meal_protein_floor_g = 25`
 - `hydration_training_day_ml = 3500`, `sodium_training_day_mg = 1000`
 - `started_on`, `expected_taper_start`, `expected_end` ← from intake
