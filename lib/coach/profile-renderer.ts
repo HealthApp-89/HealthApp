@@ -5,8 +5,9 @@
 //     athlete_profile_documents.rendered_md at acknowledgment time. Byte-
 //     stable for the lifetime of the version (never regenerated).
 //   - renderProfileSummary(): the condensed string injected into the coach
-//     AI's snapshot prefix on every turn. ~250 tokens, designed for cache
-//     density.
+//     AI's snapshot prefix on every turn. ~250 tokens baseline; ~400 tokens
+//     when an active plan includes muscle_volume (10-muscle table appended).
+//     Designed for cache density.
 //
 // No AI in either path. Deterministic transformations only. If you change
 // the markdown template later, OLD acknowledged docs still display from

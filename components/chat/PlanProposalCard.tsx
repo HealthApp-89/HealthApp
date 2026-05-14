@@ -263,7 +263,7 @@ export function PlanProposalCard({
         {plan.strength.muscle_volume && (
           <MuscleVolumeSection
             muscleVolume={plan.strength.muscle_volume}
-            currentBlockWeek={currentBlockWeek ?? null}
+            currentBlockWeek={currentBlockWeek}
           />
         )}
         <div
