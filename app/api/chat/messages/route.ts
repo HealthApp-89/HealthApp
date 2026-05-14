@@ -203,6 +203,24 @@ export async function POST(req: Request) {
     }
   }
 
+  // Self-heal: clean up any stranded streaming row for this user older than
+  // 5 minutes BEFORE the RPC. The single-streaming-row-per-user unique partial
+  // index (migration 0005) otherwise 23505s every send forever after a prior
+  // pre-stream throw or process kill. The pre-stream try/catch below catches
+  // future throws, but this inline sweep handles pre-existing strands without
+  // needing a cron (Vercel Hobby plan caps crons at 2 + daily granularity).
+  const streamingCutoff = new Date(Date.now() - 5 * 60_000).toISOString();
+  await sr
+    .from("chat_messages")
+    .update({
+      status: "error",
+      error: "self_heal_stuck_streaming",
+      updated_at: new Date().toISOString(),
+    })
+    .eq("user_id", user.id)
+    .eq("status", "streaming")
+    .lt("updated_at", streamingCutoff);
+
   // Atomic three-write: user msg + image attach + assistant stub.
   const { data: rpcRow, error: rpcErr } = await sr
     .rpc("chat_send_user_message", {
