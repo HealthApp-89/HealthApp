@@ -3,6 +3,7 @@
 import { useState, useTransition, type MouseEvent } from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { COLOR, RADIUS, SHADOW } from "@/lib/ui/theme";
 
 // The morning auto-pop trigger and the ChatPanel mount both live in the
@@ -41,6 +42,7 @@ const SHEET: SheetItem[] = [
 export function TopNav() {
   const pathname = usePathname();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [menuOpen, setMenuOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   // Optimistic active-tab state. See BottomNav for the rationale — `pathname`
@@ -76,6 +78,16 @@ export function TopNav() {
         alert(`Upload failed (${res.status})`);
         return;
       }
+      // Invalidate client-side caches that depend on workout data. Uses a
+      // predicate so we don't need userId at this layer — matches any
+      // muscleVolume or workouts query key regardless of user.
+      // Pairs with the existing IngestPanel invalidation (PR #73) so the
+      // strength tab refreshes consistently whether uploaded via top-nav,
+      // FAB, or /profile.
+      queryClient.invalidateQueries({
+        predicate: (q) =>
+          q.queryKey[0] === "muscleVolume" || q.queryKey[0] === "workouts",
+      });
       router.refresh();
       setMenuOpen(false);
     } finally {
