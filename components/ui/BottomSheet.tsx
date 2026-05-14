@@ -29,6 +29,7 @@ export function BottomSheet({
 }) {
   const sheetRef = useRef<HTMLDivElement | null>(null);
   const [dragOffset, setDragOffset] = useState(0);
+  const dragOffsetRef = useRef(0);
   const touchStartY = useRef<number | null>(null);
 
   // Body scroll lock while open
@@ -47,10 +48,14 @@ export function BottomSheet({
   function onTouchMove(e: React.TouchEvent) {
     if (touchStartY.current === null) return;
     const dy = e.touches[0].clientY - touchStartY.current;
-    if (dy > 0) setDragOffset(dy);
+    if (dy > 0) {
+      dragOffsetRef.current = dy;
+      setDragOffset(dy);
+    }
   }
   function onTouchEnd() {
-    if (dragOffset > 80) onClose();
+    if (dragOffsetRef.current > 80) onClose();
+    dragOffsetRef.current = 0;
     setDragOffset(0);
     touchStartY.current = null;
   }

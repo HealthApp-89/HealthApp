@@ -99,11 +99,12 @@ export function modeColorLight(hex: string): string {
 // Hero card gradients — used by ReadinessHero, MorningBriefCard hero band,
 // and intensity-mode-mapped session heroes. Defined once, referenced everywhere.
 export const GRADIENT = {
-  heroAccent:  "linear-gradient(140deg, #4f5dff 0%, #6b78ff 100%)",
-  heroAmber:   "linear-gradient(140deg, #b45309 0%, #d97706 100%)",
-  heroSuccess: "linear-gradient(140deg, #14b870 0%, #34d399 100%)",
-  heroDanger:  "linear-gradient(140deg, #ef4444 0%, #f87171 100%)",
-  heroMuted:   "linear-gradient(140deg, #7a7e95 0%, #9094a8 100%)",
+  heroAccent:      "linear-gradient(140deg, #4f5dff 0%, #6b78ff 100%)",
+  heroAmber:       "linear-gradient(140deg, #b45309 0%, #d97706 100%)",
+  heroSuccess:     "linear-gradient(140deg, #14b870 0%, #34d399 100%)",
+  heroSuccessSoft: "linear-gradient(140deg, #34d399 0%, #6ee7b7 100%)",
+  heroDanger:      "linear-gradient(140deg, #ef4444 0%, #f87171 100%)",
+  heroMuted:       "linear-gradient(140deg, #7a7e95 0%, #9094a8 100%)",
 } as const;
 
 // Chat-surface layout constants
@@ -133,7 +134,7 @@ export const MUSCLE_COLOR = {
 export function modeGradient(hex: string): string {
   switch (hex) {
     case "#30d158": return GRADIENT.heroSuccess;
-    case "#86efac": return GRADIENT.heroSuccess;
+    case "#86efac": return GRADIENT.heroSuccessSoft;
     case "#ffd60a": return GRADIENT.heroAmber;
     case "#ff453a": return GRADIENT.heroDanger;
     case "#6b7280": return GRADIENT.heroMuted;
