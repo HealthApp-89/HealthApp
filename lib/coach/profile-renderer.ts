@@ -95,7 +95,7 @@ export function renderProfileSummary(
     `Job: ${l.job_demands}, stress ${l.stress_self_rating}/5.${travelLine}`,
   ];
 
-  if (plan?.strength.muscle_volume) {
+  if (plan?.strength?.muscle_volume) {
     lines.push("");
     lines.push(renderMuscleVolume(plan.strength.muscle_volume, currentBlockWeek ?? null));
   }
@@ -520,6 +520,7 @@ export function renderMuscleVolume(
   const lines: string[] = ["**Muscle volume (weekly sets/wk · band MEV/MAV/MRV):**"];
   for (const g of TARGETED_MUSCLE_GROUPS) {
     const band = muscleVolume.bands[g];
+    if (!band) continue; // skip muscles missing from this plan's bands (legacy partial plans)
     const thisWeek =
       currentBlockWeek !== null
         ? targetSetsForWeek(band, muscleVolume.ramp_recipe, currentBlockWeek)
