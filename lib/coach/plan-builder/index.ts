@@ -73,6 +73,8 @@ export async function buildPlanPayload(
   if (profileRes.error) throw profileRes.error;
   if (recentLogsRes.error) throw recentLogsRes.error;
   if (activeBlockRes.error) throw activeBlockRes.error;
+  // recentWorkoutData: fetchRecentWorkoutData throws internally on Supabase error;
+  // its rejection bubbles up via Promise.all, no extra check needed.
 
   const profile = profileRes.data as Pick<Profile, "name" | "age" | "height_cm"> | null;
   const recentLogs = recentLogsRes.data ?? [];
