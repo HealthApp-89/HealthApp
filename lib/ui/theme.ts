@@ -2,7 +2,7 @@
 // All colors light-theme calibrated. Kept as plain constants so they can be
 // imported by both server and client components without bundler tax.
 
-import type { DailyLogKey } from "./colors";
+import type { DailyLogKey, BodyMeasurementKey } from "./colors";
 
 export const COLOR = {
   // Surfaces
@@ -69,6 +69,15 @@ export const METRIC_COLOR: Record<DailyLogKey, string> = {
   calories:         "#ca8a04", // mustard
   weight_kg:        "#8b5cf6", // purple
   body_fat_pct:     "#ea580c", // orange-deep
+};
+
+export const MEASUREMENT_COLOR: Record<BodyMeasurementKey, string> = {
+  waist:  "#0ea5e9", // sky
+  hip:    "#8b5cf6", // purple
+  chest:  "#10b981", // emerald
+  arms:   "#f59e0b", // amber
+  thighs: "#ef4444", // rose
+  calves: "#06b6d4", // cyan
 };
 
 /**
