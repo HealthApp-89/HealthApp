@@ -9,11 +9,16 @@ type Props = {
   view: "front" | "back";
   primary: MuscleId[];
   secondary: MuscleId[];
-  accent: string;
+  /**
+   * When true, render primary/secondary in the click-to-select accent
+   * (MUSCLE_COLOR.highlighted, blue) instead of the worked amber. Set by
+   * the consumer (SessionTable) when a single exercise is selected.
+   */
+  highlighted?: boolean;
   size: "sm" | "md";
 };
 
-export function BodyView({ view, primary, secondary, accent, size }: Props) {
+export function BodyView({ view, primary, secondary, highlighted = false, size }: Props) {
   const w = SIZE_MAP[size];
   const h = Math.round((w * 369) / 200); // wger SVG aspect: 200x369
 
@@ -24,13 +29,13 @@ export function BodyView({ view, primary, secondary, accent, size }: Props) {
       <img
         src={`/anatomy/${view}.svg`}
         alt={`${view} body`}
-        className="absolute inset-0 h-full w-full object-contain opacity-90 brightness-[0.4] contrast-110"
+        className="absolute inset-0 h-full w-full object-contain opacity-90"
       />
       {here(primary).map((id) => (
-        <MuscleOverlay key={`p-${id}`} id={id} accent={accent} opacity={0.95} />
+        <MuscleOverlay key={`p-${id}`} id={id} kind={highlighted ? "highlighted" : "primary"} />
       ))}
       {here(secondary).map((id) => (
-        <MuscleOverlay key={`s-${id}`} id={id} accent={accent} opacity={0.42} />
+        <MuscleOverlay key={`s-${id}`} id={id} kind={highlighted ? "highlighted" : "secondary"} />
       ))}
     </div>
   );

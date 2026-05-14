@@ -1,8 +1,9 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Card } from "@/components/ui/Card";
 import { StatusRow } from "@/components/ui/StatusRow";
+import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ProfileForm } from "@/components/profile/ProfileForm";
 import { BaselinesPanel } from "@/components/profile/BaselinesPanel";
 import { ConnectionsPanel } from "@/components/profile/ConnectionsPanel";
@@ -41,6 +42,11 @@ export function ProfileClient({
   const { data: activeProfile } = useAthleteProfile(userId);
   const showLabCard = activeProfile?.plan_payload?.nutrition?.glp1 != null;
 
+  // The User card at the top doubles as the edit affordance — tap opens a
+  // BottomSheet containing ProfileForm. Replaces the previous inline
+  // "Profile details" section.
+  const [editOpen, setEditOpen] = useState(false);
+
   return (
     <div style={{ maxWidth: "640px", margin: "0 auto", padding: "12px 8px 16px" }}>
       <div
@@ -70,7 +76,24 @@ export function ProfileClient({
       </div>
 
       <div style={{ padding: "0 8px 14px" }}>
-        <Card style={{ display: "flex", gap: "14px", alignItems: "center" }}>
+        <Card
+          style={{
+            display: "flex",
+            gap: "14px",
+            alignItems: "center",
+            cursor: "pointer",
+          }}
+          onClick={() => setEditOpen(true)}
+          role="button"
+          tabIndex={0}
+          aria-label="Edit profile"
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              setEditOpen(true);
+            }
+          }}
+        >
           <div
             style={{
               width: "56px",
@@ -94,12 +117,24 @@ export function ProfileClient({
               {userEmail}
             </div>
           </div>
-          <span style={{ fontSize: "18px", color: COLOR.textFaint }}>›</span>
+          <span
+            style={{
+              fontSize: "11px",
+              color: COLOR.accent,
+              fontWeight: 700,
+              letterSpacing: "0.04em",
+            }}
+          >
+            Edit →
+          </span>
         </Card>
       </div>
 
-      <SectionLabel>Profile details</SectionLabel>
-      <div style={{ padding: "0 8px 14px" }}>
+      <BottomSheet
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        title="Edit profile"
+      >
         <ProfileForm
           initial={{
             name: profile?.name ?? null,
@@ -108,8 +143,9 @@ export function ProfileClient({
             goal: profile?.goal ?? null,
             system_prompt: profile?.system_prompt ?? null,
           }}
+          onSave={() => setEditOpen(false)}
         />
-      </div>
+      </BottomSheet>
 
       <SectionLabel>Coaching plan</SectionLabel>
       <div style={{ padding: "0 8px 14px", display: "flex", flexDirection: "column", gap: "8px" }}>

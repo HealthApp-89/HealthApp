@@ -1,23 +1,23 @@
 import { MUSCLE_NAMES, type MuscleId } from "@/lib/coach/exercise-muscles";
+import { MUSCLE_COLOR } from "@/lib/ui/theme";
 
 type Props = {
   primary: MuscleId[];
   secondary: MuscleId[];
-  accent: string;
 };
 
-export function MuscleLegendPills({ primary, secondary, accent }: Props) {
+export function MuscleLegendPills({ primary, secondary }: Props) {
   if (primary.length === 0 && secondary.length === 0) return null;
 
   return (
     <div className="mt-2 flex flex-wrap justify-center gap-1.5">
       {primary.map((id) => (
-        <Pill key={`p-${id}`} accent={accent} kind="primary">
+        <Pill key={`p-${id}`} kind="primary">
           {MUSCLE_NAMES[id]}
         </Pill>
       ))}
       {secondary.map((id) => (
-        <Pill key={`s-${id}`} accent={accent} kind="secondary">
+        <Pill key={`s-${id}`} kind="secondary">
           {MUSCLE_NAMES[id]}
         </Pill>
       ))}
@@ -26,14 +26,15 @@ export function MuscleLegendPills({ primary, secondary, accent }: Props) {
 }
 
 function Pill({
-  accent,
   kind,
   children,
 }: {
-  accent: string;
   kind: "primary" | "secondary";
   children: React.ReactNode;
 }) {
+  // Align with MuscleMap/MuscleOverlay/BodyView, which use MUSCLE_COLOR tokens.
+  // Primary muscles → worked (amber); secondary → workedSoft (lighter amber).
+  const accent = kind === "primary" ? MUSCLE_COLOR.worked : MUSCLE_COLOR.workedSoft;
   const bg =
     kind === "primary"
       ? `color-mix(in srgb, ${accent} 20%, transparent)`
