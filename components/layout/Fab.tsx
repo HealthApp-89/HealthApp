@@ -142,6 +142,7 @@ function FabSheet({
 
   async function onUploadFile(file: File, endpoint: string) {
     setBusy(true);
+    let success = false;
     try {
       const fd = new FormData();
       fd.append("file", file);
@@ -151,10 +152,11 @@ function FabSheet({
         return;
       }
       router.refresh();
-      onClose();
+      success = true;
     } finally {
       setBusy(false);
     }
+    if (success) onClose();
   }
 
   return (
