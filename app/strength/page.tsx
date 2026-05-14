@@ -9,6 +9,7 @@ import { fetchCheckinServer } from "@/lib/query/fetchers/checkin";
 import { fetchAllWorkoutsServer } from "@/lib/query/fetchers/loadWorkouts";
 import { fetchStrengthInsightsServer } from "@/lib/query/fetchers/strengthInsights";
 import { fetchTrainingWeekServer } from "@/lib/query/fetchers/trainingWeek";
+import { fetchMuscleVolumeServer } from "@/lib/query/fetchers/muscleVolume";
 import { StrengthClient } from "@/components/strength/StrengthClient";
 import { todayInUserTz } from "@/lib/time";
 import { currentWeekMonday } from "@/lib/coach/week";
@@ -23,8 +24,8 @@ export default async function StrengthPage(props: {
   const sp = await props.searchParams;
   const { ex: selectedExercise, view, date: rawDate } = sp;
 
-  const initialView: "today" | "recent" | "date" =
-    view === "today" ? "today" : view === "date" ? "date" : "recent";
+  const initialView: "today" | "recent" | "date" | "by_muscle" =
+    view === "today" ? "today" : view === "date" ? "date" : view === "by_muscle" ? "by_muscle" : "recent";
   const todayIso = todayInUserTz();
   const initialDate =
     rawDate && ISO_DATE.test(rawDate) && rawDate <= todayIso ? rawDate : null;
@@ -61,6 +62,10 @@ export default async function StrengthPage(props: {
     queryClient.prefetchQuery({
       queryKey: queryKeys.trainingWeeks.one(user.id, currentWeekStart),
       queryFn: () => fetchTrainingWeekServer(supabase, user.id, currentWeekStart),
+    }),
+    queryClient.prefetchQuery({
+      queryKey: queryKeys.muscleVolume.snapshot(user.id, todayIso),
+      queryFn: () => fetchMuscleVolumeServer(supabase, user.id, todayIso),
     }),
   ]);
 
