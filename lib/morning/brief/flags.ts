@@ -9,7 +9,15 @@ import type {
   AdviceFlags,
   AthleteProfileDocument,
   MorningBriefCard,
+  MuscleVolumeFlag,
+  MuscleVolumeSnapshot,
+  StrengthMuscleVolume,
 } from "@/lib/data/types";
+import { TARGETED_MUSCLE_GROUPS } from "@/lib/data/types";
+import {
+  evaluateMuscleVolumeGap,
+  rankMuscleVolumeFlags,
+} from "@/lib/coach/muscle-volume";
 import type { TodayTargets } from "@/lib/morning/brief/get-today-targets";
 
 /** Matches GLP-1 + brand-name variants. Case-insensitive, word-boundaries
@@ -91,6 +99,46 @@ export function computeAdviceFlags(inputs: FlagInputs): AdviceFlags {
     missed_protein_yesterday,
     coach_swap_suggested: inputs.card.coach_suggestion?.kind === "swap_to_mobility",
   };
+}
+
+/** Evaluate all 10 targeted muscle groups; return the top 2 flags ranked by
+ *  urgency. Caller embeds these in the Advice prompt + session-block UI. */
+export function evaluateMuscleVolumeGapsForBrief(args: {
+  snapshot: MuscleVolumeSnapshot;
+  muscleVolume: StrengthMuscleVolume | null;
+  currentBlockWeek: number | null;
+  isTrainingDay: boolean;
+  todayWeekday: "Mon" | "Tue" | "Wed" | "Thu" | "Fri" | "Sat" | "Sun";
+  daysLeftInWeek: number;
+}): MuscleVolumeFlag[] {
+  const {
+    snapshot,
+    muscleVolume,
+    currentBlockWeek,
+    isTrainingDay,
+    todayWeekday,
+    daysLeftInWeek,
+  } = args;
+
+  if (!muscleVolume) return [];
+
+  const allFlags: MuscleVolumeFlag[] = [];
+  for (const g of TARGETED_MUSCLE_GROUPS) {
+    const flag = evaluateMuscleVolumeGap(
+      g,
+      snapshot.rolling_avg_8wk[g],
+      snapshot.current_week_to_date[g],
+      muscleVolume.bands[g],
+      muscleVolume.ramp_recipe,
+      currentBlockWeek ?? 3, // mid-block default when no active block
+      daysLeftInWeek,
+      isTrainingDay,
+      todayWeekday,
+    );
+    if (flag) allFlags.push(flag);
+  }
+
+  return rankMuscleVolumeFlags(allFlags).slice(0, 2);
 }
 
 /** Returns time in bed in hours, accounting for crossing midnight.
