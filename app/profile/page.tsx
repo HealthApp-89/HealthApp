@@ -9,6 +9,7 @@ import { fetchWithingsTokensServer } from "@/lib/query/fetchers/withingsTokens";
 import { fetchIngestTokenServer } from "@/lib/query/fetchers/ingestToken";
 import { fetchDailyLogsServer } from "@/lib/query/fetchers/dailyLogs";
 import { fetchActiveProfileServer, fetchProfileHistoryServer, fetchDraftProfileServer } from "@/lib/query/fetchers/athleteProfile";
+import { fetchLabAcknowledgmentsServer } from "@/lib/query/fetchers/labAcknowledgments";
 import { ProfileClient } from "@/components/profile/ProfileClient";
 
 export const revalidate = 60;
@@ -62,6 +63,14 @@ export default async function ProfilePage() {
     queryClient.prefetchQuery({
       queryKey: queryKeys.athleteProfile.draft(user.id),
       queryFn: () => fetchDraftProfileServer(supabase, user.id),
+    }),
+    // LabPromptCard (GLP-1 plan users) reads profiles.lab_acknowledgments
+    // via useLabAcknowledgments. Prefetched here so the card hydrates with
+    // the actual acked state on first paint instead of flashing all-Pending
+    // for ~200ms while the browser query resolves.
+    queryClient.prefetchQuery({
+      queryKey: queryKeys.labAcks.one(user.id),
+      queryFn: () => fetchLabAcknowledgmentsServer(supabase, user.id),
     }),
   ]);
 
