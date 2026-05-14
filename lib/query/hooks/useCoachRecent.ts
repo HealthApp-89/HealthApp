@@ -1,6 +1,7 @@
 // lib/query/hooks/useCoachRecent.ts
 import { useQuery } from "@tanstack/react-query";
 import { fetchCoachRecentBrowser } from "@/lib/query/fetchers/coachRecent";
+import { queryKeys } from "@/lib/query/keys";
 
 /**
  * Newest-first list of days that received a morning brief. Used by the
@@ -9,7 +10,7 @@ import { fetchCoachRecentBrowser } from "@/lib/query/fetchers/coachRecent";
  */
 export function useCoachRecent(userId: string) {
   return useQuery({
-    queryKey: ["coach-recent", userId] as const,
+    queryKey: queryKeys.coachRecent.list(userId),
     queryFn: () => fetchCoachRecentBrowser(userId),
     staleTime: 5 * 60_000,
   });

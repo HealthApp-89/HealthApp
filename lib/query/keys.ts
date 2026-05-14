@@ -82,4 +82,7 @@ export const queryKeys = {
   labAcks: {
     one: (userId: string) => ["labAcks", userId] as const,
   },
+  coachRecent: {
+    list: (userId: string) => ["coach-recent", userId] as const,
+  },
 } as const;
