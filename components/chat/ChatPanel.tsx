@@ -202,7 +202,7 @@ export default function ChatPanel({
   // translate the panel up by the keyboard's intrusion.
   useEffect(() => {
     const el = panelRef.current;
-    if (!el || typeof window === "undefined" || !window.visualViewport) return;
+    if (!el || typeof window === "undefined" || !window.visualViewport || embedded) return;
     const vv = window.visualViewport;
     const update = () => {
       const intrusion = window.innerHeight - vv.height - vv.offsetTop;
@@ -838,6 +838,73 @@ export default function ChatPanel({
             />
           );
         })()}
+
+        {currentMode === "morning_intake" && !todayCheckin?.sick && (
+          <div style={{ padding: "8px 14px 10px", textAlign: "center" }}>
+            <button
+              type="button"
+              disabled={sickInFlight}
+              onClick={async () => {
+                if (sickInFlight) return;
+                const ok = window.confirm(
+                  "Flag yourself as sick? This locks today's plan to REST. (Undo on the Log page.)",
+                );
+                if (!ok) return;
+                setSickInFlight(true);
+                try {
+                  const res = await fetch("/api/chat/morning/intake", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ kind: "declare_sick" }),
+                  });
+                  if (res.ok) {
+                    const refresh = await fetch(`/api/chat/messages?limit=50&kind=${currentMode}`);
+                    const json = (await refresh.json()) as { ok: boolean; messages?: ChatMessage[] };
+                    if (json.ok && json.messages) {
+                      dispatch({
+              type: "loaded",
+              messages: scopeForMode(json.messages.slice().reverse(), currentMode, today),
+            });
+                    }
+                    queryClient.invalidateQueries({ queryKey: queryKeys.checkin.one(userId, today) });
+                  } else {
+                    // Surface the error inline so the user has feedback.
+                    const errorId = `err-${crypto.randomUUID()}`;
+                    dispatch({ type: "append_assistant_stub", id: errorId });
+                    dispatch({
+                      type: "finalize_assistant",
+                      id: errorId,
+                      status: "error",
+                      error: `Couldn't flag sickness: HTTP ${res.status}`,
+                    });
+                  }
+                } catch (e) {
+                  const errorId = `err-${crypto.randomUUID()}`;
+                  dispatch({ type: "append_assistant_stub", id: errorId });
+                  dispatch({
+                    type: "finalize_assistant",
+                    id: errorId,
+                    status: "error",
+                    error: `Couldn't flag sickness: ${String(e)}`,
+                  });
+                } finally {
+                  setSickInFlight(false);
+                }
+              }}
+              style={{
+                background: "none",
+                border: "none",
+                color: COLOR.textFaint,
+                fontSize: "11px",
+                textDecoration: "underline",
+                cursor: sickInFlight ? "default" : "pointer",
+                opacity: sickInFlight ? 0.5 : 1,
+              }}
+            >
+              I&apos;m coming down with something
+            </button>
+          </div>
+        )}
       </div>
     );
   }

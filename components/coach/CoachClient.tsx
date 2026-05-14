@@ -146,9 +146,6 @@ export function CoachClient({
         />
       </div>
 
-      {/* todayDate kept in DOM for downstream sub-components to pick up via
-          props later; render-free for now to avoid layout shift. */}
-      <span data-today={todayDate} style={{ display: "none" }} />
     </div>
   );
 }

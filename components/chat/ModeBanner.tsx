@@ -16,7 +16,7 @@ export function ModeBanner({
 }: {
   mode: ChatMode;
   context?: string;
-  onExit: () => void;
+  onExit?: () => void;
 }) {
   if (mode === "default") return null;
   const label = MODE_LABEL[mode];
@@ -66,7 +66,7 @@ export function ModeBanner({
         <span style={{ flex: 1 }} />
       )}
       <button
-        onClick={onExit}
+        onClick={() => onExit?.()}
         style={{
           background: "transparent",
           border: "none",
