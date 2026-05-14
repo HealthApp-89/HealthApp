@@ -27,6 +27,18 @@ export function ChatThread({
   const [isLoadingOlder, setIsLoadingOlder] = useState(false);
   const previousScrollHeightRef = useRef<number | null>(null);
 
+  // Hide chat-stream errors older than 30 min from display. They have no
+  // user-actionable value (the retry would target a stale assistant row;
+  // environment issues like ANTHROPIC_API_KEY-not-set are config bugs, not
+  // chat content). Fresh errors still surface so the retry chip is usable.
+  // The rows stay in the DB; this is a render-only filter.
+  const ERROR_HIDE_AFTER_MS = 30 * 60 * 1000;
+  const filteredMessages = messages.filter((m) => {
+    if (m.status !== "error") return true;
+    const ageMs = Date.now() - new Date(m.created_at).getTime();
+    return ageMs < ERROR_HIDE_AFTER_MS;
+  });
+
   // Auto-scroll to bottom on first render and when a new message appears at
   // the bottom (i.e. user just sent or assistant just streamed).
   //
@@ -66,6 +78,32 @@ export function ChatThread({
     };
   }, [messages]);
 
+  // Re-pin to bottom whenever the scroll content grows AFTER initial mount
+  // (PlanProposalCard expandable details, MorningBriefCard inner blocks,
+  // images loading, etc. all grow async). Only re-pins if the user was near
+  // the bottom; respects manual scroll-away.
+  useEffect(() => {
+    const sc = scrollRef.current;
+    if (!sc) return;
+    let lastHeight = sc.scrollHeight;
+    const obs = new ResizeObserver(() => {
+      const newHeight = sc.scrollHeight;
+      // "Was near bottom BEFORE this resize" uses lastHeight (pre-resize)
+      // because scrollTop hasn't been auto-adjusted yet.
+      const wasNearBottomBefore =
+        lastHeight - sc.clientHeight - sc.scrollTop < 200;
+      if (newHeight > lastHeight && wasNearBottomBefore) {
+        sc.scrollTop = newHeight;
+      }
+      lastHeight = newHeight;
+    });
+    // Observe the inner content (the children of scrollRef), not scrollRef
+    // itself — we want to know when the content grows, not when the viewport
+    // resizes.
+    Array.from(sc.children).forEach((child) => obs.observe(child));
+    return () => obs.disconnect();
+  }, []);
+
   // Restore scroll position after older messages prepend.
   useLayoutEffect(() => {
     const sc = scrollRef.current;
@@ -102,11 +140,12 @@ export function ChatThread({
     return () => obs.disconnect();
   }, [messages, onLoadOlder, isLoadingOlder]);
 
-  // Day dividers.
+  // Day dividers. Built from filteredMessages so hidden stale errors don't
+  // produce orphan day dividers either.
   type Item = { kind: "msg"; m: ChatMessage } | { kind: "day"; label: string };
   const items: Item[] = [];
   let lastDay = "";
-  for (const m of messages) {
+  for (const m of filteredMessages) {
     const day = new Date(m.created_at).toLocaleDateString(undefined, {
       weekday: "short",
       month: "short",
