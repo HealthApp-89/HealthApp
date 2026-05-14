@@ -12,6 +12,7 @@ import { useAthleteProfile } from "@/lib/query/hooks/useAthleteProfile";
 import { useAthleteProfileHistory } from "@/lib/query/hooks/useAthleteProfileHistory";
 import { useAthleteProfileDraft } from "@/lib/query/hooks/useAthleteProfileDraft";
 import { startPlanIntake } from "@/app/onboarding/start-plan-intake";
+import { discardPlanIntakeDraft } from "@/app/onboarding/discard-plan-intake-draft";
 import { GLP1_MED_REGEX } from "@/lib/morning/brief/flags";
 
 export function AthleteProfilePanel({ userId }: { userId: string }) {
@@ -162,6 +163,7 @@ function summarizeGoal(d: AthleteProfileDocument): string {
 function GeneratePlanCta() {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const [discarding, setDiscarding] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   function handleClick() {
@@ -176,6 +178,25 @@ function GeneratePlanCta() {
     });
   }
 
+  async function handleDiscard() {
+    setError(null);
+    setDiscarding(true);
+    try {
+      const result = await discardPlanIntakeDraft();
+      if (result.ok && result.discarded > 0) {
+        router.refresh();
+      } else if (result.ok && result.discarded === 0) {
+        alert("No intake draft to discard.");
+      } else if (!result.ok) {
+        setError(`Discard failed: ${result.error}`);
+      }
+    } finally {
+      setDiscarding(false);
+    }
+  }
+
+  const busy = pending || discarding;
+
   return (
     <Card variant="compact" style={{ borderColor: COLOR.accent, background: COLOR.accentSoft }}>
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -186,28 +207,45 @@ function GeneratePlanCta() {
           A short chat turns the intake into prescribed sleep, nutrition, and
           strength targets the coach references on every reply.
         </div>
-        <button
-          type="button"
-          onClick={handleClick}
-          disabled={pending}
-          style={{
-            marginTop: 4,
-            padding: "8px 14px",
-            background: COLOR.accent,
-            color: "#fff",
-            border: "none",
-            borderRadius: 999,
-            fontSize: 12,
-            fontWeight: 700,
-            cursor: pending ? "wait" : "pointer",
-            alignSelf: "flex-start",
-          }}
-        >
-          {pending ? "Starting…" : "Generate plan →"}
-        </button>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 4, flexWrap: "wrap" }}>
+          <button
+            type="button"
+            onClick={handleClick}
+            disabled={busy}
+            style={{
+              padding: "8px 14px",
+              background: COLOR.accent,
+              color: "#fff",
+              border: "none",
+              borderRadius: 999,
+              fontSize: 12,
+              fontWeight: 700,
+              cursor: busy ? "wait" : "pointer",
+            }}
+          >
+            {pending ? "Starting…" : "Generate plan →"}
+          </button>
+          <button
+            type="button"
+            onClick={handleDiscard}
+            disabled={busy}
+            style={{
+              padding: "8px 12px",
+              background: "transparent",
+              color: COLOR.textMid,
+              border: `1px solid ${COLOR.divider}`,
+              borderRadius: 999,
+              fontSize: 11,
+              fontWeight: 500,
+              cursor: busy ? "wait" : "pointer",
+            }}
+          >
+            {discarding ? "Discarding…" : "Discard draft"}
+          </button>
+        </div>
         {error && (
           <div style={{ fontSize: 11, color: "#dc2626" }}>
-            Could not start plan intake: {error}
+            {error}
           </div>
         )}
       </div>
