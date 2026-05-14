@@ -26,13 +26,15 @@ import { useTrainingWeek } from "@/lib/query/hooks/useTrainingWeek";
 import { weekdayInUserTz } from "@/lib/time";
 import { queryKeys } from "@/lib/query/keys";
 import { readSessionForDay } from "@/lib/coach/session-plan-reader";
+import { ByMuscleView } from "@/components/strength/by-muscle/ByMuscleView";
 import type { DailyLog, Weekday } from "@/lib/data/types";
 
-type View = "today" | "recent" | "date";
+type View = "today" | "recent" | "date" | "by_muscle";
 
 function subtitleByView(v: View): string {
   if (v === "today") return "Today's plan";
   if (v === "date") return "Pick a date";
+  if (v === "by_muscle") return "Per-muscle volume";
   return "Last 30 days";
 }
 
@@ -170,6 +172,8 @@ export function StrengthClient({
             rirTarget={committedRirTarget}
             researchPhase={committedPhase}
           />
+        ) : activeView === "by_muscle" ? (
+          <ByMuscleView userId={userId} todayIso={todayIso} />
         ) : !workouts.length ? (
           <Card>
             <div className="text-center py-12">
