@@ -29,15 +29,41 @@ export function ChatThread({
 
   // Auto-scroll to bottom on first render and when a new message appears at
   // the bottom (i.e. user just sent or assistant just streamed).
+  //
+  // useLayoutEffect (synchronous post-DOM-mutation) instead of useEffect so
+  // sc.scrollHeight is measured after the DOM is updated but before paint.
+  // Then two RAF re-attempts cover rich children (PlanProposalCard,
+  // MorningBriefCard) that may finish laying out after the effect runs.
+  // isAtBottom() guard prevents yanking a user who manually scrolled away.
   const lastIdRef = useRef<string | null>(null);
-  useEffect(() => {
+  useLayoutEffect(() => {
     const sc = scrollRef.current;
     if (!sc) return;
     const last = messages[messages.length - 1];
     if (!last) return;
     if (lastIdRef.current === last.id) return;
     lastIdRef.current = last.id;
+
+    // Synchronous scroll-to-bottom on the current layout.
     sc.scrollTop = sc.scrollHeight;
+
+    // Re-attempt on the next animation frame in case children finish laying
+    // out after this effect runs. Two frames cover most async-content cases.
+    // Bail if the user has scrolled away from the bottom in the meantime.
+    const isAtBottom = () => sc.scrollHeight - sc.clientHeight - sc.scrollTop < 100;
+    let frame1: ReturnType<typeof requestAnimationFrame> | null = null;
+    let frame2: ReturnType<typeof requestAnimationFrame> | null = null;
+    frame1 = requestAnimationFrame(() => {
+      if (isAtBottom()) sc.scrollTop = sc.scrollHeight;
+      frame2 = requestAnimationFrame(() => {
+        if (isAtBottom()) sc.scrollTop = sc.scrollHeight;
+      });
+    });
+
+    return () => {
+      if (frame1 !== null) cancelAnimationFrame(frame1);
+      if (frame2 !== null) cancelAnimationFrame(frame2);
+    };
   }, [messages]);
 
   // Restore scroll position after older messages prepend.
