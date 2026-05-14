@@ -2,10 +2,13 @@
 
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { Card, SectionLabel } from "@/components/ui/Card";
 import { COLOR, RADIUS } from "@/lib/ui/theme";
+import { queryKeys } from "@/lib/query/keys";
 
 type Props = {
+  userId: string;
   tokenPrefix: string | null;
   createdAt: string | null;
   lastUsedAt: string | null;
@@ -14,6 +17,7 @@ type Props = {
 };
 
 export function IngestPanel({
+  userId,
   tokenPrefix,
   createdAt,
   lastUsedAt,
@@ -26,6 +30,7 @@ export function IngestPanel({
   const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
+  const queryClient = useQueryClient();
 
   function rotate() {
     setError(null);
@@ -54,6 +59,10 @@ export function IngestPanel({
       const j = await res.json();
       if (!j.ok) setStrongResult(`✗ ${j.error ?? j.reason ?? "failed"}`);
       else setStrongResult(`✓ ${j.workouts} workouts · ${j.sets} sets`);
+      if (j.ok) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.muscleVolume.all(userId) });
+        queryClient.invalidateQueries({ queryKey: queryKeys.workouts.all(userId) });
+      }
       router.refresh();
     });
   }
