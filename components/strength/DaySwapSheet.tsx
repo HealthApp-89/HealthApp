@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { COLOR } from "@/lib/ui/theme";
+import { BottomSheet } from "@/components/ui/BottomSheet";
 import { readSessionForDay } from "@/lib/coach/session-plan-reader";
 import { SESSION_PLANS } from "@/lib/coach/sessionPlans";
 import {
@@ -109,36 +110,15 @@ export function DaySwapSheet({
     );
   }
 
+  // Note: BottomSheet's `title` prop is intentionally not passed — each step
+  // renders its own dynamic header via SheetHeader (e.g. "Monday · Push",
+  // "Monday · Push → which day?", "Confirm", "⚠ Heads up"). The static
+  // `title` slot can't represent that per-step variation. The sheet uses
+  // BottomSheet's no-title branch, which positions an absolute X button at
+  // top-right; SheetHeader's own padding accounts for it.
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="swap-sheet-title"
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.5)",
-        zIndex: 50,
-        display: "flex",
-        alignItems: "flex-end",
-        justifyContent: "center",
-      }}
-      onClick={onClose}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          width: "100%",
-          maxWidth: "480px",
-          background: COLOR.surface,
-          borderTopLeftRadius: "16px",
-          borderTopRightRadius: "16px",
-          padding: "20px 16px 32px",
-          color: COLOR.textStrong,
-          maxHeight: "80vh",
-          overflowY: "auto",
-        }}
-      >
+    <BottomSheet open onClose={onClose}>
+      <div style={{ paddingTop: 4, paddingRight: 24 }}>
         {step.kind === "action" && (
           <ActionStep
             sourceDay={sourceDay}
@@ -223,7 +203,7 @@ export function DaySwapSheet({
           />
         )}
       </div>
-    </div>
+    </BottomSheet>
   );
 }
 
