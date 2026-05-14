@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { COLOR, RADIUS, SHADOW } from "@/lib/ui/theme";
+import { BottomSheet } from "@/components/ui/BottomSheet";
 import { MorningTrigger } from "@/components/morning/MorningTrigger";
 import type { ChatMode } from "@/lib/data/types";
 
@@ -157,33 +158,8 @@ function FabSheet({
   }
 
   return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 50,
-      }}
-    >
-      <div
-        onClick={onClose}
-        style={{
-          position: "absolute",
-          inset: 0,
-          background: "rgba(15,20,48,0.4)",
-        }}
-      />
-      <div
-        style={{
-          position: "absolute",
-          left: "8px",
-          right: "8px",
-          bottom: "calc(env(safe-area-inset-bottom) + 8px)",
-          background: COLOR.surface,
-          borderRadius: "22px",
-          padding: "10px",
-          boxShadow: SHADOW.floating,
-        }}
-      >
+    <BottomSheet open onClose={onClose} title="Quick actions">
+      <div style={{ display: "flex", flexDirection: "column", gap: "4px", paddingTop: "4px" }}>
         {ITEMS.map((item) => {
           const inner = (
             <div
@@ -263,6 +239,6 @@ function FabSheet({
           );
         })}
       </div>
-    </div>
+    </BottomSheet>
   );
 }
