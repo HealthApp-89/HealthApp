@@ -26,8 +26,10 @@ export const COLOR = {
   successSoft: "#d1fae5",
   warning:     "#f59e0b",
   warningSoft: "#fef3c7",
+  warningDeep: "#92400e",  // amber-800 — text on warningSoft backgrounds
   danger:      "#ef4444",
   dangerSoft:  "#fee2e2",
+  dangerDeep:  "#991b1b",  // red-800 — text on dangerSoft backgrounds
 
   divider:    "#e8eaf3",
 } as const;

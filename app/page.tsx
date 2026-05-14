@@ -10,6 +10,7 @@ import { fetchCheckinServer } from "@/lib/query/fetchers/checkin";
 import { fetchLatestWeightServer } from "@/lib/query/fetchers/latestWeight";
 import { fetchLast7Server } from "@/lib/query/fetchers/last7";
 import { fetchWorkoutsRangeServer } from "@/lib/query/fetchers/workouts";
+import { fetchIntakeStateServer } from "@/lib/query/fetchers/intakeState";
 import { TodayClient } from "@/components/dashboard/TodayClient";
 import { WeeklyRollups } from "@/components/dashboard/WeeklyRollups";
 import { BodyTile } from "@/components/dashboard/BodyTile";
@@ -70,6 +71,14 @@ export default async function Home(props: { searchParams: Promise<{ date?: strin
       queryKey: queryKeys.workouts.range(user.id, fourteenBefore, selectedDate),
       queryFn: () => fetchWorkoutsRangeServer(supabase, user.id, fourteenBefore, selectedDate, 5),
     }),
+    ...(isToday
+      ? [
+          queryClient.prefetchQuery({
+            queryKey: queryKeys.intakeState.one(user.id, selectedDate),
+            queryFn: () => fetchIntakeStateServer(supabase, user.id, selectedDate),
+          }),
+        ]
+      : []),
   ]);
 
   // Pull prefetched profile + selected day's log out of the QueryClient so we

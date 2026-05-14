@@ -1,70 +1,134 @@
 "use client";
+
 import { useMemo } from "react";
-import { COLOR } from "@/lib/ui/theme";
 import { Card } from "@/components/ui/Card";
+import { COLOR, GRADIENT } from "@/lib/ui/theme";
 import { useLabAcknowledgments, useAckLabItem } from "@/lib/query/hooks/useLabAcknowledgments";
 
 type LabItem = {
   key: string;
   label: string;
   detail: string;
-  category: "baseline" | "6mo" | "quarterly" | "yearly";
 };
 
 const ITEMS: LabItem[] = [
-  { key: "b12_baseline", label: "B12", detail: "Baseline + 6mo", category: "baseline" },
-  { key: "vit_d_baseline", label: "Vitamin D", detail: "Baseline + 6mo", category: "baseline" },
-  { key: "magnesium_baseline", label: "Magnesium", detail: "Baseline + 6mo", category: "baseline" },
-  { key: "ferritin_baseline", label: "Ferritin", detail: "Baseline + 6mo", category: "baseline" },
-  { key: "grip_strength_q", label: "Grip strength", detail: "Quarterly — cheap dynamometer, function decline often precedes mass decline", category: "quarterly" },
-  { key: "bone_density_12mo", label: "Bone density (DXA)", detail: "If cut extends >12 months — SELECT trial fracture-risk signal", category: "yearly" },
+  { key: "b12_baseline",       label: "B12",                detail: "Baseline + 6mo" },
+  { key: "vit_d_baseline",     label: "Vitamin D",          detail: "Baseline + 6mo" },
+  { key: "magnesium_baseline", label: "Magnesium",          detail: "Baseline + 6mo" },
+  { key: "ferritin_baseline",  label: "Ferritin",           detail: "Baseline + 6mo" },
+  { key: "grip_strength_q",    label: "Grip strength",      detail: "Quarterly — function decline precedes mass decline" },
+  { key: "bone_density_12mo",  label: "Bone density (DXA)", detail: "If cut extends >12 months" },
 ];
 
 export function LabPromptCard({ userId }: { userId: string }) {
   const { data: acks = {} } = useLabAcknowledgments(userId);
   const ackMut = useAckLabItem(userId);
 
-  const pending = useMemo(
-    () => ITEMS.filter((it) => !acks[it.key]),
+  const pendingCount = useMemo(
+    () => ITEMS.filter((it) => !acks[it.key]).length,
     [acks],
   );
 
-  if (pending.length === 0) return null;
+  if (pendingCount === 0) return null;
 
   return (
-    <Card variant="compact" style={{ borderColor: COLOR.accent }}>
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: COLOR.textStrong }}>
+    <Card style={{ padding: 0, overflow: "hidden" }}>
+      {/* Hero amber band */}
+      <div
+        style={{
+          background: GRADIENT.heroAmber,
+          color: "#fff",
+          padding: "14px 16px",
+        }}
+      >
+        <div
+          style={{
+            fontSize: 11,
+            fontWeight: 700,
+            letterSpacing: "0.06em",
+            textTransform: "uppercase",
+            opacity: 0.9,
+          }}
+        >
+          Lab check-ups
+        </div>
+        <div style={{ fontSize: 15, fontWeight: 700, marginTop: 4 }}>
           Ask your doctor at the next check-up
         </div>
-        <div style={{ fontSize: 11, color: COLOR.textMuted }}>
+        <div style={{ fontSize: 12, opacity: 0.9, marginTop: 6, lineHeight: 1.4 }}>
           Standard GLP-1 monitoring is loose. These checks fill the gap.
         </div>
-        <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 6 }}>
-          {pending.map((it) => (
-            <li key={it.key} style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+      </div>
+
+      {/* Item rows */}
+      <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+        {ITEMS.map((it) => {
+          const ackedOn = acks[it.key];
+          const acked = !!ackedOn;
+          return (
+            <li
+              key={it.key}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                padding: "12px 16px",
+                borderTop: `1px solid ${COLOR.divider}`,
+                opacity: acked ? 0.5 : 1,
+                transition: "opacity 150ms ease-out",
+              }}
+            >
               <button
                 type="button"
-                onClick={() => ackMut.mutate({ key: it.key, ackedOn: new Date().toISOString().slice(0, 10) })}
-                disabled={ackMut.isPending}
-                style={{
-                  background: "transparent",
-                  border: `1px solid ${COLOR.divider}`,
-                  borderRadius: 4,
-                  width: 18, height: 18,
-                  cursor: "pointer",
-                  flexShrink: 0,
+                onClick={() => {
+                  if (acked || ackMut.isPending) return;
+                  ackMut.mutate({ key: it.key, ackedOn: new Date().toISOString().slice(0, 10) });
                 }}
-                aria-label={`Mark ${it.label} as acknowledged`}
-              />
-              <div>
-                <div style={{ fontSize: 12, fontWeight: 600, color: COLOR.textStrong }}>{it.label}</div>
-                <div style={{ fontSize: 11, color: COLOR.textMid }}>{it.detail}</div>
+                disabled={ackMut.isPending}
+                aria-label={acked ? `${it.label} acknowledged` : `Mark ${it.label} as acknowledged`}
+                style={{
+                  width: 22,
+                  height: 22,
+                  borderRadius: "50%",
+                  border: `1.5px solid ${acked ? COLOR.success : COLOR.divider}`,
+                  background: acked ? COLOR.success : "transparent",
+                  color: "#fff",
+                  cursor: acked ? "default" : "pointer",
+                  flexShrink: 0,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 12,
+                  lineHeight: 1,
+                  padding: 0,
+                }}
+              >
+                {acked ? "✓" : ""}
+              </button>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: COLOR.textStrong }}>
+                  {it.label}
+                </div>
+                <div style={{ fontSize: 11, color: COLOR.textMuted, marginTop: 2, lineHeight: 1.4 }}>
+                  {it.detail}
+                </div>
               </div>
+              {acked && ackedOn ? (
+                <div
+                  style={{
+                    fontSize: 10,
+                    color: COLOR.success,
+                    fontWeight: 700,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {ackedOn}
+                </div>
+              ) : null}
             </li>
-          ))}
-        </ul>
-      </div>
+          );
+        })}
+      </ul>
     </Card>
   );
 }

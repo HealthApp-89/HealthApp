@@ -3,13 +3,13 @@
 
 import { Suspense, type ReactNode } from "react";
 import { WeekStrip } from "@/components/layout/WeekStrip";
+import { BriefStateChip } from "@/components/dashboard/BriefStateChip";
 import { ReadinessHero } from "@/components/dashboard/ReadinessHero";
-import { CoachEntryCard } from "@/components/dashboard/CoachEntryCard";
 import { RecentLiftsCard, type RecentSession } from "@/components/dashboard/RecentLiftsCard";
 import { MetricCard } from "@/components/charts/MetricCard";
 import { ImpactDonut } from "@/components/dashboard/ImpactDonut";
 import { InstallHint } from "@/components/layout/InstallHint";
-import { COLOR, METRIC_COLOR, modeColorLight } from "@/lib/ui/theme";
+import { COLOR, METRIC_COLOR } from "@/lib/ui/theme";
 import { calcReadinessScore } from "@/lib/ui/score";
 import { computeImpact } from "@/lib/coach/impact";
 import { buildDailyPlan, getIntensityMode } from "@/lib/coach/readiness";
@@ -210,6 +210,7 @@ export function TodayClient({
       <WeekStrip selected={selectedDate} today={today} />
 
       <div style={{ display: "flex", flexDirection: "column", gap: "10px", padding: "0 8px" }}>
+        {isToday && <BriefStateChip userId={userId} todayIso={today} />}
         <ReadinessHero score={score ?? null} status={mode.label.replace(/^[^\s]+\s/, "")} subtitle={mode.desc} />
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
@@ -227,8 +228,6 @@ export function TodayClient({
         )}
 
         {hasData && impact ? <ImpactDonut segments={impact.segments} score={score} /> : null}
-
-        <CoachEntryCard headline={mode.desc} thumbnailColor={modeColorLight(mode.color)} thumbnailGlyph={"▲"} meta="Coach · 2 min read" />
 
         <RecentLiftsCard sessions={recentSessions} />
 
