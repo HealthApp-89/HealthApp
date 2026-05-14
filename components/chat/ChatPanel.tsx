@@ -775,7 +775,10 @@ export default function ChatPanel({
           </div>
         )}
         {state.loaded && (
-          <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
+          // No overflowY here — ChatThread's inner div owns the scroll
+          // surface (it manages auto-scroll-to-bottom via scrollRef). Nesting
+          // two scroll containers fought each other and broke the auto-scroll.
+          <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
             <ChatThread
               userId={userId}
               messages={state.messages}
