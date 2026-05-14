@@ -10,6 +10,7 @@ import { fetchAllWorkoutsServer } from "@/lib/query/fetchers/loadWorkouts";
 import { fetchStrengthInsightsServer } from "@/lib/query/fetchers/strengthInsights";
 import { fetchTrainingWeekServer } from "@/lib/query/fetchers/trainingWeek";
 import { fetchMuscleVolumeServer } from "@/lib/query/fetchers/muscleVolume";
+import { fetchActiveProfileServer } from "@/lib/query/fetchers/athleteProfile";
 import { StrengthClient } from "@/components/strength/StrengthClient";
 import { todayInUserTz } from "@/lib/time";
 import { currentWeekMonday } from "@/lib/coach/week";
@@ -66,6 +67,10 @@ export default async function StrengthPage(props: {
     queryClient.prefetchQuery({
       queryKey: queryKeys.muscleVolume.snapshot(user.id, todayIso),
       queryFn: () => fetchMuscleVolumeServer(supabase, user.id, todayIso),
+    }),
+    queryClient.prefetchQuery({
+      queryKey: queryKeys.athleteProfile.active(user.id),
+      queryFn: () => fetchActiveProfileServer(supabase, user.id),
     }),
   ]);
 
