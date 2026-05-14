@@ -3,9 +3,8 @@
 import { RangePills } from "@/components/ui/RangePills";
 
 const VIEWS = [
-  { id: "today",     label: "Today",     href: "/coach?view=today"     },
-  { id: "this-week", label: "This week", href: "/coach?view=this-week" },
-  { id: "next-week", label: "Next week", href: "/coach?view=next-week" },
+  { id: "today",  label: "Today",  href: "/coach?view=today"  },
+  { id: "recent", label: "Recent", href: "/coach?view=recent" },
 ] as const;
 
 export type CoachView = (typeof VIEWS)[number]["id"];

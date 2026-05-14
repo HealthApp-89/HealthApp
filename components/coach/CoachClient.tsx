@@ -161,23 +161,23 @@ export function CoachClient({
             }}
           />
         )}
-        {activeView === "this-week" && (
-          <ThisWeekView
-            userId={userId}
-            weekStart={weekStart}
-            weekEnd={weekEnd}
-            mode={weekMode}
-            daysRemaining={daysRemaining}
-            onRefreshSuccess={() => {
-              queryClient.invalidateQueries({
-                queryKey: queryKeys.insights.weeklyReview(userId, weekEnd),
-              });
-              router.refresh();
-            }}
-          />
-        )}
-        {activeView === "next-week" && (
-          <NextWeekView userId={userId} targetWeek={recsTargetWeek} />
+        {activeView === "recent" && (
+          <>
+            <ThisWeekView
+              userId={userId}
+              weekStart={weekStart}
+              weekEnd={weekEnd}
+              mode={weekMode}
+              daysRemaining={daysRemaining}
+              onRefreshSuccess={() => {
+                queryClient.invalidateQueries({
+                  queryKey: queryKeys.insights.weeklyReview(userId, weekEnd),
+                });
+                router.refresh();
+              }}
+            />
+            <NextWeekView userId={userId} targetWeek={recsTargetWeek} />
+          </>
         )}
       </div>
     </div>

@@ -23,11 +23,9 @@ export default async function CoachPage(props: {
   searchParams: Promise<{ view?: string }>;
 }) {
   const sp = await props.searchParams;
-  const initialView: CoachView = (
-    ["today", "this-week", "next-week"] as const
-  ).includes(sp.view as CoachView)
-    ? (sp.view as CoachView)
-    : "today";
+  const viewParam = sp.view;
+  const initialView: CoachView =
+    viewParam === "today" || viewParam === "recent" ? viewParam : "today";
 
   const supabase = await createSupabaseServerClient();
   const {
