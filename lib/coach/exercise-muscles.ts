@@ -277,3 +277,31 @@ export function aggregateSessionMuscles(
 export function getExerciseMuscles(name: string): MuscleMapping | null {
   return EXERCISE_MUSCLES[normalizeExerciseName(name)] ?? null;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MuscleId → TargetedMuscleGroup collapse map (Phase 2.5 / L39)
+//
+// Maps wger MuscleId values to the 10 RP-literature-aligned target groups.
+// Brachialis collapses to Biceps; Soleus to Calves; FrontDelts, Serratus,
+// Abs, Obliques have no target (tracked for adherence display only).
+// ─────────────────────────────────────────────────────────────────────────────
+
+import type { TargetedMuscleGroup } from "@/lib/data/types";
+
+export const TARGET_GROUP_FOR_MUSCLE: Partial<
+  Record<MuscleId, TargetedMuscleGroup>
+> = {
+  [MUSCLE_ID.Chest]: "Chest",
+  [MUSCLE_ID.Lats]: "Lats",
+  [MUSCLE_ID.Traps]: "Traps",
+  [MUSCLE_ID.RearDelts]: "RearDelts",
+  [MUSCLE_ID.Quads]: "Quads",
+  [MUSCLE_ID.Hams]: "Hams",
+  [MUSCLE_ID.Glutes]: "Glutes",
+  [MUSCLE_ID.Biceps]: "Biceps",
+  [MUSCLE_ID.Brachialis]: "Biceps", // collapses
+  [MUSCLE_ID.Triceps]: "Triceps",
+  [MUSCLE_ID.Calves]: "Calves",
+  [MUSCLE_ID.Soleus]: "Calves", // collapses
+  // FrontDelts, Serratus, Abs, Obliques intentionally absent
+};
