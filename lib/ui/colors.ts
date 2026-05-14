@@ -40,6 +40,19 @@ export type DailyLogKey =
   | "weight_kg"
   | "body_fat_pct";
 
+/**
+ * Per-metric color keys for body_measurements circumference fields used by
+ * /health trend view. Distinct from DailyLogKey because the source table is
+ * different and the cadence is monthly, not daily.
+ */
+export type BodyMeasurementKey =
+  | "waist"
+  | "hip"
+  | "chest"
+  | "arms"
+  | "thighs"
+  | "calves";
+
 export type FieldMeta = {
   k: DailyLogKey;
   l: string;  // label

@@ -2,7 +2,7 @@
 // All colors light-theme calibrated. Kept as plain constants so they can be
 // imported by both server and client components without bundler tax.
 
-import type { DailyLogKey } from "./colors";
+import type { DailyLogKey, BodyMeasurementKey } from "./colors";
 
 export const COLOR = {
   // Surfaces
@@ -71,6 +71,15 @@ export const METRIC_COLOR: Record<DailyLogKey, string> = {
   body_fat_pct:     "#ea580c", // orange-deep
 };
 
+export const MEASUREMENT_COLOR: Record<BodyMeasurementKey, string> = {
+  waist:  "#0ea5e9", // sky
+  hip:    "#8b5cf6", // purple
+  chest:  "#10b981", // emerald
+  arms:   "#f59e0b", // amber
+  thighs: "#ef4444", // rose
+  calves: "#06b6d4", // cyan
+};
+
 /**
  * Map an existing IntensityMode.color (dark-theme calibrated) to its
  * light-theme equivalent. Pure function — keeps lib/coach/readiness.ts
@@ -84,5 +93,51 @@ export function modeColorLight(hex: string): string {
     case "#ff453a": return COLOR.danger;        // 🔴 LIGHT / RECOVERY
     case "#6b7280": return COLOR.textMuted;     // ⚫ REST DAY
     default:        return COLOR.accent;        // unknown — fall back to accent
+  }
+}
+
+// Hero card gradients — used by ReadinessHero, MorningBriefCard hero band,
+// and intensity-mode-mapped session heroes. Defined once, referenced everywhere.
+export const GRADIENT = {
+  heroAccent:      "linear-gradient(140deg, #4f5dff 0%, #6b78ff 100%)",
+  heroAmber:       "linear-gradient(140deg, #b45309 0%, #d97706 100%)",
+  heroSuccess:     "linear-gradient(140deg, #14b870 0%, #34d399 100%)",
+  heroSuccessSoft: "linear-gradient(140deg, #34d399 0%, #6ee7b7 100%)",
+  heroDanger:      "linear-gradient(140deg, #ef4444 0%, #f87171 100%)",
+  heroMuted:       "linear-gradient(140deg, #7a7e95 0%, #9094a8 100%)",
+} as const;
+
+// Chat-surface layout constants
+export const CHAT = {
+  feedMaxWidth:    "640px",   // chat column on desktop
+  turnGap:         "12px",
+  metaRowHeight:   "16px",
+  composerHeight:  "56px",
+  composerPad:     "12px",
+} as const;
+
+// Muscle-map fills (light theme) — replaces dark-theme hex values in
+// MuscleMap/MuscleOverlay/BodyView. Apply via inline style or CSS variable.
+export const MUSCLE_COLOR = {
+  idle:        "#e8eaf3",   // unworked — matches divider, low contrast
+  worked:      "#b45309",   // worked today — METRIC_COLOR.strain (amber)
+  workedSoft:  "#fcd34d",   // worked recently (1–3 days)
+  highlighted: "#4f5dff",   // click-to-select from exercise list — accent
+  soreness:    "#ef4444",   // user-reported soreness area (morning intake) — danger
+} as const;
+
+/**
+ * Map an IntensityMode hex to a hero gradient. Mirrors modeColorLight() —
+ * use this when you need the gradient form (full hero band) instead of the
+ * flat color. Falls back to GRADIENT.heroAccent for unknown inputs.
+ */
+export function modeGradient(hex: string): string {
+  switch (hex) {
+    case "#30d158": return GRADIENT.heroSuccess;
+    case "#86efac": return GRADIENT.heroSuccessSoft;
+    case "#ffd60a": return GRADIENT.heroAmber;
+    case "#ff453a": return GRADIENT.heroDanger;
+    case "#6b7280": return GRADIENT.heroMuted;
+    default:        return GRADIENT.heroAccent;
   }
 }

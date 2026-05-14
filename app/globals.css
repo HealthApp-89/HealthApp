@@ -27,6 +27,21 @@
 
   --color-divider:      #e8eaf3;
 
+  /* Gradients (mirrors lib/ui/theme.ts:GRADIENT) */
+  --gradient-hero-accent:  linear-gradient(140deg, #4f5dff 0%, #6b78ff 100%);
+  --gradient-hero-amber:   linear-gradient(140deg, #b45309 0%, #d97706 100%);
+  --gradient-hero-success: linear-gradient(140deg, #14b870 0%, #34d399 100%);
+  --gradient-hero-success-soft: linear-gradient(140deg, #34d399 0%, #6ee7b7 100%);
+  --gradient-hero-danger:  linear-gradient(140deg, #ef4444 0%, #f87171 100%);
+  --gradient-hero-muted:   linear-gradient(140deg, #7a7e95 0%, #9094a8 100%);
+
+  /* Muscle map (mirrors lib/ui/theme.ts:MUSCLE_COLOR) */
+  --color-muscle-idle:        #e8eaf3;
+  --color-muscle-worked:      #b45309;
+  --color-muscle-worked-soft: #fcd34d;
+  --color-muscle-highlighted: #4f5dff;
+  --color-muscle-soreness:    #ef4444;
+
   /* Radii */
   --radius-chip:       6px;
   --radius-pill:       10px;
