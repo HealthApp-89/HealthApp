@@ -74,6 +74,8 @@ export function LabPromptCard({ userId }: { userId: string }) {
                 gap: 12,
                 padding: "12px 16px",
                 borderTop: `1px solid ${COLOR.divider}`,
+                opacity: acked ? 0.5 : 1,
+                transition: "opacity 150ms ease-out",
               }}
             >
               <button

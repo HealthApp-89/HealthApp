@@ -45,7 +45,7 @@ export function BriefStateChip({
       case "delivered":
         return {
           bg: COLOR.warningSoft,
-          fg: "#92400e",
+          fg: COLOR.warningDeep,
           label: "Continue morning check-in",
           cta: "Resume →",
           href: "/coach",
@@ -53,7 +53,7 @@ export function BriefStateChip({
       case "brief_failed":
         return {
           bg: COLOR.dangerSoft,
-          fg: "#991b1b",
+          fg: COLOR.dangerDeep,
           label: "Brief retry available",
           cta: "Retry →",
           href: "/coach?retry=brief",

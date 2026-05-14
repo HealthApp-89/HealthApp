@@ -39,7 +39,7 @@ export const queryKeys = {
     one: (userId: string, date: string) => ["checkin", userId, date] as const,
   },
   intakeState: {
-    one: (userId: string, day: string) => ["intakeState", userId, day] as const,
+    one: (userId: string, day: string) => ["intake-state", userId, day] as const,
   },
   workouts: {
     all: (userId: string) => ["workouts", userId] as const,
