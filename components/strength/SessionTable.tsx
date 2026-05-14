@@ -81,7 +81,7 @@ export function SessionTable({ session }: Props) {
         secondary={displayedMuscles.secondary}
         highlighted={selectedExerciseName != null}
       />
-      <MuscleLegendPills primary={displayedMuscles.primary} secondary={displayedMuscles.secondary} accent={wc} />
+      <MuscleLegendPills primary={displayedMuscles.primary} secondary={displayedMuscles.secondary} />
 
       {selectedExerciseName && (
         <div

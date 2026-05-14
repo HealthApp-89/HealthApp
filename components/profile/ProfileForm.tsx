@@ -32,7 +32,10 @@ export function ProfileForm({ initial, onSave }: Props) {
       try {
         await saveProfile(formData);
         setFlash("✓ Saved");
-        onSave?.();
+        // Delay dismiss so the success flash actually paints before the
+        // sheet host unmounts the form. Without this, onSave triggers
+        // setEditOpen(false) in the same frame and the user sees nothing.
+        setTimeout(() => onSave?.(), 800);
       } catch (e) {
         setFlash(`✗ ${(e as Error).message}`);
       }
