@@ -38,6 +38,9 @@ export const queryKeys = {
   checkin: {
     one: (userId: string, date: string) => ["checkin", userId, date] as const,
   },
+  intakeState: {
+    one: (userId: string, day: string) => ["intakeState", userId, day] as const,
+  },
   workouts: {
     all: (userId: string) => ["workouts", userId] as const,
     range: (userId: string, from: string, to: string) =>
