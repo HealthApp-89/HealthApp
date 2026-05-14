@@ -13,9 +13,15 @@ type Props = {
     goal: string | null;
     system_prompt: string | null;
   };
+  /**
+   * Optional callback fired after a successful save. Used by the BottomSheet
+   * host on `/profile` to auto-dismiss the sheet once the write lands. Skipped
+   * on error so the user can see the error flash and retry.
+   */
+  onSave?: () => void;
 };
 
-export function ProfileForm({ initial }: Props) {
+export function ProfileForm({ initial, onSave }: Props) {
   const [pending, startTransition] = useTransition();
   const [flash, setFlash] = useState<string | null>(null);
   const promptRef = useRef<HTMLTextAreaElement | null>(null);
@@ -26,6 +32,7 @@ export function ProfileForm({ initial }: Props) {
       try {
         await saveProfile(formData);
         setFlash("✓ Saved");
+        onSave?.();
       } catch (e) {
         setFlash(`✗ ${(e as Error).message}`);
       }
