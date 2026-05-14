@@ -85,4 +85,9 @@ export const queryKeys = {
   coachRecent: {
     list: (userId: string) => ["coach-recent", userId] as const,
   },
+  muscleVolume: {
+    all: (userId: string) => ["muscleVolume", userId] as const,
+    snapshot: (userId: string, today: string) =>
+      ["muscleVolume", userId, "snapshot", today] as const,
+  },
 } as const;
