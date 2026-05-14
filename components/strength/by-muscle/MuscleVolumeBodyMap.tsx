@@ -10,6 +10,7 @@ import type {
   MuscleVolumeSnapshot,
   StrengthMuscleVolume,
 } from "@/lib/data/types";
+import { COLOR } from "@/lib/ui/theme";
 
 type Status =
   | "no_plan"
@@ -20,21 +21,21 @@ type Status =
   | "not_targeted";
 
 const STATUS_FILL: Record<Status, string> = {
-  no_plan: "#3a4356",
-  below_mev: "#5b7185",
-  in_band: "#4ade80",
-  near_mrv: "#fbbf24",
-  over_mrv: "#ef4444",
-  not_targeted: "#3a4356",
+  no_plan: COLOR.textFaint,
+  below_mev: COLOR.warning,
+  in_band: COLOR.success,
+  near_mrv: COLOR.warningDeep,
+  over_mrv: COLOR.danger,
+  not_targeted: COLOR.divider,
 };
 
 const STATUS_OPACITY: Record<Status, number> = {
-  no_plan: 0.35,
-  below_mev: 0.6,
-  in_band: 0.6,
-  near_mrv: 0.7,
-  over_mrv: 0.7,
-  not_targeted: 0.25,
+  no_plan: 0.6,
+  below_mev: 0.8,
+  in_band: 0.7,
+  near_mrv: 0.85,
+  over_mrv: 0.85,
+  not_targeted: 0.5,
 };
 
 export function MuscleVolumeBodyMap({

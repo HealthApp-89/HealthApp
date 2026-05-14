@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useMuscleVolume } from "@/lib/query/hooks/useMuscleVolume";
 import { useAthleteProfile } from "@/lib/query/hooks/useAthleteProfile";
+import { COLOR } from "@/lib/ui/theme";
 import { TARGETED_MUSCLE_GROUPS, type TargetedMuscleGroup } from "@/lib/data/types";
 import type { MuscleVolumeSnapshot, StrengthMuscleVolume } from "@/lib/data/types";
 import { MuscleVolumeBodyMap } from "./MuscleVolumeBodyMap";
@@ -58,22 +60,22 @@ export function ByMuscleView({
           role="status"
           style={{
             padding: 12,
-            background: "var(--mc-surface, #1f2937)",
-            border: "1px solid var(--mc-border, #374151)",
+            background: COLOR.warningSoft,
+            border: `1px solid ${COLOR.warning}`,
             borderRadius: 8,
             marginBottom: 12,
-            color: "var(--mc-text, #e5e7eb)",
+            color: COLOR.warningDeep,
           }}
         >
           Volume targets not yet prescribed. Per-muscle bands need an active
           plan with muscle_volume.{" "}
-          <a href="/onboarding" style={{ color: "var(--mc-link, #60a5fa)" }}>
+          <Link href="/onboarding" style={{ color: COLOR.accent }}>
             Generate plan
-          </a>{" "}
+          </Link>{" "}
           or{" "}
-          <a href="/profile" style={{ color: "var(--mc-link, #60a5fa)" }}>
+          <Link href="/profile" style={{ color: COLOR.accent }}>
             regenerate existing plan
-          </a>
+          </Link>
           .
         </div>
       )}
@@ -149,9 +151,9 @@ function ModeButton({
       aria-pressed={active}
       style={{
         padding: "6px 12px",
-        background: active ? "var(--mc-tab-active, #374151)" : "transparent",
-        color: "var(--mc-text, #e5e7eb)",
-        border: "1px solid var(--mc-border, #374151)",
+        background: active ? COLOR.accentSoft : COLOR.surface,
+        color: active ? COLOR.accentDeep : COLOR.textMid,
+        border: `1px solid ${COLOR.divider}`,
         borderRadius: 6,
         cursor: "pointer",
       }}

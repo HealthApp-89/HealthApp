@@ -1,6 +1,7 @@
 "use client";
 
 import type { MuscleVolumeSnapshot, TargetedMuscleGroup } from "@/lib/data/types";
+import { COLOR } from "@/lib/ui/theme";
 
 export function MuscleContributorDrawer({
   group,
@@ -23,6 +24,7 @@ export function MuscleContributorDrawer({
   return (
     <div
       role="dialog"
+      aria-modal="true"
       aria-label={`${group} volume contributors`}
       onClick={onClose}
       style={{
@@ -40,11 +42,11 @@ export function MuscleContributorDrawer({
           width: "100%",
           maxHeight: "70vh",
           overflowY: "auto",
-          background: "var(--mc-surface, #1f2937)",
+          background: COLOR.surface,
           borderTopLeftRadius: 16,
           borderTopRightRadius: 16,
           padding: 24,
-          color: "var(--mc-text, #e5e7eb)",
+          color: COLOR.textStrong,
         }}
       >
         <div className="flex justify-between mb-4">

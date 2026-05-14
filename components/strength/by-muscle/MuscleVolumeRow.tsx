@@ -7,6 +7,7 @@ import type {
   TargetedMuscleGroup,
   VolumeRampRecipe,
 } from "@/lib/data/types";
+import { COLOR } from "@/lib/ui/theme";
 
 export function MuscleVolumeRow({
   group,
@@ -60,9 +61,9 @@ export function MuscleVolumeRow({
       onClick={onSelect}
       className="w-full text-left p-3 rounded-lg cursor-pointer"
       style={{
-        background: "var(--mc-surface, #1f2937)",
-        border: "1px solid var(--mc-border, #374151)",
-        color: "var(--mc-text, #e5e7eb)",
+        background: COLOR.surface,
+        border: `1px solid ${COLOR.divider}`,
+        color: COLOR.textStrong,
       }}
     >
       <div className="flex justify-between items-center mb-2">
@@ -109,7 +110,7 @@ function Track({
       style={{
         position: "relative",
         height: 18,
-        background: "var(--mc-track-bg, #111827)",
+        background: COLOR.surfaceAlt,
         borderRadius: 4,
       }}
     >
@@ -122,14 +123,14 @@ function Track({
               width: `calc(${pct(band.mav[1])} - ${pct(band.mav[0])})`,
               top: 0,
               bottom: 0,
-              background: "#4ade80",
-              opacity: 0.2,
+              background: COLOR.successSoft,
+              opacity: 1,
             }}
           />
-          <Marker left={pct(band.mev)} color="#5b7185" label={`MEV ${band.mev}`} />
-          <Marker left={pct(band.mav[0])} color="#4ade80" label={`MAV lower ${band.mav[0]}`} />
-          <Marker left={pct(band.mav[1])} color="#4ade80" label={`MAV upper ${band.mav[1]}`} />
-          <Marker left={pct(band.mrv)} color="#ef4444" label={`MRV ${band.mrv}`} />
+          <Marker left={pct(band.mev)} color={COLOR.textMuted} label={`MEV ${band.mev}`} />
+          <Marker left={pct(band.mav[0])} color={COLOR.success} label={`MAV lower ${band.mav[0]}`} />
+          <Marker left={pct(band.mav[1])} color={COLOR.success} label={`MAV upper ${band.mav[1]}`} />
+          <Marker left={pct(band.mrv)} color={COLOR.danger} label={`MRV ${band.mrv}`} />
         </>
       )}
       <div
@@ -140,7 +141,7 @@ function Track({
           width: 12,
           height: 12,
           borderRadius: "50%",
-          background: "var(--mc-text, #e5e7eb)",
+          background: COLOR.textStrong,
         }}
         aria-label={`Actual ${actual}`}
       />
@@ -180,7 +181,7 @@ function Sparkline({ values, max }: { values: number[]; max: number }) {
       <polyline
         points={pts.join(" ")}
         fill="none"
-        stroke="var(--mc-text-muted, #9ca3af)"
+        stroke={COLOR.textMuted}
         strokeWidth={1.5}
       />
     </svg>
