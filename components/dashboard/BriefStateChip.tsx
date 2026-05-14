@@ -11,9 +11,10 @@ import { useIntakeState } from "@/lib/query/hooks/useIntakeState";
  * State mapping (IntakeState union → pill variant):
  *   brief_delivered                                                       → accentSoft "Today's brief is ready"  → /coach
  *   pending | awaiting_feel | awaiting_sickness_notes |                  →
- *     awaiting_whoop | delivered                                          → warningSoft "Continue check-in"      → /coach
+ *     awaiting_whoop                                                      → warningSoft "Continue check-in"      → /coach
  *   brief_failed                                                          → dangerSoft "Brief retry available"   → /coach?retry=brief
- *   assembling_brief                                                      → hidden (transient)
+ *   assembling_brief | delivered                                          → hidden (transient — intake complete,
+ *                                                                            brief assembling async; no CTA target)
  *   null (no row yet)                                                     → hidden
  */
 export function BriefStateChip({
@@ -26,7 +27,11 @@ export function BriefStateChip({
   const { data: state } = useIntakeState(userId, todayIso);
 
   if (!state) return null;
-  if (state === "assembling_brief") return null;
+  // Both "assembling_brief" and "delivered" mean the intake questionnaire is
+  // finished and the brief is being assembled. Routing the user to /coach
+  // with a "Resume morning check-in" CTA in these states is a dead-end —
+  // there are no more questions to answer and the brief isn't ready yet.
+  if (state === "assembling_brief" || state === "delivered") return null;
 
   const config = (() => {
     switch (state) {
@@ -42,7 +47,6 @@ export function BriefStateChip({
       case "awaiting_feel":
       case "awaiting_sickness_notes":
       case "awaiting_whoop":
-      case "delivered":
         return {
           bg: COLOR.warningSoft,
           fg: COLOR.warningDeep,
