@@ -20,6 +20,7 @@ import type {
   TrainingBlock,
   SanityFinding,
 } from "@/lib/data/types";
+import type { Workout } from "@/lib/coach/muscle-volume";
 import { runSanityChecks } from "@/lib/coach/plan-builder/sanity-check";
 import { composeSnapshot } from "@/lib/coach/plan-builder/compose-snapshot";
 import { composeGoal } from "@/lib/coach/plan-builder/compose-goal";
@@ -48,7 +49,7 @@ export async function buildPlanPayload(
   const today = todayInUserTz();
 
   // Parallel fetches
-  const [profileRes, recentLogsRes, recentE1RMs, activeBlockRes] = await Promise.all([
+  const [profileRes, recentLogsRes, recentWorkoutData, activeBlockRes] = await Promise.all([
     supabase
       .from("profiles")
       .select("name, age, height_cm")
@@ -60,7 +61,7 @@ export async function buildPlanPayload(
       .eq("user_id", userId)
       .order("date", { ascending: false })
       .limit(30),
-    fetchRecentE1RMs(supabase, userId),
+    fetchRecentWorkoutData(supabase, userId),
     supabase
       .from("training_blocks")
       .select("primary_lift")
@@ -72,6 +73,8 @@ export async function buildPlanPayload(
   if (profileRes.error) throw profileRes.error;
   if (recentLogsRes.error) throw recentLogsRes.error;
   if (activeBlockRes.error) throw activeBlockRes.error;
+  // recentWorkoutData: fetchRecentWorkoutData throws internally on Supabase error;
+  // its rejection bubbles up via Promise.all, no extra check needed.
 
   const profile = profileRes.data as Pick<Profile, "name" | "age" | "height_cm"> | null;
   const recentLogs = recentLogsRes.data ?? [];
@@ -106,7 +109,12 @@ export async function buildPlanPayload(
   const athlete_snapshot = composeSnapshot(intake, profile);
   const goal = composeGoal(intake);
   const periodization = composePeriodization(intake);
-  const strength = composeStrengthTemplate(intake, activeBlock, recentE1RMs);
+  const strength = composeStrengthTemplate(
+    intake,
+    activeBlock,
+    recentWorkoutData.e1rms,
+    recentWorkoutData.workouts,
+  );
   // TODO Task 4: thread acknowledged_on from caller (commit_plan tool has the
   // active profile version's acknowledged_on; resolveMode handles null gracefully).
   const nutrition = composeNutrition({
@@ -140,23 +148,37 @@ export async function buildPlanPayload(
   return { plan_payload, sanity_findings: sanityFindings };
 }
 
-/** Pull top working-set e1RM per primary lift over last 8 weeks. Reuses the
- *  pattern from lib/query/fetchers/recentE1RMs.ts. */
-async function fetchRecentE1RMs(
+async function fetchRecentWorkoutData(
   supabase: SupabaseClient,
   userId: string,
-): Promise<RecentE1RMsForStrength> {
+): Promise<{ e1rms: RecentE1RMsForStrength; workouts: Workout[] }> {
   const eightWeeksAgo = new Date();
   eightWeeksAgo.setUTCDate(eightWeeksAgo.getUTCDate() - 56);
   const since = eightWeeksAgo.toISOString().slice(0, 10);
 
   const { data, error } = await supabase
     .from("workouts")
-    .select("id, exercises (name, sets:exercise_sets (kg, reps, warmup))")
+    .select(
+      "date, exercises (name, sets:exercise_sets (kg, reps, warmup))",
+    )
     .eq("user_id", userId)
     .gte("date", since);
   if (error) throw error;
 
+  // Shape for muscle-volume composer
+  const workouts: Workout[] = (data ?? []).map((w: any) => ({
+    date: w.date,
+    exercises: (w.exercises ?? []).map((e: any) => ({
+      name: e.name,
+      sets: (e.sets ?? []).map((s: any) => ({
+        kg: s.kg,
+        reps: s.reps,
+        warmup: s.warmup,
+      })),
+    })),
+  }));
+
+  // Existing e1RM extraction (preserve verbatim from the prior function)
   const regex: Record<keyof RecentE1RMsForStrength, RegExp> = {
     squat: /\b(back\s+squat|squat)\b/i,
     bench: /\b(bench\s+press|bench)\b/i,
@@ -164,22 +186,28 @@ async function fetchRecentE1RMs(
     ohp: /\b(overhead\s+press|ohp|military\s+press|strict\s+press)\b/i,
   };
 
-  const out: RecentE1RMsForStrength = { squat: null, bench: null, deadlift: null, ohp: null };
+  const e1rms: RecentE1RMsForStrength = {
+    squat: null,
+    bench: null,
+    deadlift: null,
+    ohp: null,
+  };
 
-  for (const w of data ?? []) {
-    for (const e of (w as any).exercises ?? []) {
-      const lift = (Object.entries(regex) as Array<[keyof RecentE1RMsForStrength, RegExp]>)
-        .find(([_, re]) => re.test(e.name))?.[0];
+  for (const w of workouts) {
+    for (const e of w.exercises) {
+      const lift = (
+        Object.entries(regex) as Array<[keyof RecentE1RMsForStrength, RegExp]>
+      ).find(([, re]) => re.test(e.name))?.[0];
       if (!lift) continue;
-      for (const s of e.sets ?? []) {
+      for (const s of e.sets) {
         if (s.warmup) continue;
         if (s.kg === null || s.reps === null) continue;
         if (s.reps > 12) continue;
         const e1rm = Math.round(s.kg * (1 + s.reps / 30));
-        if (out[lift] === null || e1rm > out[lift]!) out[lift] = e1rm;
+        if (e1rms[lift] === null || e1rm > e1rms[lift]!) e1rms[lift] = e1rm;
       }
     }
   }
 
-  return out;
+  return { e1rms, workouts };
 }

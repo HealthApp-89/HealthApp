@@ -528,6 +528,7 @@ export type PlanPayload = {
     };
     progression_rule: string;
     notes: string | null;
+    muscle_volume?: StrengthMuscleVolume | null;
   };
 
   nutrition: {
@@ -804,3 +805,96 @@ export type Glp1Status = NonNullable<IntakePayload["health"]["glp1_status"]>;
 export type PhaseStep = NonNullable<PlanPayload["nutrition"]["classical_phases"]>[number];
 export type RestDayDelta = NonNullable<PlanPayload["nutrition"]["rest_day_delta"]>;
 export type ResolvedNutritionMode = "glp1_active" | "glp1_tapering" | "classical" | "steady_state";
+
+// ── Per-muscle volume targets (Phase 2.5 / L39) ─────────────────────────────
+
+export type TargetedMuscleGroup =
+  | "Chest" | "Lats" | "Traps" | "RearDelts"
+  | "Quads" | "Hams" | "Glutes"
+  | "Biceps" | "Triceps" | "Calves";
+
+export const TARGETED_MUSCLE_GROUPS: readonly TargetedMuscleGroup[] = [
+  "Chest", "Lats", "Traps", "RearDelts",
+  "Quads", "Hams", "Glutes",
+  "Biceps", "Triceps", "Calves",
+] as const;
+
+export type MuscleVolumeBand = {
+  /** Sets/wk floor for measurable growth. */
+  mev: number;
+  /** Sets/wk optimal range. */
+  mav: [number, number];
+  /** Sets/wk ceiling before fatigue eats progress. */
+  mrv: number;
+  /** Rolling 8-week average sets/wk for this muscle, frozen at compose time. */
+  history_8wk_avg: number;
+  source:
+    | "literature_default"
+    | "literature_adjusted_up"
+    | "literature_with_ramp_floor";
+  rationale: string;
+};
+
+export type VolumeRampRecipe = {
+  /** Week 1 multiplier vs MEV. */
+  start_pct: number;
+  /** Peak (week 4) multiplier vs MEV. */
+  peak_pct: number;
+  /** Deload week multiplier vs MEV. */
+  deload_pct: number;
+};
+
+export type VolumeCountingRules = {
+  /** Secondary muscles count as 0.5 set per the exercise-muscles mapping. */
+  secondary_set_factor: 0.5;
+  warmup_excluded: true;
+  /** History window used at compose time. */
+  window_weeks: 8;
+};
+
+export type StrengthMuscleVolume = {
+  counting_rules: VolumeCountingRules;
+  ramp_recipe: VolumeRampRecipe;
+  bands: Record<TargetedMuscleGroup, MuscleVolumeBand>;
+  /** Strong exercise names not in EXERCISE_MUSCLES — visibility for taxonomy maintenance. */
+  unmapped_exercises: string[];
+};
+
+// ── Daily-compute snapshot (read-time, not stored in plan_payload) ──────────
+
+export type MuscleVolumeSnapshot = {
+  computed_at: string; // ISO timestamp
+  rolling_avg_8wk: Record<TargetedMuscleGroup, number>;
+  current_week_to_date: Record<TargetedMuscleGroup, number>;
+  weekly_history: Array<{
+    week_start: string; // ISO YYYY-MM-DD (Sunday)
+    volumes: Record<TargetedMuscleGroup, number>;
+  }>;
+  top_exercises_per_muscle: Record<
+    TargetedMuscleGroup,
+    Array<{ name: string; sets: number }>
+  >;
+};
+
+// ── Brief flag family (consumed by Advice prompt) ───────────────────────────
+
+export type MuscleVolumeFlag =
+  | {
+      kind: "below_mev_persistent";
+      group: TargetedMuscleGroup;
+      actual_8wk: number;
+      mev: number;
+    }
+  | {
+      kind: "below_mev_recent";
+      group: TargetedMuscleGroup;
+      actual_wtd: number;
+      target_this_week: number;
+      days_left: number;
+    }
+  | {
+      kind: "near_mrv";
+      group: TargetedMuscleGroup;
+      actual_wtd: number;
+      mrv: number;
+    };
