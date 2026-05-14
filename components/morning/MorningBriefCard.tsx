@@ -2,7 +2,7 @@
 
 import type { CSSProperties } from "react";
 import { useMemo } from "react";
-import { COLOR, RADIUS } from "@/lib/ui/theme";
+import { COLOR, RADIUS, GRADIENT } from "@/lib/ui/theme";
 import { fmtNum } from "@/lib/ui/score";
 import type { MorningBriefCard as MorningBriefCardData, MorningBriefHydration, Weekday } from "@/lib/data/types";
 import { BriefRecapStats } from "@/components/morning/BriefRecapStats";
@@ -56,62 +56,69 @@ export function MorningBriefCard({
         background: COLOR.surface,
         border: `1px solid ${COLOR.divider}`,
         borderRadius: RADIUS.card,
-        padding: 16,
+        overflow: "hidden",
         display: "flex",
         flexDirection: "column",
-        gap: 14,
         width: "100%",
         maxWidth: "100%",
       }}
       aria-label="Today's morning brief"
     >
-      <BriefHeader card={card} />
-      <Divider />
-      <SectionLabel>Yesterday</SectionLabel>
-      <BriefRecapStats recap={card.recap} />
-      <Divider />
-      {card.variant === "training" ? (
-        <>
-          <SectionLabel>
-            Today ·{" "}
-            <span style={{ textDecoration: isSwapped ? "line-through" : "none" }}>
-              {card.session.type}
-            </span>
-            {card.session.start_time ? ` · ${card.session.start_time}` : null}
-          </SectionLabel>
-          <BriefSessionList
-            session={card.session}
-            isSwapped={isSwapped}
-            liveType={liveType ?? null}
+      <BriefHero card={card} />
+      <div
+        style={{
+          padding: 16,
+          display: "flex",
+          flexDirection: "column",
+          gap: 14,
+        }}
+      >
+        <SectionLabel>Yesterday</SectionLabel>
+        <BriefRecapStats recap={card.recap} />
+        <Divider />
+        {card.variant === "training" ? (
+          <>
+            <SectionLabel>
+              Today ·{" "}
+              <span style={{ textDecoration: isSwapped ? "line-through" : "none" }}>
+                {card.session.type}
+              </span>
+              {card.session.start_time ? ` · ${card.session.start_time}` : null}
+            </SectionLabel>
+            <BriefSessionList
+              session={card.session}
+              isSwapped={isSwapped}
+              liveType={liveType ?? null}
+            />
+          </>
+        ) : (
+          <>
+            <SectionLabel>Today · REST</SectionLabel>
+            <BriefRestActions bedtime={card.tonight.bedtime_target} />
+          </>
+        )}
+        {card.hydration && (
+          <>
+            <Divider />
+            <SectionLabel>Hydration today</SectionLabel>
+            <BriefHydration hydration={card.hydration} />
+          </>
+        )}
+        <Divider />
+        <SectionLabel>Macros today</SectionLabel>
+        <BriefMacrosGrid macros={card.macros} />
+        <Divider />
+        <BriefAdvice md={card.advice_md} />
+        <Divider />
+        <BriefTonight tonight={card.tonight} />
+        {card.coach_suggestion && (
+          <BriefCoachSuggestion
+            userId={userId}
+            briefSessionType={card.session.type}
+            suggestion={card.coach_suggestion}
           />
-        </>
-      ) : (
-        <>
-          <SectionLabel>Today · REST</SectionLabel>
-          <BriefRestActions bedtime={card.tonight.bedtime_target} />
-        </>
-      )}
-      {card.hydration && (
-        <>
-          <Divider />
-          <SectionLabel>Hydration today</SectionLabel>
-          <BriefHydration hydration={card.hydration} />
-        </>
-      )}
-      <Divider />
-      <SectionLabel>Macros today</SectionLabel>
-      <BriefMacrosGrid macros={card.macros} />
-      <Divider />
-      <BriefAdvice md={card.advice_md} />
-      <Divider />
-      <BriefTonight tonight={card.tonight} />
-      {card.coach_suggestion && (
-        <BriefCoachSuggestion
-          userId={userId}
-          briefSessionType={card.session.type}
-          suggestion={card.coach_suggestion}
-        />
-      )}
+        )}
+      </div>
     </article>
   );
 }
@@ -166,66 +173,78 @@ function BriefHydration({ hydration }: { hydration: MorningBriefHydration }) {
   );
 }
 
-function BriefHeader({ card }: { card: MorningBriefCardData }) {
-  const date = formatHeaderDate(card.recap.yesterday_date); // shows today, derived from yesterday + 1
-  return (
-    <header style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-        }}
-      >
-        <div>
-          <div style={{ fontSize: 12, color: COLOR.textMuted, fontWeight: 500 }}>
-            {date}
-          </div>
-          <h2
-            style={{
-              fontSize: 18,
-              fontWeight: 700,
-              letterSpacing: "-0.01em",
-              color: COLOR.textStrong,
-              margin: "2px 0 0",
-            }}
-          >
-            Today&apos;s brief
-          </h2>
-        </div>
-        <ReadinessPill band={card.readiness.band} score={card.readiness.score} />
-      </div>
-    </header>
-  );
-}
+const BAND_LABEL: Record<"low" | "moderate" | "high", string> = {
+  low: "Take it easy",
+  moderate: "Moderate",
+  high: "Primed",
+};
 
-function ReadinessPill({
-  band,
-  score,
-}: {
-  band: "low" | "moderate" | "high";
-  score: number | null;
-}) {
-  const styles: Record<typeof band, { bg: string; fg: string; label: string }> = {
-    low: { bg: COLOR.dangerSoft, fg: COLOR.danger, label: "Low" },
-    moderate: { bg: COLOR.warningSoft, fg: COLOR.warning, label: "Moderate" },
-    high: { bg: COLOR.successSoft, fg: COLOR.success, label: "High" },
-  };
-  const s = styles[band];
+const BAND_GRADIENT: Record<"low" | "moderate" | "high", string> = {
+  low: GRADIENT.heroDanger,
+  moderate: GRADIENT.heroAmber,
+  high: GRADIENT.heroSuccess,
+};
+
+function BriefHero({ card }: { card: MorningBriefCardData }) {
+  const todayLabel = formatHeaderDate(card.recap.yesterday_date);
+  const heroGradient = BAND_GRADIENT[card.readiness.band];
+  const bandLabel = BAND_LABEL[card.readiness.band];
   return (
     <div
       style={{
-        background: s.bg,
-        color: s.fg,
-        borderRadius: 999,
-        padding: "4px 10px",
-        fontSize: 12,
-        fontWeight: 600,
-        whiteSpace: "nowrap",
+        background: heroGradient,
+        color: "#fff",
+        padding: "18px 20px",
       }}
-      aria-label={`Readiness ${s.label}${score !== null ? ` score ${score} of 10` : ""}`}
     >
-      Readiness · {s.label}{score !== null ? ` · ${score}/10` : ""}
+      <div
+        style={{
+          fontSize: 10,
+          fontWeight: 700,
+          letterSpacing: "0.06em",
+          textTransform: "uppercase",
+          opacity: 0.85,
+        }}
+      >
+        {`Today's brief · ${todayLabel}`}
+      </div>
+      <div
+        style={{
+          fontSize: 44,
+          fontWeight: 800,
+          letterSpacing: "-0.04em",
+          lineHeight: 1,
+          marginTop: 6,
+        }}
+      >
+        {card.readiness.score !== null ? fmtNum(card.readiness.score) : "—"}
+        <span
+          style={{
+            fontSize: 16,
+            fontWeight: 600,
+            letterSpacing: 0,
+            marginLeft: 6,
+            opacity: 0.75,
+          }}
+        >
+          {card.readiness.score !== null ? "/10" : null}
+        </span>
+      </div>
+      <div
+        style={{
+          display: "inline-block",
+          marginTop: 10,
+          background: "rgba(255,255,255,0.22)",
+          padding: "3px 10px",
+          borderRadius: 9999,
+          fontSize: 10,
+          fontWeight: 700,
+          letterSpacing: "0.04em",
+          textTransform: "uppercase",
+        }}
+      >
+        Readiness · {bandLabel}
+      </div>
     </div>
   );
 }
