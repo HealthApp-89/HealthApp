@@ -2,6 +2,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { COLOR, RADIUS, SHADOW } from "@/lib/ui/theme";
 import { transcodeToJpeg } from "./heicTranscode";
 
 type Pending = {
@@ -26,7 +27,8 @@ export function ChatComposer({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const allImagesReady = pending.every((p) => p.status === "ready");
-  const canSend = !disabled && allImagesReady && (text.trim().length > 0 || pending.length > 0);
+  const canSend =
+    !disabled && allImagesReady && (text.trim().length > 0 || pending.length > 0);
 
   async function handleFiles(files: FileList | null) {
     if (!files || files.length === 0) return;
@@ -82,31 +84,108 @@ export function ChatComposer({
   }
 
   return (
-    <div className="border-t border-white/[0.06] px-3 py-2.5">
+    <div
+      style={{
+        background: COLOR.surface,
+        borderTop: `1px solid ${COLOR.divider}`,
+        position: "sticky",
+        bottom: 0,
+        padding: "12px 12px calc(12px + env(safe-area-inset-bottom))",
+        display: "flex",
+        flexDirection: "column",
+        gap: 8,
+      }}
+    >
       {pending.length > 0 && (
-        <div className="flex gap-2 overflow-x-auto pb-2">
+        <div
+          style={{
+            display: "flex",
+            gap: 8,
+            overflowX: "auto",
+            paddingBottom: 4,
+          }}
+        >
           {pending.map((p) => (
-            <div key={p.clientId} className="relative w-14 h-14 flex-shrink-0">
+            <div
+              key={p.clientId}
+              style={{ position: "relative", width: 56, height: 56, flexShrink: 0 }}
+            >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={p.thumbnailUrl}
                 alt=""
-                className="w-full h-full object-cover rounded-md opacity-90"
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "cover",
+                  borderRadius: 8,
+                  opacity: 0.92,
+                }}
               />
               {p.status === "uploading" && (
-                <div className="absolute inset-0 bg-black/40 rounded-md flex items-center justify-center">
-                  <div className="w-3 h-3 border-2 border-white/60 border-t-transparent rounded-full animate-spin" />
+                <div
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    background: "rgba(0,0,0,0.35)",
+                    borderRadius: 8,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 12,
+                      height: 12,
+                      border: "2px solid #fff",
+                      borderTopColor: "transparent",
+                      borderRadius: "50%",
+                      animation: "spin 0.8s linear infinite",
+                    }}
+                  />
                 </div>
               )}
               {p.status === "error" && (
-                <div className="absolute inset-0 bg-rose-900/60 rounded-md flex items-center justify-center text-[9px] text-white text-center px-1">
+                <div
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    background: "rgba(239,68,68,0.85)",
+                    borderRadius: 8,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "#fff",
+                    fontSize: 9,
+                    textAlign: "center",
+                    padding: "0 4px",
+                  }}
+                >
                   {p.error ?? "err"}
                 </div>
               )}
               <button
                 type="button"
                 onClick={() => removePending(p.clientId)}
-                className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-black/80 text-white text-[10px] flex items-center justify-center border border-white/20"
+                style={{
+                  position: "absolute",
+                  top: -6,
+                  right: -6,
+                  width: 18,
+                  height: 18,
+                  borderRadius: "50%",
+                  background: COLOR.textStrong,
+                  color: "#fff",
+                  fontSize: 11,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  border: `1px solid ${COLOR.surface}`,
+                  cursor: "pointer",
+                  padding: 0,
+                }}
+                aria-label="Remove image"
               >
                 ×
               </button>
@@ -115,12 +194,27 @@ export function ChatComposer({
         </div>
       )}
 
-      <div className="flex items-end gap-2">
+      <div style={{ display: "flex", alignItems: "flex-end", gap: 8 }}>
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
           disabled={disabled || pending.length >= 8}
-          className="flex-shrink-0 w-9 h-9 rounded-full bg-white/[0.05] text-white/70 disabled:opacity-40 flex items-center justify-center"
+          style={{
+            flexShrink: 0,
+            width: 40,
+            height: 40,
+            borderRadius: "50%",
+            background: COLOR.surfaceAlt,
+            color: COLOR.textMuted,
+            border: "none",
+            fontSize: 16,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            cursor: disabled || pending.length >= 8 ? "default" : "pointer",
+            opacity: disabled || pending.length >= 8 ? 0.45 : 1,
+            padding: 0,
+          }}
           aria-label="Attach image"
         >
           📎
@@ -134,7 +228,7 @@ export function ChatComposer({
             handleFiles(e.target.files);
             e.target.value = "";
           }}
-          className="hidden"
+          style={{ display: "none" }}
         />
 
         <textarea
@@ -148,8 +242,20 @@ export function ChatComposer({
           }}
           placeholder={placeholder ?? "Message your coach…"}
           rows={1}
-          className="flex-1 resize-none bg-white/[0.04] border border-white/[0.08] rounded-2xl px-3 py-2 text-sm text-white/90 outline-none focus:border-white/20 max-h-[140px]"
-          style={{ height: "auto" }}
+          style={{
+            flex: 1,
+            resize: "none",
+            background: COLOR.surfaceAlt,
+            border: "none",
+            borderRadius: RADIUS.pill,
+            padding: "10px 14px",
+            fontSize: 14,
+            color: COLOR.textStrong,
+            outline: "none",
+            maxHeight: 140,
+            fontFamily: "inherit",
+            lineHeight: 1.4,
+          }}
           ref={(el) => {
             if (!el) return;
             el.style.height = "auto";
@@ -161,7 +267,24 @@ export function ChatComposer({
           type="button"
           onClick={send}
           disabled={!canSend}
-          className="flex-shrink-0 w-9 h-9 rounded-full bg-[#a29bfe] text-black disabled:opacity-30 disabled:bg-white/10 disabled:text-white/40 flex items-center justify-center"
+          style={{
+            flexShrink: 0,
+            width: 40,
+            height: 40,
+            borderRadius: "50%",
+            background: canSend ? COLOR.accent : COLOR.divider,
+            color: canSend ? "#fff" : COLOR.textFaint,
+            border: "none",
+            fontSize: 16,
+            fontWeight: 700,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            cursor: canSend ? "pointer" : "default",
+            boxShadow: canSend ? SHADOW.fab : "none",
+            padding: 0,
+            transition: "background 120ms, box-shadow 120ms",
+          }}
           aria-label="Send"
         >
           ↑
