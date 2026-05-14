@@ -31,7 +31,7 @@ export function PlanProposalCard({
   onApprove: (token: string) => void;
   committed?: boolean;
   /** Current week within the active training block (1-5), null when no active block. */
-  currentBlockWeek?: number | null;
+  currentBlockWeek: number | null;
 }) {
   const [busy, setBusy] = useState(false);
 
