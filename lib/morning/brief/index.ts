@@ -32,19 +32,37 @@ export async function buildMorningBrief(
       ?.strength?.muscle_volume ?? null;
 
   if (muscleVolume) {
-    const mvSnapshot = await fetchMuscleVolumeServer(supabase, userId, today);
-    const isTrainingDay =
-      inputs.sessionType !== "REST" && inputs.sessionType !== "Mobility";
-    const daysLeftInWeek = computeDaysLeftInWeek(today);
-    const todayWeekday = weekdayLabelFor(today);
-    muscleVolumeFlags = evaluateMuscleVolumeGapsForBrief({
-      snapshot: mvSnapshot,
-      muscleVolume,
-      currentBlockWeek: null, // future PR threads active-block context
-      isTrainingDay,
-      todayWeekday,
-      daysLeftInWeek,
-    });
+    try {
+      const mvSnapshot = await fetchMuscleVolumeServer(supabase, userId, today);
+      // Sessions that aren't actual training: REST (planned), Mobility
+      // (recovery), Sick (schedule-flexibility swap). The recommendation
+      // route's sick-guard runs against checkin.sick, not session_plan;
+      // a per-day "Sick" entry in session_plan still reaches this composer.
+      const isTrainingDay =
+        inputs.sessionType !== "REST" &&
+        inputs.sessionType !== "Mobility" &&
+        inputs.sessionType !== "Sick";
+      const daysLeftInWeek = computeDaysLeftInWeek(today);
+      const todayWeekday = weekdayLabelFor(today);
+      muscleVolumeFlags = evaluateMuscleVolumeGapsForBrief({
+        snapshot: mvSnapshot,
+        muscleVolume,
+        currentBlockWeek: null, // future PR threads active-block context
+        isTrainingDay,
+        todayWeekday,
+        daysLeftInWeek,
+      });
+    } catch (err) {
+      // Degrade gracefully: a snapshot fetch failure shouldn't kill the
+      // entire brief. Log and proceed without volume flags — the rest of
+      // the brief is still valuable, and the volume layer will reappear
+      // tomorrow when the snapshot works again.
+      console.error(
+        "[brief] fetchMuscleVolumeServer failed — proceeding without volume flags",
+        err,
+      );
+      muscleVolumeFlags = [];
+    }
   }
 
   const enrichedInputs = { ...inputs, muscleVolumeFlags };
