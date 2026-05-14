@@ -52,15 +52,7 @@ export const queryKeys = {
     ingest: (userId: string) => ["tokens", userId, "ingest"] as const,
   },
   insights: {
-    daily: (userId: string, date: string) =>
-      ["insights", userId, "daily", date] as const,
     strength: (userId: string) => ["insights", userId, "strength"] as const,
-    weeklyReview: (userId: string, weekEnd: string) =>
-      ["insights", userId, "weekly-review", weekEnd] as const,
-  },
-  recommendations: {
-    week: (userId: string, weekStart: string) =>
-      ["recommendations", userId, weekStart] as const,
   },
   trainingWeeks: {
     one: (userId: string, weekStart: string) =>
