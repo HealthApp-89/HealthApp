@@ -60,6 +60,12 @@ export function computeWeeklyMuscleVolume(
     TARGETED_MUSCLE_GROUPS.map((g) => [g, 0]),
   ) as Record<TargetedMuscleGroup, number>;
 
+  if (windowDays <= 0) {
+    throw new Error(
+      `computeWeeklyMuscleVolume: windowDays must be > 0 (got ${windowDays})`,
+    );
+  }
+
   const unmappedSet = new Set<string>();
 
   for (const w of workouts) {
