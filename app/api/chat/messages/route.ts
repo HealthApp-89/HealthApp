@@ -275,64 +275,13 @@ export async function POST(req: Request) {
   // Use buildSnapshot (not buildSnapshotText) so we can exclude nowLine from
   // the cached block — it's a per-turn timestamp that would otherwise stale
   // the cache. The ephemeral header below provides a fresh NOW for the model.
-  const sinceDate = new Date(`${todayInUserTz()}T00:00:00Z`);
-  sinceDate.setUTCDate(sinceDate.getUTCDate() - 14);
-  const since = sinceDate.toISOString().slice(0, 10);
-  type WindowRow = { id: string; role: string; content: string; created_at: string };
-  const [
-    { data: profileRow },
-    { body: snapshot },
-    { data: windowRows },
-  ] = await Promise.all([
-    sr.from("profiles")
-      .select("system_prompt")
-      .eq("user_id", user.id)
-      .maybeSingle(),
-    buildSnapshot({
-      supabase: sr as unknown as SupabaseClient,
-      userId: user.id,
-      since,
-      workoutLimit: 5,
-    }),
-    sr.from("chat_messages")
-      .select("id, role, content, created_at")
-      .eq("user_id", user.id)
-      .neq("status", "streaming")
-      .neq("id", rpcTyped.user_message_id)
-      .order("created_at", { ascending: false })
-      .limit(ROLLING_WINDOW),
-  ]);
-
-  // Resolve effective system prompt via mode-aware assembler.
-  const userPromptOverride =
-    typeof profileRow?.system_prompt === "string" && profileRow.system_prompt.length > 0
-      ? profileRow.system_prompt
-      : null;
-  const finalSystemPrompt = await buildSystemPrompt({
-    supabase: sr as unknown as SupabaseClient,
-    userId: user.id,
-    mode: effectiveMode,
-    userPromptOverride,
-  });
-
-  const windowAsc: WindowRow[] = ((windowRows ?? []) as WindowRow[]).slice().reverse();
-
-  // For images on user messages in the window, attach signed URLs as image
-  // content blocks.
-  const windowMsgIds = windowAsc.map((m) => m.id);
-  const imgsByMsg = new Map<string, { storage_path: string }[]>();
-  if (windowMsgIds.length > 0) {
-    const { data: winImgs } = await sr
-      .from("chat_message_images")
-      .select("message_id, storage_path")
-      .in("message_id", windowMsgIds);
-    for (const r of (winImgs ?? []) as { message_id: string; storage_path: string }[]) {
-      const list = imgsByMsg.get(r.message_id) ?? [];
-      list.push({ storage_path: r.storage_path });
-      imgsByMsg.set(r.message_id, list);
-    }
-  }
-
+  //
+  // Wrapped in try/catch: any throw here (Vercel timeout, network glitch, a
+  // code bug like profile-renderer TypeErrors) would otherwise strand the
+  // assistant row in status='streaming' — permanently locking the chat surface
+  // via the unique partial index chat_messages_one_streaming_per_user.
+  // On failure: mark the row as error and return JSON 500 so the client
+  // surfaces the error state rather than a frozen composer.
   async function signedUrl(path: string): Promise<string> {
     const { data } = await sr.storage
       .from("chat-images")
@@ -340,64 +289,151 @@ export async function POST(req: Request) {
     return data?.signedUrl ?? "";
   }
 
-  // Position 0: cached snapshot prefix.
-  const messages: RichMessage[] = [
-    {
-      role: "user",
-      content: [
-        {
-          type: "text",
-          text: snapshot,
-          cache_control: { type: "ephemeral", ttl: "1h" },
-        },
-      ],
-    },
-  ];
+  type WindowRow = { id: string; role: string; content: string; created_at: string };
+  let finalSystemPrompt: string;
+  let snapshot: string;
+  let windowAsc: WindowRow[];
+  let imgsByMsg: Map<string, { storage_path: string }[]>;
+  let messages: RichMessage[];
 
-  // Slice the rolling window to start with a user message — Anthropic requires
-  // alternating roles starting with user after the cached prefix.
-  let startIdx = 0;
-  while (startIdx < windowAsc.length && windowAsc[startIdx].role !== "user") startIdx++;
-  for (let i = startIdx; i < windowAsc.length; i++) {
-    const m = windowAsc[i];
-    const blocks: ContentBlock[] = [];
-    if (m.role === "user") {
-      const imgs = imgsByMsg.get(m.id) ?? [];
-      for (const img of imgs) {
-        const url = await signedUrl(img.storage_path);
-        if (url) blocks.push({ type: "image", source: { type: "url", url } });
+  try {
+    const sinceDate = new Date(`${todayInUserTz()}T00:00:00Z`);
+    sinceDate.setUTCDate(sinceDate.getUTCDate() - 14);
+    const since = sinceDate.toISOString().slice(0, 10);
+
+    const [
+      { data: profileRow },
+      { body: snapshotBody },
+      { data: windowRows },
+    ] = await Promise.all([
+      sr.from("profiles")
+        .select("system_prompt")
+        .eq("user_id", user.id)
+        .maybeSingle(),
+      buildSnapshot({
+        supabase: sr as unknown as SupabaseClient,
+        userId: user.id,
+        since,
+        workoutLimit: 5,
+      }),
+      sr.from("chat_messages")
+        .select("id, role, content, created_at")
+        .eq("user_id", user.id)
+        .neq("status", "streaming")
+        .neq("id", rpcTyped.user_message_id)
+        .order("created_at", { ascending: false })
+        .limit(ROLLING_WINDOW),
+    ]);
+
+    snapshot = snapshotBody;
+
+    // Resolve effective system prompt via mode-aware assembler.
+    const userPromptOverride =
+      typeof profileRow?.system_prompt === "string" && profileRow.system_prompt.length > 0
+        ? profileRow.system_prompt
+        : null;
+    finalSystemPrompt = await buildSystemPrompt({
+      supabase: sr as unknown as SupabaseClient,
+      userId: user.id,
+      mode: effectiveMode,
+      userPromptOverride,
+    });
+
+    windowAsc = ((windowRows ?? []) as WindowRow[]).slice().reverse();
+
+    // For images on user messages in the window, attach signed URLs as image
+    // content blocks.
+    const windowMsgIds = windowAsc.map((m) => m.id);
+    imgsByMsg = new Map<string, { storage_path: string }[]>();
+    if (windowMsgIds.length > 0) {
+      const { data: winImgs } = await sr
+        .from("chat_message_images")
+        .select("message_id, storage_path")
+        .in("message_id", windowMsgIds);
+      for (const r of (winImgs ?? []) as { message_id: string; storage_path: string }[]) {
+        const list = imgsByMsg.get(r.message_id) ?? [];
+        list.push({ storage_path: r.storage_path });
+        imgsByMsg.set(r.message_id, list);
       }
     }
-    if (m.content) blocks.push({ type: "text", text: m.content });
-    messages.push({
-      role: m.role as "user" | "assistant",
-      content: blocks.length > 0 ? blocks : "",
-    });
-  }
 
-  // Append the new user turn (text + images via signed URL).
-  const newTurnBlocks: ContentBlock[] = [];
-  if (imageIds.length > 0) {
-    const { data: newImgs } = await sr
-      .from("chat_message_images")
-      .select("storage_path")
-      .in("id", imageIds);
-    for (const img of newImgs ?? []) {
-      const url = await signedUrl(img.storage_path);
-      if (url) newTurnBlocks.push({ type: "image", source: { type: "url", url } });
+    // Position 0: cached snapshot prefix.
+    messages = [
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: snapshot,
+            cache_control: { type: "ephemeral", ttl: "1h" },
+          },
+        ],
+      },
+    ];
+
+    // Slice the rolling window to start with a user message — Anthropic requires
+    // alternating roles starting with user after the cached prefix.
+    let startIdx = 0;
+    while (startIdx < windowAsc.length && windowAsc[startIdx].role !== "user") startIdx++;
+    for (let i = startIdx; i < windowAsc.length; i++) {
+      const m = windowAsc[i];
+      const blocks: ContentBlock[] = [];
+      if (m.role === "user") {
+        const imgs = imgsByMsg.get(m.id) ?? [];
+        for (const img of imgs) {
+          const url = await signedUrl(img.storage_path);
+          if (url) blocks.push({ type: "image", source: { type: "url", url } });
+        }
+      }
+      if (m.content) blocks.push({ type: "text", text: m.content });
+      messages.push({
+        role: m.role as "user" | "assistant",
+        content: blocks.length > 0 ? blocks : "",
+      });
     }
+
+    // Append the new user turn (text + images via signed URL).
+    const newTurnBlocks: ContentBlock[] = [];
+    if (imageIds.length > 0) {
+      const { data: newImgs } = await sr
+        .from("chat_message_images")
+        .select("storage_path")
+        .in("id", imageIds);
+      for (const img of newImgs ?? []) {
+        const url = await signedUrl(img.storage_path);
+        if (url) newTurnBlocks.push({ type: "image", source: { type: "url", url } });
+      }
+    }
+    if (content) newTurnBlocks.push({ type: "text", text: content });
+    // Ephemeral header is the FIRST text block of the new user turn (preceding
+    // the actual content). Stays out of the cached snapshot prefix and adjacent
+    // to the user's question so the model has the freshest context next to the
+    // ask. Not marked cache_control — must NOT be cached.
+    const ephemeralHeader = await buildEphemeralHeader({
+      supabase: sr as unknown as SupabaseClient,
+      userId: user.id,
+    });
+    const headerBlock: ContentBlock = { type: "text", text: ephemeralHeader };
+    messages.push({ role: "user", content: [headerBlock, ...newTurnBlocks] });
+  } catch (setupErr) {
+    console.error("[chat] pre-stream setup threw — marking assistant row as error", setupErr);
+    await sr
+      .from("chat_messages")
+      .update({
+        status: "error",
+        error: `pre_stream_setup_failed: ${setupErr instanceof Error ? setupErr.message : String(setupErr)}`,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", rpcTyped.assistant_message_id);
+    return NextResponse.json(
+      {
+        ok: false,
+        reason: "setup_failed",
+        error: setupErr instanceof Error ? setupErr.message : "setup error",
+      },
+      { status: 500 },
+    );
   }
-  if (content) newTurnBlocks.push({ type: "text", text: content });
-  // Ephemeral header is the FIRST text block of the new user turn (preceding
-  // the actual content). Stays out of the cached snapshot prefix and adjacent
-  // to the user's question so the model has the freshest context next to the
-  // ask. Not marked cache_control — must NOT be cached.
-  const ephemeralHeader = await buildEphemeralHeader({
-    supabase: sr as unknown as SupabaseClient,
-    userId: user.id,
-  });
-  const headerBlock: ContentBlock = { type: "text", text: ephemeralHeader };
-  messages.push({ role: "user", content: [headerBlock, ...newTurnBlocks] });
 
   // Open the SSE response stream.
   const startedAt = Date.now();
