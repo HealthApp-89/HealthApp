@@ -19,6 +19,7 @@ import type {
   IntensityModifier,
   PrimaryLift,
   AthleteProfileDocument,
+  MuscleVolumeFlag,
 } from "@/lib/data/types";
 import { SESSION_PLANS, type PlannedExercise } from "@/lib/coach/sessionPlans";
 import { roundToValidWeight, minNonZeroIncrement } from "@/lib/coach/weight-rounding";
@@ -54,6 +55,9 @@ export type BriefInputs = {
   /** True iff a training_weeks row exists for the week containing today.
    *  Gates the coach_suggestion chip — if false, the chip's POST would 404. */
   hasTrainingWeek: boolean;
+  /** Top-2 muscle-volume flags evaluated by evaluateMuscleVolumeGapsForBrief.
+   *  Empty when the active plan has no muscle_volume or no flags fire. */
+  muscleVolumeFlags?: MuscleVolumeFlag[];
 };
 
 export function assembleBriefExceptAdvice(
@@ -184,12 +188,15 @@ function composeTonight(inputs: BriefInputs): MorningBriefTonight {
 function composeSession(
   variant: MorningBriefVariant,
   inputs: BriefInputs,
-): { type: string; start_time: string | null; exercises: MorningBriefExercise[] } {
+): MorningBriefCard["session"] {
+  const volume_gaps = buildVolumeGaps(inputs.muscleVolumeFlags);
+
   if (variant === "rest") {
     return {
       type: inputs.sessionType,
       start_time: null,
       exercises: [],
+      ...(volume_gaps !== undefined ? { volume_gaps } : {}),
     };
   }
   return {
@@ -200,7 +207,43 @@ function composeSession(
       inputs.intensityModifier,
       inputs.primaryLift,
     ),
+    ...(volume_gaps !== undefined ? { volume_gaps } : {}),
   };
+}
+
+/** Collapses the MuscleVolumeFlag union into the flat volume_gaps render shape.
+ *  Returns undefined (not empty array) when no flags are provided so the field
+ *  is omitted from the card entirely (keeps JSON lean). */
+function buildVolumeGaps(
+  flags: MuscleVolumeFlag[] | undefined,
+): MorningBriefCard["session"]["volume_gaps"] {
+  if (!flags || flags.length === 0) return undefined;
+
+  return flags.map((f) => {
+    if (f.kind === "near_mrv") {
+      return {
+        group: f.group,
+        actual: f.actual_wtd,
+        target: f.mrv,
+        label: "near_mrv" as const,
+      };
+    }
+    if (f.kind === "below_mev_persistent") {
+      return {
+        group: f.group,
+        actual: f.actual_8wk,
+        target: f.mev,
+        label: "below_mev" as const,
+      };
+    }
+    // below_mev_recent
+    return {
+      group: f.group,
+      actual: f.actual_wtd,
+      target: f.target_this_week,
+      label: "below_mev" as const,
+    };
+  });
 }
 
 function composeExercises(
