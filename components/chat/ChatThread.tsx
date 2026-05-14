@@ -27,16 +27,34 @@ export function ChatThread({
   const [isLoadingOlder, setIsLoadingOlder] = useState(false);
   const previousScrollHeightRef = useRef<number | null>(null);
 
-  // Hide chat-stream errors older than 30 min from display. They have no
-  // user-actionable value (the retry would target a stale assistant row;
-  // environment issues like ANTHROPIC_API_KEY-not-set are config bugs, not
-  // chat content). Fresh errors still surface so the retry chip is usable.
-  // The rows stay in the DB; this is a render-only filter.
+  // Hide noise from old broken chat turns. Two render-only filters (rows stay
+  // in the DB):
+  //
+  // 1. Errors older than 30 min — retry on them would target a stale assistant
+  //    row; environment issues (e.g. ANTHROPIC_API_KEY-not-set) aren't chat
+  //    content. Fresh errors still render with their retry chip.
+  // 2. Orphan user messages older than 1h — a user message whose immediately-
+  //    following assistant turn is missing or status≠'done' (i.e. the AI never
+  //    successfully replied). Without this, May-4-style failed turns leave
+  //    dangling "YOU: how did I do today?" bubbles forever.
   const ERROR_HIDE_AFTER_MS = 30 * 60 * 1000;
-  const filteredMessages = messages.filter((m) => {
-    if (m.status !== "error") return true;
-    const ageMs = Date.now() - new Date(m.created_at).getTime();
-    return ageMs < ERROR_HIDE_AFTER_MS;
+  const ORPHAN_USER_HIDE_AFTER_MS = 60 * 60 * 1000;
+  const now = Date.now();
+  const filteredMessages = messages.filter((m, idx) => {
+    if (m.status === "error") {
+      return now - new Date(m.created_at).getTime() < ERROR_HIDE_AFTER_MS;
+    }
+    if (m.role === "user") {
+      // Next chronological message — chat-stream RPC pairs each user msg
+      // with an assistant stub, so a "good" turn always has the assistant
+      // message at idx+1.
+      const next = messages[idx + 1];
+      const hasGoodResponse =
+        next && next.role === "assistant" && next.status === "done";
+      if (hasGoodResponse) return true;
+      return now - new Date(m.created_at).getTime() < ORPHAN_USER_HIDE_AFTER_MS;
+    }
+    return true;
   });
 
   // Auto-scroll to bottom on first render and when a new message appears at
