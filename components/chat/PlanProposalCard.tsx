@@ -9,7 +9,9 @@
 
 import { useState } from "react";
 import { COLOR, RADIUS } from "@/lib/ui/theme";
-import type { PlanPayload } from "@/lib/data/types";
+import type { PlanPayload, StrengthMuscleVolume } from "@/lib/data/types";
+import { TARGETED_MUSCLE_GROUPS } from "@/lib/data/types";
+import { targetSetsForWeek } from "@/lib/coach/volume-landmarks";
 
 function modeOfPlan(plan: PlanPayload): "glp1" | "classical" | "steady" {
   if (plan.nutrition.glp1) return "glp1";
@@ -22,11 +24,14 @@ export function PlanProposalCard({
   approval_token,
   onApprove,
   committed,
+  currentBlockWeek,
 }: {
   plan: PlanPayload;
   approval_token: string;
   onApprove: (token: string) => void;
   committed?: boolean;
+  /** Current week within the active training block (1-5), null when no active block. */
+  currentBlockWeek?: number | null;
 }) {
   const [busy, setBusy] = useState(false);
 
@@ -255,6 +260,12 @@ export function PlanProposalCard({
             />
           ),
         )}
+        {plan.strength.muscle_volume && (
+          <MuscleVolumeSection
+            muscleVolume={plan.strength.muscle_volume}
+            currentBlockWeek={currentBlockWeek ?? null}
+          />
+        )}
         <div
           style={{
             fontSize: 12,
@@ -347,6 +358,119 @@ function KeyVal({ label, value }: { label: string; value: string }) {
       <span style={{ minWidth: 100, color: COLOR.textMuted }}>{label}</span>
       <span style={{ color: COLOR.textStrong, fontWeight: 500 }}>{value}</span>
     </div>
+  );
+}
+
+function MuscleVolumeSection({
+  muscleVolume,
+  currentBlockWeek,
+}: {
+  muscleVolume: StrengthMuscleVolume;
+  currentBlockWeek: number | null;
+}) {
+  const nBelowMev = TARGETED_MUSCLE_GROUPS.filter(
+    (g) => muscleVolume.bands[g].source === "literature_with_ramp_floor",
+  ).length;
+  const nRaised = TARGETED_MUSCLE_GROUPS.filter(
+    (g) => muscleVolume.bands[g].source === "literature_adjusted_up",
+  ).length;
+
+  const summaryParts: string[] = [
+    `${TARGETED_MUSCLE_GROUPS.length} muscles tracked`,
+  ];
+  if (nBelowMev > 0) {
+    const names = TARGETED_MUSCLE_GROUPS.filter(
+      (g) => muscleVolume.bands[g].source === "literature_with_ramp_floor",
+    );
+    summaryParts.push(
+      nBelowMev <= 3
+        ? `${nBelowMev} below MEV (${names.join(", ")})`
+        : `${nBelowMev} below MEV`,
+    );
+  }
+  if (nRaised > 0) {
+    const names = TARGETED_MUSCLE_GROUPS.filter(
+      (g) => muscleVolume.bands[g].source === "literature_adjusted_up",
+    );
+    summaryParts.push(
+      nRaised <= 3
+        ? `${nRaised} raised (${names.join(", ")})`
+        : `${nRaised} raised`,
+    );
+  }
+  if (nBelowMev === 0 && nRaised === 0) {
+    summaryParts.push("all in band");
+  }
+
+  return (
+    <details style={{ marginTop: 8 }}>
+      <summary
+        style={{
+          cursor: "pointer",
+          fontSize: 13,
+          listStyle: "revert",
+          color: COLOR.textMid,
+        }}
+      >
+        <strong>Muscle volume:</strong> {summaryParts.join(" · ")}
+      </summary>
+      <table
+        style={{
+          width: "100%",
+          marginTop: 8,
+          fontSize: 12,
+          borderCollapse: "collapse",
+        }}
+      >
+        <thead>
+          <tr style={{ textAlign: "left", color: COLOR.textMuted }}>
+            <th style={{ padding: "4px 8px" }}>Muscle</th>
+            <th style={{ padding: "4px 8px" }}>8wk avg</th>
+            <th style={{ padding: "4px 8px" }}>Band (MEV / MAV / MRV)</th>
+            <th style={{ padding: "4px 8px" }}>This week</th>
+            <th style={{ padding: "4px 8px" }}>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {TARGETED_MUSCLE_GROUPS.map((g) => {
+            const band = muscleVolume.bands[g];
+            const thisWeekTarget =
+              currentBlockWeek !== null
+                ? targetSetsForWeek(band, muscleVolume.ramp_recipe, currentBlockWeek)
+                : Math.round((band.mav[0] + band.mav[1]) / 2);
+            const thisWeekLabel =
+              currentBlockWeek !== null
+                ? `${thisWeekTarget} (wk ${currentBlockWeek}/5)`
+                : `${thisWeekTarget} (no block — MAV mid)`;
+            const statusIcon =
+              band.source === "literature_with_ramp_floor"
+                ? "⚠"
+                : band.source === "literature_adjusted_up"
+                  ? "⬆"
+                  : "🟢";
+            const statusText =
+              band.source === "literature_with_ramp_floor"
+                ? "below MEV — coach will ramp"
+                : band.source === "literature_adjusted_up"
+                  ? "band raised from history"
+                  : "in band";
+            return (
+              <tr key={g} title={band.rationale}>
+                <td style={{ padding: "4px 8px", color: COLOR.textStrong }}>{g}</td>
+                <td style={{ padding: "4px 8px", color: COLOR.textMid }}>{band.history_8wk_avg}</td>
+                <td style={{ padding: "4px 8px", color: COLOR.textMid }}>
+                  {band.mev} / {band.mav[0]}-{band.mav[1]} / {band.mrv}
+                </td>
+                <td style={{ padding: "4px 8px", color: COLOR.textMid }}>{thisWeekLabel}</td>
+                <td style={{ padding: "4px 8px", color: COLOR.textMuted }}>
+                  {statusIcon} {statusText}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </details>
   );
 }
 
