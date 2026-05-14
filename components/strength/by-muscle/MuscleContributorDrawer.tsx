@@ -12,7 +12,13 @@ export function MuscleContributorDrawer({
   onClose: () => void;
 }) {
   const contribs = snapshot.top_exercises_per_muscle[group] ?? [];
-  const totalSets = contribs.reduce((a, b) => a + b.sets, 0);
+  // The 8wk muscle total: rolling_avg_8wk is sets/wk; × 8 reconstructs the
+  // 8-week absolute total (in same primary-1.0 + secondary-0.5 units as
+  // top_exercises_per_muscle, since both flow through the same counting).
+  // Using this denominator means percentages reflect the true share of the
+  // muscle's volume — including contributions from exercises that didn't
+  // make the top-3 cut. Top-3 sums of 100% would be misleading otherwise.
+  const groupTotal8wk = snapshot.rolling_avg_8wk[group] * 8;
 
   return (
     <div
@@ -82,7 +88,7 @@ export function MuscleContributorDrawer({
                   <td style={{ padding: "6px 0" }}>{c.name}</td>
                   <td style={{ textAlign: "right" }}>{c.sets}</td>
                   <td style={{ textAlign: "right" }}>
-                    {totalSets > 0 ? `${Math.round((c.sets / totalSets) * 100)}%` : "—"}
+                    {groupTotal8wk > 0 ? `${Math.round((c.sets / groupTotal8wk) * 100)}%` : "—"}
                   </td>
                 </tr>
               ))}
