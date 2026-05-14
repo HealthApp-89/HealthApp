@@ -8,6 +8,10 @@
     {
       "path": "/api/whoop/sync",
       "schedule": "0 10 * * *"
+    },
+    {
+      "path": "/api/maintenance/cleanup-streaming",
+      "schedule": "*/5 * * * *"
     }
   ],
   "functions": {
