@@ -8,6 +8,7 @@ import type {
   WeeklyReviewPayload,
   ReconfirmResponses,
 } from "@/lib/data/types";
+import { validateNoFabricatedNumbers } from "./narrative-prompt";
 
 const MODEL = "claude-sonnet-4-6";
 const MAX_TOKENS = 400;
@@ -31,5 +32,9 @@ export async function regenerateNarrative(args: {
       cacheSystem: true,
     },
   );
+  // Reconfirm-triggered re-renders need the same fabrication guard as the
+  // initial narrative — otherwise a chip answer could nudge the model into
+  // inventing numbers and we'd silently persist them.
+  validateNoFabricatedNumbers(text, args.payload);
   return text.trim();
 }

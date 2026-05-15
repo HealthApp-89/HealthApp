@@ -73,10 +73,12 @@ export async function generateWeeklyReview(args: {
     {};
 
   // Prior week's review (for rir_miss_consecutive carry-over).
+  // Only `payload` is actually read downstream; narrowing keeps the wire
+  // payload small and the dependency surface honest.
   const priorMonday = shiftDays(weekStart, -7);
   const { data: priorReview } = await supabase
     .from("weekly_reviews")
-    .select("*")
+    .select("id, payload, version, status")
     .eq("user_id", userId)
     .eq("week_start", priorMonday)
     .order("version", { ascending: false })
@@ -201,8 +203,11 @@ function computeOnPace(
   block: { goal_text: string },
   _recap: WeeklyReviewPayload["recap"],
 ): boolean | null {
-  // Heuristic: parse a "<kg>x<reps>" target out of goal_text and compare to
-  // current top e1rm. Defer until enough data; return null for now.
-  void block;
+  // TODO(v2): parse a "<kg>x<reps>" target out of block.goal_text and compare
+  // to current top e1rm in recap. Returning null for now means downstream UI
+  // shows "pace unknown" instead of false/true.
+  console.warn(
+    `[weekly-review] computeOnPace not implemented — block goal "${block.goal_text}" will render as pace-unknown`,
+  );
   return null;
 }

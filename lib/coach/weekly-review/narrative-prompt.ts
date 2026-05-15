@@ -97,14 +97,23 @@ export function validateNoFabricatedNumbers(
   const fabricated = matches.filter((m) => {
     if (allowed.has(m)) return false;
     const n = Number(m);
-    if (!Number.isFinite(n)) return false;
+    if (!Number.isFinite(n)) return true;
     // Small integers (≤ 31) commonly appear as weekday/week counts —
     // always tolerate.
     if (Number.isInteger(n) && n <= 31) return false;
-    // Allow ±1 integer rounding against any allowed integer.
-    const rounded = Math.round(n);
-    if (allowed.has(String(rounded)) || allowed.has(String(rounded - 1)) || allowed.has(String(rounded + 1))) {
-      return false;
+    // Only integer values benefit from the ±1 tolerance (catches natural
+    // rounding of payload values like 168.4g → "168g" in prose). Non-integers
+    // must match exactly so a fabricated "86.5kg" can't slip past when the
+    // payload has 85.2kg (round(85.2)=85 → 85+1=86 would otherwise pass).
+    if (Number.isInteger(n)) {
+      const rounded = Math.round(n);
+      if (
+        allowed.has(String(rounded)) ||
+        allowed.has(String(rounded - 1)) ||
+        allowed.has(String(rounded + 1))
+      ) {
+        return false;
+      }
     }
     return true;
   });

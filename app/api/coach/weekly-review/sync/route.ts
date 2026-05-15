@@ -13,6 +13,10 @@ import type { WeeklyReviewCardUI } from "@/lib/data/types";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
+/** Grace window: if a plan_week chat session is active within this many ms,
+ *  the Sunday cron skips and defers to Monday catch-up. */
+const PLAN_WEEK_GRACE_MS = 30 * 60 * 1000;
+
 export async function GET(req: Request) {
   const auth = req.headers.get("authorization") ?? "";
   const cronSecret = process.env.CRON_SECRET;
@@ -59,7 +63,7 @@ export async function GET(req: Request) {
   }
 
   // Check if an active plan_week chat session is in flight (last 30 min).
-  const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+  const thirtyMinAgo = new Date(Date.now() - PLAN_WEEK_GRACE_MS).toISOString();
   const { data: activePlanWeek } = await sb
     .from("chat_messages")
     .select("id")
@@ -125,13 +129,20 @@ export async function GET(req: Request) {
     review_id: inserted.id as string,
   };
 
-  await sb.from("chat_messages").insert({
+  const { error: chatErr } = await sb.from("chat_messages").insert({
     user_id: userId,
     kind: "weekly_review",
     role: "assistant",
     content: cardUi.one_line_summary,
     ui: cardUi,
   });
+  if (chatErr) {
+    // Compensating delete so the next cron run can retry cleanly.
+    // Without this, the weekly_reviews row above would trip the idempotency
+    // guard while the user has no chat card — silently broken.
+    await sb.from("weekly_reviews").delete().eq("id", inserted.id);
+    return NextResponse.json({ error: chatErr.message }, { status: 500 });
+  }
 
   revalidatePath("/coach");
   revalidatePath(`/coach/weeks/${weekStart}`);
