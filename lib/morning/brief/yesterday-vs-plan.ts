@@ -117,6 +117,22 @@ function buildPerLiftEntry(
   );
 
   const setsDone = liftSets.length;
+
+  // Lift was prescribed but not attempted in this otherwise-logged session.
+  // Distinguish from "session not logged at all" (which short-circuits above
+  // returning actual: null). Here we DO have a workout row but zero working
+  // sets for this specific lift — emit nulls for the completion metrics so
+  // the AI doesn't misread a skipped lift as a failed RIR target.
+  if (setsDone === 0) {
+    return {
+      lift,
+      planned,
+      actual: { top_set_load_kg: null, sets_done: 0, total_reps_done: 0 },
+      reps_completed_pct: null,
+      rir_target_met: null,
+    };
+  }
+
   const totalRepsDone = liftSets.reduce((sum, s) => sum + (s.reps ?? 0), 0);
   const topSetLoad = liftSets.reduce<number | null>(
     (max, s) => (s.kg != null && (max === null || s.kg > max) ? s.kg : max),

@@ -272,5 +272,12 @@ export async function getThisWeekPrescription(
   const trainingWeek = twResult.data as TrainingWeek | null;
   const review = revResult.data as WeeklyReviewRow | null;
   if (!trainingWeek || !review) return null;
+
+  // Defensive: if the review was committed against a different (likely deleted
+  // and recreated) training_weeks row, treat the prescription as unavailable
+  // rather than pairing a fresh blank row with an old committed review.
+  if (review.committed_training_week_id && review.committed_training_week_id !== trainingWeek.id) {
+    return null;
+  }
   return { trainingWeek, review };
 }
