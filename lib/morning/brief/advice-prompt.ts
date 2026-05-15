@@ -2,6 +2,11 @@
 //
 // Single Anthropic Haiku 4.5 call producing the prose Advice block of the
 // brief. No tool use; single completion; ~$0.0005 per call.
+//
+// Variant-aware: the dispatcher in buildSystemPrompt routes to a kickoff
+// (Monday), analytical (Tue-Sat with a committed week), or legacy (no
+// committed week / rest) prompt builder. All branches share the same
+// teacher-tone rules so the voice is consistent across variants.
 
 import { callClaude } from "@/lib/anthropic/client";
 import type {
@@ -10,12 +15,35 @@ import type {
   MorningBriefCard,
   MuscleVolumeFlag,
   StrengthMuscleVolume,
+  ThisWeekPlanBlock,
+  YesterdayVsPlanBlock,
 } from "@/lib/data/types";
 import type { TodayTargets } from "@/lib/morning/brief/get-today-targets";
 
 const MODEL = "claude-haiku-4-5-20251001";
 const MAX_TOKENS = 350;
 const TEMPERATURE = 0.4;
+
+/** Shared teacher-tone rules applied to every variant. Defines the jargon
+ *  vocabulary in plain English so the model doesn't introduce textbook
+ *  terms uncritically. Reinforced separately by the per-variant prompt
+ *  bodies — having the rules constant + the per-variant instructions keeps
+ *  any future edits in one place. */
+const TEACHER_TONE_RULES = `
+TONE & TEACHING RULES (apply to every reply):
+1. Second person, conversational. "You" not "the athlete".
+2. On first mention in this reply, define jargon in 5-10 words of plain English:
+   - MEV → "the minimum weekly sets that drive growth"
+   - MAV → "the productive volume range"
+   - MRV → "your weekly recovery ceiling"
+   - RIR → "reps you could still do at the same weight"
+   - deload → "a lighter week to absorb the training"
+   - e1RM → "estimated one-rep max from your top set"
+   - efficiency (sleep) → "time actually asleep ÷ time in bed"
+   If a term appears again later in the same reply, don't re-define.
+3. Prefer everyday language. Don't write "myofibrillar hypertrophy" when "muscle growth" works.
+4. Explain why a concept matters when it drives a decision today. Skip the textbook tone.
+`.trim();
 
 export type AdviceContext = {
   activeProfile: AthleteProfileDocument | null;
@@ -43,45 +71,122 @@ export async function generateAdvice(ctx: AdviceContext): Promise<string> {
   return result.trim();
 }
 
+/** Variant dispatcher. The 'training' and 'rest' variants share the legacy
+ *  prompt — the back-compat path used when no committed weekly review exists
+ *  for the current week. Kickoff + analytical require a committed prescription
+ *  and lean on the structured this_week_plan / yesterday_vs_plan blocks. */
 function buildSystemPrompt(ctx: AdviceContext): string {
-  const profile = ctx.activeProfile?.intake_payload;
-  const goal = profile?.goals;
-  const meds = profile?.health.medications?.trim() ?? "";
-  const injuries = profile?.health.active_injuries ?? [];
+  const variant = ctx.card.variant;
 
-  const athleteContext: string[] = [];
-  if (goal) {
-    athleteContext.push(
-      `Goal: ${goal.primary_metric} → ${goal.target_value}${goal.target_unit} by ${goal.target_date}.`,
-    );
-    if (goal.why_narrative.trim()) {
-      athleteContext.push(`Goal narrative: "${goal.why_narrative.trim()}".`);
-    }
-  }
-  if (profile?.nutrition.current_phase) {
-    athleteContext.push(`Phase: ${profile.nutrition.current_phase}.`);
-  }
-  if (meds) athleteContext.push(`Medications: ${meds}.`);
-  if (injuries.length > 0) {
-    athleteContext.push("Restrictions:");
-    for (const i of injuries) {
-      athleteContext.push(`  - ${i.joint}: ${i.restriction}`);
-    }
-  }
+  if (variant === "kickoff") return buildKickoffPrompt(ctx);
+  if (variant === "analytical") return buildAnalyticalPrompt(ctx);
+  // 'training' (legacy) and 'rest' use the existing prompt unchanged.
+  return buildLegacyPrompt(ctx);
+}
 
+// ── Variant-specific prompt builders ───────────────────────────────────────
+
+function buildKickoffPrompt(ctx: AdviceContext): string {
+  const athleteContextBlock = buildAthleteContext(ctx);
   const dataBlock = buildDataBlock(ctx.card);
   const flagsBlock = buildFlagsBlock(ctx.flags);
   const coachingContext = buildCoachingContext(ctx.flags, ctx.targets);
-  const muscleVolumeBlock = buildMuscleVolumeBlock(
-    ctx.muscleVolumeFlags,
-    ctx.muscleVolume,
-  );
+  const muscleVolumeBlock = buildMuscleVolumeBlock(ctx.muscleVolumeFlags, ctx.muscleVolume);
+  const planBlock = buildThisWeekPlanBlock(ctx.card.this_week_plan ?? null);
 
-  return `You are this athlete's coach delivering today's morning brief — the catch-up after the morning intake.
+  const phaseExplainer = ctx.flags.phase_transition_this_week
+    ? "PHASE TRANSITION: this week's phase differs from last week. Open with one plain-English sentence explaining what the new phase asks of the athlete."
+    : "Phase is unchanged from last week. Don't re-explain the phase; reference it briefly.";
+
+  return [
+    `You are this athlete's coach delivering today's Monday morning kickoff brief.`,
+    TEACHER_TONE_RULES,
+    "",
+    athleteContextBlock,
+    "",
+    planBlock,
+    "",
+    "FLAGS:",
+    flagsBlock,
+    "",
+    "COACHING CONTEXT:",
+    coachingContext,
+    "",
+    muscleVolumeBlock,
+    "",
+    "TODAY'S DATA:",
+    dataBlock,
+    "",
+    "WRITING INSTRUCTIONS:",
+    `${phaseExplainer}`,
+    "Length: 100-150 words of prose. Cover, in order:",
+    "  1. The phase and what it means (1 sentence if changed; brief mention if unchanged).",
+    "  2. Today's session focus (today's biggest lift + its prescribed load).",
+    "  3. The volume context (1 sentence on per-muscle targets if notable).",
+    "  4. Nutrition + sleep anchors (1 sentence each).",
+    "",
+    "Never invent numbers. Reference exact values from the payload.",
+  ].join("\n");
+}
+
+function buildAnalyticalPrompt(ctx: AdviceContext): string {
+  const athleteContextBlock = buildAthleteContext(ctx);
+  const dataBlock = buildDataBlock(ctx.card);
+  const flagsBlock = buildFlagsBlock(ctx.flags);
+  const coachingContext = buildCoachingContext(ctx.flags, ctx.targets);
+  const muscleVolumeBlock = buildMuscleVolumeBlock(ctx.muscleVolumeFlags, ctx.muscleVolume);
+  const yesterdayBlock = buildYesterdayVsPlanBlock(ctx.card.yesterday_vs_plan ?? null);
+
+  return [
+    `You are this athlete's coach delivering today's Tue-Sat morning brief.`,
+    TEACHER_TONE_RULES,
+    "",
+    athleteContextBlock,
+    "",
+    yesterdayBlock,
+    "",
+    "FLAGS:",
+    flagsBlock,
+    "",
+    "COACHING CONTEXT:",
+    coachingContext,
+    "",
+    muscleVolumeBlock,
+    "",
+    "TODAY'S DATA:",
+    dataBlock,
+    "",
+    "WRITING INSTRUCTIONS:",
+    "Length: 80-130 words of prose. Cover, in order:",
+    "  1. Yesterday's per-lift performance — rep completion, any RIR miss. 1-2 sentences.",
+    "  2. Today's prescribed lift(s) with exact loads. 1-2 sentences.",
+    "  3. One adaptive cue (form, fatigue, nutrition gap) — pick the most actionable.",
+    "",
+    "If yesterday's session was not logged (session_logged: false), acknowledge it briefly and pivot to today-prescription-only framing.",
+    "",
+    "Never invent numbers. Reference exact values from the payload.",
+  ].join("\n");
+}
+
+/** Legacy prompt — back-compat path for the 'training' and 'rest' variants
+ *  (no committed weekly review available for the current week, or today is a
+ *  scheduled rest day). The body is the original pre-Slice 2 prompt with
+ *  TEACHER_TONE_RULES prepended so tone stays consistent with the new
+ *  variants. */
+function buildLegacyPrompt(ctx: AdviceContext): string {
+  const athleteContextBlock = buildAthleteContext(ctx);
+  const dataBlock = buildDataBlock(ctx.card);
+  const flagsBlock = buildFlagsBlock(ctx.flags);
+  const coachingContext = buildCoachingContext(ctx.flags, ctx.targets);
+  const muscleVolumeBlock = buildMuscleVolumeBlock(ctx.muscleVolumeFlags, ctx.muscleVolume);
+
+  return `${TEACHER_TONE_RULES}
+
+You are this athlete's coach delivering today's morning brief — the catch-up after the morning intake.
 
 ## Athlete context
 
-${athleteContext.length > 0 ? athleteContext.join("\n") : "(no profile data available)"}
+${athleteContextBlock}
 
 ## Today's data
 
@@ -126,6 +231,39 @@ Style:
 - Do not restate data the card already shows above the advice block. Build on the data, don't recite it.
 
 Output ONLY the advice text. No headers, no preamble.`;
+}
+
+// ── Shared block builders ──────────────────────────────────────────────────
+
+/** Renders the ATHLETE CONTEXT block — goal, phase, medications,
+ *  restrictions. Extracted from the original buildSystemPrompt so all three
+ *  variant builders can reuse it. */
+function buildAthleteContext(ctx: AdviceContext): string {
+  const profile = ctx.activeProfile?.intake_payload;
+  const goal = profile?.goals;
+  const meds = profile?.health.medications?.trim() ?? "";
+  const injuries = profile?.health.active_injuries ?? [];
+
+  const athleteContext: string[] = [];
+  if (goal) {
+    athleteContext.push(
+      `Goal: ${goal.primary_metric} → ${goal.target_value}${goal.target_unit} by ${goal.target_date}.`,
+    );
+    if (goal.why_narrative.trim()) {
+      athleteContext.push(`Goal narrative: "${goal.why_narrative.trim()}".`);
+    }
+  }
+  if (profile?.nutrition.current_phase) {
+    athleteContext.push(`Phase: ${profile.nutrition.current_phase}.`);
+  }
+  if (meds) athleteContext.push(`Medications: ${meds}.`);
+  if (injuries.length > 0) {
+    athleteContext.push("Restrictions:");
+    for (const i of injuries) {
+      athleteContext.push(`  - ${i.joint}: ${i.restriction}`);
+    }
+  }
+  return athleteContext.length > 0 ? athleteContext.join("\n") : "(no profile data available)";
 }
 
 /** Assembles mode-conditional coaching context lines injected into the system
@@ -173,7 +311,9 @@ function buildCoachingContext(flags: AdviceFlags, targets: TodayTargets | null):
 function buildDataBlock(card: Omit<MorningBriefCard, "advice_md">): string {
   const lines: string[] = [];
   lines.push(`- Variant: ${card.variant}`);
-  if (card.variant === "training") {
+  if (card.variant === "rest") {
+    lines.push("- Session: REST");
+  } else {
     lines.push(`- Session: ${card.session.type} at ${card.session.start_time ?? "unscheduled"}`);
     if (card.session.exercises.length > 0) {
       lines.push("- Exercises (sets × reps @ kg; min increment in parentheses):");
@@ -183,8 +323,6 @@ function buildDataBlock(card: Omit<MorningBriefCard, "advice_md">): string {
         lines.push(`  - ${ex.name}: ${ex.sets} × ${ex.reps}${weightPart}${incrementPart}`);
       }
     }
-  } else {
-    lines.push("- Session: REST");
   }
   const r = card.readiness;
   lines.push(
@@ -263,4 +401,71 @@ function describeFlag(flag: MuscleVolumeFlag): string {
     case "near_mrv":
       return `week-to-date ${flag.actual_wtd} sets approaching MRV (${flag.mrv}) — consider backing off`;
   }
+}
+
+/** Builds the THIS WEEK PLAN block for the kickoff variant. Renders the
+ *  committed weekly review's per-lift prescription + volume targets in a
+ *  shape the AI can reference without inventing numbers. */
+function buildThisWeekPlanBlock(plan: ThisWeekPlanBlock | null): string {
+  if (!plan) return "(No committed weekly review available for this week.)";
+  const lines = [
+    `THIS WEEK'S PLAN (committed weekly review):`,
+    `  Week ${plan.week_n} of ${plan.total_weeks} · phase: ${plan.phase_now}${plan.phase_changed_this_week ? " (NEW THIS WEEK)" : ""}`,
+    `  Per-lift loads:`,
+  ];
+  for (const p of plan.per_lift) {
+    const rir = p.rir_target != null ? `, RIR ${p.rir_target}` : "";
+    const delta =
+      p.delta_from_last_week_pct != null
+        ? ` (${(p.delta_from_last_week_pct * 100).toFixed(1)}% from last week)`
+        : "";
+    lines.push(`    - ${p.lift}: ${p.load_kg}kg × ${p.sets} × ${p.reps}${rir}${delta}`);
+  }
+  if (plan.volume_summary.length > 0) {
+    lines.push(`  Volume targets:`);
+    for (const v of plan.volume_summary) {
+      lines.push(`    - ${v.muscle}: ${v.sets} sets (${v.tier})`);
+    }
+  }
+  if (plan.weekly_focus) {
+    lines.push(`  Weekly focus: ${plan.weekly_focus}`);
+  }
+  return lines.join("\n");
+}
+
+/** Builds the YESTERDAY VS PLAN block for the analytical variant. Surfaces
+ *  per-lift planned vs actual + swap context so the AI can compare without
+ *  fabricating numbers. */
+function buildYesterdayVsPlanBlock(block: YesterdayVsPlanBlock | null): string {
+  if (!block) return "(Yesterday was a planned rest day.)";
+  if (!block.session_logged) {
+    return [
+      "YESTERDAY VS PLAN:",
+      "  (No session logged for yesterday — actual data unavailable.)",
+      ...(block.swap_applied
+        ? ["  Note: yesterday's session was swapped from the original prescription."]
+        : []),
+    ].join("\n");
+  }
+  const lines = ["YESTERDAY VS PLAN:"];
+  if (block.swap_applied) {
+    lines.push("  Note: yesterday's session was swapped from the original prescription.");
+  }
+  for (const p of block.per_lift) {
+    const planned = `${p.planned.load_kg}kg × ${p.planned.sets} × ${p.planned.reps}`;
+    if (p.actual === null) {
+      lines.push(`  - ${p.lift}: planned ${planned}; no actual logged.`);
+      continue;
+    }
+    const repsPct =
+      p.reps_completed_pct != null
+        ? `${Math.round(p.reps_completed_pct * 100)}% reps completed`
+        : "rep completion unknown";
+    const topLoad =
+      p.actual.top_set_load_kg != null ? `, top set ${p.actual.top_set_load_kg}kg` : "";
+    lines.push(
+      `  - ${p.lift}: planned ${planned}; actual ${p.actual.sets_done} sets, ${p.actual.total_reps_done} reps${topLoad} (${repsPct})`,
+    );
+  }
+  return lines.join("\n");
 }
