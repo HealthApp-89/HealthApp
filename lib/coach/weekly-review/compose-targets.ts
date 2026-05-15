@@ -43,7 +43,8 @@ export async function composeTargets(args: {
   sessionPlan: Record<string, string>;
 }): Promise<TargetsOutput> {
   const { supabase, userId, sessionPlan } = args;
-  void args.nextWeekStart; // reserved, see jsdoc
+  // nextWeekStart is intentionally unused for now — orchestrator-reserved for
+  // future week-aware target resolution.
 
   const today = await getTodayTargets(supabase, userId);
 

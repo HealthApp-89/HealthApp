@@ -11,6 +11,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { WeeklyReviewPayload } from "@/lib/data/types";
 import { epley } from "@/lib/coach/derived";
+import { shiftDays, dayIndex, mondayOf } from "./date-utils";
 
 type TrendsOutput = WeeklyReviewPayload["trends"];
 
@@ -115,7 +116,9 @@ export async function composeTrends(args: {
     const max3 = Math.max(...last3);
     const min3 = Math.min(...last3);
     if (max3 > 0 && (max3 - min3) / max3 <= 0.015) {
-      plateauFlags.push({ lift, weeks_flat: series.length });
+      // The plateau check inspects the last 3 weekly peaks; weeks_flat reports
+      // the size of that check window (not the total series length).
+      plateauFlags.push({ lift, weeks_flat: 3 });
     }
   }
 
@@ -154,20 +157,6 @@ function flattenWorkouts(
     );
     return { date: w.date, sets };
   });
-}
-
-function shiftDays(d: string, days: number): string {
-  const dt = new Date(d + "T12:00:00Z");
-  dt.setUTCDate(dt.getUTCDate() + days);
-  return dt.toISOString().slice(0, 10);
-}
-
-function dayIndex(d: string, base: string): number {
-  return Math.round(
-    (new Date(d + "T12:00:00Z").getTime() -
-      new Date(base + "T12:00:00Z").getTime()) /
-      (24 * 3600 * 1000),
-  );
 }
 
 function computeLinearSlope(
@@ -217,11 +206,4 @@ function bucketLiftE1rm(
     result.set(lift, series);
   }
   return result;
-}
-
-function mondayOf(yyyyMmDd: string): string {
-  const d = new Date(yyyyMmDd + "T12:00:00Z");
-  const dow = d.getUTCDay() || 7;
-  d.setUTCDate(d.getUTCDate() - (dow - 1));
-  return d.toISOString().slice(0, 10);
 }

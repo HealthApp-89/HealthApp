@@ -16,6 +16,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { epley } from "@/lib/coach/derived";
 import { SHORT_TO_FULL } from "@/lib/coach/session-plan-reader";
+import { addDays, mondayOf } from "./date-utils";
 import type {
   WeeklyReviewPayload,
   WeeklyReviewRow,
@@ -215,12 +216,6 @@ function avg(xs: number[]): number | null {
   return xs.reduce((a, b) => a + b, 0) / xs.length;
 }
 
-function addDays(yyyyMmDd: string, days: number): string {
-  const d = new Date(yyyyMmDd + "T12:00:00Z");
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
-}
-
 const WEEKDAY_OFFSET: Record<string, number> = {
   Monday: 0,
   Tuesday: 1,
@@ -285,7 +280,11 @@ function buildPerLift(
     }
   }
   const setsCount = liftSets.length;
-  const repsPrescribed = setsCount * (topReps || 1);
+  // Use max reps across working sets (not topReps, which is the rep count of
+  // the heaviest set). In pyramid/backoff programming the heaviest set has the
+  // lowest reps; taking the max better reflects the prescribed rep target.
+  const maxReps = Math.max(0, ...liftSets.map((s) => s.reps ?? 0));
+  const repsPrescribed = setsCount * (maxReps || 1);
   const repsDone = liftSets.reduce((a, s) => a + (s.reps ?? 0), 0);
   const repsCompletedPct = repsPrescribed > 0 ? repsDone / repsPrescribed : null;
 
@@ -320,8 +319,8 @@ function buildPerLift(
       ? thisE1rm - priorPerLift.e1rm_kg
       : null;
   const e1rmDeltaPct =
-    thisE1rm != null && priorPerLift?.e1rm_kg
-      ? (e1rmDeltaKg as number) / priorPerLift.e1rm_kg
+    e1rmDeltaKg != null && priorPerLift?.e1rm_kg
+      ? e1rmDeltaKg / priorPerLift.e1rm_kg
       : null;
 
   return {
@@ -368,11 +367,4 @@ function computeE1rmHistory(
     a[0].localeCompare(b[0]),
   );
   return sorted.slice(-3).map(([, e]) => e);
-}
-
-function mondayOf(yyyyMmDd: string): string {
-  const d = new Date(yyyyMmDd + "T12:00:00Z");
-  const dow = d.getUTCDay() || 7;
-  d.setUTCDate(d.getUTCDate() - (dow - 1));
-  return d.toISOString().slice(0, 10);
 }

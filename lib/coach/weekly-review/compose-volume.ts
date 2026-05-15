@@ -21,6 +21,7 @@ import {
   DEFAULT_RAMP_RECIPE,
 } from "@/lib/coach/volume-landmarks";
 import { blockWeekForPhase } from "@/lib/coach/weekly-review/phase-mapping";
+import { addDays } from "./date-utils";
 import {
   TARGETED_MUSCLE_GROUPS,
   type MuscleVolumeBand,
@@ -119,12 +120,6 @@ function phaseToTier(
   phase: WeeklyPhase,
 ): PerMuscleEntry["tier"] {
   return phase === "deload" ? "mev" : phase;
-}
-
-function addDays(yyyyMmDd: string, days: number): string {
-  const d = new Date(yyyyMmDd + "T12:00:00Z");
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
 }
 
 async function resolvePlanLandmarks(
