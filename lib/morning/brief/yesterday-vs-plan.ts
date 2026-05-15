@@ -16,13 +16,7 @@ import type {
 } from "@/lib/data/types";
 import { SESSION_PLANS, type PlannedExercise } from "@/lib/coach/sessionPlans";
 import { readSessionForDay } from "@/lib/coach/session-plan-reader";
-
-const BIG_FOUR = [
-  "Squat (Barbell)",
-  "Deadlift (Barbell)",
-  "Decline Bench Press (Barbell)",
-  "Overhead Press (Barbell)",
-];
+import { BIG_FOUR } from "@/lib/coach/big-four";
 
 /** A single set logged in a workout, in the shape Slice 2a's compose-recap
  *  established (workouts → exercises → exercise_sets via Supabase embedded

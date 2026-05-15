@@ -78,6 +78,11 @@ export function MorningBriefCard({
         <SectionLabel>Yesterday</SectionLabel>
         <BriefRecapStats recap={card.recap} />
         <Divider />
+        {/* Non-rest variants (training, kickoff, analytical) share the
+            session-list rendering; rest gets its own branch below. Kickoff
+            and analytical render their structured blocks (BriefThisWeekPlan
+            / BriefYesterdayVsPlan) in addition to the session list. Future
+            non-rest variants inherit the session-list path by default. */}
         {card.variant !== "rest" ? (
           <>
             <SectionLabel>

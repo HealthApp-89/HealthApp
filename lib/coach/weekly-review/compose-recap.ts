@@ -16,6 +16,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { epley } from "@/lib/coach/derived";
 import { SHORT_TO_FULL } from "@/lib/coach/session-plan-reader";
+import { BIG_FOUR } from "@/lib/coach/big-four";
 import { addDays, mondayOf } from "./date-utils";
 import type {
   WeeklyReviewPayload,
@@ -39,13 +40,6 @@ type FlatWorkout = {
     warmup: boolean;
   }>;
 };
-
-const BIG_FOUR = [
-  "Squat (Barbell)",
-  "Deadlift (Barbell)",
-  "Decline Bench Press (Barbell)",
-  "Overhead Press (Barbell)",
-];
 
 const SELECT_RECAP =
   "date, notes, exercises (name, sets:exercise_sets (kg, reps, warmup))";

@@ -1,14 +1,8 @@
 "use client";
 
 import { COLOR } from "@/lib/ui/theme";
+import { BIG_FOUR_SET } from "@/lib/coach/big-four";
 import type { MorningBriefCard, MorningBriefExercise } from "@/lib/data/types";
-
-const BIG_FOUR_NAMES = new Set([
-  "Squat (Barbell)",
-  "Deadlift (Barbell)",
-  "Decline Bench Press (Barbell)",
-  "Overhead Press (Barbell)",
-]);
 
 export function BriefSessionList({
   session,
@@ -48,7 +42,7 @@ export function BriefSessionList({
       >
         {exercises.map((e, i) => {
           const planEntry =
-            BIG_FOUR_NAMES.has(e.name) && thisWeekPlan
+            BIG_FOUR_SET.has(e.name) && thisWeekPlan
               ? thisWeekPlan.per_lift.find((p) => p.lift === e.name)
               : undefined;
           return (

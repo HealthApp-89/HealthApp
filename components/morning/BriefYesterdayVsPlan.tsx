@@ -52,7 +52,7 @@ export function BriefYesterdayVsPlan({ block }: { block: YesterdayVsPlanBlock })
                 : "—";
               const repsPct =
                 p.reps_completed_pct != null
-                  ? `${Math.round(p.reps_completed_pct * 100)}%`
+                  ? `${fmtNum(p.reps_completed_pct * 100)}%`
                   : "—";
               const repsColor =
                 p.reps_completed_pct == null
