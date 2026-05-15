@@ -12,18 +12,55 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { todayInUserTz } from "@/lib/time";
 import type { MorningBriefCard, MuscleVolumeFlag, StrengthMuscleVolume } from "@/lib/data/types";
-import { fetchBriefInputs } from "@/lib/morning/brief/data-sources";
+import {
+  fetchBriefInputs,
+  getThisWeekPrescription,
+  getYesterdayWorkoutFlat,
+  getPreviousCommittedReview,
+} from "@/lib/morning/brief/data-sources";
 import { assembleBriefExceptAdvice } from "@/lib/morning/brief/assembler";
 import { computeAdviceFlags, evaluateMuscleVolumeGapsForBrief } from "@/lib/morning/brief/flags";
 import { generateAdvice } from "@/lib/morning/brief/advice-prompt";
 import { fetchMuscleVolumeServer } from "@/lib/query/fetchers/muscleVolume";
+import { mondayOf } from "@/lib/coach/weekly-review/date-utils";
 
 export async function buildMorningBrief(
   supabase: SupabaseClient,
   userId: string,
 ): Promise<MorningBriefCard> {
   const today = todayInUserTz();
-  const inputs = await fetchBriefInputs(supabase, userId, today);
+  const yesterday = yesterdayOf(today);
+  const weekStart = mondayOf(today);
+
+  // Fan out the base inputs in parallel with the three sub-project #2
+  // data sources (this-week prescription, yesterday flat workout for
+  // the analytical comparator, previous-week committed review for the
+  // phase-transition flag).
+  const [
+    inputs,
+    thisWeekPrescription,
+    yesterdayWorkoutForBlock,
+    previousCommittedReview,
+  ] = await Promise.all([
+    fetchBriefInputs(supabase, userId, today),
+    getThisWeekPrescription(supabase, userId, today),
+    getYesterdayWorkoutFlat(supabase, userId, yesterday),
+    getPreviousCommittedReview(supabase, userId, weekStart),
+  ]);
+
+  // Did yesterday's session type get swapped from the original prescription?
+  // training_weeks.original_session_plan is nullable (migration 0012) — null
+  // when the week's plan was never edited, so fall back to session_plan.
+  const swapAppliedYesterday = (() => {
+    if (!thisWeekPrescription) return false;
+    const tw = thisWeekPrescription.trainingWeek;
+    const original = (tw.original_session_plan ?? tw.session_plan) as Record<string, string>;
+    const current = tw.session_plan as Record<string, string>;
+    const yesterdayLong = [
+      "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday",
+    ][new Date(`${yesterday}T12:00:00Z`).getUTCDay()];
+    return original[yesterdayLong] !== current[yesterdayLong];
+  })();
 
   // Muscle-volume context — only when the active plan carries muscle_volume.
   let muscleVolumeFlags: MuscleVolumeFlag[] = [];
@@ -65,13 +102,42 @@ export async function buildMorningBrief(
     }
   }
 
-  const enrichedInputs = { ...inputs, muscleVolumeFlags };
-  const partial = assembleBriefExceptAdvice(enrichedInputs);
+  // Compute flags first — phase_transition_this_week is then plumbed into
+  // BriefInputs so the assembler can flag it on the kickoff plan block.
+  // The flag is computed deterministically from the committed-review pair;
+  // the assembler is the renderer side, not the truth side.
+  // Build a partial card just for the readiness band — band drives the
+  // coach_suggestion which is read by flags.coach_swap_suggested. We need
+  // the band before we have the full card, so compute flags against the
+  // same partial we'll feed the AI. The cleanest path is one assembler
+  // call that fills `card.coach_suggestion` and `card.readiness.band`,
+  // then a single flags computation.
+  const enrichedInputs = {
+    ...inputs,
+    muscleVolumeFlags,
+    thisWeekPrescription,
+    yesterdayWorkoutForBlock,
+    swapAppliedYesterday,
+    // Set provisionally to false; flags.ts is the authoritative computation,
+    // and we re-build the assembler call with the real value below.
+    phaseTransitionThisWeek: false,
+  };
+  const provisionalPartial = assembleBriefExceptAdvice(enrichedInputs);
   const flags = computeAdviceFlags({
     activeProfile: inputs.activeProfile,
-    card: partial,
+    card: provisionalPartial,
     targets: inputs.todayTargets,
+    latestCommittedReview: thisWeekPrescription?.review ?? null,
+    previousCommittedReview,
   });
+
+  // Re-run the assembler with the authoritative phase-transition flag so
+  // ThisWeekPlanBlock.phase_changed_this_week matches the flag the AI sees.
+  const partial = assembleBriefExceptAdvice({
+    ...enrichedInputs,
+    phaseTransitionThisWeek: flags.phase_transition_this_week,
+  });
+
   const advice_md = await generateAdvice({
     activeProfile: inputs.activeProfile,
     card: partial,
@@ -81,6 +147,12 @@ export async function buildMorningBrief(
     muscleVolume,
   });
   return { ...partial, advice_md };
+}
+
+function yesterdayOf(today: string): string {
+  const d = new Date(`${today}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().slice(0, 10);
 }
 
 function weekdayLabelFor(iso: string): "Mon" | "Tue" | "Wed" | "Thu" | "Fri" | "Sat" | "Sun" {
