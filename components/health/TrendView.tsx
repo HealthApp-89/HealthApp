@@ -9,6 +9,8 @@ import type { HealthTrendPoint } from "@/lib/query/fetchers/healthTrend";
 import type { BodyMeasurement } from "@/lib/data/types";
 
 const RANGES = [
+  { id: "1w",  label: "1W",  days: 7 },
+  { id: "1m",  label: "1M",  days: 30 },
   { id: "3m",  label: "3M",  days: 90 },
   { id: "6m",  label: "6M",  days: 180 },
   { id: "1y",  label: "1Y",  days: 365 },
