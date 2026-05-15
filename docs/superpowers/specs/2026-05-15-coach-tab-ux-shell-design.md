@@ -113,10 +113,26 @@ Files changed (new + modified):
 // terms used by the AI prompts (advice-prompt.ts TEACHER_TONE_RULES,
 // narrative-prompt.ts TEACHING block) and the UI tooltips (JargonPill
 // → TermSheet, GlossarySheet).
+//
+// Two dictionaries:
+//   - CORE_TERMS   — 7 athlete-facing concepts that also appear in the AI
+//                    prompts' always-define-on-first-use rule.
+//   - RATIONALE_LABELS — periodization rationale tags emitted by
+//                    compose-prescription.ts. UI-tooltip-only; never
+//                    referenced in AI prompts.
+//
+// JargonPill accepts a key from either dictionary via the union TermKey.
 
-export type TermKey =
-  | "mev" | "mav" | "mrv" | "deload"
-  | "rir" | "e1rm" | "sleep_efficiency"
+export type CoreTermKey =
+  | "mev"
+  | "mav"
+  | "mrv"
+  | "deload"
+  | "rir"
+  | "e1rm"
+  | "sleep_efficiency";
+
+export type RationaleTagKey =
   | "mev_to_mav_clearance"
   | "mav_to_mav_step"
   | "mav_to_mrv_advance"
@@ -126,21 +142,24 @@ export type TermKey =
   | "plateau_deload_reset"
   | "rep_completion_miss"
   | "rir_missed_twice"
+  | "rir_missed"
   | "form_hold"
   | "cutting_hold"
   | "recovery_hold"
   | "block_start_baseline";
 
+export type TermKey = CoreTermKey | RationaleTagKey;
+
 export type GlossaryEntry = {
   /** Display label as it appears on UI pills, e.g. "MAV", "RIR 2". */
   label: string;
-  /** 5-10 word plain English. Used in AI prompts + the TermSheet header. */
+  /** 5-10 word plain English. Used in AI prompts (CORE_TERMS only) + the TermSheet header. */
   short: string;
   /** 1-2 sentence longer explanation. Used in the TermSheet body + GlossarySheet. */
   plain: string;
 };
 
-export const GLOSSARY: Record<TermKey, GlossaryEntry> = {
+export const CORE_TERMS: Record<CoreTermKey, GlossaryEntry> = {
   mev: {
     label: "MEV",
     short: "minimum weekly sets that drive growth",
@@ -151,27 +170,43 @@ export const GLOSSARY: Record<TermKey, GlossaryEntry> = {
     short: "the productive volume range",
     plain: "Maximum Adaptive Volume — the range of weekly sets that drives the most growth without overtraining. Most of your training time lives here.",
   },
-  // ... etc, full dictionary
+  // ... etc — full 7-entry dictionary populated at implementation
 };
 
-/** Helper for AI prompts — emits the always-define-jargon rule using the dictionary. */
+export const RATIONALE_LABELS: Record<RationaleTagKey, GlossaryEntry> = {
+  mev_to_mav_clearance: {
+    label: "MEV → MAV",
+    short: "cleared the introductory week",
+    plain: "You hit your prescribed sets and reps in last week's MEV phase cleanly, so the program steps up to the more productive MAV range this week.",
+  },
+  plateau_rep_shift: {
+    label: "Plateau · rep shift",
+    short: "swap rep range to break a plateau",
+    plain: "Three weeks of flat e1RM — before cutting weight, swap the rep range (5s↔8s) to give the lift a fresh stimulus.",
+  },
+  // ... etc — full ~14-entry dictionary populated at implementation
+};
+
+/** Combined lookup used by JargonPill to resolve either kind of key. */
+export const GLOSSARY: Record<TermKey, GlossaryEntry> = {
+  ...CORE_TERMS,
+  ...RATIONALE_LABELS,
+};
+
+/** Helper for AI prompts — emits the always-define-jargon rule using CORE_TERMS only. */
 export function jargonRuleForPrompt(): string {
-  const lines = Object.entries(GLOSSARY)
-    .filter(([key]) => isCoreTerm(key as TermKey))   // only the 7 athlete-facing terms, not internal rationale_tags
-    .map(([key, entry]) => `  - ${entry.label} → "${entry.short}"`);
+  const lines = Object.values(CORE_TERMS).map(
+    (entry) => `  - ${entry.label} → "${entry.short}"`,
+  );
   return [
     "On first mention in this reply, define jargon in 5-10 words of plain English:",
     ...lines,
     "  If a term appears again later in the same reply, don't re-define.",
   ].join("\n");
 }
-
-function isCoreTerm(key: TermKey): boolean {
-  return ["mev", "mav", "mrv", "deload", "rir", "e1rm", "sleep_efficiency"].includes(key);
-}
 ```
 
-The 7 "core" terms appear in the AI prompts' always-define rule (matches the existing Sub-project #2 list verbatim). The full ~20-entry dictionary is what the tooltips can resolve. Rationale tags (`mev_to_mav_clearance`, etc.) only appear in the UI via tooltips, not in the AI prompt rule.
+The 7 `CORE_TERMS` appear in the AI prompts' always-define rule (matches the existing Sub-project #2 list verbatim). The ~14 `RATIONALE_LABELS` only appear in the UI via tooltips on the per-lift prescription rows — they're internal periodization decisions, not athlete-facing vocabulary, so they stay out of the AI prompt rule but resolve through the same JargonPill mechanism.
 
 ## Three deliverables in detail
 
