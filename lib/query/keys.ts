@@ -90,4 +90,9 @@ export const queryKeys = {
     snapshot: (userId: string, today: string) =>
       ["muscleVolume", userId, "snapshot", today] as const,
   },
+  weeklyReviews: {
+    all: (userId: string) => ["weeklyReviews", userId] as const,
+    one: (userId: string, weekStart: string) =>
+      ["weeklyReviews", userId, weekStart] as const,
+  },
 } as const;
