@@ -10,6 +10,7 @@ import { BlockProgressCard } from "@/components/coach/BlockProgressCard";
 import { WeekPlanCard } from "@/components/coach/WeekPlanCard";
 import { PlanWeekCTA } from "@/components/coach/PlanWeekCTA";
 import { WeekReviewBanner } from "@/components/coach/WeekReviewBanner";
+import { ToolsView } from "@/components/coach/ToolsView";
 import { useBlockProgress } from "@/lib/query/hooks/useBlockProgress";
 import { useTrainingWeek } from "@/lib/query/hooks/useTrainingWeek";
 import { useCoachRecent } from "@/lib/query/hooks/useCoachRecent";
@@ -119,34 +120,42 @@ export function CoachClient({
         </div>
       </header>
 
-      {/* Contextual banners — visible on both Today and Recent. */}
-      <div
-        style={{
-          padding: "0 12px",
-          display: "flex",
-          flexDirection: "column",
-          gap: 10,
-        }}
-      >
-        <BlockProgressCard userId={userId} />
-        {showPlanCTA && (
-          <PlanWeekCTA
-            weekStart={targetMonday}
-            weekN={weekN}
-            isLate={isLatePlanning}
-          />
-        )}
-        {showWeekCard && (
-          <WeekPlanCard userId={userId} weekStart={targetMonday} />
-        )}
-        {/* Mid-week discoverability — Tue-Sat only. Sun/Mon are owned by
-            PlanWeekCTA, so we don't compete for the slot. */}
-        {today !== "Sunday" && today !== "Monday" && (
-          <WeekReviewBanner userId={userId} weekStart={lastMondayForReview} />
-        )}
-      </div>
+      {/* Contextual banners — visible on Today and Recent. Tools view owns
+          its own surface (focused tool browser) so banners are hidden there. */}
+      {activeView !== "tools" && (
+        <div
+          style={{
+            padding: "0 12px",
+            display: "flex",
+            flexDirection: "column",
+            gap: 10,
+          }}
+        >
+          <BlockProgressCard userId={userId} />
+          {showPlanCTA && (
+            <PlanWeekCTA
+              weekStart={targetMonday}
+              weekN={weekN}
+              isLate={isLatePlanning}
+            />
+          )}
+          {showWeekCard && (
+            <WeekPlanCard userId={userId} weekStart={targetMonday} />
+          )}
+          {/* Mid-week discoverability — Tue-Sat only. Sun/Mon are owned by
+              PlanWeekCTA, so we don't compete for the slot. */}
+          {today !== "Sunday" && today !== "Monday" && (
+            <WeekReviewBanner userId={userId} weekStart={lastMondayForReview} />
+          )}
+        </div>
+      )}
 
-      {activeView === "recent" ? (
+      {activeView === "tools" ? (
+        /* Tools tab — categorized list of every user-facing coach action. */
+        <div style={{ marginTop: 10 }}>
+          <ToolsView userId={userId} todayDate={todayDate} />
+        </div>
+      ) : activeView === "recent" ? (
         /* Recent tab — newest-first list of days that received a morning brief. */
         <div
           style={{
