@@ -206,8 +206,6 @@ function computeOnPace(
   // TODO(v2): parse a "<kg>x<reps>" target out of block.goal_text and compare
   // to current top e1rm in recap. Returning null for now means downstream UI
   // shows "pace unknown" instead of false/true.
-  console.warn(
-    `[weekly-review] computeOnPace not implemented — block goal "${block.goal_text}" will render as pace-unknown`,
-  );
+  void block;
   return null;
 }

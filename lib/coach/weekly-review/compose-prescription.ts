@@ -366,6 +366,7 @@ function phaseStepFor(lift: string, current: WeeklyPhase, next: WeeklyPhase): nu
   if (current === "mev" && next === "mav") return t.mevToMav;
   if (current === "mav" && next === "mav") return t.mevToMav * 0.6; // mid-MAV step
   if (current === "mav" && next === "mrv") return t.mavToMrv;
+  if (current === "mav" && next === "deload") return 0; // deload-next guard in resolveOneLift handles the cut
   // mrv current + deload-next handled in resolveOneLift before falling here.
   throw new Error(
     `compose-prescription: phaseStepFor called with unhandled phase pair ${current} → ${next}. ` +
@@ -377,6 +378,7 @@ function pickPhaseTag(current: WeeklyPhase, next: WeeklyPhase): PrescriptionRati
   if (current === "mev" && next === "mav") return "mev_to_mav_clearance";
   if (current === "mav" && next === "mav") return "mav_to_mav_step";
   if (current === "mav" && next === "mrv") return "mav_to_mrv_advance";
+  if (current === "mav" && next === "deload") return "deload_load_volume_cut";
   if (current === "mrv" && next === "deload") return "deload_load_volume_cut";
   throw new Error(
     `compose-prescription: pickPhaseTag called with unhandled phase pair ${current} → ${next}. ` +

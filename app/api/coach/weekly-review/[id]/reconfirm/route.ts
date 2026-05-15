@@ -45,12 +45,23 @@ export async function PATCH(
   const sb = createSupabaseServiceRoleClient();
   const { data: row, error: rErr } = await sb
     .from("weekly_reviews")
-    .select("id, user_id, payload, reconfirm_responses")
+    .select("id, user_id, status, payload, reconfirm_responses")
     .eq("id", id)
     .eq("user_id", user.id)
     .maybeSingle();
   if (rErr || !row) {
     return NextResponse.json({ error: "not found" }, { status: 404 });
+  }
+
+  if (row.status !== "draft") {
+    return NextResponse.json(
+      {
+        error: "review_not_draft",
+        message:
+          "Review is not a draft — reconfirm answers can only be persisted on draft reviews.",
+      },
+      { status: 409 },
+    );
   }
 
   const responses = (row.reconfirm_responses as ReconfirmResponses | null) ?? {};
