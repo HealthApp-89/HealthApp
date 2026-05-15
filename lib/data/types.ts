@@ -907,3 +907,145 @@ export type MuscleVolumeFlag =
       actual_wtd: number;
       mrv: number;
     };
+
+// ── Weekly review (0014_weekly_reviews) ─────────────────────────────────────
+
+export type WeeklyPhase = "mev" | "mav" | "mrv" | "deload";
+
+/** Rationale tag for a per-lift prescription. Composable suffixes
+ *  `_increment_floor` / `_increment_capped` may be appended by
+ *  `compose-prescription.ts` when physical loading constraints force
+ *  a hold despite a non-zero target step. */
+export type PrescriptionRationaleTag =
+  | "block_start_baseline"
+  | "cutting_hold"
+  | "recovery_hold"
+  | "plateau_deload_reset"
+  | "plateau_rep_shift"
+  | "rep_completion_miss"
+  | "rir_missed_twice"
+  | "rir_missed"
+  | "form_hold"
+  | "mev_to_mav_clearance"
+  | "mav_to_mav_step"
+  | "mav_to_mrv_advance"
+  | "mrv_volume_drive"
+  | "deload_load_volume_cut"
+  | string;  // open for `_increment_floor` / `_increment_capped` suffixes
+
+export type WeeklyReviewPayload = {
+  schema_version: 1;
+  header: {
+    week_n: number;
+    total_weeks: number;
+    block_goal_text: string;
+    block_phase_now: WeeklyPhase;
+    block_phase_next: WeeklyPhase;
+    on_pace: boolean | null;
+    weeks_remaining: number;
+    late: boolean;
+  };
+  recap: {
+    sessions_planned: number;
+    sessions_done: number;
+    sessions_skipped: Array<{ day: string; type: string }>;
+    sessions_swapped: Array<{ day: string; from: string; to: string }>;
+    per_lift: Array<{
+      lift: string;
+      top_set: { weight_kg: number; reps: number; sets: number };
+      reps_completed_pct: number | null;
+      e1rm_kg: number | null;
+      e1rm_delta_kg: number | null;
+      e1rm_delta_pct: number | null;
+      e1rm_history_3wk: number[];
+      rir_target_met: boolean | null;
+      rir_miss_consecutive: number;
+      form_notes: string[];
+    }>;
+    sleep: { avg_h: number | null; avg_efficiency_pct: number | null };
+    nutrition: {
+      kcal_avg: number | null; kcal_target: number | null;
+      protein_avg_g: number | null; protein_target_g: number | null;
+    };
+    weight: { start_kg: number | null; end_kg: number | null; delta_kg: number | null };
+  };
+  reconfirm: Array<{
+    id: string;
+    severity: "info" | "warn";
+    rule_tag: string;
+    question: string;
+    chips: Array<{ value: string; label: string }>;
+  }>;
+  trends: {
+    window_weeks: 4;
+    weight_loss_kg_per_week: number | null;
+    loss_rate_in_target_band: boolean | null;
+    strength_slope_pct_per_week: number | null;
+    lbm_slope_pct_per_week: number | null;
+    plateau_flags: Array<{ lift: string; weeks_flat: number }>;
+  };
+  prescription: {
+    next_week_start: string;
+    phase: WeeklyPhase;
+    rir_target: number | null;
+    session_plan: Record<string, string>;
+    weekly_focus: string | null;
+    per_lift: Array<{
+      lift: string;
+      sets: number;
+      reps: number;
+      weight_kg: number;
+      delta_pct_from_last_week: number | null;
+      pr_rebase_applied: boolean;
+      rationale_tag: PrescriptionRationaleTag;
+    }>;
+  };
+  volume: {
+    per_muscle: Array<{
+      muscle: string;
+      last_week_sets: number;
+      next_week_sets: number;
+      tier: "mev" | "mav" | "mrv";
+    }>;
+  };
+  targets: {
+    nutrition: { kcal: number; protein_g: number; carbs_g: number; fat_g: number };
+    sleep: { hours: number; efficiency_pct: number };
+    recovery_focus: string[];
+  };
+};
+
+export type WeeklyReviewCardUI = {
+  schema_version: 1;
+  week_start: string;
+  next_week_start: string;
+  block_phase_now: WeeklyPhase;
+  block_phase_next: WeeklyPhase;
+  one_line_summary: string;
+  per_lift_preview: Array<{ lift: string; from: string; to: string }>;
+  link_path: string;
+  review_id: string;
+};
+
+export type ReconfirmResponse = { chip_value: string; answered_at: string };
+export type ReconfirmResponses = Record<string, ReconfirmResponse>;
+
+export type WeeklyReviewStatus = "draft" | "committed" | "superseded";
+
+export type WeeklyReviewRow = {
+  id: string;
+  user_id: string;
+  week_start: string;
+  next_week_start: string;
+  version: number;
+  status: WeeklyReviewStatus;
+  block_id: string | null;
+  payload: WeeklyReviewPayload;
+  narrative_md: string;
+  reconfirm_responses: ReconfirmResponses;
+  committed_at: string | null;
+  committed_training_week_id: string | null;
+  generated_at: string;
+  updated_at: string;
+  created_at: string;
+};
