@@ -12,6 +12,7 @@ import type {
   MuscleVolumeFlag,
   MuscleVolumeSnapshot,
   StrengthMuscleVolume,
+  WeeklyReviewRow,
 } from "@/lib/data/types";
 import { TARGETED_MUSCLE_GROUPS } from "@/lib/data/types";
 import {
@@ -37,6 +38,13 @@ export type FlagInputs = {
    *  deficit alarm state without re-querying daily_logs. null when no active
    *  athlete profile exists. */
   targets: TodayTargets | null;
+  /** The latest committed weekly_review for this user (if any). Used to
+   *  derive phase_transition_this_week by comparing block_phase_now to
+   *  the previous committed review's block_phase_now. */
+  latestCommittedReview?: WeeklyReviewRow | null;
+  /** The previous-week committed weekly_review (if any). Used for the
+   *  same comparison. Null when no prior review exists. */
+  previousCommittedReview?: WeeklyReviewRow | null;
 };
 
 /** Computes the structured GLP-1 flag from the athlete profile's health.glp1_status
@@ -98,9 +106,12 @@ export function computeAdviceFlags(inputs: FlagInputs): AdviceFlags {
     poor_sleep_efficiency,
     missed_protein_yesterday,
     coach_swap_suggested: inputs.card.coach_suggestion?.kind === "swap_to_mobility",
-    // Real computation lands in Task 1.4 once latestCommittedReview /
-    // previousCommittedReview are threaded through FlagInputs.
-    phase_transition_this_week: false,
+    phase_transition_this_week:
+      inputs.latestCommittedReview && inputs.previousCommittedReview
+        ? inputs.latestCommittedReview.payload.header.block_phase_now !==
+          inputs.previousCommittedReview.payload.header.block_phase_now
+        : inputs.latestCommittedReview != null,
+        // No previous review = first ever committed week = treat as transition.
   };
 }
 
