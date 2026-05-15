@@ -2,6 +2,7 @@
 
 import { COLOR } from "@/lib/ui/theme";
 import { BIG_FOUR_SET } from "@/lib/coach/big-four";
+import { JargonPill } from "@/components/coach/JargonPill";
 import type { MorningBriefCard, MorningBriefExercise } from "@/lib/data/types";
 
 export function BriefSessionList({
@@ -101,7 +102,9 @@ export function BriefSessionList({
                       marginTop: 1,
                     }}
                   >
-                    RIR {planEntry.rir_target}
+                    <JargonPill termKey="rir">
+                      RIR {planEntry.rir_target}
+                    </JargonPill>
                   </div>
                 )}
               </div>
