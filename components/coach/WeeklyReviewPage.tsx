@@ -60,6 +60,8 @@ export function WeeklyReviewPage({
             reviewId={row.id}
             reconfirm={p.reconfirm}
             responses={row.reconfirm_responses}
+            userId={userId}
+            weekStart={weekStart}
           />
           <WeeklyReviewTrends trends={p.trends} />
           <WeeklyReviewPrescription

@@ -8,7 +8,7 @@
 // Server-only — uses process.env.COACH_TOOL_SECRET. Importing this module
 // from a Client Component will throw at module-eval time.
 
-import { createHmac } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 
 const TOKEN_VERSION = "v1";
 const TTL_MS = 10 * 60 * 1000; // 10 minutes
@@ -24,10 +24,25 @@ function getSecret(): string {
   return s;
 }
 
+// Recursively sort object keys so nested structures (e.g. session_plan with
+// weekday keys) serialize identically regardless of the order Postgres returns
+// jsonb fields. Arrays are left in order — array order is semantic, not
+// coincidental. `null` short-circuits at the top to keep it as-is.
+function sortDeep(v: unknown): unknown {
+  if (v === null || typeof v !== "object" || Array.isArray(v)) return v;
+  return Object.fromEntries(
+    Object.keys(v as object)
+      .sort()
+      .map((k) => [k, sortDeep((v as Record<string, unknown>)[k])])
+  );
+}
+
 function payloadHash(payload: unknown): string {
-  // Stable JSON: sort keys so {a:1,b:2} and {b:2,a:1} hash identically.
-  const stable = JSON.stringify(payload, Object.keys(payload as object).sort());
-  return createHmac("sha256", "salt").update(stable).digest("hex").slice(0, 16);
+  // Inner integrity-check string — the outer signature via COACH_TOOL_SECRET
+  // (signApprovalToken / verifyApprovalToken) provides the real authentication,
+  // so this uses createHash, not createHmac.
+  const stable = JSON.stringify(sortDeep(payload));
+  return createHash("sha256").update(stable).digest("hex").slice(0, 16);
 }
 
 /** Sign a token for a propose_* call. Caller hands the returned string back
@@ -35,7 +50,7 @@ function payloadHash(payload: unknown): string {
  *  matching commit_* call. */
 export function signApprovalToken(args: {
   userId: string;
-  action: "block" | "week" | "plan";
+  action: "block" | "week" | "plan" | "weekly_review";
   payload: unknown;
 }): string {
   const ts = Date.now();
@@ -50,7 +65,7 @@ export function signApprovalToken(args: {
 export function verifyApprovalToken(args: {
   token: string;
   userId: string;
-  action: "block" | "week" | "plan";
+  action: "block" | "week" | "plan" | "weekly_review";
   payload: unknown;
 }): { ok: true; payloadHash: string } {
   const parts = args.token.split(".");

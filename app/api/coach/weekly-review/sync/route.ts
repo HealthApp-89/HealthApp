@@ -39,11 +39,14 @@ export async function GET(req: Request) {
   }
   const userId = profile.user_id as string;
 
-  // Target week = previous Monday from "now" (UTC).
+  // Target week_start: Sunday is the LAST day of the week being recapped
+  // (the week started 6 days ago on Monday); Monday catch-up reviews the
+  // week that ended yesterday (started 7 days ago).
   const today = new Date();
   const dow = today.getUTCDay() || 7; // Mon=1..Sun=7
+  const offset = dow === 7 ? 6 : (dow - 1) + 7;
   const lastMonday = new Date(today);
-  lastMonday.setUTCDate(today.getUTCDate() - (dow - 1) - 7);
+  lastMonday.setUTCDate(today.getUTCDate() - offset);
   const weekStart = lastMonday.toISOString().slice(0, 10);
 
   // Idempotency: bail if any row exists for this week.

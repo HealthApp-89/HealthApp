@@ -2567,3 +2567,54 @@ export async function executeUnmarkMobilityDone(opts: {
     meta: { ms: Date.now() - t0, result_rows: deleted?.length ?? 0, range_days: 0, truncated: false },
   };
 }
+
+// ── Weekly review action tools (schemas only) ────────────────────────────────
+//
+// These tools describe actions the user can take on a weekly_reviews row.
+// Execution happens via dedicated HTTP routes under
+// /api/coach/weekly-review/[id]/* — these schemas exist so the chat coach can
+// reference the actions when discussing a review (e.g. "tap Commit ✓ to lock
+// in next week's plan") without invoking the action itself. No executors are
+// wired in chat-stream.ts; the chips on /coach/weeks/<weekStart> hit the
+// routes directly.
+
+export const COMMIT_WEEKLY_PLAN_TOOL = {
+  name: "commit_weekly_plan",
+  description:
+    "Commit the weekly review's prescription into training_weeks for next Monday. Requires an HMAC approval token from /api/coach/approval-token. UI-driven: the Commit ✓ chip on /coach/weeks/<weekStart> handles the issuer + commit handshake.",
+  input_schema: {
+    type: "object" as const,
+    required: ["review_id", "approval_token"],
+    properties: {
+      review_id:      { type: "string" },
+      approval_token: { type: "string" },
+    },
+  },
+};
+
+export const REGENERATE_WEEKLY_REVIEW_TOOL = {
+  name: "regenerate_weekly_review",
+  description:
+    "Regenerate a weekly review (creates version N+1; supersedes the prior draft). No approval needed because nothing escapes the weekly_reviews table.",
+  input_schema: {
+    type: "object" as const,
+    required: ["review_id"],
+    properties: {
+      review_id: { type: "string" },
+    },
+  },
+};
+
+export const PROPOSE_NUTRITION_ADJUSTMENT_TOOL = {
+  name: "propose_nutrition_adjustment",
+  description:
+    "Apply a ±kcal delta to a draft weekly review's nutrition target. Protein floor and fat target are preserved; carbs absorb the delta. Triggers a §6 narrative re-render.",
+  input_schema: {
+    type: "object" as const,
+    required: ["review_id", "kcal_delta"],
+    properties: {
+      review_id:  { type: "string" },
+      kcal_delta: { type: "number", minimum: -500, maximum: 500 },
+    },
+  },
+};
