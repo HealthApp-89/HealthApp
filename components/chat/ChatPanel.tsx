@@ -3,7 +3,7 @@
 
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import type { ChatMessage } from "@/lib/chat/types";
-import type { ChatMode } from "@/lib/data/types";
+import type { ChatMode, MorningUI } from "@/lib/data/types";
 import { ChatThread } from "./ChatThread";
 import { ChatComposer } from "./ChatComposer";
 import { ModeBanner } from "./ModeBanner";
@@ -15,6 +15,17 @@ import { useDailyLogs } from "@/lib/query/hooks/useDailyLogs";
 import { useCheckin } from "@/lib/query/hooks/useCheckin";
 import { todayInUserTz, ymdInUserTz } from "@/lib/time";
 import { COLOR } from "@/lib/ui/theme";
+
+/** Narrow `chat_messages.ui` to the chip-rendering shape used by morning
+ *  intake turns. The DB column carries different jsonb shapes per `kind`
+ *  (MorningUI for morning_intake, MorningBriefCard for morning_brief,
+ *  WeeklyReviewCardUI for weekly_review). Returns null when the message
+ *  isn't a chip-bearing intake turn. */
+function morningUiOf(m: ChatMessage | undefined): MorningUI | null {
+  if (!m || m.kind !== "morning_intake") return null;
+  const ui = m.ui as MorningUI | null;
+  return ui ?? null;
+}
 
 /** For morning_intake, scope thread to today's messages only — yesterday's
  *  morning checkin shouldn't appear in today's panel and would otherwise
@@ -808,11 +819,12 @@ export default function ChatPanel({
           (() => {
             const last = state.messages[state.messages.length - 1];
             if (!last || last.role !== "assistant" || last.status !== "done") return null;
-            if (!last.ui || !last.ui.chips || last.ui.chips.length === 0) return null;
+            const morningUi = morningUiOf(last);
+            if (!morningUi || !morningUi.chips || morningUi.chips.length === 0) return null;
             return (
               <ChatChips
                 key={last.id}
-                ui={last.ui}
+                ui={morningUi}
                 onSlotAnswer={onSlotAnswer}
                 onAction={onAction}
               />
@@ -821,17 +833,18 @@ export default function ChatPanel({
 
         {(() => {
           const last = state.messages[state.messages.length - 1];
+          const morningUi = morningUiOf(last);
           const hideComposer =
             currentMode === "morning_intake" &&
-            !!last?.ui?.chips &&
-            last.ui.chips.length > 0 &&
-            !last.ui.allow_text;
+            !!morningUi?.chips &&
+            morningUi.chips.length > 0 &&
+            !morningUi.allow_text;
           if (hideComposer) return null;
 
           const isMorningTextTurn =
             currentMode === "morning_intake" &&
             last?.role === "assistant" &&
-            last?.ui?.allow_text === true;
+            morningUi?.allow_text === true;
 
           return (
             <ChatComposer
@@ -988,13 +1001,14 @@ export default function ChatPanel({
       {currentMode === "morning_intake" && (() => {
         const last = state.messages[state.messages.length - 1];
         if (!last || last.role !== "assistant" || last.status !== "done") return null;
-        if (!last.ui || !last.ui.chips || last.ui.chips.length === 0) return null;
+        const morningUi = morningUiOf(last);
+        if (!morningUi || !morningUi.chips || morningUi.chips.length === 0) return null;
         // Fix 4: key by last.id so the multi-select Set state remounts fresh on
         // each prompt transition, preventing stale selections carrying over.
         return (
           <ChatChips
             key={last.id}
-            ui={last.ui}
+            ui={morningUi}
             onSlotAnswer={onSlotAnswer}
             onAction={onAction}
           />
@@ -1003,11 +1017,12 @@ export default function ChatPanel({
 
       {(() => {
         const last = state.messages[state.messages.length - 1];
+        const morningUi = morningUiOf(last);
         const hideComposer =
           currentMode === "morning_intake" &&
-          !!last?.ui?.chips &&
-          last.ui.chips.length > 0 &&
-          !last.ui.allow_text;
+          !!morningUi?.chips &&
+          morningUi.chips.length > 0 &&
+          !morningUi.allow_text;
         if (hideComposer) return null;
 
         // Morning intake: text submissions during allow_text turns route to the
@@ -1015,7 +1030,7 @@ export default function ChatPanel({
         const isMorningTextTurn =
           currentMode === "morning_intake" &&
           last?.role === "assistant" &&
-          last?.ui?.allow_text === true;
+          morningUi?.allow_text === true;
 
         return (
           <ChatComposer

@@ -82,11 +82,13 @@ export type ChatMessageRow = {
   /** [{name, input, ms, result_rows, range_days, truncated, error}] */
   tool_calls: ToolCallLog[] | null;
   /** Default 'coach' for the existing free-form chat thread; 'morning_intake'
-   *  segregates the daily check-in conversation in ChatPanel. */
-  kind: "coach" | "morning_intake" | "morning_brief";
-  /** Chip definitions / rendering hints for the morning intake bot. NULL on
+   *  segregates the daily check-in conversation in ChatPanel; 'morning_brief'
+   *  and 'weekly_review' are structured assistant-only cards. */
+  kind: "coach" | "morning_intake" | "morning_brief" | "weekly_review";
+  /** Chip definitions / rendering hints for the morning intake bot, or
+   *  structured card payload for morning_brief / weekly_review. NULL on
    *  free-form coach turns. */
-  ui: MorningUI | null;
+  ui: MorningUI | WeeklyReviewCardUI | null;
   mode: ChatMode;
   created_at: string;
   updated_at: string;
