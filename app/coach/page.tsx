@@ -22,7 +22,9 @@ export default async function CoachPage(props: {
   const sp = await props.searchParams;
   const viewParam = sp.view;
   const initialView: CoachView =
-    viewParam === "today" || viewParam === "recent" ? viewParam : "today";
+    viewParam === "today" || viewParam === "recent" || viewParam === "tools"
+      ? viewParam
+      : "today";
 
   const supabase = await createSupabaseServerClient();
   const {
