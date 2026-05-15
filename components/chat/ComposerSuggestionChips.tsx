@@ -3,6 +3,7 @@
 
 import { useEffect, useState } from "react";
 import { COLOR } from "@/lib/ui/theme";
+import { TOAST_DISMISS_MS, CHIP_SUBMIT_DEBOUNCE_MS } from "@/lib/ui/constants";
 import { DaySwapSheet } from "@/components/strength/DaySwapSheet";
 import { AdjustDeficitSheet } from "@/components/coach/AdjustDeficitSheet";
 import { useWeeklyReview } from "@/lib/query/hooks/useWeeklyReview";
@@ -64,7 +65,7 @@ export function ComposerSuggestionChips({
 
   useEffect(() => {
     if (!tooltip) return;
-    const t = setTimeout(() => setTooltip(null), 2500);
+    const t = setTimeout(() => setTooltip(null), TOAST_DISMISS_MS);
     return () => clearTimeout(t);
   }, [tooltip]);
 
@@ -82,7 +83,7 @@ export function ComposerSuggestionChips({
       // short enough not to feel sluggish. ChatPanel's own
       // inFlightAssistantId guard takes over for the duration of the actual
       // assistant turn.
-      setTimeout(() => setBusy(false), 400);
+      setTimeout(() => setBusy(false), CHIP_SUBMIT_DEBOUNCE_MS);
     }
   }
 

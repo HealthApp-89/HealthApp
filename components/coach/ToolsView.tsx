@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card, SectionLabel } from "@/components/ui/Card";
 import { COLOR } from "@/lib/ui/theme";
+import { TOAST_DISMISS_MS } from "@/lib/ui/constants";
 import { ToolRow } from "@/components/coach/tools/ToolRow";
 import { GlossarySheet } from "@/components/coach/GlossarySheet";
 import { DaySwapSheet } from "@/components/strength/DaySwapSheet";
@@ -70,7 +71,7 @@ export function ToolsView({
   // Auto-dismiss the inline toast after 3s so it never sticks.
   useEffect(() => {
     if (!toast) return;
-    const t = setTimeout(() => setToast(null), 3000);
+    const t = setTimeout(() => setToast(null), TOAST_DISMISS_MS);
     return () => clearTimeout(t);
   }, [toast]);
 

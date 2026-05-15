@@ -91,6 +91,10 @@ export function ChatComposer({
     onSend(text.trim(), imageIds);
     pending.forEach((p) => URL.revokeObjectURL(p.thumbnailUrl));
     setPending([]);
+    // Invariant: every internal setText("") MUST be paired with
+    // onTextChange?.("") so the parent's composerText state stays in
+    // sync. The parent uses composerText to gate chip visibility — a
+    // drift would cause chips to silently hide after a successful send.
     setText("");
     onTextChange?.("");
   }

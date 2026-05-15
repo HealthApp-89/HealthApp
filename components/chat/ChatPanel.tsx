@@ -869,7 +869,15 @@ export default function ChatPanel({
                 <ComposerSuggestionChips
                   userId={userId}
                   todayDate={today}
-                  onPrefillAndSubmit={(text) => void send(text, [])}
+                  onPrefillAndSubmit={(text) => {
+                    // Reset focus state — the chip submission programmatically
+                    // sends without going through the textarea, so the
+                    // textarea's onBlur may not fire reliably when the chip
+                    // button steals focus. Reset proactively so chips reappear
+                    // after inFlightAssistantId clears.
+                    setComposerFocused(false);
+                    void send(text, []);
+                  }}
                 />
               )}
               <ChatComposer
