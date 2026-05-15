@@ -8,6 +8,14 @@
     {
       "path": "/api/whoop/sync",
       "schedule": "0 10 * * *"
+    },
+    {
+      "path": "/api/coach/weekly-review/sync",
+      "schedule": "0 4 * * 0"
+    },
+    {
+      "path": "/api/coach/weekly-review/sync",
+      "schedule": "0 4 * * 1"
     }
   ],
   "functions": {
