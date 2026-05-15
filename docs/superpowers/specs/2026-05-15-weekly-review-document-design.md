@@ -184,7 +184,7 @@ alter table public.chat_messages
   drop constraint if exists chat_messages_kind_check;
 alter table public.chat_messages
   add constraint chat_messages_kind_check check (
-    kind in ('message','morning_intake','morning_brief','weekly_review')
+    kind in ('coach','morning_intake','morning_brief','weekly_review')
   );
 ```
 

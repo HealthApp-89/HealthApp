@@ -143,7 +143,7 @@ Goal: Database row exists, types compile, queries fetch (empty results OK). No d
     drop constraint if exists chat_messages_kind_check;
   alter table public.chat_messages
     add constraint chat_messages_kind_check check (
-      kind in ('message','morning_intake','morning_brief','weekly_review')
+      kind in ('coach','morning_intake','morning_brief','weekly_review')
     );
   ```
 
@@ -175,7 +175,7 @@ Goal: Database row exists, types compile, queries fetch (empty results OK). No d
   supabase db remote-execute "select pg_get_constraintdef(oid) from pg_constraint where conname='chat_messages_kind_check';"
   ```
 
-  Expected: `CHECK (kind = ANY (ARRAY['message'::text, 'morning_intake'::text, 'morning_brief'::text, 'weekly_review'::text]))`.
+  Expected: `CHECK (kind = ANY (ARRAY['coach'::text, 'morning_intake'::text, 'morning_brief'::text, 'weekly_review'::text]))`.
 
 - [ ] **Step 5: Commit**
 
