@@ -106,6 +106,7 @@ export function HealthClient({
           bodyComp={bodyCompPoints}
           measurements={measRows}
           todayIso={todayIso}
+          trendFromIso={trendFromIso}
         />
       )}
 

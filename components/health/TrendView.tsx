@@ -17,37 +17,55 @@ const RANGES = [
   { id: "all", label: "All", days: 0 },
 ] as const;
 
-type RangeId = (typeof RANGES)[number]["id"];
+type RangeId = (typeof RANGES)[number]["id"] | "custom";
 
 export function TrendView({
   bodyComp,
   measurements,
   todayIso,
+  trendFromIso,
 }: {
   bodyComp: HealthTrendPoint[];
   measurements: BodyMeasurement[]; // newest-first
   todayIso: string;
+  /** Lower bound of the prefetched body-comp window (12 months before today). */
+  trendFromIso: string;
 }) {
   const [range, setRange] = useState<RangeId>("1y");
+  const [customFrom, setCustomFrom] = useState<string>("");
+  const [customTo, setCustomTo] = useState<string>("");
 
-  const cutoff = useMemo(() => {
+  const bounds = useMemo<{ from: string | null; to: string | null }>(() => {
+    if (range === "custom") {
+      return { from: customFrom || null, to: customTo || null };
+    }
     const r = RANGES.find((x) => x.id === range)!;
-    if (r.days === 0) return null;
+    if (r.days === 0) return { from: null, to: null };
     const d = new Date(todayIso + "T00:00:00Z");
     d.setUTCDate(d.getUTCDate() - r.days);
-    return d.toISOString().slice(0, 10);
-  }, [range, todayIso]);
+    return { from: d.toISOString().slice(0, 10), to: null };
+  }, [range, customFrom, customTo, todayIso]);
 
   const filteredBodyComp = useMemo(
-    () => (cutoff ? bodyComp.filter((p) => p.date >= cutoff) : bodyComp),
-    [bodyComp, cutoff],
+    () =>
+      bodyComp.filter(
+        (p) =>
+          (bounds.from == null || p.date >= bounds.from) &&
+          (bounds.to == null || p.date <= bounds.to),
+      ),
+    [bodyComp, bounds],
   );
 
   // measurements is newest-first; we need oldest-first for sparklines
   const measAsc = useMemo(() => [...measurements].reverse(), [measurements]);
   const filteredMeas = useMemo(
-    () => (cutoff ? measAsc.filter((m) => m.measured_on >= cutoff) : measAsc),
-    [measAsc, cutoff],
+    () =>
+      measAsc.filter(
+        (m) =>
+          (bounds.from == null || m.measured_on >= bounds.from) &&
+          (bounds.to == null || m.measured_on <= bounds.to),
+      ),
+    [measAsc, bounds],
   );
 
   return (
@@ -79,8 +97,94 @@ export function TrendView({
               </button>
             );
           })}
+          <button
+            type="button"
+            onClick={() => {
+              if (!customFrom) {
+                const d = new Date(todayIso + "T00:00:00Z");
+                d.setUTCDate(d.getUTCDate() - 30);
+                setCustomFrom(d.toISOString().slice(0, 10));
+              }
+              if (!customTo) setCustomTo(todayIso);
+              setRange("custom");
+            }}
+            style={{
+              padding: "6px 10px",
+              fontSize: "11px",
+              fontWeight: 700,
+              border: "none",
+              borderRadius: RADIUS.pill,
+              background: range === "custom" ? COLOR.accent : COLOR.surfaceAlt,
+              color: range === "custom" ? "#fff" : COLOR.textMid,
+              cursor: "pointer",
+            }}
+          >
+            Custom
+          </button>
         </div>
       </div>
+
+      {range === "custom" && (
+        <div
+          style={{
+            display: "flex",
+            gap: "8px",
+            alignItems: "center",
+            justifyContent: "flex-end",
+          }}
+        >
+          <input
+            type="date"
+            value={customFrom}
+            min={trendFromIso}
+            max={customTo || todayIso}
+            onChange={(e) => setCustomFrom(e.target.value)}
+            style={{
+              padding: "4px 8px",
+              fontSize: "12px",
+              border: `1px solid ${COLOR.surfaceAlt}`,
+              borderRadius: RADIUS.input,
+              background: COLOR.surface,
+              color: COLOR.textStrong,
+              colorScheme: "dark",
+            }}
+          />
+          <span style={{ fontSize: "11px", color: COLOR.textMuted }}>→</span>
+          <input
+            type="date"
+            value={customTo}
+            min={customFrom}
+            max={todayIso}
+            onChange={(e) => setCustomTo(e.target.value)}
+            style={{
+              padding: "4px 8px",
+              fontSize: "12px",
+              border: `1px solid ${COLOR.surfaceAlt}`,
+              borderRadius: RADIUS.input,
+              background: COLOR.surface,
+              color: COLOR.textStrong,
+              colorScheme: "dark",
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => setRange("1y")}
+            aria-label="Reset range"
+            style={{
+              padding: "2px 8px",
+              fontSize: "14px",
+              lineHeight: 1,
+              border: "none",
+              borderRadius: RADIUS.pill,
+              background: COLOR.surfaceAlt,
+              color: COLOR.textMid,
+              cursor: "pointer",
+            }}
+          >
+            ×
+          </button>
+        </div>
+      )}
 
       <BodyCompTrendCards points={filteredBodyComp} />
 
