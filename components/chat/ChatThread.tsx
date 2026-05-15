@@ -5,7 +5,8 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ChatMessage } from "@/lib/chat/types";
 import { ChatMessage as ChatMessageView } from "./ChatMessage";
 import { MorningBriefCard as MorningBriefCardComponent } from "@/components/morning/MorningBriefCard";
-import type { MorningBriefCard } from "@/lib/data/types";
+import { WeeklyReviewCard } from "@/components/chat/WeeklyReviewCard";
+import type { MorningBriefCard, WeeklyReviewCardUI } from "@/lib/data/types";
 
 export function ChatThread({
   userId,
@@ -195,6 +196,11 @@ export function ChatThread({
             key={it.m.id}
             userId={userId}
             card={it.m.ui as MorningBriefCard}
+          />
+        ) : it.m.kind === "weekly_review" && it.m.ui ? (
+          <WeeklyReviewCard
+            key={it.m.id}
+            ui={it.m.ui as WeeklyReviewCardUI}
           />
         ) : (
           <ChatMessageView
