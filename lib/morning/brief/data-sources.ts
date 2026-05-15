@@ -305,14 +305,6 @@ export async function getYesterdayWorkoutFlat(
   userId: string,
   yesterday: string,
 ): Promise<YesterdayWorkoutForBlock | null> {
-  const { data, error } = await supabase
-    .from("workouts")
-    .select("type, exercises (name, sets:exercise_sets (kg, reps, warmup))")
-    .eq("user_id", userId)
-    .eq("date", yesterday)
-    .maybeSingle();
-  if (error) throw error;
-  if (!data) return null;
   type Row = {
     type: string | null;
     exercises: Array<{
@@ -320,7 +312,20 @@ export async function getYesterdayWorkoutFlat(
       sets: Array<{ kg: number | null; reps: number | null; warmup: boolean }>;
     }>;
   };
-  const row = data as Row;
+  // The `workouts` table doesn't enforce a unique constraint on
+  // (user_id, date), so .maybeSingle() throws PGRST116 when two rows happen
+  // to exist for the same day. Use order/limit instead and pick the first —
+  // mirrors the pattern in fetchBriefInputs which reads workouts[0].
+  const { data, error } = await supabase
+    .from("workouts")
+    .select("type, exercises (name, sets:exercise_sets (kg, reps, warmup))")
+    .eq("user_id", userId)
+    .eq("date", yesterday)
+    .order("created_at", { ascending: false })
+    .limit(1);
+  if (error) throw error;
+  if (!data || data.length === 0) return null;
+  const row = data[0] as Row;
   const flat: YesterdayWorkoutForBlock = {
     type: row.type ?? "",
     sets: row.exercises.flatMap((ex) =>

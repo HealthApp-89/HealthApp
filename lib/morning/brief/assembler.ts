@@ -132,6 +132,11 @@ function pickVariant(
 
   const weekday = weekdayFromDate(today);
   if (weekday === "Monday") return "kickoff";
+  // Sunday is the last day of the week. Kickoff is Mon-only; analytical
+  // is the Tue-Sat window. A non-REST Sunday session (rare) falls to the
+  // legacy training variant so the existing brief renders correctly without
+  // forcing an end-of-week "yesterday vs plan" comparison.
+  if (weekday === "Sunday") return "training";
   return "analytical";
 }
 

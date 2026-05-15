@@ -172,8 +172,8 @@ function computeDaysLeftInWeek(iso: string): number {
  *  Shared between the morning recommendation route and the
  *  regenerate_morning_brief chat tool. */
 export function composeBriefContentFallback(card: MorningBriefCard): string {
-  const sessionLine = card.variant === "training"
-    ? `Today: ${card.session.type} at ${card.session.start_time}`
+  const sessionLine = card.variant !== "rest"
+    ? `Today: ${card.session.type} at ${card.session.start_time ?? "TBD"}`
     : "Today: REST";
   return `Morning brief — ${sessionLine}. Readiness ${card.readiness.band}. Tap to view the full card.`;
 }
