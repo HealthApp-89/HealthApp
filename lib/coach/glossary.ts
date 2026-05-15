@@ -179,3 +179,11 @@ export function jargonRuleForPrompt(): string {
 export function getGlossaryEntry(key: string): GlossaryEntry | null {
   return (GLOSSARY as Record<string, GlossaryEntry>)[key] ?? null;
 }
+
+/** Strip the `_increment_floor` / `_increment_capped` suffixes that
+ *  compose-prescription.ts may append to a rationale_tag. These suffixes
+ *  document a physical-loading constraint but are not part of the glossary
+ *  key — callers should strip before looking up entries. */
+export function stripPrescriptionSuffix(tag: string): string {
+  return tag.replace(/_increment_(floor|capped)$/, "");
+}

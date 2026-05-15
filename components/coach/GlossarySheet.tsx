@@ -5,34 +5,35 @@ import { COLOR } from "@/lib/ui/theme";
 import {
   CORE_TERMS,
   RATIONALE_LABELS,
+  type CoreTermKey,
   type GlossaryEntry,
 } from "@/lib/coach/glossary";
+
+type CoreCategory = "Periodization" | "Training" | "Recovery";
+
+/** Categorization of CoreTermKey values into the headings shown in the
+ *  Glossary sheet. Keying by CoreTermKey makes the grouping decision
+ *  explicit and reviewable — if a future CoreTermKey is added without
+ *  being placed in a category, the gap is visible at-a-glance during
+ *  code review of this map rather than silently absent from the UI. */
+const CORE_CATEGORIES: Record<CoreCategory, CoreTermKey[]> = {
+  Periodization: ["mev", "mav", "mrv", "deload"],
+  Training: ["rir", "e1rm"],
+  Recovery: ["sleep_efficiency"],
+};
 
 type Section = { heading: string; entries: GlossaryEntry[] };
 
 function buildSections(): Section[] {
+  const coreSections: Section[] = (
+    Object.entries(CORE_CATEGORIES) as Array<[CoreCategory, CoreTermKey[]]>
+  ).map(([heading, keys]) => ({
+    heading,
+    entries: keys.map((k) => CORE_TERMS[k]),
+  }));
   return [
-    {
-      heading: "Periodization",
-      entries: [
-        CORE_TERMS.mev,
-        CORE_TERMS.mav,
-        CORE_TERMS.mrv,
-        CORE_TERMS.deload,
-      ],
-    },
-    {
-      heading: "Training",
-      entries: [CORE_TERMS.rir, CORE_TERMS.e1rm],
-    },
-    {
-      heading: "Recovery",
-      entries: [CORE_TERMS.sleep_efficiency],
-    },
-    {
-      heading: "Coach decisions",
-      entries: Object.values(RATIONALE_LABELS),
-    },
+    ...coreSections,
+    { heading: "Coach decisions", entries: Object.values(RATIONALE_LABELS) },
   ];
 }
 

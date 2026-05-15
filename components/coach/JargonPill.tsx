@@ -5,6 +5,12 @@ import { TermSheet } from "@/components/coach/TermSheet";
 import { GlossarySheet } from "@/components/coach/GlossarySheet";
 import { getGlossaryEntry, type TermKey } from "@/lib/coach/glossary";
 
+/** Tracks which missing-entry keys have already been warned about, so a
+ *  rationale_tag absent from the glossary warns exactly once per page-load
+ *  instead of spamming the console on every re-render of the prescription
+ *  table. */
+const _warnedKeys = new Set<string>();
+
 /**
  * Wraps an existing label (e.g. "MAV", "RIR 2", "MEV → MAV") and makes it
  * tappable. On tap, opens a BottomSheet with the plain-English definition
@@ -29,7 +35,8 @@ export function JargonPill({
 
   const entry = getGlossaryEntry(termKey);
   if (!entry) {
-    if (typeof window !== "undefined") {
+    if (typeof window !== "undefined" && !_warnedKeys.has(String(termKey))) {
+      _warnedKeys.add(String(termKey));
       // eslint-disable-next-line no-console
       console.warn(`[JargonPill] missing glossary entry for "${termKey}"`);
     }
