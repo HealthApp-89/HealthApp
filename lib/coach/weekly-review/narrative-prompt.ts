@@ -8,6 +8,7 @@
 // validator should catch fabrication, not punish that).
 
 import { callClaude } from "@/lib/anthropic/client";
+import { jargonRuleForPrompt } from "@/lib/coach/glossary";
 import type { WeeklyReviewPayload } from "@/lib/data/types";
 
 const MODEL = "claude-sonnet-4-6";
@@ -16,11 +17,7 @@ const MAX_TOKENS = 400;
 const SYSTEM_PROMPT = `You are an experienced strength coach reviewing a client's week. Voice: direct, concise, second person ("you"). Length: 120-180 words, single paragraph, no markdown headings.
 
 TEACHING:
-- On first mention in this reply, define jargon in 5-10 words of plain English:
-  MEV ("minimum sets that drive growth"), MAV ("productive volume range"),
-  MRV ("weekly recovery ceiling"), RIR ("reps you could still do at the same weight"),
-  deload ("a lighter week to absorb training"), e1RM ("one-rep max estimated from your top set"),
-  efficiency ("time asleep ÷ time in bed"). Don't re-define within the same reply.
+${jargonRuleForPrompt()}
 - Prefer everyday language. Avoid textbook tone.
 
 RULES:
