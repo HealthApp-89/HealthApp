@@ -1,5 +1,6 @@
 "use client";
 import { Card, SectionLabel } from "@/components/ui/Card";
+import { JargonPill } from "@/components/coach/JargonPill";
 import { COLOR } from "@/lib/ui/theme";
 import type { WeeklyReviewPayload } from "@/lib/data/types";
 
@@ -44,8 +45,13 @@ export function WeeklyReviewHeader({
         }}
       >
         <span>
-          {header.block_phase_now.toUpperCase()} →{" "}
-          {header.block_phase_next.toUpperCase()}
+          <JargonPill termKey={header.block_phase_now}>
+            {header.block_phase_now.toUpperCase()}
+          </JargonPill>
+          {" → "}
+          <JargonPill termKey={header.block_phase_next}>
+            {header.block_phase_next.toUpperCase()}
+          </JargonPill>
         </span>
         <span>·</span>
         {header.on_pace === true ? (
