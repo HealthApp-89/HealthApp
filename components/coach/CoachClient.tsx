@@ -11,7 +11,7 @@ import { WeekPlanCard } from "@/components/coach/WeekPlanCard";
 import { PlanWeekCTA } from "@/components/coach/PlanWeekCTA";
 import { WeekReviewBanner } from "@/components/coach/WeekReviewBanner";
 import { ToolsView } from "@/components/coach/ToolsView";
-import { useBlockProgress } from "@/lib/query/hooks/useBlockProgress";
+import { useBlockProgress, isActiveBlock } from "@/lib/query/hooks/useBlockProgress";
 import { useTrainingWeek } from "@/lib/query/hooks/useTrainingWeek";
 import { useCoachRecent } from "@/lib/query/hooks/useCoachRecent";
 import { Card } from "@/components/ui/Card";
@@ -54,8 +54,7 @@ export function CoachClient({
   const initialModeContext = search.get("ctx") ?? undefined;
   const draftDocId = search.get("doc") ?? undefined;
 
-  const hasActiveBlock =
-    blockProgress != null && !("active" in blockProgress);
+  const hasActiveBlock = isActiveBlock(blockProgress);
   const planExists = trainingWeek != null;
   const today = weekdayInUserTz();
 

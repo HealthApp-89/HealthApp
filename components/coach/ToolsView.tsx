@@ -10,10 +10,23 @@ import { DaySwapSheet } from "@/components/strength/DaySwapSheet";
 import { AdjustDeficitSheet } from "@/components/coach/AdjustDeficitSheet";
 import { useWeeklyReview } from "@/lib/query/hooks/useWeeklyReview";
 import { useTrainingWeek } from "@/lib/query/hooks/useTrainingWeek";
-import { useBlockProgress } from "@/lib/query/hooks/useBlockProgress";
+import { useBlockProgress, isActiveBlock } from "@/lib/query/hooks/useBlockProgress";
 import { weekdayInUserTz } from "@/lib/time";
 import { currentWeekMonday } from "@/lib/coach/week";
 import type { Weekday } from "@/lib/data/types";
+
+// weekdayInUserTz() returns long-form ("Monday" .. "Sunday"); DaySwapSheet
+// takes a Weekday short-form code. Hoisted to module scope so it isn't
+// rebuilt on every render.
+const LONG_TO_SHORT: Record<string, Weekday> = {
+  Monday: "Mon",
+  Tuesday: "Tue",
+  Wednesday: "Wed",
+  Thursday: "Thu",
+  Friday: "Fri",
+  Saturday: "Sat",
+  Sunday: "Sun",
+};
 
 /**
  * Tools tab — categorized list of all 8-10 user-facing coach actions.
@@ -43,26 +56,16 @@ export function ToolsView({
 
   const hasTrainingWeek = trainingWeek != null;
   const hasDraftReview = weeklyReview != null && weeklyReview.status === "draft";
-  const hasActiveBlock = blockProgress != null && "block" in blockProgress;
+  const hasActiveBlock = isActiveBlock(blockProgress);
 
-  // weekdayInUserTz() returns long-form ("Monday" .. "Sunday"); DaySwapSheet
-  // takes a Weekday short-form code.
   const todayLong = weekdayInUserTz();
-  const LONG_TO_SHORT: Record<string, Weekday> = {
-    Monday: "Mon",
-    Tuesday: "Tue",
-    Wednesday: "Wed",
-    Thursday: "Thu",
-    Friday: "Fri",
-    Saturday: "Sat",
-    Sunday: "Sun",
-  };
   const todayShort = LONG_TO_SHORT[todayLong] ?? "Mon";
 
   const [swapOpen, setSwapOpen] = useState(false);
   const [adjustOpen, setAdjustOpen] = useState(false);
   const [glossaryOpen, setGlossaryOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [busy, setBusy] = useState<null | "brief" | "mobility" | "regen-review">(null);
 
   // Auto-dismiss the inline toast after 3s so it never sticks.
   useEffect(() => {
@@ -76,12 +79,16 @@ export function ToolsView({
   }
 
   async function regenerateMorningBrief() {
+    if (busy) return;
+    setBusy("brief");
     try {
       const res = await fetch("/api/chat/morning/retry-brief", { method: "POST" });
       if (!res.ok) throw new Error(await res.text());
       router.push("/coach");
     } catch (e) {
       explain(e instanceof Error ? e.message : "Failed to regenerate brief.");
+    } finally {
+      setBusy(null);
     }
   }
 
@@ -90,6 +97,8 @@ export function ToolsView({
     // chat-stream tool dispatcher routes to mark_mobility_done. The route
     // body shape is { content, image_ids?, mode?, doc? }; role+kind are
     // implicit (user-role + coach-kind for default mode).
+    if (busy) return;
+    setBusy("mobility");
     try {
       const res = await fetch("/api/chat/messages", {
         method: "POST",
@@ -102,11 +111,14 @@ export function ToolsView({
       router.push("/coach");
     } catch (e) {
       explain(e instanceof Error ? e.message : "Failed to mark mobility done.");
+    } finally {
+      setBusy(null);
     }
   }
 
   async function regenerateWeeklyReview() {
-    if (!weeklyReview) return;
+    if (!weeklyReview || busy) return;
+    setBusy("regen-review");
     try {
       const res = await fetch(
         `/api/coach/weekly-review/${weeklyReview.id}/regenerate`,
@@ -116,6 +128,8 @@ export function ToolsView({
       router.push(`/coach/weeks/${currentMonday}`);
     } catch (e) {
       explain(e instanceof Error ? e.message : "Failed to regenerate review.");
+    } finally {
+      setBusy(null);
     }
   }
 
@@ -135,12 +149,14 @@ export function ToolsView({
         />
         <ToolRow
           title="Regenerate morning brief"
-          subtitle="Re-run today's brief"
+          subtitle={busy === "brief" ? "Regenerating…" : "Re-run today's brief"}
+          disabled={busy !== null}
           onClick={regenerateMorningBrief}
         />
         <ToolRow
           title="Mark mobility done"
-          subtitle="Log mobility for today"
+          subtitle={busy === "mobility" ? "Marking…" : "Log mobility for today"}
+          disabled={busy !== null}
           onClick={markMobilityDone}
         />
       </Card>
@@ -159,8 +175,8 @@ export function ToolsView({
         />
         <ToolRow
           title="Regenerate weekly review"
-          subtitle="Create a new version"
-          disabled={!weeklyReview}
+          subtitle={busy === "regen-review" ? "Regenerating…" : "Create a new version"}
+          disabled={!weeklyReview || busy !== null}
           onClick={() =>
             weeklyReview
               ? regenerateWeeklyReview()
