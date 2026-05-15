@@ -13,9 +13,11 @@ import type {
   PrimaryLift,
   TrainingBlock,
   TrainingWeek,
+  WeeklyReviewRow,
 } from "@/lib/data/types";
 import { WEEKLY_SESSIONS } from "@/lib/coach/sessionPlans";
 import { readSessionForDay } from "@/lib/coach/session-plan-reader";
+import { mondayOf } from "@/lib/coach/weekly-review/date-utils";
 import { weekdayInUserTz } from "@/lib/time";
 import { getTodayTargets, type TodayTargets } from "@/lib/morning/brief/get-today-targets";
 import type { BriefInputs, YesterdayWorkoutSummary, WhoopBaselineForBand } from "@/lib/morning/brief/assembler";
@@ -217,4 +219,58 @@ function aggregateYesterdayWorkout(
     type: w.type,
     top_e1rm: topE1rm,
   };
+}
+
+// ── This-week prescription (sub-project #2) ─────────────────────────────────
+
+/**
+ * Read this week's prescription. Returns the current `training_weeks` row
+ * for the week containing today + the latest `committed` `weekly_reviews`
+ * row for that same `week_start`. Used by the brief assembler to populate
+ * the kickoff block on Monday and to anchor today's prescribed loads on
+ * Tue-Sat.
+ *
+ * Returns null when either:
+ *   - no `training_weeks` row exists for today's week, OR
+ *   - no `committed` `weekly_reviews` row exists for that week.
+ *
+ * Caller should gracefully fall back to legacy 'training' variant.
+ */
+export async function getThisWeekPrescription(
+  supabase: SupabaseClient,
+  userId: string,
+  today: string,           // "YYYY-MM-DD"
+): Promise<{ trainingWeek: TrainingWeek; review: WeeklyReviewRow } | null> {
+  const weekStart = mondayOf(today);
+
+  const [twResult, revResult] = await Promise.all([
+    supabase
+      .from("training_weeks")
+      .select("*")
+      .eq("user_id", userId)
+      .eq("week_start", weekStart)
+      .maybeSingle(),
+    supabase
+      .from("weekly_reviews")
+      .select(`
+        id, user_id, week_start, next_week_start, version, status, block_id,
+        payload, narrative_md, reconfirm_responses,
+        committed_at, committed_training_week_id,
+        generated_at, updated_at, created_at
+      `)
+      .eq("user_id", userId)
+      .eq("week_start", weekStart)
+      .eq("status", "committed")
+      .order("version", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+
+  if (twResult.error) throw twResult.error;
+  if (revResult.error) throw revResult.error;
+
+  const trainingWeek = twResult.data as TrainingWeek | null;
+  const review = revResult.data as WeeklyReviewRow | null;
+  if (!trainingWeek || !review) return null;
+  return { trainingWeek, review };
 }
