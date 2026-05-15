@@ -3,14 +3,23 @@
 import { COLOR } from "@/lib/ui/theme";
 import type { MorningBriefCard, MorningBriefExercise } from "@/lib/data/types";
 
+const BIG_FOUR_NAMES = new Set([
+  "Squat (Barbell)",
+  "Deadlift (Barbell)",
+  "Decline Bench Press (Barbell)",
+  "Overhead Press (Barbell)",
+]);
+
 export function BriefSessionList({
   session,
   isSwapped,
   liveType,
+  thisWeekPlan,
 }: {
   session: MorningBriefCard["session"];
   isSwapped: boolean;
   liveType: string | null;
+  thisWeekPlan?: MorningBriefCard["this_week_plan"];
 }) {
   const { exercises, volume_gaps } = session;
 
@@ -37,55 +46,74 @@ export function BriefSessionList({
           transition: "opacity 0.2s",
         }}
       >
-        {exercises.map((e, i) => (
-          <div
-            key={`${e.name}-${i}`}
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              padding: "10px 12px",
-              borderTop: i === 0 ? "none" : `1px solid ${COLOR.divider}`,
-              gap: 8,
-            }}
-            aria-label={ariaForExercise(e)}
-          >
-            <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0, flex: 1 }}>
-              <div
-                style={{
-                  fontSize: 14,
-                  fontWeight: 600,
-                  color: COLOR.textStrong,
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                }}
-              >
-                {e.name}
-              </div>
-              {e.note && (
-                <div style={{ fontSize: 11, color: COLOR.textFaint, fontStyle: "italic" }}>
-                  {e.note}
-                </div>
-              )}
-            </div>
+        {exercises.map((e, i) => {
+          const planEntry =
+            BIG_FOUR_NAMES.has(e.name) && thisWeekPlan
+              ? thisWeekPlan.per_lift.find((p) => p.lift === e.name)
+              : undefined;
+          return (
             <div
+              key={`${e.name}-${i}`}
               style={{
                 display: "flex",
-                flexDirection: "column",
-                alignItems: "flex-end",
-                flexShrink: 0,
+                justifyContent: "space-between",
+                alignItems: "center",
+                padding: "10px 12px",
+                borderTop: i === 0 ? "none" : `1px solid ${COLOR.divider}`,
+                gap: 8,
               }}
+              aria-label={ariaForExercise(e)}
             >
-              <div style={{ fontSize: 14, fontWeight: 700, color: COLOR.textStrong, lineHeight: 1.2 }}>
-                {e.kg !== null ? `${e.kg} kg` : "BW"}
+              <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0, flex: 1 }}>
+                <div
+                  style={{
+                    fontSize: 14,
+                    fontWeight: 600,
+                    color: COLOR.textStrong,
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                >
+                  {e.name}
+                </div>
+                {e.note && (
+                  <div style={{ fontSize: 11, color: COLOR.textFaint, fontStyle: "italic" }}>
+                    {e.note}
+                  </div>
+                )}
               </div>
-              <div style={{ fontSize: 11, color: COLOR.textMuted, lineHeight: 1.2 }}>
-                {e.sets} × {e.reps}
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "flex-end",
+                  flexShrink: 0,
+                }}
+              >
+                <div style={{ fontSize: 14, fontWeight: 700, color: COLOR.textStrong, lineHeight: 1.2 }}>
+                  {e.kg !== null ? `${e.kg} kg` : "BW"}
+                </div>
+                <div style={{ fontSize: 11, color: COLOR.textMuted, lineHeight: 1.2 }}>
+                  {e.sets} × {e.reps}
+                </div>
+                {planEntry && planEntry.rir_target != null && (
+                  <div
+                    style={{
+                      fontSize: 10,
+                      color: COLOR.textFaint,
+                      lineHeight: 1.2,
+                      fontFamily: "var(--font-dm-mono), monospace",
+                      marginTop: 1,
+                    }}
+                  >
+                    RIR {planEntry.rir_target}
+                  </div>
+                )}
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
       {volume_gaps && volume_gaps.length > 0 && (
         <VolumeGapsBanner gaps={volume_gaps} />
