@@ -98,6 +98,9 @@ export function computeAdviceFlags(inputs: FlagInputs): AdviceFlags {
     poor_sleep_efficiency,
     missed_protein_yesterday,
     coach_swap_suggested: inputs.card.coach_suggestion?.kind === "swap_to_mobility",
+    // Real computation lands in Task 1.4 once latestCommittedReview /
+    // previousCommittedReview are threaded through FlagInputs.
+    phase_transition_this_week: false,
   };
 }
 
