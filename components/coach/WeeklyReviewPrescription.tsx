@@ -1,8 +1,16 @@
 "use client";
 import { Card, SectionLabel } from "@/components/ui/Card";
+import { JargonPill } from "@/components/coach/JargonPill";
 import { COLOR } from "@/lib/ui/theme";
 import { fmtNum } from "@/lib/ui/score";
 import type { WeeklyReviewPayload } from "@/lib/data/types";
+
+/** Strips the optional `_increment_floor` / `_increment_capped` suffix
+ *  appended by compose-prescription.ts when physical loading constraints
+ *  force a hold. The base tag (without suffix) is what's in the glossary. */
+function stripIncrementSuffix(tag: string): string {
+  return tag.replace(/_increment_(floor|capped)$/, "");
+}
 
 export function WeeklyReviewPrescription({
   prescription,
@@ -58,7 +66,9 @@ export function WeeklyReviewPrescription({
                     padding: "2px 0",
                   }}
                 >
-                  {p.rationale_tag.replaceAll("_", " ")}
+                  <JargonPill termKey={stripIncrementSuffix(p.rationale_tag)}>
+                    {p.rationale_tag.replaceAll("_", " ")}
+                  </JargonPill>
                 </td>
               </tr>
             );
