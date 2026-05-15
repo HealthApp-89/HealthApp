@@ -9,6 +9,7 @@ import { CoachNav, type CoachView } from "@/components/coach/CoachNav";
 import { BlockProgressCard } from "@/components/coach/BlockProgressCard";
 import { WeekPlanCard } from "@/components/coach/WeekPlanCard";
 import { PlanWeekCTA } from "@/components/coach/PlanWeekCTA";
+import { WeekReviewBanner } from "@/components/coach/WeekReviewBanner";
 import { useBlockProgress } from "@/lib/query/hooks/useBlockProgress";
 import { useTrainingWeek } from "@/lib/query/hooks/useTrainingWeek";
 import { useCoachRecent } from "@/lib/query/hooks/useCoachRecent";
@@ -56,6 +57,17 @@ export function CoachClient({
     blockProgress != null && !("active" in blockProgress);
   const planExists = trainingWeek != null;
   const today = weekdayInUserTz();
+
+  // Monday of the just-finished week (the recap window the banner points at).
+  // dow=1..7 (Mon..Sun); subtract `dow-1` to reach this-week's Monday, then
+  // another 7 to reach last week's Monday. Independent of today's weekday so
+  // the same anchor holds Mon-Sun.
+  const lastMondayForReview = (() => {
+    const d = new Date(`${todayDate}T12:00:00Z`);
+    const dow = d.getUTCDay() || 7;
+    d.setUTCDate(d.getUTCDate() - (dow - 1) - 7);
+    return d.toISOString().slice(0, 10);
+  })();
   const isLatePlanning = today === "Monday" || today === "Tuesday";
   const showPlanCTA =
     hasActiveBlock &&
@@ -126,6 +138,11 @@ export function CoachClient({
         )}
         {showWeekCard && (
           <WeekPlanCard userId={userId} weekStart={targetMonday} />
+        )}
+        {/* Mid-week discoverability — Tue-Sat only. Sun/Mon are owned by
+            PlanWeekCTA, so we don't compete for the slot. */}
+        {today !== "Sunday" && today !== "Monday" && (
+          <WeekReviewBanner userId={userId} weekStart={lastMondayForReview} />
         )}
       </div>
 
