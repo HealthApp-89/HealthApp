@@ -181,6 +181,17 @@ export async function fetchBriefInputs(
     whoopBaselines: (profileRes.data as { whoop_baselines?: WhoopBaselineForBand } | null)?.whoop_baselines ?? null,
     activeProfile: activeAthleteProfileRes.data as AthleteProfileDocument | null,
     hasTrainingWeek: trainingWeek !== null && isWeekStartCoveringToday(trainingWeek.week_start, today),
+    // The four sub-project #2 fields are populated by the orchestrator
+    // (`buildMorningBrief`) before it calls `assembleBriefExceptAdvice` —
+    // they require additional queries (this-week prescription, yesterday
+    // workout flat shape, prior-week review for phase transition) that
+    // live in the orchestrator's parallel fetch. Defaulted here so the
+    // base fetcher's return remains a valid `BriefInputs` for typecheck;
+    // the orchestrator overwrites these via spread before assembly.
+    thisWeekPrescription: null,
+    yesterdayWorkoutForBlock: null,
+    swapAppliedYesterday: false,
+    phaseTransitionThisWeek: false,
   };
 }
 
