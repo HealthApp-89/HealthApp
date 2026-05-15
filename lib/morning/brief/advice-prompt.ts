@@ -19,6 +19,7 @@ import type {
   YesterdayVsPlanBlock,
 } from "@/lib/data/types";
 import type { TodayTargets } from "@/lib/morning/brief/get-today-targets";
+import { fmtNum } from "@/lib/ui/score";
 
 const MODEL = "claude-haiku-4-5-20251001";
 const MAX_TOKENS = 350;
@@ -417,7 +418,7 @@ function buildThisWeekPlanBlock(plan: ThisWeekPlanBlock | null): string {
     const rir = p.rir_target != null ? `, RIR ${p.rir_target}` : "";
     const delta =
       p.delta_from_last_week_pct != null
-        ? ` (${(p.delta_from_last_week_pct * 100).toFixed(1)}% from last week)`
+        ? ` (${fmtNum(p.delta_from_last_week_pct * 100)}% from last week)`
         : "";
     lines.push(`    - ${p.lift}: ${p.load_kg}kg × ${p.sets} × ${p.reps}${rir}${delta}`);
   }

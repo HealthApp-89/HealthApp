@@ -4,6 +4,13 @@
 // composer, and the analytical block all need to identify these four
 // lifts; defining them in one place keeps the lists in sync if a name
 // ever shifts (e.g. Strong CSV export naming changes).
+//
+// CONTRACT: these strings must match the `exercises.name` values written
+// by the workout-ingest paths (currently /api/ingest/strong and the
+// HealthKit Strong stub). If Strong's CSV export ever changes lift
+// naming, update this file FIRST — the analytical brief and weekly
+// review's per-lift comparison silently produce zero-completion data
+// when the lookup misses.
 
 export const BIG_FOUR = [
   "Squat (Barbell)",

@@ -127,7 +127,7 @@ export async function buildMorningBrief(
     activeProfile: inputs.activeProfile,
     card: provisionalPartial,
     targets: inputs.todayTargets,
-    latestCommittedReview: thisWeekPrescription?.review ?? null,
+    thisWeekCommittedReview: thisWeekPrescription?.review ?? null,
     previousCommittedReview,
   });
 

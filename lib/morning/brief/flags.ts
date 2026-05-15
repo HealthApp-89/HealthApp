@@ -38,10 +38,10 @@ export type FlagInputs = {
    *  deficit alarm state without re-querying daily_logs. null when no active
    *  athlete profile exists. */
   targets: TodayTargets | null;
-  /** The latest committed weekly_review for this user (if any). Used to
+  /** THIS week's committed weekly_review for this user (if any). Used to
    *  derive phase_transition_this_week by comparing block_phase_now to
    *  the previous committed review's block_phase_now. */
-  latestCommittedReview?: WeeklyReviewRow | null;
+  thisWeekCommittedReview?: WeeklyReviewRow | null;
   /** The previous-week committed weekly_review (if any). Used for the
    *  same comparison. Null when no prior review exists. */
   previousCommittedReview?: WeeklyReviewRow | null;
@@ -107,10 +107,10 @@ export function computeAdviceFlags(inputs: FlagInputs): AdviceFlags {
     missed_protein_yesterday,
     coach_swap_suggested: inputs.card.coach_suggestion?.kind === "swap_to_mobility",
     phase_transition_this_week:
-      inputs.latestCommittedReview && inputs.previousCommittedReview
-        ? inputs.latestCommittedReview.payload.header.block_phase_now !==
+      inputs.thisWeekCommittedReview && inputs.previousCommittedReview
+        ? inputs.thisWeekCommittedReview.payload.header.block_phase_now !==
           inputs.previousCommittedReview.payload.header.block_phase_now
-        : inputs.latestCommittedReview != null,
+        : inputs.thisWeekCommittedReview != null,
         // No previous review = first ever committed week = treat as transition.
   };
 }

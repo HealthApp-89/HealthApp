@@ -48,7 +48,7 @@ export function BriefYesterdayVsPlan({ block }: { block: YesterdayVsPlanBlock })
             {block.per_lift.map((p) => {
               const planned = `${fmtNum(p.planned.load_kg)}×${p.planned.sets}×${p.planned.reps}`;
               const actual = p.actual
-                ? `${fmtNum(p.actual.top_set_load_kg ?? 0)}×${p.actual.sets_done}`
+                ? `${p.actual.top_set_load_kg != null ? fmtNum(p.actual.top_set_load_kg) : "—"}×${p.actual.sets_done}`
                 : "—";
               const repsPct =
                 p.reps_completed_pct != null
