@@ -9,6 +9,7 @@ import { ChatComposer } from "./ChatComposer";
 import { ModeBanner } from "./ModeBanner";
 import { postSse } from "./sseClient";
 import { ChatChips } from "./ChatChips";
+import { ComposerSuggestionChips } from "./ComposerSuggestionChips";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/query/keys";
 import { useDailyLogs } from "@/lib/query/hooks/useDailyLogs";
@@ -168,6 +169,11 @@ export default function ChatPanel({
 }) {
   const [mode, setMode] = useState<ChatMode>(initialMode);
   const [composerHint, setComposerHint] = useState<string | undefined>(undefined);
+  // Composer empty/focused state, lifted from ChatComposer via callbacks so
+  // sibling UI (ComposerSuggestionChips) can render only when the composer
+  // is empty and not focused.
+  const [composerText, setComposerText] = useState("");
+  const [composerFocused, setComposerFocused] = useState(false);
   const [state, dispatch] = useReducer(reducer, {
     loaded: false,
     messages: [],
@@ -846,12 +852,35 @@ export default function ChatPanel({
             last?.role === "assistant" &&
             morningUi?.allow_text === true;
 
+          // Suggestion chips visible only on the coach lane in default chat
+          // mode, when the composer is empty and unfocused. The chips
+          // prefill+submit through the same send() callback the composer's
+          // send button uses, so all standard guards (inFlightAssistantId,
+          // optimistic dispatch, /api/chat/messages) apply unchanged.
+          const showSuggestionChips =
+            currentMode === "coach" &&
+            mode === "default" &&
+            !composerText &&
+            !composerFocused;
+
           return (
-            <ChatComposer
-              disabled={state.inFlightAssistantId !== null}
-              onSend={isMorningTextTurn ? (content) => sendMorningFreeText(content) : send}
-              placeholder={currentMode === "coach" ? composerPlaceholder : undefined}
-            />
+            <>
+              {showSuggestionChips && (
+                <ComposerSuggestionChips
+                  userId={userId}
+                  todayDate={today}
+                  onPrefillAndSubmit={(text) => void send(text, [])}
+                />
+              )}
+              <ChatComposer
+                disabled={state.inFlightAssistantId !== null}
+                onSend={isMorningTextTurn ? (content) => sendMorningFreeText(content) : send}
+                placeholder={currentMode === "coach" ? composerPlaceholder : undefined}
+                onTextChange={setComposerText}
+                onFocus={() => setComposerFocused(true)}
+                onBlur={() => setComposerFocused(false)}
+              />
+            </>
           );
         })()}
 
