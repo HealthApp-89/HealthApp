@@ -20,10 +20,14 @@ import type {
   PrimaryLift,
   AthleteProfileDocument,
   MuscleVolumeFlag,
+  TrainingWeek,
+  WeeklyReviewRow,
+  ThisWeekPlanBlock,
 } from "@/lib/data/types";
 import { SESSION_PLANS, type PlannedExercise } from "@/lib/coach/sessionPlans";
 import { roundToValidWeight, minNonZeroIncrement } from "@/lib/coach/weight-rounding";
 import type { TodayTargets } from "@/lib/morning/brief/get-today-targets";
+import { composeYesterdayVsPlan, type YesterdayWorkoutForBlock } from "@/lib/morning/brief/yesterday-vs-plan";
 
 /** Yesterday's workout summary — pre-aggregated by the data source. */
 export type YesterdayWorkoutSummary = {
@@ -58,13 +62,47 @@ export type BriefInputs = {
   /** Top-2 muscle-volume flags evaluated by evaluateMuscleVolumeGapsForBrief.
    *  Empty when the active plan has no muscle_volume or no flags fire. */
   muscleVolumeFlags?: MuscleVolumeFlag[];
+  /** The committed training_weeks row + committed weekly_review for the
+   *  current week. Populated by getThisWeekPrescription in data-sources.
+   *  Null when either is missing — triggers the legacy 'training' fallback. */
+  thisWeekPrescription: { trainingWeek: TrainingWeek; review: WeeklyReviewRow } | null;
+  /** Yesterday's workout in the flat shape the yesterday-vs-plan composer
+   *  consumes. Null when no workout logged. */
+  yesterdayWorkoutForBlock: YesterdayWorkoutForBlock | null;
+  /** True when yesterday's actual session type differs from
+   *  training_weeks.original_session_plan for yesterday. Per migration 0012. */
+  swapAppliedYesterday: boolean;
+  /** True when this week's block_phase_now differs from last week's
+   *  committed review. Drives the kickoff "phase changed this week"
+   *  explainer in the AI prompt + the renderer's NEW PHASE chip. */
+  phaseTransitionThisWeek: boolean;
 };
 
 export function assembleBriefExceptAdvice(
   inputs: BriefInputs,
 ): Omit<MorningBriefCard, "advice_md"> {
-  const variant: MorningBriefVariant = pickVariant(inputs.sessionType);
+  const variant: MorningBriefVariant = pickVariant(
+    inputs.sessionType,
+    inputs.today,
+    inputs.thisWeekPrescription,
+  );
   const readiness = composeReadiness(inputs);
+
+  const thisWeekPlan =
+    variant === "kickoff" && inputs.thisWeekPrescription
+      ? composeThisWeekPlan(inputs.thisWeekPrescription, inputs.phaseTransitionThisWeek)
+      : null;
+
+  const yesterdayVsPlan =
+    variant === "analytical" && inputs.thisWeekPrescription
+      ? composeYesterdayVsPlan({
+          yesterdayWeekday: shortWeekdayFromDate(inputs.yesterday),
+          trainingWeek: inputs.thisWeekPrescription.trainingWeek,
+          review: inputs.thisWeekPrescription.review,
+          yesterdayWorkout: inputs.yesterdayWorkoutForBlock,
+          swapApplied: inputs.swapAppliedYesterday,
+        })
+      : null;
 
   return {
     variant,
@@ -79,11 +117,39 @@ export function assembleBriefExceptAdvice(
       inputs.sessionType,
       inputs.hasTrainingWeek,
     ),
+    this_week_plan: thisWeekPlan,
+    yesterday_vs_plan: yesterdayVsPlan,
   };
 }
 
-function pickVariant(sessionType: string): MorningBriefVariant {
-  return sessionType === "REST" ? "rest" : "training";
+function pickVariant(
+  sessionType: string,
+  today: string,
+  thisWeekPrescription: BriefInputs["thisWeekPrescription"],
+): MorningBriefVariant {
+  if (/^rest$/i.test(sessionType)) return "rest";
+  if (!thisWeekPrescription) return "training"; // legacy fallback
+
+  const weekday = weekdayFromDate(today);
+  if (weekday === "Monday") return "kickoff";
+  // Sunday is the last day of the week. Kickoff is Mon-only; analytical
+  // is the Tue-Sat window. A non-REST Sunday session (rare) falls to the
+  // legacy training variant so the existing brief renders correctly without
+  // forcing an end-of-week "yesterday vs plan" comparison.
+  if (weekday === "Sunday") return "training";
+  return "analytical";
+}
+
+function weekdayFromDate(yyyyMmDd: string): string {
+  const d = new Date(`${yyyyMmDd}T12:00:00Z`);
+  return ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][d.getUTCDay()];
+}
+
+function shortWeekdayFromDate(
+  yyyyMmDd: string,
+): "Mon" | "Tue" | "Wed" | "Thu" | "Fri" | "Sat" | "Sun" {
+  const d = new Date(`${yyyyMmDd}T12:00:00Z`);
+  return (["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const)[d.getUTCDay()];
 }
 
 function composeReadiness(inputs: BriefInputs): MorningBriefReadiness {
@@ -287,4 +353,40 @@ function inferLiftFromKey(key: string | undefined): PrimaryLift | null {
   if (key === "deadlift") return "deadlift";
   if (key === "ohp") return "ohp";
   return null;
+}
+
+/** Builds the kickoff-variant THIS WEEK PLAN block from the committed
+ *  weekly_review's prescription + volume payload. phase_changed_this_week
+ *  is authoritative from upstream flag computation (flags.ts) — the assembler
+ *  threads it via BriefInputs rather than re-deriving it here. */
+function composeThisWeekPlan(
+  prescription: NonNullable<BriefInputs["thisWeekPrescription"]>,
+  phaseTransitionThisWeek: boolean,
+): ThisWeekPlanBlock {
+  const { review } = prescription;
+  const header = review.payload.header;
+  const presc = review.payload.prescription;
+  const volumeFromPayload = review.payload.volume?.per_muscle ?? [];
+
+  return {
+    schema_version: 1,
+    week_n: header.week_n,
+    total_weeks: header.total_weeks,
+    phase_now: header.block_phase_now,
+    phase_changed_this_week: phaseTransitionThisWeek,
+    per_lift: presc.per_lift.map((p) => ({
+      lift: p.lift,
+      load_kg: p.weight_kg,
+      sets: p.sets,
+      reps: p.reps,
+      rir_target: presc.rir_target,
+      delta_from_last_week_pct: p.delta_pct_from_last_week,
+    })),
+    volume_summary: volumeFromPayload.map((v) => ({
+      muscle: v.muscle,
+      sets: v.next_week_sets,
+      tier: v.tier,
+    })),
+    weekly_focus: presc.weekly_focus ?? null,
+  };
 }

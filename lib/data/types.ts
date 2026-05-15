@@ -645,7 +645,11 @@ export type AthleteProfileDocument = {
 
 // ── Morning brief (extends 0007_morning_intake via 0011_morning_brief) ───────
 
-export type MorningBriefVariant = "training" | "rest";
+export type MorningBriefVariant = "training" | "rest" | "kickoff" | "analytical";
+// "training" is the legacy variant retained for back-compat with rows
+// written before sub-project #2. "kickoff" fires on Monday after a
+// committed weekly review; "analytical" fires Tue-Sat on training days.
+// "rest" is unchanged.
 
 export type MorningBriefExercise = {
   name: string;            // "Squat (Barbell)"
@@ -696,6 +700,43 @@ export type MorningBriefHydration = {
   note: string;
 };
 
+export type ThisWeekPlanBlock = {
+  schema_version: 1;
+  week_n: number;
+  total_weeks: number;
+  phase_now: WeeklyPhase;             // "mev" | "mav" | "mrv" | "deload" — see lib/data/types.ts
+  phase_changed_this_week: boolean;
+  per_lift: Array<{
+    lift: string;                     // e.g. "Deadlift (Barbell)" — matches SESSION_PLANS keys
+    load_kg: number;
+    sets: number;
+    reps: number;
+    rir_target: number | null;
+    delta_from_last_week_pct: number | null;
+  }>;
+  volume_summary: Array<{
+    muscle: string;
+    sets: number;
+    tier: "mev" | "mav" | "mrv";
+  }>;
+  weekly_focus: string | null;        // excerpted from the committed weekly review
+};
+
+export type YesterdayVsPlanBlock = {
+  schema_version: 1;
+  session_logged: boolean;
+  swap_applied: boolean;
+  per_lift: Array<{
+    lift: string;                     // "Squat (Barbell)" etc — big-four only
+    planned: { load_kg: number; sets: number; reps: number; rir_target: number | null };
+    actual:
+      | { top_set_load_kg: number | null; sets_done: number; total_reps_done: number }
+      | null;
+    reps_completed_pct: number | null;
+    rir_target_met: boolean | null;
+  }>;
+};
+
 export type MorningBriefCard = {
   variant: MorningBriefVariant;
   readiness: MorningBriefReadiness;
@@ -731,6 +772,10 @@ export type MorningBriefCard = {
    *  do NOT need to compare against `original_session_plan`. */
   coach_suggestion: MorningBriefCoachSuggestion;
   tonight: MorningBriefTonight;
+  /** Populated when variant === 'kickoff' (Monday after a committed weekly review). */
+  this_week_plan?: ThisWeekPlanBlock | null;
+  /** Populated when variant === 'analytical' (Tue-Sat training day with a committed week). */
+  yesterday_vs_plan?: YesterdayVsPlanBlock | null;
 };
 
 /** Computed deterministically by lib/morning/brief/flags.ts. Passed to the
@@ -760,6 +805,10 @@ export type AdviceFlags = {
    *  explain WHY (signals fired), not re-decide WHETHER to swap, and should
    *  drop workout-anchored eating timing. */
   coach_swap_suggested: boolean;
+  /** True when the active committed weekly review's payload.header.block_phase_now
+   *  differs from the previous committed review's. Drives the kickoff explainer
+   *  rule. False when no prior review exists (treat first-ever week as a transition). */
+  phase_transition_this_week: boolean;
 };
 
 // ── Schedule flexibility (migration 0012) ────────────────────────────────────

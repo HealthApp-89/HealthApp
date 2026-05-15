@@ -13,12 +13,15 @@ import type {
   PrimaryLift,
   TrainingBlock,
   TrainingWeek,
+  WeeklyReviewRow,
 } from "@/lib/data/types";
 import { WEEKLY_SESSIONS } from "@/lib/coach/sessionPlans";
 import { readSessionForDay } from "@/lib/coach/session-plan-reader";
+import { mondayOf } from "@/lib/coach/weekly-review/date-utils";
 import { weekdayInUserTz } from "@/lib/time";
 import { getTodayTargets, type TodayTargets } from "@/lib/morning/brief/get-today-targets";
 import type { BriefInputs, YesterdayWorkoutSummary, WhoopBaselineForBand } from "@/lib/morning/brief/assembler";
+import type { YesterdayWorkoutForBlock } from "@/lib/morning/brief/yesterday-vs-plan";
 
 const PRIMARY_LIFT_REGEX: Record<PrimaryLift, RegExp> = {
   squat: /\b(back\s+squat|squat)\b/i,
@@ -179,6 +182,17 @@ export async function fetchBriefInputs(
     whoopBaselines: (profileRes.data as { whoop_baselines?: WhoopBaselineForBand } | null)?.whoop_baselines ?? null,
     activeProfile: activeAthleteProfileRes.data as AthleteProfileDocument | null,
     hasTrainingWeek: trainingWeek !== null && isWeekStartCoveringToday(trainingWeek.week_start, today),
+    // The four sub-project #2 fields are populated by the orchestrator
+    // (`buildMorningBrief`) before it calls `assembleBriefExceptAdvice` —
+    // they require additional queries (this-week prescription, yesterday
+    // workout flat shape, prior-week review for phase transition) that
+    // live in the orchestrator's parallel fetch. Defaulted here so the
+    // base fetcher's return remains a valid `BriefInputs` for typecheck;
+    // the orchestrator overwrites these via spread before assembly.
+    thisWeekPrescription: null,
+    yesterdayWorkoutForBlock: null,
+    swapAppliedYesterday: false,
+    phaseTransitionThisWeek: false,
   };
 }
 
@@ -217,4 +231,141 @@ function aggregateYesterdayWorkout(
     type: w.type,
     top_e1rm: topE1rm,
   };
+}
+
+// ── This-week prescription (sub-project #2) ─────────────────────────────────
+
+/**
+ * Read this week's prescription. Returns the current `training_weeks` row
+ * for the week containing today + the latest `committed` `weekly_reviews`
+ * row for that same `week_start`. Used by the brief assembler to populate
+ * the kickoff block on Monday and to anchor today's prescribed loads on
+ * Tue-Sat.
+ *
+ * Returns null when either:
+ *   - no `training_weeks` row exists for today's week, OR
+ *   - no `committed` `weekly_reviews` row exists for that week.
+ *
+ * Caller should gracefully fall back to legacy 'training' variant.
+ */
+export async function getThisWeekPrescription(
+  supabase: SupabaseClient,
+  userId: string,
+  today: string,           // "YYYY-MM-DD"
+): Promise<{ trainingWeek: TrainingWeek; review: WeeklyReviewRow } | null> {
+  const weekStart = mondayOf(today);
+
+  const [twResult, revResult] = await Promise.all([
+    supabase
+      .from("training_weeks")
+      .select("*")
+      .eq("user_id", userId)
+      .eq("week_start", weekStart)
+      .maybeSingle(),
+    supabase
+      .from("weekly_reviews")
+      .select(`
+        id, user_id, week_start, next_week_start, version, status, block_id,
+        payload, narrative_md, reconfirm_responses,
+        committed_at, committed_training_week_id,
+        generated_at, updated_at, created_at
+      `)
+      .eq("user_id", userId)
+      .eq("week_start", weekStart)
+      .eq("status", "committed")
+      .order("version", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+
+  if (twResult.error) throw twResult.error;
+  if (revResult.error) throw revResult.error;
+
+  const trainingWeek = twResult.data as TrainingWeek | null;
+  const review = revResult.data as WeeklyReviewRow | null;
+  if (!trainingWeek || !review) return null;
+
+  // Defensive: if the review was committed against a different (likely deleted
+  // and recreated) training_weeks row, treat the prescription as unavailable
+  // rather than pairing a fresh blank row with an old committed review.
+  if (review.committed_training_week_id && review.committed_training_week_id !== trainingWeek.id) {
+    return null;
+  }
+  return { trainingWeek, review };
+}
+
+/** Reads yesterday's workout in the flat shape composeYesterdayVsPlan expects.
+ *  Distinct from the aggregated YesterdayWorkoutSummary in the main fetchBrief
+ *  fan-out (which exposes only top_e1rm). The flat shape exposes every working
+ *  set so the analytical block can compare per-lift planned vs actual.
+ *
+ *  Returns null when no workout was logged for the date. */
+export async function getYesterdayWorkoutFlat(
+  supabase: SupabaseClient,
+  userId: string,
+  yesterday: string,
+): Promise<YesterdayWorkoutForBlock | null> {
+  type Row = {
+    type: string | null;
+    exercises: Array<{
+      name: string;
+      sets: Array<{ kg: number | null; reps: number | null; warmup: boolean }>;
+    }>;
+  };
+  // The `workouts` table doesn't enforce a unique constraint on
+  // (user_id, date), so .maybeSingle() throws PGRST116 when two rows happen
+  // to exist for the same day. Use order/limit instead and pick the first —
+  // mirrors the pattern in fetchBriefInputs which reads workouts[0].
+  const { data, error } = await supabase
+    .from("workouts")
+    .select("type, exercises (name, sets:exercise_sets (kg, reps, warmup))")
+    .eq("user_id", userId)
+    .eq("date", yesterday)
+    .order("created_at", { ascending: false })
+    .limit(1);
+  if (error) throw error;
+  if (!data || data.length === 0) return null;
+  const row = data[0] as Row;
+  const flat: YesterdayWorkoutForBlock = {
+    type: row.type ?? "",
+    sets: row.exercises.flatMap((ex) =>
+      ex.sets.map((s) => ({
+        exercise: ex.name,
+        kg: s.kg,
+        reps: s.reps,
+        warmup: s.warmup,
+      })),
+    ),
+  };
+  return flat;
+}
+
+/** Reads the most recent committed weekly_review for the week immediately
+ *  before `weekStart`. Used by the orchestrator to derive
+ *  phase_transition_this_week. Returns null when no prior committed review
+ *  exists (first-ever week → upstream flag treats as a transition). */
+export async function getPreviousCommittedReview(
+  supabase: SupabaseClient,
+  userId: string,
+  weekStart: string,        // Monday of THIS week ("YYYY-MM-DD")
+): Promise<WeeklyReviewRow | null> {
+  const prevMonday = new Date(`${weekStart}T12:00:00Z`);
+  prevMonday.setUTCDate(prevMonday.getUTCDate() - 7);
+  const prev = prevMonday.toISOString().slice(0, 10);
+  const { data, error } = await supabase
+    .from("weekly_reviews")
+    .select(`
+      id, user_id, week_start, next_week_start, version, status, block_id,
+      payload, narrative_md, reconfirm_responses,
+      committed_at, committed_training_week_id,
+      generated_at, updated_at, created_at
+    `)
+    .eq("user_id", userId)
+    .eq("week_start", prev)
+    .eq("status", "committed")
+    .order("version", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return data as WeeklyReviewRow | null;
 }
