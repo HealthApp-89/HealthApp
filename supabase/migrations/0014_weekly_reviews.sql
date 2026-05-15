@@ -25,7 +25,7 @@ create table public.weekly_reviews (
 create index weekly_reviews_user_week_idx
   on public.weekly_reviews(user_id, week_start desc);
 create index weekly_reviews_draft_idx
-  on public.weekly_reviews(user_id, status)
+  on public.weekly_reviews(user_id, week_start)
   where status = 'draft';
 
 alter table public.weekly_reviews enable row level security;

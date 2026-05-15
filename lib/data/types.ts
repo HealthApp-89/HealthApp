@@ -931,7 +931,7 @@ export type PrescriptionRationaleTag =
   | "mav_to_mrv_advance"
   | "mrv_volume_drive"
   | "deload_load_volume_cut"
-  | string;  // open for `_increment_floor` / `_increment_capped` suffixes
+  | (string & Record<never, never>);  // keeps known literals in autocomplete while allowing _increment_floor / _increment_capped suffixes
 
 export type WeeklyReviewPayload = {
   schema_version: 1;
