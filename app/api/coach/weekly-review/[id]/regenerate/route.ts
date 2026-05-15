@@ -87,11 +87,18 @@ export async function POST(
     })
     .select("id")
     .single();
-  if (insErr || !inserted) {
-    return NextResponse.json(
-      { error: insErr?.message ?? "insert failed" },
-      { status: 500 },
-    );
+  if (insErr) {
+    // Postgres unique violation on (user_id, week_start, version) — concurrent regenerate
+    if (insErr.code === "23505") {
+      return NextResponse.json(
+        { error: "regenerate_conflict", message: "Another regenerate request is in flight. Try again in a moment." },
+        { status: 409 }
+      );
+    }
+    return NextResponse.json({ error: insErr.message }, { status: 500 });
+  }
+  if (!inserted) {
+    return NextResponse.json({ error: "insert failed" }, { status: 500 });
   }
 
   // Only supersede the prior row if it was still a draft. Committed and

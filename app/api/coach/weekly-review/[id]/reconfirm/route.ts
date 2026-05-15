@@ -65,9 +65,9 @@ export async function PATCH(
       payload: row.payload as WeeklyReviewPayload,
       reconfirmResponses: updatedResponses,
     });
-  } catch {
-    // If re-narration fails, keep the old narrative; the chip answer still
-    // persists below. Surface OK to the client.
+  } catch (e) {
+    console.error("[weekly-review/reconfirm] regenerateNarrative failed:", e);
+    // Chip answer still persists below — narrative just stays stale.
   }
 
   const updates: Record<string, unknown> = {

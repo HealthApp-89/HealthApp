@@ -72,9 +72,7 @@ export async function POST(
     );
   }
 
-  const payload = structuredClone(
-    row.payload as WeeklyReviewPayload,
-  ) as WeeklyReviewPayload;
+  const payload = structuredClone(row.payload as WeeklyReviewPayload);
   const proteinFloor = payload.targets.nutrition.protein_g;
   const fatFloor = payload.targets.nutrition.fat_g;
   const newKcal = Math.max(MIN_KCAL, payload.targets.nutrition.kcal + kcal_delta);
@@ -92,8 +90,9 @@ export async function POST(
       reconfirmResponses:
         (row.reconfirm_responses as ReconfirmResponses | null) ?? {},
     });
-  } catch {
-    // If re-narration fails, fall back to keeping the existing narrative.
+  } catch (e) {
+    console.error("[weekly-review/adjust-nutrition] regenerateNarrative failed:", e);
+    // Nutrition adjustment still persists — narrative just stays stale.
     narrative = null;
   }
 
