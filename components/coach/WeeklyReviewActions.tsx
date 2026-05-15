@@ -10,12 +10,12 @@ export function WeeklyReviewActions({
 }) {
   void reviewRow;
   return (
-    <Card>
-      <SectionLabel>ACTIONS</SectionLabel>
+    <Card style={{ opacity: 0.7 }}>
+      <SectionLabel>ACTIONS · COMING IN SLICE 5</SectionLabel>
       <div
         style={{
           fontSize: 11,
-          color: COLOR.textFaint,
+          color: COLOR.textMuted,
           marginTop: 8,
         }}
       >
