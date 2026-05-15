@@ -12,6 +12,8 @@ import { BriefMacrosGrid } from "@/components/morning/BriefMacrosGrid";
 import { BriefAdvice } from "@/components/morning/BriefAdvice";
 import { BriefTonight } from "@/components/morning/BriefTonight";
 import { BriefCoachSuggestion } from "@/components/morning/BriefCoachSuggestion";
+import { BriefThisWeekPlan } from "@/components/morning/BriefThisWeekPlan";
+import { BriefYesterdayVsPlan } from "@/components/morning/BriefYesterdayVsPlan";
 import { useTrainingWeek } from "@/lib/query/hooks/useTrainingWeek";
 import { readSessionForDay } from "@/lib/coach/session-plan-reader";
 import { todayInUserTz, weekdayInUserTz } from "@/lib/time";
@@ -76,7 +78,7 @@ export function MorningBriefCard({
         <SectionLabel>Yesterday</SectionLabel>
         <BriefRecapStats recap={card.recap} />
         <Divider />
-        {card.variant === "training" ? (
+        {card.variant !== "rest" ? (
           <>
             <SectionLabel>
               Today ·{" "}
@@ -89,7 +91,14 @@ export function MorningBriefCard({
               session={card.session}
               isSwapped={isSwapped}
               liveType={liveType ?? null}
+              thisWeekPlan={card.this_week_plan}
             />
+            {card.variant === "kickoff" && card.this_week_plan && (
+              <BriefThisWeekPlan plan={card.this_week_plan} />
+            )}
+            {card.variant === "analytical" && card.yesterday_vs_plan && (
+              <BriefYesterdayVsPlan block={card.yesterday_vs_plan} />
+            )}
           </>
         ) : (
           <>
