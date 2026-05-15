@@ -67,6 +67,37 @@ type Inputs = {
   weeklyFocus: string | null;
 };
 
+// ── Threshold constants (centralised for tuning + readability) ─────────────
+
+const HARD_CAP_PCT = 0.04;
+
+/** Body-weight loss rate that triggers cutting_hold (per week, as a fraction of body weight). Negative = loss. */
+const CUTTING_THRESHOLD_PCT_PER_WK = -0.007;
+
+/** Sleep average (hours) below which recovery_hold fires. */
+const RECOVERY_SLEEP_FLOOR_H = 6;
+
+/** Rep-completion threshold (fraction of prescribed reps) below which rep_completion_miss fires. */
+const REP_COMPLETION_THRESHOLD = 0.9;
+
+/** Default load reduction (fraction) for rep_completion_miss / rir_missed. */
+const SMALL_REGRESSION_PCT = 0.025;
+
+/** Plateau detection: max e1RM Δ across 3-week window (as fraction). */
+const PLATEAU_DELTA_THRESHOLD = 0.015;
+
+/** plateau_deload_reset target reduction (fraction). Note: hard cap will clamp this to -4%. */
+const PLATEAU_DELOAD_PCT = 0.05;
+
+/** Deload week load reduction (fraction). Midpoint of spec's [10..15]% range. */
+const DELOAD_LOAD_CUT_PCT = 0.125;
+
+/** Deload week set retention (fraction). Midpoint of spec's [40..50]% reduction → 55% retained. */
+const DELOAD_SET_RETENTION = 0.55;
+
+/** Floor-suffix sensitivity: |raw delta| must exceed this to trigger _increment_floor (avoids false positives on numeric noise). */
+const FLOOR_SUFFIX_MIN_DELTA = 0.001;
+
 /** Per-lift default phase-step table. Targets are PERCENT, resolved
  *  through `roundToValidWeight()` against the exercise's increment config. */
 const LIFT_STEP_TABLE: Record<string, { mevToMav: number; mavToMrv: number }> = {
@@ -76,11 +107,10 @@ const LIFT_STEP_TABLE: Record<string, { mevToMav: number; mavToMrv: number }> = 
   "Overhead Press (Barbell)":     { mevToMav: 0.015, mavToMrv: 0 }, // hold; rep progression
 };
 
-const HARD_CAP_PCT = 0.04;
-
 /** Rules where the prescribed action is legitimately "hold load" — the
  *  `_increment_floor` suffix would be noise on these. */
 const LEGITIMATE_HOLD_TAGS: ReadonlySet<PrescriptionRationaleTag> = new Set<PrescriptionRationaleTag>([
+  "block_start_baseline",
   "cutting_hold",
   "recovery_hold",
   "form_hold",
@@ -139,7 +169,7 @@ function resolveOneLift(recap: LiftRecap, args: Inputs): LiftPlan {
   // is negative for loss, so a loss steeper than -0.7% is < -0.007).
   if (
     args.bodyWeightLossPctPerWk != null &&
-    args.bodyWeightLossPctPerWk < -0.007
+    args.bodyWeightLossPctPerWk < CUTTING_THRESHOLD_PCT_PER_WK
   ) {
     return mkPlan({
       lift, sets, reps: lastReps,
@@ -149,7 +179,7 @@ function resolveOneLift(recap: LiftRecap, args: Inputs): LiftPlan {
   }
 
   // Priority 3: recovery_hold — sleep avg < 6h OR HRV flag.
-  if ((args.sleepAvg7d != null && args.sleepAvg7d < 6) || args.hrvFlag) {
+  if ((args.sleepAvg7d != null && args.sleepAvg7d < RECOVERY_SLEEP_FLOOR_H) || args.hrvFlag) {
     return mkPlan({
       lift, sets, reps: lastReps,
       targetKg: lastWeight, lastKg: lastWeight,
@@ -162,7 +192,7 @@ function resolveOneLift(recap: LiftRecap, args: Inputs): LiftPlan {
   if (isPlateau(recap)) {
     const repShiftAlready = hasRecentRepShift(recap);
     if (repShiftAlready) {
-      const target = lastWeight * 0.95; // -5% (within ±4% cap, will clamp to -4%)
+      const target = lastWeight * (1 - PLATEAU_DELOAD_PCT); // -5% (within ±4% cap, will clamp to -4%)
       return mkPlan({
         lift, sets, reps: lastReps,
         targetKg: target, lastKg: lastWeight,
@@ -178,8 +208,8 @@ function resolveOneLift(recap: LiftRecap, args: Inputs): LiftPlan {
   }
 
   // Priority 6: rep_completion_miss — <90% of programmed reps cleared.
-  if (recap.reps_completed_pct != null && recap.reps_completed_pct < 0.9) {
-    const target = lastWeight * (1 - 0.025);
+  if (recap.reps_completed_pct != null && recap.reps_completed_pct < REP_COMPLETION_THRESHOLD) {
+    const target = lastWeight * (1 - SMALL_REGRESSION_PCT);
     return mkPlan({
       lift, sets, reps: lastReps,
       targetKg: target, lastKg: lastWeight,
@@ -200,7 +230,7 @@ function resolveOneLift(recap: LiftRecap, args: Inputs): LiftPlan {
   // often `null` (orchestrator finalizes); we explicitly require `=== false`
   // so a `null` value will NOT fire this rule — conservative default.
   if (recap.rir_target_met === false) {
-    const target = lastWeight * (1 - 0.025);
+    const target = lastWeight * (1 - SMALL_REGRESSION_PCT);
     return mkPlan({
       lift, sets, reps: lastReps,
       targetKg: target, lastKg: lastWeight,
@@ -233,8 +263,8 @@ function resolveOneLift(recap: LiftRecap, args: Inputs): LiftPlan {
   // Deload next week → load × 0.875 (midpoint -10..-15%) AND sets × 0.55
   // (midpoint of 55%-60% retained = ~-40..-50% sets). Both knobs.
   if (args.weeklyPhaseNext === "deload") {
-    const deloadTarget = lastWeight * (1 - 0.125);
-    const deloadSets = Math.max(1, Math.round(sets * 0.55));
+    const deloadTarget = lastWeight * (1 - DELOAD_LOAD_CUT_PCT);
+    const deloadSets = Math.max(1, Math.round(sets * DELOAD_SET_RETENTION));
     return mkPlan({
       lift, sets: deloadSets, reps: lastReps,
       targetKg: deloadTarget, lastKg: lastWeight,
@@ -289,7 +319,7 @@ function mkPlan(args: MkPlanArgs): LiftPlan {
     finalTag = `${rationale}_increment_capped` as PrescriptionRationaleTag;
   } else if (
     resolved === lastKg &&
-    Math.abs(rawDeltaPct) > 0.001 &&
+    Math.abs(rawDeltaPct) > FLOOR_SUFFIX_MIN_DELTA &&
     !LEGITIMATE_HOLD_TAGS.has(rationale)
   ) {
     // The rule asked for a non-trivial step, but rounding to a loadable value
@@ -337,7 +367,10 @@ function phaseStepFor(lift: string, current: WeeklyPhase, next: WeeklyPhase): nu
   if (current === "mav" && next === "mav") return t.mevToMav * 0.6; // mid-MAV step
   if (current === "mav" && next === "mrv") return t.mavToMrv;
   // mrv current + deload-next handled in resolveOneLift before falling here.
-  return 0;
+  throw new Error(
+    `compose-prescription: phaseStepFor called with unhandled phase pair ${current} → ${next}. ` +
+    `MRV-current and Deload-next are handled in resolveOneLift before this helper runs.`
+  );
 }
 
 function pickPhaseTag(current: WeeklyPhase, next: WeeklyPhase): PrescriptionRationaleTag {
@@ -345,7 +378,10 @@ function pickPhaseTag(current: WeeklyPhase, next: WeeklyPhase): PrescriptionRati
   if (current === "mav" && next === "mav") return "mav_to_mav_step";
   if (current === "mav" && next === "mrv") return "mav_to_mrv_advance";
   if (current === "mrv" && next === "deload") return "deload_load_volume_cut";
-  return "mev_to_mav_clearance";
+  throw new Error(
+    `compose-prescription: pickPhaseTag called with unhandled phase pair ${current} → ${next}. ` +
+    `Expected mev→mav, mav→mav, or mav→mrv.`
+  );
 }
 
 /** New PR iff current e1RM strictly exceeds the prior weeks' max. Composes
@@ -366,7 +402,7 @@ function isPlateau(recap: LiftRecap): boolean {
   const xs = recap.e1rm_history_3wk;
   const max = Math.max(...xs);
   const min = Math.min(...xs);
-  return max > 0 && (max - min) / max <= 0.015;
+  return max > 0 && (max - min) / max <= PLATEAU_DELTA_THRESHOLD;
 }
 
 /** Conservative default: assume no prior rep-shift attempt. Surfacing rep-shift
