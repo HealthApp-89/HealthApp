@@ -13,6 +13,7 @@ import type { ChatMessage, ChatMessageImage, ChatRole, ChatStatus } from "@/lib/
 import { type RichMessage, type ContentBlock } from "@/lib/anthropic/client";
 import { runChatStream, emptyUsageTotals } from "@/lib/coach/chat-stream";
 import { CHAT_MODEL } from "@/lib/anthropic/models";
+import { findFabricatedNumbers } from "@/lib/coach/fabrication-check";
 import type { ToolCallLog, MorningUI, WeeklyReviewCardUI } from "@/lib/data/types";
 import { buildSnapshot, buildEphemeralHeader } from "@/lib/coach/snapshot";
 import { todayInUserTz } from "@/lib/time";
@@ -614,6 +615,28 @@ export async function POST(req: Request) {
           );
         }
 
+        // Fabrication observability: extract numerics from the assistant
+        // turn and flag any not present in the model's provable sources.
+        // Non-blocking — purely a logging signal for weekly review of
+        // hallucination rate. Heavy false-positive tolerance (small ints,
+        // ±1 rounding, snapshot text + tool results + window all merged).
+        let fabricated: string[] = [];
+        try {
+          if (!errored && accumulated.length > 0) {
+            fabricated = findFabricatedNumbers(accumulated, {
+              snapshot: snapshot ?? "",
+              toolCalls: toolCallSink,
+              recentMessageTexts: [
+                ...windowAsc.map((m) => m.content ?? ""),
+                content ?? "",
+              ],
+            });
+          }
+        } catch (err) {
+          // Defensive: a regex bomb or weird text shouldn't break the log.
+          console.error("[chat_turn] fabrication-check threw", err);
+        }
+
         // Structured log line for observability. Includes prompt-cache hit
         // ratio so we can tune ephemeral TTLs and snapshot stability.
         const totalCachable = usageSink.cache_read_input_tokens + usageSink.cache_creation_input_tokens;
@@ -648,6 +671,7 @@ export async function POST(req: Request) {
               cache_read_input_tokens: usageSink.cache_read_input_tokens,
               cache_hit_pct: cacheHitPct,
             },
+            fabricated_numbers: fabricated.length > 0 ? fabricated : null,
           }),
         );
 
