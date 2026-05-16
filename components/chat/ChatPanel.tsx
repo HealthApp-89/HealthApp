@@ -247,7 +247,33 @@ export default function ChatPanel({
       if (json.ok && json.messages) {
         // Server returns desc; we want asc for render.
         const asc = json.messages.slice().reverse();
-        dispatch({ type: "loaded", messages: scopeForMode(asc, currentMode, today) });
+        const scoped = scopeForMode(asc, currentMode, today);
+        dispatch({ type: "loaded", messages: scoped });
+
+        // Coach lane: if no coach-kind message exists for today and no special
+        // mode is active, fire the opener endpoint. Skipped server-side if a
+        // turn was already created today, so this is safe to call eagerly.
+        if (currentMode === "coach" && mode === "default") {
+          const hasCoachToday = scoped.some(
+            (m) => m.kind === "coach" && ymdInUserTz(new Date(m.created_at)) === today,
+          );
+          if (!hasCoachToday) {
+            try {
+              const op = await fetch("/api/chat/coach/ensure-opener", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+              });
+              if (op.ok) {
+                const opJson = (await op.json()) as { ok: boolean; message?: ChatMessage; skipped?: boolean };
+                if (opJson.ok && opJson.message && !cancelled) {
+                  dispatch({ type: "add_message", message: opJson.message });
+                }
+              }
+            } catch {
+              // Non-fatal — the user can still send a message without the opener.
+            }
+          }
+        }
       } else {
         dispatch({ type: "loaded", messages: [] });
       }
@@ -256,8 +282,8 @@ export default function ChatPanel({
       cancelled = true;
       abortRef.current?.abort();
     };
-    // `today` is intentionally not in deps — it's a render-time string that
-    // would only change at midnight (and the panel is unlikely to span that).
+    // `today` and `mode` intentionally not in deps — today is a render-time
+    // string and mode changes shouldn't re-fetch history.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentMode]);
 
