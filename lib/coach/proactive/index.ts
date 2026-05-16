@@ -1,8 +1,9 @@
 // lib/coach/proactive/index.ts
 //
 // Orchestrator: takes a CoachTrendsPayload, runs all 3 trigger checks,
-// dedups against chat_messages (7-day window per trigger_key), and either
-// inserts the rendered card or reports it as suppressed.
+// dedups against proactive_nudge_dedup (migration 0017 — dedicated table,
+// not chat_messages), and either inserts the rendered card or reports it
+// as suppressed.
 //
 // Caller responsibilities:
 //   - Compute the trends payload once (single generateCoachTrends call).
@@ -22,6 +23,7 @@ import { checkPlateau } from "./check-plateau";
 import { checkOffPace } from "./check-off-pace";
 import { checkHrv } from "./check-hrv";
 import { renderCard } from "./render-card";
+import { todayInUserTz } from "@/lib/time";
 
 const DEDUP_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -37,6 +39,7 @@ export async function runProactiveChecks(args: {
   dry_run?: boolean;
 }): Promise<ProactiveRunResult> {
   const { supabase, userId, trends, dry_run } = args;
+  const today = todayInUserTz();
 
   const events: ProactiveEvent[] = [
     ...checkPlateau(trends),
@@ -48,22 +51,27 @@ export async function runProactiveChecks(args: {
   const suppressed: ProactiveRunResult["suppressed"] = [];
 
   for (const event of events) {
-    const card = renderCard(event);
+    // Voice variety: pick the template variant deterministically from the
+    // user_id + trigger_key + ISO week-of-year, so the same trigger fired in
+    // different weeks rotates through phrasings without RNG (test-stable).
+    const card = renderCard(event, { userId, today });
 
     if (dry_run) {
       fired.push({ event, card });
       continue;
     }
 
-    // Dedup query — has a card for this trigger_key landed in the last 7d?
+    // Dedup: dedicated proactive_nudge_dedup table (migration 0017).
+    // chat_messages-based check was fragile to user deletion — deleting a
+    // nudge row used to reset the window. Now the dedup row is independent
+    // and survives chat-row deletion.
     const cutoff = new Date(Date.now() - DEDUP_WINDOW_MS).toISOString();
     const { data: recent, error: lookupErr } = await supabase
-      .from("chat_messages")
-      .select("id")
+      .from("proactive_nudge_dedup")
+      .select("trigger_key")
       .eq("user_id", userId)
-      .eq("kind", "proactive_nudge")
-      .filter("ui->>trigger_key", "eq", event.trigger_key)
-      .gte("created_at", cutoff)
+      .eq("trigger_key", event.trigger_key)
+      .gte("fired_at", cutoff)
       .limit(1)
       .maybeSingle();
     if (lookupErr) {
@@ -76,16 +84,39 @@ export async function runProactiveChecks(args: {
       continue;
     }
 
-    const { error: insertErr } = await supabase.from("chat_messages").insert({
-      user_id: userId,
-      role: "assistant",
-      kind: "proactive_nudge",
-      content: card.headline,
-      ui: card,
-    });
-    if (insertErr) {
+    const { data: inserted, error: insertErr } = await supabase
+      .from("chat_messages")
+      .insert({
+        user_id: userId,
+        role: "assistant",
+        kind: "proactive_nudge",
+        content: card.headline,
+        ui: card,
+      })
+      .select("id")
+      .single();
+    if (insertErr || !inserted) {
       throw new Error(
-        `proactive insert failed for ${event.trigger_key}: ${insertErr.message}`,
+        `proactive insert failed for ${event.trigger_key}: ${insertErr?.message ?? "no row"}`,
+      );
+    }
+
+    // Stamp the dedup row. Same-day re-fires hit the primary-key conflict
+    // and are silently absorbed — that's the (user_id, trigger_key, fired_on)
+    // unique. Cross-day re-fires within the 7-day window are blocked by the
+    // lookup above.
+    const { error: dedupErr } = await supabase.from("proactive_nudge_dedup").insert({
+      user_id: userId,
+      trigger_key: event.trigger_key,
+      fired_on: today,
+      chat_message_id: (inserted as { id: string }).id,
+    });
+    if (dedupErr && dedupErr.code !== "23505") {
+      // 23505 = unique violation — fine, dedup row already exists for today.
+      // Anything else (RLS, permission, network) is worth surfacing.
+      console.error(
+        `[proactive] dedup row insert failed for ${event.trigger_key} (chat_message persisted)`,
+        dedupErr,
       );
     }
     fired.push({ event, card });

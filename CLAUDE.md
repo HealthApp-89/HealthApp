@@ -44,6 +44,8 @@ Apply in order via Supabase Dashboard → SQL Editor:
 
 14. [supabase/migrations/0015_proactive_nudge.sql](supabase/migrations/0015_proactive_nudge.sql) — extends `chat_messages_kind_check` to include `'proactive_nudge'` for the sub-project #4 chat cards.
 
+15. [supabase/migrations/0017_proactive_nudge_dedup.sql](supabase/migrations/0017_proactive_nudge_dedup.sql) — adds `proactive_nudge_dedup` table keyed `(user_id, trigger_key, fired_on)` as the source of truth for the 7-day dedup window. Replaces the prior fragile `chat_messages.ui->>trigger_key` lookup which reset when the user deleted a nudge row.
+
 `supabase` CLI is now linked (`supabase link --project-ref eopfwwergisvskxqvsqe`); future migrations apply via `supabase db push` after `repair --status applied <history>` if needed.
 
 Row shapes mirrored in [lib/data/types.ts](lib/data/types.ts). Schema is snake_case; keep DB columns and TS types in sync.
