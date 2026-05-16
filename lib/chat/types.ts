@@ -4,7 +4,7 @@
 // Also the canonical home for Anthropic-message wire shapes used by the
 // chat path — both lib/anthropic/client.ts (hand-rolled streamer) and
 // lib/coach/chat-stream.ts (SDK-based tool loop) import from here.
-import type { MorningUI, WeeklyReviewCardUI } from "@/lib/data/types";
+import type { MorningUI, WeeklyReviewCardUI, ProactiveNudgeCard } from "@/lib/data/types";
 
 export type ChatRole = "user" | "assistant";
 export type ChatStatus = "streaming" | "done" | "error";
@@ -44,10 +44,10 @@ export type ChatMessage = {
   updated_at: string;
   images: ChatMessageImage[];
   /** Default 'coach'. ChatPanel filters its render by this. */
-  kind: "coach" | "morning_intake" | "morning_brief" | "weekly_review";
+  kind: "coach" | "morning_intake" | "morning_brief" | "weekly_review" | "proactive_nudge";
   /** Chips / rendering hints for morning_intake turns; structured card UI
-   *  for morning_brief / weekly_review turns. */
-  ui: MorningUI | WeeklyReviewCardUI | null;
+   *  for morning_brief / weekly_review / proactive_nudge turns. */
+  ui: MorningUI | WeeklyReviewCardUI | ProactiveNudgeCard | null;
   /** Persisted tool-call logs. Populated only for assistant messages that
    *  invoked at least one tool. Non-null only when the server includes the
    *  column in its select (GET /api/chat/messages returns it). */

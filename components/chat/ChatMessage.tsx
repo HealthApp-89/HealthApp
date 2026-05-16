@@ -55,7 +55,9 @@ export function ChatMessage({
         ? " · Morning brief"
         : message.kind === "weekly_review"
           ? " · Weekly review"
-          : "";
+          : message.kind === "proactive_nudge"
+            ? " · Coach"
+            : "";
   const metaText = `${timeStr} · ${author}${kindTag}`;
 
   return (

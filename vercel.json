@@ -16,6 +16,10 @@
     {
       "path": "/api/coach/weekly-review/sync",
       "schedule": "0 4 * * 1"
+    },
+    {
+      "path": "/api/coach/proactive/check",
+      "schedule": "0 11 * * *"
     }
   ],
   "functions": {

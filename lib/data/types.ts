@@ -84,11 +84,11 @@ export type ChatMessageRow = {
   /** Default 'coach' for the existing free-form chat thread; 'morning_intake'
    *  segregates the daily check-in conversation in ChatPanel; 'morning_brief'
    *  and 'weekly_review' are structured assistant-only cards. */
-  kind: "coach" | "morning_intake" | "morning_brief" | "weekly_review";
+  kind: "coach" | "morning_intake" | "morning_brief" | "weekly_review" | "proactive_nudge";
   /** Chip definitions / rendering hints for the morning intake bot, or
-   *  structured card payload for morning_brief / weekly_review. NULL on
+   *  structured card payload for morning_brief / weekly_review / proactive_nudge. NULL on
    *  free-form coach turns. */
-  ui: MorningUI | WeeklyReviewCardUI | null;
+  ui: MorningUI | WeeklyReviewCardUI | ProactiveNudgeCard | null;
   mode: ChatMode;
   created_at: string;
   updated_at: string;
@@ -1198,6 +1198,36 @@ export type WeeklyReviewCardUI = {
   per_lift_preview: Array<{ lift: string; from: string; to: string }>;
   link_path: string;
   review_id: string;
+};
+
+// ── Coach proactive reach-out (lib/coach/proactive/) ────────────────────────
+
+export type ProactiveTriggerType =
+  | "plateau"
+  | "off_pace_weight"
+  | "hrv_below_baseline";
+
+/** Internal event shape passed from check-* functions to the orchestrator.
+ *  The `payload` field carries trigger-specific data the renderer needs. */
+export type ProactiveEvent = {
+  trigger_type: ProactiveTriggerType;
+  trigger_key: string;
+  payload: Record<string, unknown>;
+};
+
+/** Persisted in chat_messages.ui when kind='proactive_nudge'. */
+export type ProactiveNudgeCard = {
+  schema_version: 1;
+  trigger_type: ProactiveTriggerType;
+  /** Used by the 7-day dedup window — same key for the same episode. */
+  trigger_key: string;
+  /** Reserved as union; v1 only emits "warn". */
+  severity: "warn";
+  /** ≤60 chars. */
+  headline: string;
+  /** 1-2 sentences. */
+  body_md: string;
+  deep_link: { label: string; href: string };
 };
 
 export type ReconfirmResponse = { chip_value: string; answered_at: string };

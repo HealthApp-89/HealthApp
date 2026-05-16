@@ -6,7 +6,8 @@ import type { ChatMessage } from "@/lib/chat/types";
 import { ChatMessage as ChatMessageView } from "./ChatMessage";
 import { MorningBriefCard as MorningBriefCardComponent } from "@/components/morning/MorningBriefCard";
 import { WeeklyReviewCard } from "@/components/chat/WeeklyReviewCard";
-import type { MorningBriefCard, WeeklyReviewCardUI } from "@/lib/data/types";
+import { ProactiveNudgeCard } from "@/components/chat/ProactiveNudgeCard";
+import type { MorningBriefCard, WeeklyReviewCardUI, ProactiveNudgeCard as ProactiveNudgeCardUI } from "@/lib/data/types";
 
 export function ChatThread({
   userId,
@@ -201,6 +202,11 @@ export function ChatThread({
           <WeeklyReviewCard
             key={it.m.id}
             ui={it.m.ui as WeeklyReviewCardUI}
+          />
+        ) : it.m.kind === "proactive_nudge" && it.m.ui ? (
+          <ProactiveNudgeCard
+            key={it.m.id}
+            ui={it.m.ui as ProactiveNudgeCardUI}
           />
         ) : (
           <ChatMessageView
