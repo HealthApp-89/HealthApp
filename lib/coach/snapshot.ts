@@ -13,7 +13,30 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { loadWorkouts } from "@/lib/data/workouts-server";
 import { nowInUserTz, relativeDateLabel, todayInUserTz } from "@/lib/time";
 import { renderProfileSummary } from "@/lib/coach/profile-renderer";
+import { mondayOf } from "@/lib/coach/weekly-review/date-utils";
 import type { IntakePayload, PlanPayload } from "@/lib/data/types";
+
+/** Compose the NOW header for the LLM snapshot prefix. Includes an explicit
+ *  "current week" anchor (Mon→Sun of the user's current week) because LLMs
+ *  frequently miscompute the Monday of "this week" from just a NOW date.
+ *  Pre-computing the anchor here keeps the model from inventing dates like
+ *  "Week of 2026-05-12" when today is Saturday 2026-05-16. */
+function composeNowLine(n: {
+  date: string;
+  weekday: string;
+  time: string;
+  tz: string;
+  utcOffset: string;
+}): string {
+  const weekMon = mondayOf(n.date);
+  const weekSunDt = new Date(weekMon + "T12:00:00Z");
+  weekSunDt.setUTCDate(weekSunDt.getUTCDate() + 6);
+  const weekSun = weekSunDt.toISOString().slice(0, 10);
+  return [
+    `NOW: ${n.date} (${n.weekday}) ${n.time} ${n.tz} (UTC${n.utcOffset})`,
+    `CURRENT WEEK: ${weekMon} (Mon) → ${weekSun} (Sun) — use these dates verbatim when referring to "this week", "Monday", or any weekday this week. Do not recompute.`,
+  ].join("\n");
+}
 
 type ProfileRow = {
   name?: string | null;
@@ -164,7 +187,7 @@ export async function buildSnapshot(inputs: SnapshotInputs): Promise<SnapshotRes
   ].join("\n");
 
   const n = nowInUserTz();
-  const nowLine = `NOW: ${n.date} (${n.weekday}) ${n.time} ${n.tz} (UTC${n.utcOffset})`;
+  const nowLine = composeNowLine(n);
 
   return { nowLine, body };
 }
@@ -303,7 +326,7 @@ export async function buildEphemeralHeader(opts: {
   );
 
   return [
-    `NOW: ${n.date} ${n.time} ${n.utcOffset} (${n.weekday})`,
+    composeNowLine(n),
     ``,
     renderRow("TODAY", today),
     ``,
