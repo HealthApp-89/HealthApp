@@ -18,7 +18,7 @@
 // to a top-level SSE error.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { signApprovalToken, verifyApprovalToken, payloadHash, ApprovalTokenError } from "@/lib/coach/approval-token";
+import { signApprovalToken, verifyApprovalToken, payloadHash, ApprovalTokenError, approvalTokenUserMessage } from "@/lib/coach/approval-token";
 import type { IntakePayload, PlanPayload, TrainingBlock, TrainingWeek } from "@/lib/data/types";
 import { buildPlanPayload } from "@/lib/coach/plan-builder";
 import { renderProfileMarkdown } from "@/lib/coach/profile-renderer";
@@ -1155,11 +1155,13 @@ export async function executeCommitBlock(opts: {
   try {
     envelope = verifyApprovalToken({ token, userId: opts.userId, action: "block" });
   } catch (e) {
-    const err = e as ApprovalTokenError;
-    return { ok: false, error: { error: err.message, code: err.code ?? "verify_failed" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+    if (e instanceof ApprovalTokenError) {
+      return { ok: false, error: { error: approvalTokenUserMessage(e.code), code: e.code }, meta: { ms: Date.now() - t0, range_days: 0 } };
+    }
+    return { ok: false, error: { error: (e as Error).message, code: "verify_failed" }, meta: { ms: Date.now() - t0, range_days: 0 } };
   }
   if (!envelope.payload || typeof envelope.payload !== "object") {
-    return { ok: false, error: { error: "approval-token: missing payload" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+    return { ok: false, error: { error: "That approval is missing the block details. Please re-propose.", code: "missing_payload" }, meta: { ms: Date.now() - t0, range_days: 0 } };
   }
   const p = envelope.payload as ProposeBlockInput;
   const { data, error } = await opts.supabase
@@ -1178,7 +1180,10 @@ export async function executeCommitBlock(opts: {
     .select()
     .single();
   if (error) {
-    return { ok: false, error: { error: `insert failed: ${error.message}` }, meta: { ms: Date.now() - t0, range_days: 0 } };
+    const msg = error.code === "23505"
+      ? "You already have an active block. Finish or abandon it before starting another."
+      : "Couldn't save the block. Please try again in a moment.";
+    return { ok: false, error: { error: msg, code: error.code ?? "insert_failed" }, meta: { ms: Date.now() - t0, range_days: 0 } };
   }
   return {
     ok: true,
@@ -1236,11 +1241,13 @@ export async function executeCommitWeekPlan(opts: {
   try {
     envelope = verifyApprovalToken({ token, userId: opts.userId, action: "week" });
   } catch (e) {
-    const err = e as ApprovalTokenError;
-    return { ok: false, error: { error: err.message, code: err.code ?? "verify_failed" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+    if (e instanceof ApprovalTokenError) {
+      return { ok: false, error: { error: approvalTokenUserMessage(e.code), code: e.code }, meta: { ms: Date.now() - t0, range_days: 0 } };
+    }
+    return { ok: false, error: { error: (e as Error).message, code: "verify_failed" }, meta: { ms: Date.now() - t0, range_days: 0 } };
   }
   if (!envelope.payload || typeof envelope.payload !== "object") {
-    return { ok: false, error: { error: "approval-token: missing payload" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+    return { ok: false, error: { error: "That approval is missing the week plan. Please re-propose.", code: "missing_payload" }, meta: { ms: Date.now() - t0, range_days: 0 } };
   }
   const p = envelope.payload as ProposeWeekPlanInput;
 
@@ -1274,7 +1281,7 @@ export async function executeCommitWeekPlan(opts: {
     .select()
     .single();
   if (error) {
-    return { ok: false, error: { error: `upsert failed: ${error.message}` }, meta: { ms: Date.now() - t0, range_days: 0 } };
+    return { ok: false, error: { error: "Couldn't save this week's plan. Please try again.", code: error.code ?? "upsert_failed" }, meta: { ms: Date.now() - t0, range_days: 0 } };
   }
   return {
     ok: true,
@@ -1986,25 +1993,27 @@ export async function executeCommitPlan(opts: {
     return { ok: false, error: { error: `load_failed: ${loadErr.message}` }, meta: { ms: Date.now() - t0, range_days: 0 } };
   }
   if (!draft) {
-    return { ok: false, error: { error: "draft_not_found" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+    return { ok: false, error: { error: "No draft plan found. Start the intake again from your profile.", code: "draft_not_found" }, meta: { ms: Date.now() - t0, range_days: 0 } };
   }
   if (draft.plan_payload === null) {
-    return { ok: false, error: { error: "plan_payload missing; call propose_plan first" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+    return { ok: false, error: { error: "This draft has no plan yet. Run propose_plan first.", code: "no_plan_payload" }, meta: { ms: Date.now() - t0, range_days: 0 } };
   }
 
   let envelope;
   try {
     envelope = verifyApprovalToken({ token, userId: opts.userId, action: "plan" });
   } catch (e) {
-    const err = e as ApprovalTokenError;
-    return { ok: false, error: { error: err.message, code: err.code ?? "verify_failed" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+    if (e instanceof ApprovalTokenError) {
+      return { ok: false, error: { error: approvalTokenUserMessage(e.code), code: e.code }, meta: { ms: Date.now() - t0, range_days: 0 } };
+    }
+    return { ok: false, error: { error: (e as Error).message, code: "verify_failed" }, meta: { ms: Date.now() - t0, range_days: 0 } };
   }
   if (!envelope.ref || envelope.ref.doc_id !== opts.draftDocId) {
-    return { ok: false, error: { error: "approval-token: doc_id mismatch", code: "doc_mismatch" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+    return { ok: false, error: { error: "That approval belongs to a different draft plan. Please re-propose.", code: "doc_mismatch" }, meta: { ms: Date.now() - t0, range_days: 0 } };
   }
   const currentHash = payloadHash(draft.plan_payload);
   if (currentHash !== envelope.ref.payload_hash) {
-    return { ok: false, error: { error: "approval-token: plan_payload changed since propose; call propose_plan again", code: "payload_drift" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+    return { ok: false, error: { error: "The plan changed after you approved it. Re-propose so I can sign the updated version.", code: "payload_drift" }, meta: { ms: Date.now() - t0, range_days: 0 } };
   }
 
   // App-level supersede (mirrors Phase 1's non-transactional flow): find prior

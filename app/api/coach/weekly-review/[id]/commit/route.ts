@@ -15,7 +15,7 @@ import {
   createSupabaseServerClient,
   createSupabaseServiceRoleClient,
 } from "@/lib/supabase/server";
-import { verifyApprovalToken, payloadHash, ApprovalTokenError } from "@/lib/coach/approval-token";
+import { verifyApprovalToken, payloadHash, ApprovalTokenError, approvalTokenUserMessage } from "@/lib/coach/approval-token";
 import { buildWeeklyReviewCommitPayload } from "@/lib/coach/weekly-review/commit-payload";
 import type { WeeklyReviewPayload } from "@/lib/data/types";
 import { revalidatePath } from "next/cache";
@@ -79,9 +79,14 @@ export async function POST(
       action: "weekly_review",
     });
   } catch (e) {
-    const err = e as ApprovalTokenError;
+    if (e instanceof ApprovalTokenError) {
+      return NextResponse.json(
+        { error: approvalTokenUserMessage(e.code), code: e.code },
+        { status: 403 },
+      );
+    }
     return NextResponse.json(
-      { error: err.message, code: err.code ?? "verify_failed" },
+      { error: (e as Error).message, code: "verify_failed" },
       { status: 403 },
     );
   }
@@ -90,7 +95,7 @@ export async function POST(
   if (payloadHash(envelope.payload) !== payloadHash(commitPayload)) {
     return NextResponse.json(
       {
-        error: "review payload changed since token was issued; refresh and re-approve",
+        error: "This review was regenerated after you approved it. Refresh the page and approve the updated version.",
         code: "payload_drift",
       },
       { status: 409 },

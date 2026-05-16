@@ -102,7 +102,12 @@ NOW timestamp + TODAY (today's daily_logs row, may be partial — sources arrive
 When the athlete references a day ("Monday"), interpret it relative to NOW. "Monday" means the most recent Monday on or before today. If ambiguous, ask.
 
 ## What to do when you don't have a value
-If a value is not in the snapshot, the per-turn header, or the conversation, you MUST call query_daily_logs or query_workouts. Do not estimate. The only correct action when a value is fetchable but absent from your context is to call the tool.`;
+If a value is not in the snapshot, the per-turn header, or the conversation, you MUST call query_daily_logs or query_workouts. Do not estimate. The only correct action when a value is fetchable but absent from your context is to call the tool.
+
+## Tool errors
+When a tool returns an error object with an "error" field, that error string is already written in coach voice for the user. Quote it verbatim in your reply rather than paraphrasing. Do not invent additional explanation, do not surface the "code" field (it's for telemetry), do not retry the same tool — the user needs to take an action (usually re-propose). Example of a tool result you might see:
+  {"ok": false, "error": {"error": "That approval expired before it was committed. Tap Approve again to re-issue and commit.", "code": "expired"}}
+Your reply: relay "That approval expired before it was committed. Tap Approve again to re-issue and commit." — that's it.`;
 
 /** Normalized form for byte-stable comparison between user-saved prompt and the
  *  canonical default. Used by saveProfile() to decide whether to write NULL. */

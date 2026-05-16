@@ -96,18 +96,41 @@ export function signApprovalToken(args: {
   return `${body}.${mac}`;
 }
 
+export type ApprovalTokenErrorCode =
+  | "malformed"
+  | "bad_signature"
+  | "expired"
+  | "user_mismatch"
+  | "action_mismatch"
+  | "version_mismatch"
+  | "future_timestamp";
+
 export class ApprovalTokenError extends Error {
-  readonly code:
-    | "malformed"
-    | "bad_signature"
-    | "expired"
-    | "user_mismatch"
-    | "action_mismatch"
-    | "version_mismatch"
-    | "future_timestamp";
-  constructor(code: ApprovalTokenError["code"], message: string) {
+  readonly code: ApprovalTokenErrorCode;
+  constructor(code: ApprovalTokenErrorCode, message: string) {
     super(message);
     this.code = code;
+  }
+}
+
+/** Map an approval-token failure to a string safe to relay back to the user.
+ *  Keeps technical detail in `code` for telemetry but never surfaces it to
+ *  the chat surface — the user shouldn't read "signature mismatch" or
+ *  "future timestamp." */
+export function approvalTokenUserMessage(code: ApprovalTokenErrorCode): string {
+  switch (code) {
+    case "expired":
+      return "That approval expired before it was committed. Tap Approve again to re-issue and commit.";
+    case "bad_signature":
+    case "malformed":
+    case "version_mismatch":
+      return "That approval token is invalid. Please re-propose and approve again.";
+    case "user_mismatch":
+      return "That approval belongs to a different account. Please re-propose.";
+    case "action_mismatch":
+      return "That approval was for a different action. Please re-propose.";
+    case "future_timestamp":
+      return "Clock skew detected on this approval. Try again in a few seconds.";
   }
 }
 
