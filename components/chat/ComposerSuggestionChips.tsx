@@ -8,22 +8,8 @@ import { DaySwapSheet } from "@/components/strength/DaySwapSheet";
 import { AdjustDeficitSheet } from "@/components/coach/AdjustDeficitSheet";
 import { useWeeklyReview } from "@/lib/query/hooks/useWeeklyReview";
 import { useTrainingWeek } from "@/lib/query/hooks/useTrainingWeek";
-import { weekdayInUserTz } from "@/lib/time";
+import { weekdayInUserTz, LONG_TO_SHORT_WEEKDAY } from "@/lib/time";
 import { currentWeekMonday } from "@/lib/coach/week";
-import type { Weekday } from "@/lib/data/types";
-
-// weekdayInUserTz() returns long-form ("Monday" .. "Sunday"); DaySwapSheet
-// takes a Weekday short-form code. Hoisted to module scope so it isn't
-// rebuilt on every render. Mirrors the same map in ToolsView.
-const LONG_TO_SHORT: Record<string, Weekday> = {
-  Monday: "Mon",
-  Tuesday: "Tue",
-  Wednesday: "Wed",
-  Thursday: "Thu",
-  Friday: "Fri",
-  Saturday: "Sat",
-  Sunday: "Sun",
-};
 
 /**
  * Four static suggestion chips rendered above the chat composer in default
@@ -54,7 +40,7 @@ export function ComposerSuggestionChips({
   const hasDraftReview = weeklyReview != null && weeklyReview.status === "draft";
 
   const todayLong = weekdayInUserTz();
-  const todayShort = LONG_TO_SHORT[todayLong] ?? "Mon";
+  const todayShort = LONG_TO_SHORT_WEEKDAY[todayLong] ?? "Mon";
 
   const [swapOpen, setSwapOpen] = useState(false);
   const [adjustOpen, setAdjustOpen] = useState(false);

@@ -12,22 +12,9 @@ import { AdjustDeficitSheet } from "@/components/coach/AdjustDeficitSheet";
 import { useWeeklyReview } from "@/lib/query/hooks/useWeeklyReview";
 import { useTrainingWeek } from "@/lib/query/hooks/useTrainingWeek";
 import { useBlockProgress, isActiveBlock } from "@/lib/query/hooks/useBlockProgress";
-import { weekdayInUserTz } from "@/lib/time";
+import { weekdayInUserTz, LONG_TO_SHORT_WEEKDAY } from "@/lib/time";
 import { currentWeekMonday } from "@/lib/coach/week";
-import type { Weekday } from "@/lib/data/types";
-
-// weekdayInUserTz() returns long-form ("Monday" .. "Sunday"); DaySwapSheet
-// takes a Weekday short-form code. Hoisted to module scope so it isn't
-// rebuilt on every render.
-const LONG_TO_SHORT: Record<string, Weekday> = {
-  Monday: "Mon",
-  Tuesday: "Tue",
-  Wednesday: "Wed",
-  Thursday: "Thu",
-  Friday: "Fri",
-  Saturday: "Sat",
-  Sunday: "Sun",
-};
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 /**
  * Tools tab — categorized list of all 8-10 user-facing coach actions.
@@ -60,13 +47,30 @@ export function ToolsView({
   const hasActiveBlock = isActiveBlock(blockProgress);
 
   const todayLong = weekdayInUserTz();
-  const todayShort = LONG_TO_SHORT[todayLong] ?? "Mon";
+  const todayShort = LONG_TO_SHORT_WEEKDAY[todayLong] ?? "Mon";
 
   const [swapOpen, setSwapOpen] = useState(false);
   const [adjustOpen, setAdjustOpen] = useState(false);
   const [glossaryOpen, setGlossaryOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [busy, setBusy] = useState<null | "brief" | "mobility" | "regen-review">(null);
+  const [intakeState, setIntakeState] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const sb = createSupabaseBrowserClient();
+    void sb.from("checkins")
+      .select("intake_state")
+      .eq("user_id", userId)
+      .eq("date", todayDate)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!cancelled) setIntakeState((data?.intake_state as string | undefined) ?? null);
+      });
+    return () => { cancelled = true; };
+  }, [userId, todayDate]);
+
+  const canRegenerateBrief = intakeState === "brief_failed";
 
   // Auto-dismiss the inline toast after 3s so it never sticks.
   useEffect(() => {
@@ -84,7 +88,20 @@ export function ToolsView({
     setBusy("brief");
     try {
       const res = await fetch("/api/chat/morning/retry-brief", { method: "POST" });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) {
+        let message = `Failed to regenerate brief (${res.status}).`;
+        try {
+          const body = await res.json();
+          if (body?.reason === "not_in_retry_state") {
+            message = "Brief hasn't failed — nothing to retry.";
+          } else if (typeof body?.reason === "string") {
+            message = `Failed: ${body.reason}.`;
+          }
+        } catch {
+          /* not JSON */
+        }
+        throw new Error(message);
+      }
       router.push("/coach");
     } catch (e) {
       explain(e instanceof Error ? e.message : "Failed to regenerate brief.");
@@ -150,9 +167,15 @@ export function ToolsView({
         />
         <ToolRow
           title="Regenerate morning brief"
-          subtitle={busy === "brief" ? "Regenerating…" : "Re-run today's brief"}
-          disabled={busy !== null}
-          onClick={regenerateMorningBrief}
+          subtitle={
+            busy === "brief" ? "Regenerating…"
+            : canRegenerateBrief ? "Re-run today's brief"
+            : "Brief is fine — nothing to retry"
+          }
+          disabled={busy !== null || !canRegenerateBrief}
+          onClick={() => canRegenerateBrief
+            ? regenerateMorningBrief()
+            : explain("Brief hasn't failed — nothing to retry.")}
         />
         <ToolRow
           title="Mark mobility done"

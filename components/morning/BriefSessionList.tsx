@@ -140,12 +140,6 @@ function VolumeGapsBanner({
 }: {
   gaps: NonNullable<MorningBriefCard["session"]["volume_gaps"]>;
 }) {
-  const gapText = gaps
-    .map(
-      (g) =>
-        `${g.group} (${g.actual}/wk vs ${g.target} ${g.label === "below_mev" ? "MEV" : "MRV"})`,
-    )
-    .join(", ");
   return (
     <div
       role="note"
@@ -159,7 +153,19 @@ function VolumeGapsBanner({
         color: COLOR.warningDeep,
       }}
     >
-      ⚠ <strong>Volume gaps:</strong> {gapText}{" "}
+      ⚠ <strong>Volume gaps:</strong>{" "}
+      {gaps.map((g, idx) => {
+        const tierKey = g.label === "below_mev" ? "mev" : "mrv";
+        const tierLabel = g.label === "below_mev" ? "MEV" : "MRV";
+        return (
+          <span key={g.group}>
+            {idx > 0 && ", "}
+            {g.group} ({g.actual}/wk vs {g.target}{" "}
+            <JargonPill termKey={tierKey}>{tierLabel}</JargonPill>
+            )
+          </span>
+        );
+      })}{" "}
       <span style={{ fontStyle: "italic" }}>— coach details below.</span>
     </div>
   );

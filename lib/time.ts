@@ -218,3 +218,17 @@ export function formatHeaderDate(now: Date = new Date()): string {
     day: "numeric",
   }).format(now);
 }
+
+import type { Weekday } from "@/lib/data/types";
+
+/** Map long-form weekday names ("Monday") to short-form ("Mon"). Shared by
+ *  ToolsView and ComposerSuggestionChips for DaySwapSheet sourceDay typing. */
+export const LONG_TO_SHORT_WEEKDAY: Record<string, Weekday> = {
+  Monday: "Mon",
+  Tuesday: "Tue",
+  Wednesday: "Wed",
+  Thursday: "Thu",
+  Friday: "Fri",
+  Saturday: "Sat",
+  Sunday: "Sun",
+};
