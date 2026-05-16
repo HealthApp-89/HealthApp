@@ -67,6 +67,20 @@ export function MorningBriefCard({
       aria-label="Today's morning brief"
     >
       <BriefHero card={card} />
+      {card.whoop_missing ? (
+        <div
+          style={{
+            background: COLOR.warningSoft,
+            color: COLOR.warningDeep,
+            padding: "8px 16px",
+            fontSize: 12,
+            fontWeight: 600,
+            borderBottom: `1px solid ${COLOR.divider}`,
+          }}
+        >
+          WHOOP didn't sync this morning — readiness is feel-only.
+        </div>
+      ) : null}
       <div
         style={{
           padding: 16,

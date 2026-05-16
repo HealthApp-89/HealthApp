@@ -776,6 +776,11 @@ export type MorningBriefCard = {
   this_week_plan?: ThisWeekPlanBlock | null;
   /** Populated when variant === 'analytical' (Tue-Sat training day with a committed week). */
   yesterday_vs_plan?: YesterdayVsPlanBlock | null;
+  /** Set true when the brief was generated without same-morning WHOOP data
+   *  (user tapped Skip on the Sync WHOOP prompt, or the request fell through
+   *  the WHOOP gate with skip_whoop). Surfaces a small banner on the card so
+   *  the athlete knows the readiness band is feel-only. */
+  whoop_missing?: boolean;
 };
 
 /** Computed deterministically by lib/morning/brief/flags.ts. Passed to the

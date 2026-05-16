@@ -59,7 +59,12 @@ export type ChatMessage = {
 /** SSE event sent from server to client. */
 export type ChatStreamEvent =
   | { type: "delta"; text: string }
-  | { type: "done"; message_id: string; partial?: boolean }
+  | {
+      type: "done";
+      message_id: string;
+      partial?: boolean;
+      tool_calls?: import("@/lib/data/types").ToolCallLog[] | null;
+    }
   | { type: "error"; message: string }
   | { type: "tool_call_start"; id: string; name: string; input: Record<string, unknown> }
   | { type: "tool_call_done"; id: string; ok: boolean; ms: number }

@@ -12,7 +12,17 @@
 
 export type ServerStreamEvent =
   | { event: "delta"; data: { text: string } }
-  | { event: "done"; data: { message_id: string; partial?: boolean } }
+  | {
+      event: "done";
+      data: {
+        message_id: string;
+        partial?: boolean;
+        /** Persisted tool-call audit log for this assistant turn (mirrors
+         *  chat_messages.tool_calls). Lets the client patch the message
+         *  in-place without a follow-up GET /api/chat/messages refetch. */
+        tool_calls?: import("@/lib/data/types").ToolCallLog[] | null;
+      };
+    }
   | { event: "error"; data: { message: string } }
   | { event: "tool_call_start"; data: { id: string; name: string; input: Record<string, unknown> } }
   | { event: "tool_call_done"; data: { id: string; ok: boolean; ms: number } }

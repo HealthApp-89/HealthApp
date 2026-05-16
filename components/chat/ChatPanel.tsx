@@ -390,52 +390,47 @@ export default function ChatPanel({
               status: "done",
               partial: ev.partial,
             });
-            // The SSE stream emits tool_call_start/done but NOT result payloads
-            // (would bloat the wire). The route's finally block persists
-            // tool_calls to the DB just before emitting `done`. Pull them back
-            // here so inline proposal cards (propose_plan, propose_block,
-            // propose_week_plan) render on the freshly-finalized message
-            // without forcing a page reload.
+            // tool_calls now arrive inline on the done event (saves a refetch
+            // round trip for the common case). Patch the message right away so
+            // proposal cards render without flash.
             const finalizedId = ev.message_id;
-            void (async () => {
-              try {
-                // limit=5 covers: (a) the assistant turn we just finalized,
-                // (b) any morning_brief row the regenerate_morning_brief tool
-                // inserted as a side effect, (c) a small buffer.
-                const r = await fetch(`/api/chat/messages?limit=5&kind=coach`);
-                const j = (await r.json()) as { ok: boolean; messages?: ChatMessage[] };
-                if (j.ok && j.messages) {
-                  const fresh = j.messages.find((m) => m.id === finalizedId);
-                  if (fresh) {
-                    dispatch({
-                      type: "patch_message",
-                      id: finalizedId,
-                      patch: {
-                        tool_calls: fresh.tool_calls ?? null,
-                        ui: fresh.ui ?? null,
-                        content: fresh.content,
-                      },
-                    });
+            const inlineToolCalls = ev.tool_calls ?? null;
+            if (inlineToolCalls) {
+              dispatch({
+                type: "patch_message",
+                id: finalizedId,
+                patch: { tool_calls: inlineToolCalls },
+              });
+            }
+            // Side-effect tools insert NEW chat_messages rows that the SSE
+            // stream doesn't carry — only refetch when at least one such tool
+            // was called.
+            const hasSideEffectInsert = (inlineToolCalls ?? []).some(
+              (c) => c.name === "regenerate_morning_brief",
+            );
+            if (hasSideEffectInsert) {
+              void (async () => {
+                try {
+                  const r = await fetch(`/api/chat/messages?limit=5&kind=coach`);
+                  const j = (await r.json()) as { ok: boolean; messages?: ChatMessage[] };
+                  if (j.ok && j.messages) {
+                    const fresh = j.messages.find((m) => m.id === finalizedId);
+                    const finalizedAt = fresh?.created_at ?? null;
+                    const sinceMs = finalizedAt
+                      ? new Date(finalizedAt).getTime() - 5000
+                      : Date.now() - 60_000;
+                    for (const m of j.messages) {
+                      if (m.id === finalizedId) continue;
+                      if (state.messages.some((existing) => existing.id === m.id)) continue;
+                      if (new Date(m.created_at).getTime() < sinceMs) continue;
+                      dispatch({ type: "add_message", message: m });
+                    }
                   }
-                  // Add any messages we haven't seen locally — e.g. a fresh
-                  // morning_brief row inserted by regenerate_morning_brief as a
-                  // side effect of this turn. Filter to rows newer than our
-                  // finalized assistant turn so we don't re-add older history.
-                  const finalizedAt = fresh?.created_at ?? null;
-                  const sinceMs = finalizedAt
-                    ? new Date(finalizedAt).getTime() - 5000  // 5s slack for clock skew
-                    : Date.now() - 60_000;
-                  for (const m of j.messages) {
-                    if (m.id === finalizedId) continue;
-                    if (state.messages.some((existing) => existing.id === m.id)) continue;
-                    if (new Date(m.created_at).getTime() < sinceMs) continue;
-                    dispatch({ type: "add_message", message: m });
-                  }
+                } catch {
+                  // Best-effort.
                 }
-              } catch {
-                // Best-effort: card stays hidden until user reloads. Not blocking.
-              }
-            })();
+              })();
+            }
           } else if (ev.type === "error") {
             // Two cases: 409 in-flight (no stub created), or mid-stream error.
             if (ev.message === "in_flight_stream") {
@@ -1055,6 +1050,8 @@ export default function ChatPanel({
                 onTextChange={setComposerText}
                 onFocus={() => setComposerFocused(true)}
                 onBlur={() => setComposerFocused(false)}
+                streaming={state.inFlightAssistantId !== null}
+                onStop={() => abortRef.current?.abort()}
               />
             </>
           );
@@ -1248,6 +1245,8 @@ export default function ChatPanel({
             disabled={state.inFlightAssistantId !== null || state.pendingSend}
             onSend={isMorningTextTurn ? (content) => sendMorningFreeText(content) : send}
             placeholder={currentMode === "coach" ? composerPlaceholder : undefined}
+            streaming={state.inFlightAssistantId !== null}
+            onStop={() => abortRef.current?.abort()}
           />
         );
       })()}

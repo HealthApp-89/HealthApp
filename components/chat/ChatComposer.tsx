@@ -20,18 +20,20 @@ export function ChatComposer({
   onTextChange,
   onFocus,
   onBlur,
+  streaming,
+  onStop,
 }: {
   disabled?: boolean;
   onSend: (content: string, imageIds: string[]) => void;
   placeholder?: string;
-  /** Fires on every textarea change. Lets the parent gate sibling UI
-   *  (e.g. ComposerSuggestionChips) on whether the composer is empty
-   *  without lifting the controlled-text state up. */
   onTextChange?: (text: string) => void;
-  /** Forwarded to the underlying textarea so the parent can hide sibling
-   *  UI while the composer is focused. */
   onFocus?: () => void;
   onBlur?: () => void;
+  /** True while a server-side stream is in flight. Composer renders a Stop
+   *  button instead of Send so the user can abort. */
+  streaming?: boolean;
+  /** Fires when the user taps the Stop button mid-stream. */
+  onStop?: () => void;
 }) {
   const [text, setText] = useState("");
   const [pending, setPending] = useState<Pending[]>([]);
@@ -285,32 +287,60 @@ export function ChatComposer({
           }}
         />
 
-        <button
-          type="button"
-          onClick={send}
-          disabled={!canSend}
-          style={{
-            flexShrink: 0,
-            width: 40,
-            height: 40,
-            borderRadius: "50%",
-            background: canSend ? COLOR.accent : COLOR.divider,
-            color: canSend ? "#fff" : COLOR.textFaint,
-            border: "none",
-            fontSize: 16,
-            fontWeight: 700,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            cursor: canSend ? "pointer" : "default",
-            boxShadow: canSend ? SHADOW.fab : "none",
-            padding: 0,
-            transition: "background 120ms, box-shadow 120ms",
-          }}
-          aria-label="Send"
-        >
-          ↑
-        </button>
+        {streaming && onStop ? (
+          <button
+            type="button"
+            onClick={onStop}
+            style={{
+              flexShrink: 0,
+              width: 40,
+              height: 40,
+              borderRadius: "50%",
+              background: COLOR.danger,
+              color: "#fff",
+              border: "none",
+              fontSize: 13,
+              fontWeight: 700,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+              boxShadow: SHADOW.fab,
+              padding: 0,
+              transition: "background 120ms",
+            }}
+            aria-label="Stop"
+          >
+            ■
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={send}
+            disabled={!canSend}
+            style={{
+              flexShrink: 0,
+              width: 40,
+              height: 40,
+              borderRadius: "50%",
+              background: canSend ? COLOR.accent : COLOR.divider,
+              color: canSend ? "#fff" : COLOR.textFaint,
+              border: "none",
+              fontSize: 16,
+              fontWeight: 700,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: canSend ? "pointer" : "default",
+              boxShadow: canSend ? SHADOW.fab : "none",
+              padding: 0,
+              transition: "background 120ms, box-shadow 120ms",
+            }}
+            aria-label="Send"
+          >
+            ↑
+          </button>
+        )}
       </div>
     </div>
   );

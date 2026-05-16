@@ -576,13 +576,17 @@ export async function POST(req: Request) {
           }
         }
 
-        // Emit terminal SSE events for the client.
+        // Emit terminal SSE events for the client. tool_calls is included in
+        // the `done` payload (when non-empty) so the client can patch the
+        // assistant message in-place without a follow-up GET refetch — saves
+        // a round trip and a render flash for every turn that used a tool.
+        const persistedToolCalls = toolCallSink.length > 0 ? toolCallSink : null;
         if (errored) {
           controller.enqueue(
             encoder.encode(
               formatSseEvent({
                 event: "done",
-                data: { message_id: assistantId, partial: true },
+                data: { message_id: assistantId, partial: true, tool_calls: persistedToolCalls },
               }),
             ),
           );
@@ -592,7 +596,10 @@ export async function POST(req: Request) {
         } else {
           controller.enqueue(
             encoder.encode(
-              formatSseEvent({ event: "done", data: { message_id: assistantId } }),
+              formatSseEvent({
+                event: "done",
+                data: { message_id: assistantId, tool_calls: persistedToolCalls },
+              }),
             ),
           );
         }

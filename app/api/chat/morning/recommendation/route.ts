@@ -99,12 +99,18 @@ export async function POST(req: Request) {
       const yieldEvent = (e: Parameters<typeof formatSseEvent>[0]) =>
         controller.enqueue(encoder.encode(formatSseEvent(e)));
 
+      // Compute the WHOOP-missing flag once: the user got here either with
+      // recovery!=null in daily_logs, or with body.skip_whoop=true. The latter
+      // is the "feel-only" path and needs to surface a banner on the card.
+      const whoopMissing = body.skip_whoop === true && (!log || log.recovery == null);
+
       let finalCard: MorningBriefCard | null = null;
       let errored: string | null = null;
       try {
         for await (const ev of buildMorningBriefStreaming(sr, user.id, req.signal)) {
           if (ev.type === "card_ready") {
-            yieldEvent({ event: "brief_card", data: { card: ev.card } });
+            const card = whoopMissing ? { ...ev.card, whoop_missing: true } : ev.card;
+            yieldEvent({ event: "brief_card", data: { card } });
           } else if (ev.type === "advice_delta") {
             yieldEvent({ event: "delta", data: { text: ev.text } });
           } else if (ev.type === "done") {
@@ -144,7 +150,8 @@ export async function POST(req: Request) {
       // brief_failed — otherwise a client disconnect or DB error between
       // `done` and the final upsert leaves the row stranded at assembling_brief
       // and a 409 awaits the user on next retry.
-      const contentSummary = composeBriefContentFallback(finalCard);
+      const persistedCard = whoopMissing ? { ...finalCard, whoop_missing: true } : finalCard;
+      const contentSummary = composeBriefContentFallback(persistedCard);
       try {
         const { data: inserted, error: insertErr } = await sr
           .from("chat_messages")
@@ -153,7 +160,7 @@ export async function POST(req: Request) {
             role: "assistant",
             kind: "morning_brief",
             content: contentSummary,
-            ui: finalCard,
+            ui: persistedCard,
           })
           .select("id")
           .single();

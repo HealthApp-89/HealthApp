@@ -65,6 +65,9 @@ export async function* postSse(
             type: "done",
             message_id: data.message_id as string,
             partial: data.partial as boolean | undefined,
+            tool_calls: (data.tool_calls ?? null) as
+              | import("@/lib/data/types").ToolCallLog[]
+              | null,
           };
         } else if (eventName === "error") {
           yield { type: "error", message: data.message as string };
