@@ -26,8 +26,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   DAILY_LOGS_TOOL,
   WORKOUTS_TOOL,
-  TRAINING_BLOCKS_TOOL,
-  TRAINING_WEEKS_TOOL,
+  TRAINING_PLAN_TOOL,
   AUTOREGULATION_TOOL,
   ADHERENCE_TOOL,
   PROPOSE_BLOCK_TOOL,
@@ -55,8 +54,7 @@ import {
   REGENERATE_MORNING_BRIEF_TOOL,
   executeQueryDailyLogs,
   executeQueryWorkouts,
-  executeQueryTrainingBlocks,
-  executeQueryTrainingWeeks,
+  executeQueryTrainingPlan,
   executeGetAutoregulationSignals,
   executeComputeAdherence,
   executeProposeBlock,
@@ -185,8 +183,7 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
   const allTools = [
     DAILY_LOGS_TOOL,
     WORKOUTS_TOOL,
-    TRAINING_BLOCKS_TOOL,
-    TRAINING_WEEKS_TOOL,
+    TRAINING_PLAN_TOOL,
     AUTOREGULATION_TOOL,
     ADHERENCE_TOOL,
     PROPOSE_BLOCK_TOOL,
@@ -382,14 +379,8 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
             userId: opts.userId,
             input: block.input,
           });
-        } else if (block.name === "query_training_blocks") {
-          result = await executeQueryTrainingBlocks({
-            supabase: opts.sr,
-            userId: opts.userId,
-            input: block.input,
-          });
-        } else if (block.name === "query_training_weeks") {
-          result = await executeQueryTrainingWeeks({
+        } else if (block.name === "query_training_plan") {
+          result = await executeQueryTrainingPlan({
             supabase: opts.sr,
             userId: opts.userId,
             input: block.input,

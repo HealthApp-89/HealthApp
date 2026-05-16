@@ -104,28 +104,39 @@ export const WORKOUTS_TOOL = {
   },
 };
 
-export const TRAINING_BLOCKS_TOOL = {
-  name: "query_training_blocks",
+/** Unified tool for reading the athlete's training plan structure — both
+ *  block-level mesocycles and the committed weekly plans within them. Picks
+ *  one of two scopes:
+ *    - "blocks": Returns training_blocks rows. status?: 'active'|'completed'|
+ *      'abandoned'|'all' (default 'active').
+ *    - "weeks": Returns committed training_weeks rows for a date range
+ *      (start_date + end_date required, 90-day cap).
+ *  Consolidates what used to be two separate tools (query_training_blocks,
+ *  query_training_weeks) — fewer surface tools = better model dispatch. */
+export const TRAINING_PLAN_TOOL = {
+  name: "query_training_plan",
   description:
-    "Fetch the athlete's training blocks. Default returns the active block (or 0 rows if none). status='all' returns full history. Use when planning a week or recapping block-level progress.",
+    "Fetch training plan structure. scope='blocks' returns training_blocks (status defaults to 'active'). scope='weeks' returns committed training_weeks rows in a date range (start_date + end_date required, 90-day cap). Use 'blocks' when planning a new block or recapping at mesocycle level; use 'weeks' when comparing recent committed plans.",
   input_schema: {
     type: "object" as const,
+    required: ["scope"],
     properties: {
-      status: { type: "string", enum: ["active", "completed", "abandoned", "all"], default: "active" },
-    },
-  },
-};
-
-export const TRAINING_WEEKS_TOOL = {
-  name: "query_training_weeks",
-  description:
-    "Fetch committed weekly plans (training_weeks rows) in a date range. Range cap: 90 days. Use when recapping a recent week or referencing what was committed.",
-  input_schema: {
-    type: "object" as const,
-    required: ["start_date", "end_date"],
-    properties: {
-      start_date: { type: "string", format: "date" },
-      end_date: { type: "string", format: "date" },
+      scope: { type: "string", enum: ["blocks", "weeks"] },
+      status: {
+        type: "string",
+        enum: ["active", "completed", "abandoned", "all"],
+        description: "Only used when scope='blocks'. Defaults to 'active'.",
+      },
+      start_date: {
+        type: "string",
+        format: "date",
+        description: "Required when scope='weeks'.",
+      },
+      end_date: {
+        type: "string",
+        format: "date",
+        description: "Required when scope='weeks'.",
+      },
     },
   },
 };
@@ -889,6 +900,37 @@ export async function executeQueryTrainingWeeks(opts: {
     ok: true,
     data,
     meta: { ms: Date.now() - t0, result_rows: data.length, range_days, truncated: false },
+  };
+}
+
+// ── query_training_plan executor (scope dispatcher) ──────────────────────────
+
+export async function executeQueryTrainingPlan(opts: {
+  supabase: SupabaseClient;
+  userId: string;
+  input: unknown;
+}): Promise<ToolResult<Record<string, unknown>[]>> {
+  const t0 = Date.now();
+  const i = (opts.input ?? {}) as Record<string, unknown>;
+  const scope = i.scope;
+  if (scope === "blocks") {
+    return executeQueryTrainingBlocks({
+      supabase: opts.supabase,
+      userId: opts.userId,
+      input: { status: i.status },
+    });
+  }
+  if (scope === "weeks") {
+    return executeQueryTrainingWeeks({
+      supabase: opts.supabase,
+      userId: opts.userId,
+      input: { start_date: i.start_date, end_date: i.end_date },
+    });
+  }
+  return {
+    ok: false,
+    error: { error: "scope must be 'blocks' or 'weeks'", code: "bad_scope" },
+    meta: { ms: Date.now() - t0, range_days: 0 },
   };
 }
 
