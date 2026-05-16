@@ -74,6 +74,15 @@ type State = {
   hasMoreOlder: boolean;
   inFlightAssistantId: string | null;
   inFlightWaitMessage: string | null;
+  /** True from the moment a send() begins until the assistant stream
+   *  finalizes (success or error). Distinct from inFlightAssistantId,
+   *  which only becomes non-null on the FIRST delta. The composer
+   *  disable check ORs both so the user can't fire a second message in
+   *  the (often multi-second) gap between send-start and first delta —
+   *  that second message used to land 409 in_flight_stream, retry after
+   *  the first stream ended, and visually land OUT OF ORDER below the
+   *  reply it preceded. */
+  pendingSend: boolean;
 };
 
 type Action =
@@ -88,7 +97,8 @@ type Action =
   | { type: "wait"; message: string | null }
   | { type: "add_message"; message: ChatMessage }
   | { type: "remove_id"; id: string }
-  | { type: "patch_message"; id: string; patch: Partial<ChatMessage> };
+  | { type: "patch_message"; id: string; patch: Partial<ChatMessage> }
+  | { type: "set_pending_send"; value: boolean };
 
 function reducer(state: State, action: Action): State {
   switch (action.type) {
@@ -163,6 +173,8 @@ function reducer(state: State, action: Action): State {
           m.id === action.id ? { ...m, ...action.patch } : m,
         ),
       };
+    case "set_pending_send":
+      return { ...state, pendingSend: action.value };
     default:
       return state;
   }
@@ -205,6 +217,7 @@ export default function ChatPanel({
     hasMoreOlder: false,
     inFlightAssistantId: null,
     inFlightWaitMessage: null,
+    pendingSend: false,
   });
 
   const [currentMode, setCurrentMode] = useState<"coach" | "morning_intake">(initialKind);
@@ -285,6 +298,13 @@ export default function ChatPanel({
     async (content: string, imageIds: string[]) => {
       // Clear composer hint after each send.
       setComposerHint(undefined);
+
+      // Lock the composer immediately. Without this, the multi-second gap
+      // between send-start and first-delta lets the user fire a second
+      // message that lands 409 in_flight_stream, retries after the first
+      // stream finishes, and visually appears AFTER the assistant reply it
+      // was meant to precede. Pair with the finally below.
+      dispatch({ type: "set_pending_send", value: true });
 
       // Optimistic user message — hide [approve:] messages visually but still
       // send them so the server processes the approval.
@@ -425,6 +445,7 @@ export default function ChatPanel({
         }
       } finally {
         abortRef.current = null;
+        dispatch({ type: "set_pending_send", value: false });
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -931,7 +952,7 @@ export default function ChatPanel({
                 />
               )}
               <ChatComposer
-                disabled={state.inFlightAssistantId !== null}
+                disabled={state.inFlightAssistantId !== null || state.pendingSend}
                 onSend={isMorningTextTurn ? (content) => sendMorningFreeText(content) : send}
                 placeholder={currentMode === "coach" ? composerPlaceholder : undefined}
                 onTextChange={setComposerText}
@@ -1127,7 +1148,7 @@ export default function ChatPanel({
 
         return (
           <ChatComposer
-            disabled={state.inFlightAssistantId !== null}
+            disabled={state.inFlightAssistantId !== null || state.pendingSend}
             onSend={isMorningTextTurn ? (content) => sendMorningFreeText(content) : send}
             placeholder={currentMode === "coach" ? composerPlaceholder : undefined}
           />
