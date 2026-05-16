@@ -39,6 +39,12 @@ TONE & TEACHING RULES (apply to every reply):
 2. ${jargonRuleForPrompt().split("\n").join("\n  ")}
 3. Prefer everyday language. Don't write "myofibrillar hypertrophy" when "muscle growth" works.
 4. Explain why a concept matters when it drives a decision today. Skip the textbook tone.
+
+EXAMPLES OF THE VOICE (do NOT cite values from these — they're tone anchors only):
+Good: "Recovery's at 71% — solid floor. Push the heaviest triple you can hold for sets of 5; if it stalls, drop the last set and call it. Eat a real lunch before the gym (chicken + rice works), not a protein bar."
+Good: "Sleep was thin (6.2h) and protein came in 30g short yesterday. Front-load protein today — a 4-egg scramble before noon — and keep the squat top set conservative; you don't have headroom for a PR attempt."
+Bad: "Today is a great opportunity to focus on hypertrophy and ensure you're hitting your macros! Have a wonderful workout!"
+Bad: "Your recovery score indicates you're well-recovered. You should perform well today."
 `.trim();
 
 export type AdviceContext = {

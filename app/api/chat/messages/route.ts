@@ -141,8 +141,15 @@ const TOKENS_PER_CHAR = 1 / 3.5;
  *  Claude are billed by their dimensions; this is a conservative floor for
  *  the small/medium uploads typical of chat). */
 const TOKENS_PER_IMAGE = 85;
-const UNATTACHED_WINDOW_MIN = 15;
+/** Window (minutes) during which an unattached upload can be claimed by a
+ *  send. Bumped 15 → 60 so users can compose a message slowly after dropping
+ *  in a photo without hitting "image expired" on send. */
+const UNATTACHED_WINDOW_MIN = 60;
 const DAILY_USER_MSG_CAP = 200;
+/** When the user has already sent >= this many messages today, append a
+ *  "be terser" instruction to the system prompt. Soft-degrades cost + tone
+ *  before the hard 429 at DAILY_USER_MSG_CAP. */
+const TERSE_MODE_THRESHOLD = 150;
 const MODEL = CHAT_MODEL;
 
 type SendBody = { content?: string; image_ids?: string[]; mode?: string; doc?: string };
@@ -195,6 +202,7 @@ export async function POST(req: Request) {
   if ((userMsgCount ?? 0) >= DAILY_USER_MSG_CAP) {
     return NextResponse.json({ ok: false, reason: "daily_cap" }, { status: 429 });
   }
+  const terseMode = (userMsgCount ?? 0) >= TERSE_MODE_THRESHOLD;
 
   // Verify image_ids: ownership via storage_path prefix, unattached, fresh.
   if (imageIds.length > 0) {
@@ -357,6 +365,14 @@ export async function POST(req: Request) {
       mode: effectiveMode,
       userPromptOverride,
     });
+
+    // Graceful degradation as the user approaches the daily cap: append a
+    // terseness directive so replies stay short rather than hard-failing
+    // every send once DAILY_USER_MSG_CAP hits. NOT cached — appended after
+    // the cached prefix so the cache prefix stays stable.
+    if (terseMode) {
+      finalSystemPrompt = `${finalSystemPrompt}\n\n---\n\nHIGH-VOLUME MODE: You're approaching the daily message cap. Default to 1-2 sentences per reply unless the question explicitly requires depth. Skip recap; answer the question.`;
+    }
 
     // windowRows is desc (newest first). Build the image map first so the
     // token-budget walk can include image cost, then walk newest → oldest

@@ -104,6 +104,18 @@ export function ComposerSuggestionChips({
           ? setAdjustOpen(true)
           : setTooltip("Open a draft weekly review first."),
     },
+    {
+      // "What can you help with?" — closes the discoverability gap that
+      // used to live in /coach?view=tools. Asking the coach in chat is the
+      // more natural surface: it pulls from the actual tool list + current
+      // mode capability + active block/plan state.
+      label: "What can you help with?",
+      disabled: busy,
+      onClick: () =>
+        fireSubmit(
+          "Briefly, what can you do for me right now? List the kinds of questions I can ask and the actions you can take (proposing weekly plans, swapping training days, etc.).",
+        ),
+    },
   ];
 
   return (
