@@ -9,6 +9,7 @@ import { revalidatePath } from "next/cache";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { generateCoachTrends } from "@/lib/coach/trends";
 import { runProactiveChecks } from "@/lib/coach/proactive";
+import { todayInUserTz } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -35,7 +36,11 @@ export async function GET(req: Request) {
     );
   }
   const userId = profile.user_id as string;
-  const today = new Date().toISOString().slice(0, 10);
+  // Use user-TZ today so date math stays consistent with Sub-project #2's
+  // morning brief and Sub-project #5's trends compute (which both anchor on
+  // todayInUserTz). Near-midnight UTC firings could otherwise resolve to a
+  // different calendar day than the surfaces that consume the same signals.
+  const today = todayInUserTz();
 
   let trends;
   try {
