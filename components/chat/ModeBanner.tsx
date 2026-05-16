@@ -9,6 +9,12 @@ const MODE_LABEL: Record<Exclude<ChatMode, "default">, string> = {
   intake: "PLAN INTAKE",
 };
 
+const MODE_SUBLABEL: Record<Exclude<ChatMode, "default">, string> = {
+  plan_week: "Coach tools narrowed to weekly planning.",
+  setup_block: "Coach tools narrowed to block setup.",
+  intake: "Coach tools narrowed to profile intake.",
+};
+
 export function ModeBanner({
   mode,
   context,
@@ -33,6 +39,7 @@ export function ModeBanner({
         padding: "10px 14px",
         background: COLOR.accentSoft,
         color: COLOR.accent,
+        borderBottom: `2px solid ${COLOR.accent}`,
       }}
     >
       <span
@@ -44,42 +51,64 @@ export function ModeBanner({
           color: COLOR.surface,
           padding: "3px 8px",
           borderRadius: RADIUS.pill,
+          flexShrink: 0,
         }}
       >
         {label}
       </span>
-      {context ? (
+      <div
+        style={{
+          flex: 1,
+          minWidth: 0,
+          display: "flex",
+          flexDirection: "column",
+          gap: 1,
+        }}
+      >
+        {context ? (
+          <span
+            style={{
+              fontSize: 12,
+              color: COLOR.accentDeep,
+              fontWeight: 600,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {context}
+          </span>
+        ) : null}
         <span
           style={{
-            fontSize: 12,
+            fontSize: 11,
             color: COLOR.accentDeep,
-            fontWeight: 500,
-            flex: 1,
+            opacity: 0.8,
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
           }}
         >
-          {context}
+          {MODE_SUBLABEL[mode]} Tap × to exit.
         </span>
-      ) : (
-        <span style={{ flex: 1 }} />
-      )}
+      </div>
       <button
         onClick={() => onExit?.()}
         style={{
-          background: "transparent",
-          border: "none",
+          background: COLOR.surface,
+          border: `1px solid ${COLOR.accent}`,
+          borderRadius: RADIUS.pill,
           color: COLOR.accent,
           cursor: "pointer",
-          fontSize: 16,
+          fontSize: 12,
           fontWeight: 700,
-          padding: "0 4px",
+          padding: "4px 12px",
           lineHeight: 1,
+          flexShrink: 0,
         }}
         aria-label="Exit mode"
       >
-        ✕
+        Exit ✕
       </button>
     </div>
   );

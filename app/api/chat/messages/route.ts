@@ -264,31 +264,13 @@ export async function POST(req: Request) {
   const rpcTyped = rpcRow as { user_message_id: string; assistant_message_id: string };
   const assistantId = rpcTyped.assistant_message_id;
 
-  // Resolve effective chat mode for this turn:
-  //   1. Explicit request param wins
-  //   2. Else inherit from the most recent prior chat_messages row (if non-default)
-  //   3. Else 'default'
-  let effectiveMode: ChatMode = "default";
-  if (requestedMode) {
-    effectiveMode = requestedMode;
-  } else {
-    const { data: prior } = await sr
-      .from("chat_messages")
-      .select("mode")
-      .eq("user_id", user.id)
-      .neq("id", rpcTyped.user_message_id)
-      .neq("id", rpcTyped.assistant_message_id)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (
-      prior?.mode === "plan_week" ||
-      prior?.mode === "setup_block" ||
-      prior?.mode === "intake"
-    ) {
-      effectiveMode = prior.mode;
-    }
-  }
+  // Resolve effective chat mode for this turn. Mode is fully client-driven:
+  // the ModeBanner X button clears the URL param and the client stops sending
+  // `mode` in the body. The old behaviour silently inherited from the prior
+  // assistant turn — useful for multi-turn planning, but the leak across
+  // tab-switches and after explicit Exit was the audit's flagged footgun.
+  // Now: explicit `mode` in request body wins; absent = default.
+  const effectiveMode: ChatMode = requestedMode ?? "default";
 
   // Parse optional doc reference (UUID string passed by the intake-mode UI).
   // Defense-in-depth: format-validate against UUID before passing to executors.
