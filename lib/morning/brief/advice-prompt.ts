@@ -9,6 +9,7 @@
 // teacher-tone rules so the voice is consistent across variants.
 
 import { callClaude } from "@/lib/anthropic/client";
+import { jargonRuleForPrompt } from "@/lib/coach/glossary";
 import type {
   AdviceFlags,
   AthleteProfileDocument,
@@ -25,23 +26,16 @@ const MODEL = "claude-haiku-4-5-20251001";
 const MAX_TOKENS = 350;
 const TEMPERATURE = 0.4;
 
-/** Shared teacher-tone rules applied to every variant. Defines the jargon
- *  vocabulary in plain English so the model doesn't introduce textbook
- *  terms uncritically. Reinforced separately by the per-variant prompt
- *  bodies — having the rules constant + the per-variant instructions keeps
- *  any future edits in one place. */
+/** Shared teacher-tone rules applied to every variant. The jargon
+ *  vocabulary is sourced from the canonical glossary module
+ *  (`lib/coach/glossary.ts`) via `jargonRuleForPrompt()` so the UI tooltips
+ *  (JargonPill / TermSheet) and the AI prompts stay in lockstep — change
+ *  a definition in one place and both surfaces update. Reinforced separately
+ *  by the per-variant prompt bodies. */
 const TEACHER_TONE_RULES = `
 TONE & TEACHING RULES (apply to every reply):
 1. Second person, conversational. "You" not "the athlete".
-2. On first mention in this reply, define jargon in 5-10 words of plain English:
-   - MEV → "the minimum weekly sets that drive growth"
-   - MAV → "the productive volume range"
-   - MRV → "your weekly recovery ceiling"
-   - RIR → "reps you could still do at the same weight"
-   - deload → "a lighter week to absorb the training"
-   - e1RM → "estimated one-rep max from your top set"
-   - efficiency (sleep) → "time actually asleep ÷ time in bed"
-   If a term appears again later in the same reply, don't re-define.
+2. ${jargonRuleForPrompt().split("\n").join("\n  ")}
 3. Prefer everyday language. Don't write "myofibrillar hypertrophy" when "muscle growth" works.
 4. Explain why a concept matters when it drives a decision today. Skip the textbook tone.
 `.trim();

@@ -2,6 +2,7 @@
 
 import { COLOR } from "@/lib/ui/theme";
 import { BIG_FOUR_SET } from "@/lib/coach/big-four";
+import { JargonPill } from "@/components/coach/JargonPill";
 import type { MorningBriefCard, MorningBriefExercise } from "@/lib/data/types";
 
 export function BriefSessionList({
@@ -101,7 +102,9 @@ export function BriefSessionList({
                       marginTop: 1,
                     }}
                   >
-                    RIR {planEntry.rir_target}
+                    <JargonPill termKey="rir">
+                      RIR {planEntry.rir_target}
+                    </JargonPill>
                   </div>
                 )}
               </div>
@@ -137,12 +140,6 @@ function VolumeGapsBanner({
 }: {
   gaps: NonNullable<MorningBriefCard["session"]["volume_gaps"]>;
 }) {
-  const gapText = gaps
-    .map(
-      (g) =>
-        `${g.group} (${g.actual}/wk vs ${g.target} ${g.label === "below_mev" ? "MEV" : "MRV"})`,
-    )
-    .join(", ");
   return (
     <div
       role="note"
@@ -156,7 +153,19 @@ function VolumeGapsBanner({
         color: COLOR.warningDeep,
       }}
     >
-      ⚠ <strong>Volume gaps:</strong> {gapText}{" "}
+      ⚠ <strong>Volume gaps:</strong>{" "}
+      {gaps.map((g, idx) => {
+        const tierKey = g.label === "below_mev" ? "mev" : "mrv";
+        const tierLabel = g.label === "below_mev" ? "MEV" : "MRV";
+        return (
+          <span key={g.group}>
+            {idx > 0 && ", "}
+            {g.group} ({g.actual}/wk vs {g.target}{" "}
+            <JargonPill termKey={tierKey}>{tierLabel}</JargonPill>
+            )
+          </span>
+        );
+      })}{" "}
       <span style={{ fontStyle: "italic" }}>— coach details below.</span>
     </div>
   );

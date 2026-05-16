@@ -1,6 +1,7 @@
 "use client";
 
 import { Card, SectionLabel } from "@/components/ui/Card";
+import { JargonPill } from "@/components/coach/JargonPill";
 import { COLOR } from "@/lib/ui/theme";
 import { fmtNum } from "@/lib/ui/score";
 import type { ThisWeekPlanBlock } from "@/lib/data/types";
@@ -13,7 +14,10 @@ export function BriefThisWeekPlan({ plan }: { plan: ThisWeekPlanBlock }) {
   return (
     <Card>
       <SectionLabel>
-        THIS WEEK · WK {plan.week_n}/{plan.total_weeks} · {plan.phase_now.toUpperCase()}
+        THIS WEEK · WK {plan.week_n}/{plan.total_weeks} ·{" "}
+        <JargonPill termKey={plan.phase_now}>
+          {plan.phase_now.toUpperCase()}
+        </JargonPill>
         {plan.phase_changed_this_week ? " · NEW PHASE" : ""}
       </SectionLabel>
       <table
@@ -61,7 +65,11 @@ export function BriefThisWeekPlan({ plan }: { plan: ThisWeekPlanBlock }) {
                 {p.sets}×{p.reps}
               </td>
               <td style={{ textAlign: "right", color: COLOR.textMuted }}>
-                {p.rir_target != null ? p.rir_target : "—"}
+                {p.rir_target != null ? (
+                  <JargonPill termKey="rir">{p.rir_target}</JargonPill>
+                ) : (
+                  "—"
+                )}
               </td>
             </tr>
           ))}

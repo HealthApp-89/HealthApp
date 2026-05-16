@@ -17,10 +17,21 @@ export function ChatComposer({
   disabled,
   onSend,
   placeholder,
+  onTextChange,
+  onFocus,
+  onBlur,
 }: {
   disabled?: boolean;
   onSend: (content: string, imageIds: string[]) => void;
   placeholder?: string;
+  /** Fires on every textarea change. Lets the parent gate sibling UI
+   *  (e.g. ComposerSuggestionChips) on whether the composer is empty
+   *  without lifting the controlled-text state up. */
+  onTextChange?: (text: string) => void;
+  /** Forwarded to the underlying textarea so the parent can hide sibling
+   *  UI while the composer is focused. */
+  onFocus?: () => void;
+  onBlur?: () => void;
 }) {
   const [text, setText] = useState("");
   const [pending, setPending] = useState<Pending[]>([]);
@@ -80,7 +91,12 @@ export function ChatComposer({
     onSend(text.trim(), imageIds);
     pending.forEach((p) => URL.revokeObjectURL(p.thumbnailUrl));
     setPending([]);
+    // Invariant: every internal setText("") MUST be paired with
+    // onTextChange?.("") so the parent's composerText state stays in
+    // sync. The parent uses composerText to gate chip visibility — a
+    // drift would cause chips to silently hide after a successful send.
     setText("");
+    onTextChange?.("");
   }
 
   return (
@@ -233,7 +249,13 @@ export function ChatComposer({
 
         <textarea
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => {
+            const next = e.target.value;
+            setText(next);
+            onTextChange?.(next);
+          }}
+          onFocus={onFocus}
+          onBlur={onBlur}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault();

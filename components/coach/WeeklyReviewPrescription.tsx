@@ -1,5 +1,7 @@
 "use client";
 import { Card, SectionLabel } from "@/components/ui/Card";
+import { JargonPill } from "@/components/coach/JargonPill";
+import { stripPrescriptionSuffix } from "@/lib/coach/glossary";
 import { COLOR } from "@/lib/ui/theme";
 import { fmtNum } from "@/lib/ui/score";
 import type { WeeklyReviewPayload } from "@/lib/data/types";
@@ -58,7 +60,9 @@ export function WeeklyReviewPrescription({
                     padding: "2px 0",
                   }}
                 >
-                  {p.rationale_tag.replaceAll("_", " ")}
+                  <JargonPill termKey={stripPrescriptionSuffix(p.rationale_tag)}>
+                    {p.rationale_tag.replaceAll("_", " ")}
+                  </JargonPill>
                 </td>
               </tr>
             );
