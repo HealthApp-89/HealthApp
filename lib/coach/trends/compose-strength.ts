@@ -67,18 +67,16 @@ export async function composeStrength(args: {
     .eq("user_id", userId)
     .gte("week_start", windowStart12w)
     .lte("week_start", today);
+  const twRows =
+    ((tws as { week_start: string; research_phase: string | null }[] | null) ?? []);
   const deloadWeeks = new Set<string>(
-    ((tws as { week_start: string; research_phase: string | null }[] | null) ?? [])
-      .filter((r) => r.research_phase === "deload")
-      .map((r) => r.week_start)
+    twRows.filter((r) => r.research_phase === "deload").map((r) => r.week_start),
   );
 
-  const { data: block } = await supabase
-    .from("training_blocks")
-    .select("research_phase, start_date, end_date, status, goal_text")
-    .eq("user_id", userId)
-    .eq("status", "active")
-    .maybeSingle();
+  // Current phase comes from the training_weeks row for this week — research_phase
+  // lives on training_weeks (per migration 0008), not training_blocks.
+  const currentMonday = mondayOf(today);
+  const currentWeek = twRows.find((r) => r.week_start === currentMonday) ?? null;
 
   const perLift: PerLiftSlope[] = BIG_FOUR.map((lift) =>
     computeLiftSlope(lift, weeklyPeaks.get(lift)!, deloadWeeks, today)
@@ -87,7 +85,7 @@ export async function composeStrength(args: {
   return {
     schema_version: 1,
     per_lift: perLift,
-    block_phase_now: block?.research_phase === "deload" ? "deload" : null,
+    block_phase_now: currentWeek?.research_phase === "deload" ? "deload" : null,
     on_pace: null,
   };
 }

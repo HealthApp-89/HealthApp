@@ -151,7 +151,7 @@ function nutritionXWeightInsight(
   window: TrendWindow,
 ): string {
   const wTxt = window === "4w" ? "last 4 weeks" : "last 12 weeks";
-  if (reg.r_squared < 0.2) {
+  if (reg.r_squared < 0.3) {
     return `Nutrition and weight show no clear relationship in the ${wTxt} (R² ${reg.r_squared.toFixed(2)}). Weekly variance dominates the signal — likely fluid + glycogen rather than fat.`;
   }
   const per200 = Math.round(200 * reg.slope * 10) / 10;
@@ -166,7 +166,7 @@ function volumeXRecoveryInsight(
   window: TrendWindow,
 ): string {
   const wTxt = window === "4w" ? "last 4 weeks" : "last 12 weeks";
-  if (reg.r_squared < 0.2) {
+  if (reg.r_squared < 0.3) {
     return `Weekly working-set volume isn't strongly correlated with recovery in the ${wTxt} (R² ${reg.r_squared.toFixed(2)}). HRV is likely driven by non-training factors.`;
   }
   const per10sets = Math.round(10 * reg.slope * 10) / 10;

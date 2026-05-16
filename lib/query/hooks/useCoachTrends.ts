@@ -9,6 +9,9 @@ export function useCoachTrends(userId: string) {
     queryFn: async (): Promise<CoachTrendsPayload> => {
       throw new Error("useCoachTrends: expected SSR-hydrated cache hit");
     },
-    staleTime: 60 * 1000,
+    // SSR-hydrate-only — no browser refetch path (queryFn throws by design).
+    // Stale-after-60s would trigger background refetch → blank page; Infinity
+    // keeps the dehydrated payload authoritative for the page lifetime.
+    staleTime: Infinity,
   });
 }
