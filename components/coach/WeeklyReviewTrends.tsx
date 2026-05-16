@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { Card, SectionLabel } from "@/components/ui/Card";
 import { COLOR } from "@/lib/ui/theme";
 import { fmtNum } from "@/lib/ui/score";
@@ -29,6 +30,7 @@ export function WeeklyReviewTrends({
               : "—"
           }
           ok={trends.loss_rate_in_target_band}
+          href="/coach/trends?section=composition"
         />
         <Cell
           label="Strength slope"
@@ -37,6 +39,7 @@ export function WeeklyReviewTrends({
               ? `${fmtNum(trends.strength_slope_pct_per_week * 100)}%/wk`
               : "—"
           }
+          href="/coach/trends?section=performance"
         />
         <Cell
           label="/LBM slope"
@@ -45,6 +48,7 @@ export function WeeklyReviewTrends({
               ? `${fmtNum(trends.lbm_slope_pct_per_week * 100)}%/wk`
               : "—"
           }
+          href="/coach/trends?section=composition"
         />
         <Cell
           label="Plateaus"
@@ -56,8 +60,21 @@ export function WeeklyReviewTrends({
               : "none"
           }
           ok={trends.plateau_flags.length === 0 ? true : false}
+          href="/coach/trends?section=performance"
         />
       </div>
+      <Link
+        href="/coach/trends"
+        style={{
+          display: "inline-block",
+          marginTop: 8,
+          fontSize: 11,
+          color: COLOR.accent,
+          textDecoration: "none",
+        }}
+      >
+        See full trends →
+      </Link>
     </Card>
   );
 }
@@ -66,12 +83,14 @@ function Cell({
   label,
   value,
   ok,
+  href,
 }: {
   label: string;
   value: string;
   ok?: boolean | null;
+  href?: string;
 }) {
-  return (
+  const content = (
     <div>
       <div style={{ color: COLOR.textMuted }}>{label}</div>
       <div
@@ -87,5 +106,11 @@ function Cell({
         {value}
       </div>
     </div>
+  );
+  if (!href) return content;
+  return (
+    <Link href={href} style={{ textDecoration: "none", color: "inherit" }}>
+      {content}
+    </Link>
   );
 }
