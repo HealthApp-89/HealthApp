@@ -95,4 +95,8 @@ export const queryKeys = {
     one: (userId: string, weekStart: string) =>
       ["weeklyReviews", userId, "one", weekStart] as const,
   },
+  coachTrends: {
+    all: (userId: string) => ["coachTrends", userId] as const,
+    one: (userId: string) => ["coachTrends", userId, "current"] as const,
+  },
 } as const;

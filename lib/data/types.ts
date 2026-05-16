@@ -1034,6 +1034,13 @@ export type WeeklyReviewPayload = {
     strength_slope_pct_per_week: number | null;
     lbm_slope_pct_per_week: number | null;
     plateau_flags: Array<{ lift: string; weeks_flat: number }>;
+    /** Sub-project #5: per-lift slopes via OLS. Populated when the trends
+     *  compute layer has enough data; optional for back-compat. */
+    per_lift_slope?: PerLiftSlope[];
+    /** Sub-project #5: plateau spans per lift. */
+    plateau_spans?: Array<{ lift: string; weeks_flat: number; magnitude_pct: number }>;
+    /** Sub-project #5: cross-metric insight summaries. */
+    cross_insights?: CrossInsight[];
   };
   prescription: {
     next_week_start: string;
@@ -1063,6 +1070,121 @@ export type WeeklyReviewPayload = {
     nutrition: { kcal: number; protein_g: number; carbs_g: number; fat_g: number };
     sleep: { hours: number; efficiency_pct: number };
     recovery_focus: string[];
+  };
+};
+
+// ── Coach trends (lib/coach/trends/) ────────────────────────────────────────
+
+export type TrendWindow = "4w" | "12w";
+
+export type PerLiftSlope = {
+  lift: string;                       // "Squat (Barbell)" — matches BIG_FOUR
+  e1rm_kg_now: number | null;
+  slope_pct_per_wk_4w: number | null;
+  slope_pct_per_wk_12w: number | null;
+  r_squared_4w: number | null;
+  r_squared_12w: number | null;
+  plateau_active: boolean;
+  plateau_weeks_flat: number;
+};
+
+export type StrengthTrend = {
+  schema_version: 1;
+  per_lift: PerLiftSlope[];
+  block_phase_now: WeeklyPhase | null;
+  on_pace: boolean | null;
+};
+
+export type BodyTrend = {
+  schema_version: 1;
+  weight: {
+    now_kg: number | null;
+    rate_kg_per_wk_4w: number | null;
+    rate_kg_per_wk_12w: number | null;
+    target_band: { lower: number; upper: number };
+    in_band: boolean | null;
+  };
+  lbm: {
+    now_kg: number | null;
+    delta_4w_kg: number | null;
+    delta_12w_kg: number | null;
+  };
+  body_fat_pct: {
+    now: number | null;
+    delta_4w_pct: number | null;
+    delta_12w_pct: number | null;
+  };
+};
+
+export type NutritionAdherenceTrend = {
+  schema_version: 1;
+  protein: {
+    target_g: number | null;
+    days_hit_4w: number;
+    days_total_4w: number;
+    pct_4w: number | null;
+    pct_12w: number | null;
+  };
+  kcal: {
+    target: number | null;
+    days_hit_4w: number;
+    days_total_4w: number;
+    pct_4w: number | null;
+    pct_12w: number | null;
+    avg_4w: number | null;
+    avg_12w: number | null;
+  };
+  deficit_kcal: {
+    avg_4w: number | null;
+    avg_12w: number | null;
+  };
+};
+
+export type RecoveryTrend = {
+  schema_version: 1;
+  sleep: {
+    avg_h_4w: number | null;
+    avg_h_12w: number | null;
+    avg_efficiency_pct_4w: number | null;
+    avg_efficiency_pct_12w: number | null;
+  };
+  hrv: {
+    avg_4w: number | null;
+    avg_12w: number | null;
+    baseline_30d: number | null;
+    vs_baseline_pct_4w: number | null;
+  };
+  rhr: {
+    avg_bpm_4w: number | null;
+    avg_bpm_12w: number | null;
+    delta_4w_bpm: number | null;
+  };
+};
+
+export type CrossInsight = {
+  schema_version: 1;
+  pair: "nutrition_x_weight" | "volume_x_recovery";
+  window: TrendWindow;
+  slope: number;
+  intercept: number;
+  r_squared: number;
+  n_points: number;
+  insight_md: string;
+  points: Array<{ x: number; y: number; week_start: string }>;
+};
+
+export type CoachTrendsPayload = {
+  schema_version: 1;
+  generated_at: string;
+  strength: StrengthTrend;
+  body: BodyTrend;
+  nutrition: NutritionAdherenceTrend;
+  recovery: RecoveryTrend;
+  cross_insights: CrossInsight[];
+  headline: {
+    severity: "info" | "warn" | "ok";
+    title: string;
+    body_md: string;
   };
 };
 

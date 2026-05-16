@@ -12,6 +12,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { WeeklyReviewPayload } from "@/lib/data/types";
 import { epley } from "@/lib/coach/derived";
 import { shiftDays, dayIndex, mondayOf } from "./date-utils";
+import { composeStrength } from "@/lib/coach/trends/compose-strength";
+import { composeCross } from "@/lib/coach/trends/compose-cross";
 
 type TrendsOutput = WeeklyReviewPayload["trends"];
 
@@ -122,6 +124,20 @@ export async function composeTrends(args: {
     }
   }
 
+  const today = shiftDays(weekStart, 6);
+  const [strengthTrend, crossInsights] = await Promise.all([
+    composeStrength({ supabase, userId, today }),
+    composeCross({ supabase, userId, today }),
+  ]);
+
+  const plateauSpans = strengthTrend.per_lift
+    .filter((p) => p.plateau_active)
+    .map((p) => ({
+      lift: p.lift,
+      weeks_flat: p.plateau_weeks_flat,
+      magnitude_pct: 0,
+    }));
+
   return {
     window_weeks: 4,
     weight_loss_kg_per_week: weightLossKgPerWeek,
@@ -129,6 +145,9 @@ export async function composeTrends(args: {
     strength_slope_pct_per_week: strengthSlopePctPerWeek,
     lbm_slope_pct_per_week: lbmSlopePctPerWeek,
     plateau_flags: plateauFlags,
+    per_lift_slope: strengthTrend.per_lift,
+    plateau_spans: plateauSpans,
+    cross_insights: crossInsights,
   };
 }
 

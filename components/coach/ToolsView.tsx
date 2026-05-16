@@ -241,6 +241,11 @@ export function ToolsView({
       <Card>
         <SectionLabel>REFERENCE</SectionLabel>
         <ToolRow
+          title="View trends"
+          subtitle="Strength / Composition / Cross-metric"
+          onClick={() => router.push("/coach/trends")}
+        />
+        <ToolRow
           title="Glossary"
           subtitle="MEV / MAV / RIR / and more"
           onClick={() => setGlossaryOpen(true)}
