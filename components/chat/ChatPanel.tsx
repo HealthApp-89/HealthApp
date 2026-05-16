@@ -31,7 +31,8 @@ function morningUiOf(m: ChatMessage | undefined): MorningUI | null {
 /** For morning_intake, scope thread to today's messages only — yesterday's
  *  morning checkin shouldn't appear in today's panel and would otherwise
  *  block the auto-start guard from firing the next-day fresh prompt.
- *  Coach mode keeps cross-day history (intentional there). */
+ *  Coach mode keeps cross-day history at the dispatch layer; render-time
+ *  scoping to today+yesterday lives in the render path (see scopeCoachForRender). */
 function scopeForMode(
   messages: ChatMessage[],
   mode: "coach" | "morning_intake",
@@ -41,6 +42,30 @@ function scopeForMode(
   return messages.filter(
     (m) => ymdInUserTz(new Date(m.created_at)) === todayYmd,
   );
+}
+
+function shiftYmd(ymd: string, days: number): string {
+  const dt = new Date(ymd + "T12:00:00Z");
+  dt.setUTCDate(dt.getUTCDate() + days);
+  return dt.toISOString().slice(0, 10);
+}
+
+/** Render-time scope for the coach lane. Default view shows today + yesterday
+ *  (in user TZ) so a yesterday-evening proactive nudge or last morning's brief
+ *  remain accessible without dragging the full thread history into view.
+ *  Anything older is hidden behind an "↑ Show N earlier messages" pill that
+ *  flips `showAll` to true to reveal everything currently loaded in state. */
+function scopeCoachForRender(
+  messages: ChatMessage[],
+  todayYmd: string,
+  showAll: boolean,
+): ChatMessage[] {
+  if (showAll) return messages;
+  const yesterdayYmd = shiftYmd(todayYmd, -1);
+  return messages.filter((m) => {
+    const ymd = ymdInUserTz(new Date(m.created_at));
+    return ymd === todayYmd || ymd === yesterdayYmd;
+  });
 }
 
 type State = {
@@ -184,6 +209,14 @@ export default function ChatPanel({
 
   const [currentMode, setCurrentMode] = useState<"coach" | "morning_intake">(initialKind);
   const [sickInFlight, setSickInFlight] = useState(false);
+  /** When false (default), the coach lane renders only today + yesterday;
+   *  a pill above the thread reveals older messages on tap. Reset on every
+   *  mode switch — opening the Coach tab fresh shouldn't carry over a prior
+   *  expansion. */
+  const [showAllCoach, setShowAllCoach] = useState(false);
+  useEffect(() => {
+    setShowAllCoach(false);
+  }, [currentMode]);
 
   const panelRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -757,6 +790,17 @@ export default function ChatPanel({
           ? "Talk through your plan…"
           : undefined);
 
+  // Render-time scope for the coach lane (today + yesterday by default).
+  // Computed inline so the toggle is instant — no refetch — and so
+  // morning_intake mode (already scoped at dispatch) is unaffected.
+  const renderedMessages =
+    currentMode === "coach"
+      ? scopeCoachForRender(state.messages, today, showAllCoach)
+      : state.messages;
+  const hiddenEarlierCount = state.messages.length - renderedMessages.length;
+  const showEarlierPill =
+    currentMode === "coach" && !showAllCoach && hiddenEarlierCount > 0;
+
   // Embedded mode: render feed + composer in-flow (no overlay chrome).
   // Used by /coach. FAB-summoned overlay path falls through to the legacy
   // return below.
@@ -791,6 +835,12 @@ export default function ChatPanel({
             loading…
           </div>
         )}
+        {showEarlierPill && (
+          <ShowEarlierPill
+            hiddenCount={hiddenEarlierCount}
+            onShow={() => setShowAllCoach(true)}
+          />
+        )}
         {state.loaded && (
           // No overflowY here — ChatThread's inner div owns the scroll
           // surface (it manages auto-scroll-to-bottom via scrollRef). Nesting
@@ -798,7 +848,7 @@ export default function ChatPanel({
           <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
             <ChatThread
               userId={userId}
-              messages={state.messages}
+              messages={renderedMessages}
               onLoadOlder={loadOlder}
               onRetry={onRetry}
               onSendUserMessage={(text) => void send(text, [])}
@@ -1018,10 +1068,16 @@ export default function ChatPanel({
           loading…
         </div>
       )}
+      {showEarlierPill && (
+        <ShowEarlierPill
+          hiddenCount={hiddenEarlierCount}
+          onShow={() => setShowAllCoach(true)}
+        />
+      )}
       {state.loaded && (
         <ChatThread
           userId={userId}
-          messages={state.messages}
+          messages={renderedMessages}
           onLoadOlder={loadOlder}
           onRetry={onRetry}
           onSendUserMessage={(text) => void send(text, [])}
@@ -1144,6 +1200,42 @@ export default function ChatPanel({
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+function ShowEarlierPill({
+  hiddenCount,
+  onShow,
+}: {
+  hiddenCount: number;
+  onShow: () => void;
+}) {
+  const label = `↑ Show ${hiddenCount} earlier ${hiddenCount === 1 ? "message" : "messages"}`;
+  return (
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "center",
+        padding: "8px 12px 4px",
+      }}
+    >
+      <button
+        type="button"
+        onClick={onShow}
+        style={{
+          background: COLOR.surfaceAlt,
+          color: COLOR.textMid,
+          border: "none",
+          borderRadius: 9999,
+          padding: "6px 14px",
+          fontSize: 11,
+          fontWeight: 600,
+          cursor: "pointer",
+        }}
+      >
+        {label}
+      </button>
     </div>
   );
 }
