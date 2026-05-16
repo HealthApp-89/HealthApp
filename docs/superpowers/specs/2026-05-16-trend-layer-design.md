@@ -19,11 +19,11 @@ A real coach reviewing an athlete's trajectory does five concrete things:
 
 The existing `/trends` page covers (1) and (2) at the raw-metric level (period pills, single-metric drilldown) but doesn't compute slopes, doesn't separate per-lift, doesn't band the loss rate, doesn't compute adherence percentages, and doesn't surface cross-metric relationships. It's a data-exploration tool, not a coaching-analysis surface.
 
-This spec covers the Trend Layer: a new `/coach/trends` page distinct from `/trends`, organized into five sections (Strength / Body / Nutrition / Recovery / Cross), backed by a new `lib/coach/trends/` compute module that deepens the weekly review's §4 outputs and renders opinionated analytics. Cross-metric correlations are computed deterministically (linear regression, R²) and rendered as English insight cards with an "open chart" reveal. No new tables, no migration, no Anthropic calls — the compute is pure derivation from existing data.
+This spec covers the Trend Layer: a new `/coach/trends` page distinct from `/trends`, organized into three sections (Performance / Composition / Cross), backed by a new `lib/coach/trends/` compute module that deepens the weekly review's §4 outputs and renders opinionated analytics. Cross-metric correlations are computed deterministically (linear regression, R²) and rendered as English insight cards with an "open chart" reveal. No new tables, no migration, no Anthropic calls — the compute is pure derivation from existing data.
 
 ## Goals
 
-1. **Five coaching-analysis sections at `/coach/trends`.** Strength (per-lift 4w/12w slopes + plateau spans) / Body (weight rate + LBM + body fat) / Nutrition (adherence percentages + deficit magnitude) / Recovery (sleep + HRV + RHR) / Cross (insight cards for nutrition × weight and volume × recovery). Single-page sectioned navigation (mirrors `CoachNav`'s pill pattern).
+1. **Three coaching-analysis sections at `/coach/trends`.** Performance (per-lift e1RM slopes + plateau spans + sleep + HRV + RHR — output and the recovery inputs that gate it) / Composition (weight rate + LBM + body fat + nutrition adherence + deficit magnitude — body change and the nutrition inputs that drive it) / Cross (insight cards for nutrition × weight and volume × recovery — the explicit relationship lens). Single-page sectioned navigation (mirrors `CoachNav`'s pill pattern). Each upstream section pairs its outputs with its inputs; Cross holds the explicit correlation regressions.
 2. **4-week AND 12-week windows.** Per-card toggle, defaults to 4w (catches recent shifts), 12w available for trend stability checks. Two windows reflect "what's changing now" vs "what's the underlying trajectory."
 3. **Deepen the weekly review's §4.** `WeeklyReviewPayload.trends` gains optional fields for per-lift slope arrays + plateau spans + cross-metric correlation summaries. §4 renderer adds per-cell drillthrough links to `/coach/trends`. Backward-compatible — additive only.
 4. **Cross-metric insights as prose, charts as drilldown.** Each correlation card opens with one English sentence ("When kcal averages <2200, you lose 0.6 kg/wk. Each +200 kcal correlates with +0.2 kg/wk."). Tap to reveal the underlying scatter. The "what to do" is in the prose; the chart is for the curious user.
@@ -79,10 +79,10 @@ The arc's compute deepens here. Sub-project #1's `compose-trends.ts` produces si
    │                              │               │                              │
    │  CoachTrendsView container   │               │ WeeklyReviewPayload.trends   │
    │  TrendsHeader (hero)         │               │   gains optional fields:     │
-   │  StrengthSection             │               │   - per_lift_slope[]         │
-   │  BodySection                 │               │   - plateau_spans[]          │
-   │  NutritionSection            │               │   - cross_insights[]         │
-   │  RecoverySection             │               │ §4 renderer adds drillthrough│
+   │  PerformanceSection          │               │   - per_lift_slope[]         │
+   │    (strength + recovery)     │               │   - plateau_spans[]          │
+   │  CompositionSection          │               │   - cross_insights[]         │
+   │    (body + nutrition)        │               │ §4 renderer adds drillthrough│
    │  CrossSection                │               │   links to /coach/trends     │
    │  Sparkline (SVG, custom)     │               │ AI narrative prompt          │
    │  ExpandedChart (drilldown)   │               │   references new fields when │
@@ -306,13 +306,11 @@ R² thresholds: < 0.2 → "no clear relationship" prose. The template is intenti
 
 | Component | Responsibility |
 |---|---|
-| `CoachTrendsView.tsx` | Client container. Renders header + active section. Section state in URL: `?section=strength` (default), `recent`-style. Activates SectionPills + corresponding section component. |
+| `CoachTrendsView.tsx` | Client container. Renders header + active section. Section state in URL: `?section=performance` (default). Activates SectionPills + corresponding section component. |
 | `TrendsHeader.tsx` | Hero callout — block + phase + headline insight. Pulls `payload.headline`. |
-| `SectionPills.tsx` | Strength / Body / Nutrition / Recovery / Cross pill row. Mirrors `CoachNav` style. |
-| `StrengthSection.tsx` | Renders one card per big-four lift + plateau callout cards. Per-card 4w/12w toggle. Tap-to-expand. |
-| `BodySection.tsx` | Weight card with band-shading + LBM card + body-fat card. |
-| `NutritionSection.tsx` | Adherence-percent cards (protein, kcal) + deficit magnitude card. |
-| `RecoverySection.tsx` | Sleep card + HRV card + RHR card. |
+| `SectionPills.tsx` | Performance / Composition / Cross pill row (3 pills). Mirrors `CoachNav` style. |
+| `PerformanceSection.tsx` | Strength sub-block (per-lift slope cards + plateau callouts) on top, Recovery sub-block (sleep + HRV + RHR cards) below. Sub-headers separate them within the section. Per-card 4w/12w toggle, tap-to-expand. |
+| `CompositionSection.tsx` | Body-comp sub-block (weight + LBM + body-fat cards) on top, Nutrition sub-block (protein adherence + kcal adherence + deficit magnitude cards) below. Sub-headers separate them. |
 | `CrossSection.tsx` | Two insight cards (nutrition × weight, volume × recovery). Each opens a `ScatterChart` on tap. |
 | `Sparkline.tsx` | Custom SVG sparkline — accepts `{ points, width, height, stroke }`. |
 | `LineChart.tsx` | Custom SVG line chart with axes + grid. Used in `ExpandedChart`. |
@@ -320,6 +318,7 @@ R² thresholds: < 0.2 → "no clear relationship" prose. The template is intenti
 | `ExpandedChart.tsx` | Drill-down: full LineChart + per-week table. Inline expand within the card. |
 | `WindowToggle.tsx` | 4w / 12w pill toggle. Local state per card. |
 | `ChangeBadge.tsx` | Color-coded delta pill ("+1.8%/wk" green, "0%/wk plateau" amber). |
+| `SectionSubHeader.tsx` | Small label component used by Performance + Composition sections to visually separate their two sub-blocks (e.g. "Strength" / "Recovery" within Performance). |
 
 **Query infrastructure:** mirrors Sub-project #1's weekly-review pattern.
 
@@ -390,7 +389,7 @@ Two relationship pairs, both computed on weekly aggregates over the 4w and 12w w
 - **Weight loss target band** — defaults to `[-0.7, -0.2]` kg/wk (Helms range). Plan stage: read user's preferred band from `intake_payload` if present; otherwise use default.
 - **Cross-metric insight when slope is near zero** — the template's `kcalSensitivity` computation returns ~0; insight prose handles this gracefully ("Each +200 kcal/day correlates with +0.0 kg/wk — your weight isn't sensitive to kcal in this window").
 - **User opens `/coach/trends` mid-week with no committed weekly review** — page still renders. The compute module reads daily_logs/workouts directly; weekly_reviews is only used for week-over-week e1RM tracking (optional, falls back to raw exercise_sets aggregation).
-- **`?section` URL parameter with unknown value** — defaults to `strength`.
+- **`?section` URL parameter with unknown value** — defaults to `performance`. Valid values: `performance`, `composition`, `cross`.
 
 ## Risks and mitigations
 
