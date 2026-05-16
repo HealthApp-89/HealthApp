@@ -122,7 +122,24 @@ export async function GET(req: Request) {
 
 const MAX_CONTENT_LEN = 8000;
 const MAX_IMAGES = 8;
+/** Hard cap on the number of historical messages fetched for the rolling
+ *  window. Anchored at 30 — most chats reference far less. */
 const ROLLING_WINDOW = 30;
+/** Soft token budget for the rolling window after fetching. Anthropic's
+ *  context window is 200k, but a long chat history with images can easily
+ *  push the rolling window alone past 15k tokens. We cap rolling-window
+ *  contribution at ~6k tokens by trimming oldest-first once the cumulative
+ *  estimate exceeds the budget. Snapshot prefix + new turn are NOT counted
+ *  here — they have separate budgets. */
+const ROLLING_TOKEN_BUDGET = 6000;
+/** Crude tokens-per-char ratio for English chat prose. Real value drifts
+ *  by domain (Sonnet ≈ 3.5 for English, ~3 with lots of numbers/jargon).
+ *  Erring high keeps us under-budget rather than over. */
+const TOKENS_PER_CHAR = 1 / 3.5;
+/** Approximate token cost per image reference (URL-based images sent to
+ *  Claude are billed by their dimensions; this is a conservative floor for
+ *  the small/medium uploads typical of chat). */
+const TOKENS_PER_IMAGE = 85;
 const UNATTACHED_WINDOW_MIN = 15;
 const DAILY_USER_MSG_CAP = 200;
 const MODEL = CHAT_MODEL;
@@ -358,23 +375,41 @@ export async function POST(req: Request) {
       userPromptOverride,
     });
 
-    windowAsc = ((windowRows ?? []) as WindowRow[]).slice().reverse();
-
-    // For images on user messages in the window, attach signed URLs as image
-    // content blocks.
-    const windowMsgIds = windowAsc.map((m) => m.id);
+    // windowRows is desc (newest first). Build the image map first so the
+    // token-budget walk can include image cost, then walk newest → oldest
+    // dropping anything beyond ROLLING_TOKEN_BUDGET. We bias toward recent
+    // context: the model needs the last few turns more than the 20th-back.
+    const rawWindow = ((windowRows ?? []) as WindowRow[]).slice(); // desc
+    const allWindowIds = rawWindow.map((m) => m.id);
     imgsByMsg = new Map<string, { storage_path: string }[]>();
-    if (windowMsgIds.length > 0) {
+    if (allWindowIds.length > 0) {
       const { data: winImgs } = await sr
         .from("chat_message_images")
         .select("message_id, storage_path")
-        .in("message_id", windowMsgIds);
+        .in("message_id", allWindowIds);
       for (const r of (winImgs ?? []) as { message_id: string; storage_path: string }[]) {
         const list = imgsByMsg.get(r.message_id) ?? [];
         list.push({ storage_path: r.storage_path });
         imgsByMsg.set(r.message_id, list);
       }
     }
+
+    let runningTokens = 0;
+    const keptDesc: WindowRow[] = [];
+    for (const m of rawWindow) {
+      const textTokens = Math.ceil((m.content?.length ?? 0) * TOKENS_PER_CHAR);
+      const imageTokens = (imgsByMsg.get(m.id)?.length ?? 0) * TOKENS_PER_IMAGE;
+      const cost = textTokens + imageTokens;
+      if (runningTokens + cost > ROLLING_TOKEN_BUDGET && keptDesc.length > 0) {
+        // Stop adding older context once we'd overshoot. Always keep at
+        // least one prior message (the immediate predecessor) so the new
+        // turn has SOMETHING to reference.
+        break;
+      }
+      runningTokens += cost;
+      keptDesc.push(m);
+    }
+    windowAsc = keptDesc.slice().reverse();
 
     // Position 0: cached snapshot prefix.
     messages = [
@@ -591,6 +626,15 @@ export async function POST(req: Request) {
             evt: "chat_turn",
             user_id: user.id,
             window: windowAsc.length,
+            window_token_est: Math.round(
+              windowAsc.reduce(
+                (sum, m) =>
+                  sum +
+                  Math.ceil((m.content?.length ?? 0) * TOKENS_PER_CHAR) +
+                  (imgsByMsg?.get(m.id)?.length ?? 0) * TOKENS_PER_IMAGE,
+                0,
+              ),
+            ),
             images: imageIds.length,
             status: aborted ? "aborted" : finalStatus,
             tool_calls: toolCallSink.length,
