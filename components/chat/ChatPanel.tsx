@@ -3,7 +3,7 @@
 
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import type { ChatMessage } from "@/lib/chat/types";
-import type { ChatMode, MorningUI } from "@/lib/data/types";
+import type { ChatMode, MorningBriefCard, MorningUI } from "@/lib/data/types";
 import { ChatThread } from "./ChatThread";
 import { ChatComposer } from "./ChatComposer";
 import { ModeBanner } from "./ModeBanner";
@@ -483,8 +483,12 @@ export default function ChatPanel({
   const runRecommendation = useCallback(
     async (body: { skip_whoop: boolean }) => {
       const tempId = `stub-${crypto.randomUUID()}`;
-      dispatch({ type: "append_assistant_stub", id: tempId });
       let parkedSilently = false;
+      // Hold the deterministic card in a closure so each advice_delta can
+      // patch the message's ui with the latest accumulated advice text.
+      let card: MorningBriefCard | null = null;
+      let advice = "";
+
       try {
         const res = await fetch("/api/chat/morning/recommendation", {
           method: "POST",
@@ -492,53 +496,120 @@ export default function ChatPanel({
           body: JSON.stringify(body),
         });
 
-        if (res.status === 425) {
-          // awaiting_whoop — recommendation can't be delivered yet.
-          // Remove the placeholder stub and refetch so the server-inserted
-          // SYNC_WHOOP_PROMPT turn appears.
-          parkedSilently = true;
-          dispatch({ type: "remove_id", id: tempId });
-        } else if (!res.ok) {
+        const isSse = (res.headers.get("content-type") ?? "").startsWith("text/event-stream");
+        if (!isSse) {
+          // Pre-flight gate failed (425 / 409 / unauthorized). Branch on reason.
           const json = await res.json().catch(() => ({} as { reason?: string; message?: unknown }));
           const reason = (json as { reason?: string }).reason ?? "unknown";
 
-          if (reason === "already_delivered" && (json as { message?: unknown }).message) {
-            // 409 already_delivered with message payload: render the existing brief.
-            dispatch({ type: "remove_id", id: tempId });
-            dispatch({
-              type: "add_message",
-              message: (json as { message: ChatMessage }).message,
-            });
+          if (res.status === 425) {
+            // awaiting_whoop — refetch to surface the SYNC_WHOOP_PROMPT turn.
+            parkedSilently = true;
+          } else if (reason === "already_delivered" && (json as { message?: unknown }).message) {
+            dispatch({ type: "add_message", message: (json as { message: ChatMessage }).message });
           } else if (reason === "brief_failed") {
-            // 500 brief_failed — remove placeholder; retry chip surfaces via the
-            // existing morning intake polling layer when intake_state='brief_failed'.
-            dispatch({ type: "remove_id", id: tempId });
-          } else {
-            // Other failures: surface a generic error bubble (existing pattern).
+            // Retry chip will surface via the morning intake polling layer.
+          } else if (!res.ok) {
+            dispatch({ type: "append_assistant_stub", id: tempId });
             dispatch({ type: "finalize_assistant", id: tempId, status: "error" });
           }
-        } else {
-          // 200 success: add the returned message to local state directly.
-          const json = (await res.json()) as { ok: true; message: ChatMessage };
-          dispatch({ type: "remove_id", id: tempId });
-          dispatch({ type: "add_message", message: json.message });
+          queryClient.invalidateQueries({ queryKey: queryKeys.checkin.one(userId, today) });
+          if (parkedSilently) {
+            const refresh = await fetch(`/api/chat/messages?limit=50&kind=${currentMode}`);
+            const histJson = (await refresh.json()) as { ok: boolean; messages?: ChatMessage[] };
+            if (histJson.ok && histJson.messages) {
+              dispatch({
+                type: "loaded",
+                messages: scopeForMode(histJson.messages.slice().reverse(), currentMode, today),
+              });
+            }
+          }
+          return;
+        }
+
+        // SSE streaming success path: consume frames inline so we have direct
+        // access to the brief_card event (postSse drops it through unrecognised
+        // pathways otherwise — but our extended ChatStreamEvent now carries it).
+        if (!res.body) {
+          dispatch({ type: "append_assistant_stub", id: tempId });
+          dispatch({ type: "finalize_assistant", id: tempId, status: "error", error: "no body" });
+          return;
+        }
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = "";
+        let done = false;
+        while (!done) {
+          const r = await reader.read();
+          if (r.done) break;
+          buf += decoder.decode(r.value, { stream: true });
+          let idx: number;
+          while ((idx = buf.indexOf("\n\n")) !== -1) {
+            const frame = buf.slice(0, idx);
+            buf = buf.slice(idx + 2);
+            let eventName = "";
+            let dataLine = "";
+            for (const line of frame.split("\n")) {
+              if (line.startsWith("event:")) eventName = line.slice(6).trim();
+              else if (line.startsWith("data:")) dataLine = line.slice(5).trim();
+            }
+            if (!dataLine) continue;
+            let data: unknown;
+            try {
+              data = JSON.parse(dataLine);
+            } catch {
+              // Malformed frame (e.g. proxy keep-alive comment, truncated
+              // chunk that won't reassemble). Skip rather than crash the loop.
+              continue;
+            }
+            const d = data as Record<string, unknown>;
+            if (eventName === "brief_card") {
+              card = d.card as MorningBriefCard;
+              dispatch({
+                type: "add_message",
+                message: {
+                  id: tempId,
+                  role: "assistant",
+                  content: "",
+                  status: "streaming",
+                  error: null,
+                  model: null,
+                  kind: "morning_brief",
+                  ui: { ...card, advice_md: "" },
+                  created_at: new Date().toISOString(),
+                  updated_at: new Date().toISOString(),
+                  images: [],
+                  tool_calls: null,
+                },
+              });
+            } else if (eventName === "delta") {
+              if (!card) continue;
+              advice += d.text as string;
+              dispatch({
+                type: "patch_message",
+                id: tempId,
+                patch: { ui: { ...card, advice_md: advice } },
+              });
+            } else if (eventName === "done") {
+              if (card) {
+                dispatch({ type: "replace_id", tempId, serverId: d.message_id as string });
+                dispatch({
+                  type: "patch_message",
+                  id: d.message_id as string,
+                  patch: { status: "done", ui: { ...card, advice_md: advice } },
+                });
+              }
+              done = true;
+            } else if (eventName === "error") {
+              dispatch({ type: "remove_id", id: tempId });
+              done = true;
+            }
+          }
         }
       } catch (e) {
         dispatch({ type: "finalize_assistant", id: tempId, status: "error", error: String(e) });
       }
       queryClient.invalidateQueries({ queryKey: queryKeys.checkin.one(userId, today) });
-
-      if (parkedSilently) {
-        // Refetch so the server-inserted SYNC_WHOOP_PROMPT turn appears.
-        const refresh = await fetch(`/api/chat/messages?limit=50&kind=${currentMode}`);
-        const histJson = (await refresh.json()) as { ok: boolean; messages?: ChatMessage[] };
-        if (histJson.ok && histJson.messages) {
-          dispatch({
-            type: "loaded",
-            messages: scopeForMode(histJson.messages.slice().reverse(), currentMode, today),
-          });
-        }
-      }
     },
     [queryClient, today, userId, currentMode],
   );

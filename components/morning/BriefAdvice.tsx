@@ -9,6 +9,7 @@ import { COLOR } from "@/lib/ui/theme";
  *  the user just sees the raw chars — acceptable for v1 since the prompt
  *  caps complexity. */
 export function BriefAdvice({ md }: { md: string }) {
+  const empty = md.trim().length === 0;
   return (
     <div
       style={{
@@ -31,16 +32,40 @@ export function BriefAdvice({ md }: { md: string }) {
       >
         Coach
       </div>
-      <div
-        style={{
-          fontSize: 14,
-          color: COLOR.textStrong,
-          lineHeight: 1.6,
-          whiteSpace: "pre-wrap",
-        }}
-        dangerouslySetInnerHTML={{ __html: lightMarkdown(md) }}
-      />
+      {empty ? (
+        <div
+          style={{
+            fontSize: 14,
+            color: COLOR.textMid,
+            lineHeight: 1.6,
+            fontStyle: "italic",
+          }}
+        >
+          Writing your advice
+          <PulseDots />
+        </div>
+      ) : (
+        <div
+          style={{
+            fontSize: 14,
+            color: COLOR.textStrong,
+            lineHeight: 1.6,
+            whiteSpace: "pre-wrap",
+          }}
+          dangerouslySetInnerHTML={{ __html: lightMarkdown(md) }}
+        />
+      )}
     </div>
+  );
+}
+
+function PulseDots() {
+  return (
+    <span style={{ display: "inline-block", marginLeft: 4 }}>
+      <span className="brief-pulse-dot" />
+      <span className="brief-pulse-dot" style={{ animationDelay: "0.15s" }} />
+      <span className="brief-pulse-dot" style={{ animationDelay: "0.3s" }} />
+    </span>
   );
 }
 

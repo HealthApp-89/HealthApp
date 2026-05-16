@@ -15,7 +15,10 @@ export type ServerStreamEvent =
   | { event: "done"; data: { message_id: string; partial?: boolean } }
   | { event: "error"; data: { message: string } }
   | { event: "tool_call_start"; data: { id: string; name: string; input: Record<string, unknown> } }
-  | { event: "tool_call_done"; data: { id: string; ok: boolean; ms: number } };
+  | { event: "tool_call_done"; data: { id: string; ok: boolean; ms: number } }
+  /** Morning brief: emitted once after deterministic card assembly, before
+   *  advice prose streams via "delta" events. */
+  | { event: "brief_card"; data: { card: import("@/lib/data/types").MorningBriefCard } };
 
 export function formatSseEvent(e: ServerStreamEvent): string {
   return `event: ${e.event}\ndata: ${JSON.stringify(e.data)}\n\n`;

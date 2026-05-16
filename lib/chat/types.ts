@@ -4,7 +4,7 @@
 // Also the canonical home for Anthropic-message wire shapes used by the
 // chat path — both lib/anthropic/client.ts (hand-rolled streamer) and
 // lib/coach/chat-stream.ts (SDK-based tool loop) import from here.
-import type { MorningUI, WeeklyReviewCardUI, ProactiveNudgeCard } from "@/lib/data/types";
+import type { MorningBriefCard, MorningUI, WeeklyReviewCardUI, ProactiveNudgeCard } from "@/lib/data/types";
 
 export type ChatRole = "user" | "assistant";
 export type ChatStatus = "streaming" | "done" | "error";
@@ -47,7 +47,7 @@ export type ChatMessage = {
   kind: "coach" | "morning_intake" | "morning_brief" | "weekly_review" | "proactive_nudge";
   /** Chips / rendering hints for morning_intake turns; structured card UI
    *  for morning_brief / weekly_review / proactive_nudge turns. */
-  ui: MorningUI | WeeklyReviewCardUI | ProactiveNudgeCard | null;
+  ui: MorningUI | MorningBriefCard | WeeklyReviewCardUI | ProactiveNudgeCard | null;
   /** Persisted tool-call logs. Populated only for assistant messages that
    *  invoked at least one tool. Non-null only when the server includes the
    *  column in its select (GET /api/chat/messages returns it). */
@@ -62,4 +62,7 @@ export type ChatStreamEvent =
   | { type: "done"; message_id: string; partial?: boolean }
   | { type: "error"; message: string }
   | { type: "tool_call_start"; id: string; name: string; input: Record<string, unknown> }
-  | { type: "tool_call_done"; id: string; ok: boolean; ms: number };
+  | { type: "tool_call_done"; id: string; ok: boolean; ms: number }
+  /** Morning brief: deterministic card payload arrives first (advice_md=''),
+   *  then "delta" events fill in the advice prose progressively. */
+  | { type: "brief_card"; card: import("@/lib/data/types").MorningBriefCard };

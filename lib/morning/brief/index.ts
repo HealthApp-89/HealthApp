@@ -20,14 +20,19 @@ import {
 } from "@/lib/morning/brief/data-sources";
 import { assembleBriefExceptAdvice } from "@/lib/morning/brief/assembler";
 import { computeAdviceFlags, evaluateMuscleVolumeGapsForBrief } from "@/lib/morning/brief/flags";
-import { generateAdvice } from "@/lib/morning/brief/advice-prompt";
+import { generateAdvice, generateAdviceStream } from "@/lib/morning/brief/advice-prompt";
+import type { AdviceContext } from "@/lib/morning/brief/advice-prompt";
 import { fetchMuscleVolumeServer } from "@/lib/query/fetchers/muscleVolume";
 import { mondayOf } from "@/lib/coach/weekly-review/date-utils";
 
-export async function buildMorningBrief(
+/** Deterministic prep: assembles every block except advice_md and computes
+ *  the AdviceContext the AI needs to write the prose. Pure-ish — only reads.
+ *  No DB writes, no Anthropic calls. Used by both the blocking and the
+ *  streaming brief pipelines. */
+export async function prepareBriefExceptAdvice(
   supabase: SupabaseClient,
   userId: string,
-): Promise<MorningBriefCard> {
+): Promise<{ partial: Omit<MorningBriefCard, "advice_md">; adviceCtx: AdviceContext }> {
   const today = todayInUserTz();
   const yesterday = yesterdayOf(today);
   const weekStart = mondayOf(today);
@@ -138,15 +143,59 @@ export async function buildMorningBrief(
     phaseTransitionThisWeek: flags.phase_transition_this_week,
   });
 
-  const advice_md = await generateAdvice({
+  const adviceCtx: AdviceContext = {
     activeProfile: inputs.activeProfile,
     card: partial,
     flags,
     targets: inputs.todayTargets,
     muscleVolumeFlags,
     muscleVolume,
-  });
+  };
+  return { partial, adviceCtx };
+}
+
+/** Full pipeline (blocking advice). Kept for callers that don't need
+ *  streaming — e.g. cron, regenerate_morning_brief tool. */
+export async function buildMorningBrief(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<MorningBriefCard> {
+  const { partial, adviceCtx } = await prepareBriefExceptAdvice(supabase, userId);
+  const advice_md = await generateAdvice(adviceCtx);
   return { ...partial, advice_md };
+}
+
+/** Streaming variant. First yields 'card_ready' with the deterministic card
+ *  (advice_md=''), then advice text deltas, then 'done' with the assembled
+ *  full advice. Caller writes the chat_messages row after 'done' lands. */
+export async function* buildMorningBriefStreaming(
+  supabase: SupabaseClient,
+  userId: string,
+  signal?: AbortSignal,
+): AsyncGenerator<
+  | { type: "card_ready"; card: MorningBriefCard }
+  | { type: "advice_delta"; text: string }
+  | { type: "done"; card: MorningBriefCard }
+  | { type: "error"; message: string }
+> {
+  const { partial, adviceCtx } = await prepareBriefExceptAdvice(supabase, userId);
+  // Emit the card immediately so the client can render the deterministic
+  // blocks while the AI prose is still streaming.
+  yield { type: "card_ready", card: { ...partial, advice_md: "" } };
+
+  let advice = "";
+  for await (const ev of generateAdviceStream(adviceCtx, signal)) {
+    if (ev.type === "delta") {
+      advice += ev.text;
+      yield { type: "advice_delta", text: ev.text };
+    } else if (ev.type === "done") {
+      advice = ev.full;
+    } else if (ev.type === "error") {
+      yield { type: "error", message: ev.message };
+      return;
+    }
+  }
+  yield { type: "done", card: { ...partial, advice_md: advice } };
 }
 
 function yesterdayOf(today: string): string {

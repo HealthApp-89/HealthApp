@@ -58,6 +58,8 @@ export async function* postSse(
         const data = JSON.parse(dataLine);
         if (eventName === "delta") {
           yield { type: "delta", text: data.text as string };
+        } else if (eventName === "brief_card") {
+          yield { type: "brief_card", card: data.card };
         } else if (eventName === "done") {
           yield {
             type: "done",

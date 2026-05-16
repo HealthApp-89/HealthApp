@@ -8,7 +8,7 @@
 // committed week / rest) prompt builder. All branches share the same
 // teacher-tone rules so the voice is consistent across variants.
 
-import { callClaude } from "@/lib/anthropic/client";
+import { callClaude, streamClaude } from "@/lib/anthropic/client";
 import { jargonRuleForPrompt } from "@/lib/coach/glossary";
 import type {
   AdviceFlags,
@@ -64,6 +64,37 @@ export async function generateAdvice(ctx: AdviceContext): Promise<string> {
     { model: MODEL, system, maxTokens: MAX_TOKENS, temperature: TEMPERATURE },
   );
   return result.trim();
+}
+
+/** Streaming variant. Yields text deltas as they arrive, then a final 'done'
+ *  with the assembled full text (trimmed). On error, yields 'error' and
+ *  returns — callers should treat it the same as `generateAdvice` throwing. */
+export async function* generateAdviceStream(
+  ctx: AdviceContext,
+  signal?: AbortSignal,
+): AsyncGenerator<
+  | { type: "delta"; text: string }
+  | { type: "done"; full: string }
+  | { type: "error"; message: string }
+> {
+  const system = buildSystemPrompt(ctx);
+  const userMessage = "Write today's Advice block per the instructions.";
+  let accumulated = "";
+  for await (const ev of streamClaude(
+    [{ role: "user", content: userMessage }],
+    { model: MODEL, system, maxTokens: MAX_TOKENS, temperature: TEMPERATURE, signal },
+  )) {
+    if (ev.type === "delta") {
+      accumulated += ev.text;
+      yield { type: "delta", text: ev.text };
+    } else if (ev.type === "done") {
+      yield { type: "done", full: accumulated.trim() };
+      return;
+    } else if (ev.type === "error") {
+      yield { type: "error", message: ev.message };
+      return;
+    }
+  }
 }
 
 /** Variant dispatcher. The 'training' and 'rest' variants share the legacy

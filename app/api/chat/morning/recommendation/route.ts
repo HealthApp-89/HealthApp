@@ -1,18 +1,18 @@
 // app/api/chat/morning/recommendation/route.ts
 //
 // POST: deliver today's structured morning brief as the next assistant
-// message in the morning_intake thread. Replaces the prior free-text
-// recommendation (which streamed via SSE) with a single JSON response
-// containing a kind='morning_brief' message and its structured ui jsonb
-// payload (MorningBriefCard).
+// message in the morning_intake thread. Streams over SSE — emits a
+// `brief_card` event with the deterministic blocks as soon as data
+// assembly finishes (~1-2s), then streams the AI-generated `advice_md`
+// as `delta` events while it's being written. Final `done` event carries
+// the persisted chat_messages id.
+//
+// Pre-flight checks that fail before any streaming starts return a plain
+// JSON response so the client can branch (425 awaiting_whoop, 409
+// already_delivered with the existing message, etc.). Once the stream
+// opens the response is always 200 SSE.
 //
 // Body: {} | {skip_whoop: true}
-// Status codes preserved from the prior implementation:
-//   401 unauthorized
-//   409 no_row | already_delivered
-//   425 awaiting_whoop (only when no skip_whoop and WHOOP data missing)
-//   500 brief_failed (AI generation failed — state transitions, client retries)
-//   200 success — JSON body { ok: true, message }
 
 import { NextResponse } from "next/server";
 import {
@@ -21,7 +21,11 @@ import {
 } from "@/lib/supabase/server";
 import { todayInUserTz, ymdInUserTz } from "@/lib/time";
 import type { CheckinRow, DailyLog, MorningBriefCard } from "@/lib/data/types";
-import { buildMorningBrief, composeBriefContentFallback } from "@/lib/morning/brief";
+import {
+  buildMorningBriefStreaming,
+  composeBriefContentFallback,
+} from "@/lib/morning/brief";
+import { formatSseEvent } from "@/lib/chat/sse";
 
 export const dynamic = "force-dynamic";
 
@@ -83,72 +87,131 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, reason: "awaiting_whoop" }, { status: 425 });
   }
 
-  // Pipeline: transition to assembling, generate, write, transition to delivered
+  // Pipeline: transition to assembling, then SSE stream
   await sr.from("checkins").upsert(
     { user_id: user.id, date: today, intake_state: "assembling_brief" },
     { onConflict: "user_id,date" },
   );
 
-  let card: MorningBriefCard;
-  try {
-    card = await buildMorningBrief(sr, user.id);
-  } catch (err) {
-    console.error("[morning brief] AI generation failed", err);
-    await sr.from("checkins").upsert(
-      { user_id: user.id, date: today, intake_state: "brief_failed" },
-      { onConflict: "user_id,date" },
-    );
-    // Insert a retry chip so the user can tap to retry from the morning panel.
-    await sr.from("chat_messages").insert({
-      user_id: user.id,
-      role: "assistant",
-      kind: "morning_intake",
-      content: "I had trouble generating today's brief. Tap to retry.",
-      ui: {
-        chips: [{ label: "Try again", action: "retry_brief" }],
-      },
-    });
-    return NextResponse.json({ ok: false, reason: "brief_failed" }, { status: 500 });
-  }
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const yieldEvent = (e: Parameters<typeof formatSseEvent>[0]) =>
+        controller.enqueue(encoder.encode(formatSseEvent(e)));
 
-  // Write the assistant message
-  const contentSummary = composeBriefContentFallback(card);
-  const { data: inserted, error: insertErr } = await sr
-    .from("chat_messages")
-    .insert({
-      user_id: user.id,
-      role: "assistant",
-      kind: "morning_brief",
-      content: contentSummary,
-      ui: card,
-    })
-    .select("id, role, kind, content, ui, created_at")
-    .single();
-  if (insertErr || !inserted) {
-    console.error("[morning brief] insert failed", insertErr);
-    await sr.from("checkins").upsert(
-      { user_id: user.id, date: today, intake_state: "brief_failed" },
-      { onConflict: "user_id,date" },
-    );
-    return NextResponse.json({ ok: false, reason: "insert_failed" }, { status: 500 });
-  }
+      let finalCard: MorningBriefCard | null = null;
+      let errored: string | null = null;
+      try {
+        for await (const ev of buildMorningBriefStreaming(sr, user.id, req.signal)) {
+          if (ev.type === "card_ready") {
+            yieldEvent({ event: "brief_card", data: { card: ev.card } });
+          } else if (ev.type === "advice_delta") {
+            yieldEvent({ event: "delta", data: { text: ev.text } });
+          } else if (ev.type === "done") {
+            finalCard = ev.card;
+          } else if (ev.type === "error") {
+            errored = ev.message;
+            break;
+          }
+        }
+      } catch (err) {
+        errored = (err as Error).message ?? "unknown_error";
+      }
 
-  try {
-    const { error: stateErr } = await sr.from("checkins").upsert(
-      { user_id: user.id, date: today, intake_state: "brief_delivered" },
-      { onConflict: "user_id,date" },
-    );
-    if (stateErr) {
-      console.error("[morning brief] final state upsert failed (brief inserted, state may be stranded at assembling_brief)", stateErr);
-      // Don't fail the request — the brief is delivered. Future requests will see
-      // intake_state='assembling_brief' but a brief row exists; recommendation
-      // route's idempotency check handles this via the existing-message lookup.
-    }
-  } catch (stateErr) {
-    console.error("[morning brief] final state upsert threw (brief inserted, state may be stranded at assembling_brief)", stateErr);
-  }
+      if (errored || !finalCard) {
+        console.error("[morning brief] generation failed", errored);
+        await sr.from("checkins").upsert(
+          { user_id: user.id, date: today, intake_state: "brief_failed" },
+          { onConflict: "user_id,date" },
+        );
+        // Insert a retry chip so the user can tap to retry from the morning panel.
+        await sr.from("chat_messages").insert({
+          user_id: user.id,
+          role: "assistant",
+          kind: "morning_intake",
+          content: "I had trouble generating today's brief. Tap to retry.",
+          ui: {
+            chips: [{ label: "Try again", action: "retry_brief" }],
+          },
+        });
+        yieldEvent({ event: "error", data: { message: errored ?? "brief_failed" } });
+        controller.close();
+        return;
+      }
 
-  return NextResponse.json({ ok: true, message: inserted });
+      // Persist the assistant message + finalize state. Wrapped in try/catch
+      // so any failure after the stream completed still flips intake_state to
+      // brief_failed — otherwise a client disconnect or DB error between
+      // `done` and the final upsert leaves the row stranded at assembling_brief
+      // and a 409 awaits the user on next retry.
+      const contentSummary = composeBriefContentFallback(finalCard);
+      try {
+        const { data: inserted, error: insertErr } = await sr
+          .from("chat_messages")
+          .insert({
+            user_id: user.id,
+            role: "assistant",
+            kind: "morning_brief",
+            content: contentSummary,
+            ui: finalCard,
+          })
+          .select("id")
+          .single();
+        if (insertErr || !inserted) {
+          throw new Error(`insert_failed: ${insertErr?.message ?? "no row"}`);
+        }
+
+        const { error: stateErr } = await sr.from("checkins").upsert(
+          { user_id: user.id, date: today, intake_state: "brief_delivered" },
+          { onConflict: "user_id,date" },
+        );
+        if (stateErr) {
+          // Brief is in DB; only the state row is mis-tagged. Log and ship —
+          // the recommendation route's idempotency lookup verifies via the
+          // existing-message check, not the state column alone.
+          console.error(
+            "[morning brief] brief_delivered upsert failed (brief inserted, state stale)",
+            stateErr,
+          );
+        }
+
+        yieldEvent({ event: "done", data: { message_id: inserted.id as string } });
+      } catch (err) {
+        console.error("[morning brief] post-stream finalize failed", err);
+        // Best-effort cleanup: flip to brief_failed so the next retry can run
+        // and surface a retry chip in the morning intake panel.
+        try {
+          await sr.from("checkins").upsert(
+            { user_id: user.id, date: today, intake_state: "brief_failed" },
+            { onConflict: "user_id,date" },
+          );
+          await sr.from("chat_messages").insert({
+            user_id: user.id,
+            role: "assistant",
+            kind: "morning_intake",
+            content: "I had trouble saving today's brief. Tap to retry.",
+            ui: { chips: [{ label: "Try again", action: "retry_brief" }] },
+          });
+        } catch (cleanupErr) {
+          console.error("[morning brief] cleanup after post-stream failure also failed", cleanupErr);
+        }
+        // Only emit error to the client if the connection is still open.
+        if (!req.signal.aborted) {
+          yieldEvent({ event: "error", data: { message: (err as Error).message ?? "finalize_failed" } });
+        }
+      }
+      controller.close();
+    },
+  });
+
+  return new Response(stream, {
+    status: 200,
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache, no-transform",
+      "Connection": "keep-alive",
+    },
+  });
 }
 
 async function loadExistingBriefMessage(
@@ -166,11 +229,7 @@ async function loadExistingBriefMessage(
     .limit(1)
     .maybeSingle();
   if (!data) return null;
-  // Use ymdInUserTz to verify the row's created_at corresponds to user-tz today.
   const rowDate = ymdInUserTz(new Date(data.created_at as string));
   if (rowDate !== today) return null;
   return data;
 }
-
-// composeContentFallback moved to lib/morning/brief/index.ts so the
-// regenerate_morning_brief chat tool can reuse it.
