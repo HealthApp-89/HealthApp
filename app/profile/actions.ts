@@ -2,10 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import {
-  DEFAULT_SYSTEM_PROMPT,
-  normalizePromptForCompare,
-} from "@/lib/coach/system-prompts";
+import { normalizePromptForCompare } from "@/lib/coach/system-prompts";
 
 export async function saveProfile(formData: FormData) {
   const supabase = await createSupabaseServerClient();
@@ -25,16 +22,17 @@ export async function saveProfile(formData: FormData) {
     return typeof v === "string" && v.trim() !== "" ? v.trim() : null;
   };
 
-  // system_prompt: empty/whitespace → null. Otherwise compare normalized form
-  // against the normalized canonical default; if they match, persist null so
-  // future code-side updates of DEFAULT_SYSTEM_PROMPT propagate. Else persist
-  // the normalized value (also strips \r\n drift from clipboard round-trips).
+  // system_prompt: persist exactly what the user submitted (after normalising
+  // \r\n drift from clipboard round-trips). NULL = never saved → code uses
+  // DEFAULT_SYSTEM_PROMPT. Any non-empty string = pinned, even if it happens
+  // to byte-match the current default. The previous heuristic (flip to NULL
+  // when normalised text equalled the default) silently dropped a user's
+  // saved intent any time DEFAULT_SYSTEM_PROMPT was updated to coincidentally
+  // match. To clear a pinned prompt, the user empties the textarea and saves.
   const systemPromptInput = formData.get("system_prompt");
   let systemPrompt: string | null = null;
   if (typeof systemPromptInput === "string" && systemPromptInput.trim() !== "") {
-    const normalized = normalizePromptForCompare(systemPromptInput);
-    const defaultNormalized = normalizePromptForCompare(DEFAULT_SYSTEM_PROMPT);
-    systemPrompt = normalized === defaultNormalized ? null : normalized;
+    systemPrompt = normalizePromptForCompare(systemPromptInput);
   }
 
   const { error } = await supabase.from("profiles").upsert(

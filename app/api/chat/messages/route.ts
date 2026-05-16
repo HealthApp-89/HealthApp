@@ -12,6 +12,7 @@ import {
 import type { ChatMessage, ChatMessageImage, ChatRole, ChatStatus } from "@/lib/chat/types";
 import { type RichMessage, type ContentBlock } from "@/lib/anthropic/client";
 import { runChatStream, emptyUsageTotals } from "@/lib/coach/chat-stream";
+import { CHAT_MODEL } from "@/lib/anthropic/models";
 import type { ToolCallLog, MorningUI, WeeklyReviewCardUI } from "@/lib/data/types";
 import { buildSnapshot, buildEphemeralHeader } from "@/lib/coach/snapshot";
 import { todayInUserTz } from "@/lib/time";
@@ -124,7 +125,7 @@ const MAX_IMAGES = 8;
 const ROLLING_WINDOW = 30;
 const UNATTACHED_WINDOW_MIN = 15;
 const DAILY_USER_MSG_CAP = 200;
-const MODEL = "claude-sonnet-4-5";
+const MODEL = CHAT_MODEL;
 
 type SendBody = { content?: string; image_ids?: string[]; mode?: string; doc?: string };
 

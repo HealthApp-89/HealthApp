@@ -8,9 +8,10 @@
 // cacheable; varies only with intake + skeleton inputs).
 
 import { callClaude } from "@/lib/anthropic/client";
+import { NARRATIVE_MODEL } from "@/lib/anthropic/models";
 import type { IntakePayload, PlanPayload } from "@/lib/data/types";
 
-const MODEL = "claude-sonnet-4-6";
+const MODEL = NARRATIVE_MODEL;
 const MAX_TOKENS = 600;
 const TEMPERATURE = 0.4;
 

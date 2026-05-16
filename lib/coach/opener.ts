@@ -13,11 +13,12 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { callClaude } from "@/lib/anthropic/client";
+import { SHORT_FORM_MODEL } from "@/lib/anthropic/models";
 import { todayInUserTz } from "@/lib/time";
 import { mondayOf } from "@/lib/coach/weekly-review/date-utils";
 import type { DailyLog } from "@/lib/data/types";
 
-const MODEL = "claude-haiku-4-5-20251001";
+const MODEL = SHORT_FORM_MODEL;
 const MAX_TOKENS = 90;
 const TEMPERATURE = 0.6; // a touch warmer than advice/narrative — this is greeting register
 

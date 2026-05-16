@@ -9,6 +9,7 @@
 // teacher-tone rules so the voice is consistent across variants.
 
 import { callClaude, streamClaude } from "@/lib/anthropic/client";
+import { SHORT_FORM_MODEL } from "@/lib/anthropic/models";
 import { jargonRuleForPrompt } from "@/lib/coach/glossary";
 import type {
   AdviceFlags,
@@ -22,7 +23,7 @@ import type {
 import type { TodayTargets } from "@/lib/morning/brief/get-today-targets";
 import { fmtNum } from "@/lib/ui/score";
 
-const MODEL = "claude-haiku-4-5-20251001";
+const MODEL = SHORT_FORM_MODEL;
 const MAX_TOKENS = 350;
 const TEMPERATURE = 0.4;
 

@@ -1,8 +1,9 @@
 // Thin Anthropic Messages API wrapper — no SDK, just fetch.
 // Returns the assistant text content joined; callers JSON-parse if they want.
 
+import { DEFAULT_MODEL } from "@/lib/anthropic/models";
+
 const API_URL = "https://api.anthropic.com/v1/messages";
-const DEFAULT_MODEL = "claude-sonnet-4-5";
 const ANTHROPIC_VERSION = "2023-06-01";
 
 export type Message = { role: "user" | "assistant"; content: string };
@@ -110,7 +111,7 @@ export async function* streamClaude(
   }
 
   const body: Record<string, unknown> = {
-    model: opts.model ?? "claude-sonnet-4-5",
+    model: opts.model ?? DEFAULT_MODEL,
     max_tokens: opts.maxTokens ?? 2000,
     stream: true,
     messages,

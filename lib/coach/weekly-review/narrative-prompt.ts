@@ -8,10 +8,11 @@
 // validator should catch fabrication, not punish that).
 
 import { callClaude } from "@/lib/anthropic/client";
+import { NARRATIVE_MODEL } from "@/lib/anthropic/models";
 import { jargonRuleForPrompt } from "@/lib/coach/glossary";
 import type { WeeklyReviewPayload } from "@/lib/data/types";
 
-const MODEL = "claude-sonnet-4-6";
+const MODEL = NARRATIVE_MODEL;
 const MAX_TOKENS = 400;
 
 const SYSTEM_PROMPT = `You are an experienced strength coach reviewing a client's week. Voice: direct, concise, second person ("you"). Length: 120-180 words, single paragraph, no markdown headings.

@@ -87,7 +87,7 @@ import {
 import type { ChatMode, ToolCallLog } from "@/lib/data/types";
 import type { ContentBlock, RichMessage } from "@/lib/chat/types";
 
-const MODEL = "claude-sonnet-4-5";
+import { CHAT_MODEL as MODEL } from "@/lib/anthropic/models";
 
 const PERSIST_RESULT_TOOLS = new Set([
   "propose_block",

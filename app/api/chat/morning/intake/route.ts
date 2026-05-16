@@ -36,9 +36,9 @@ import { formatSseEvent } from "@/lib/chat/sse";
 import Anthropic from "@anthropic-ai/sdk";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-export const dynamic = "force-dynamic";
+import { CHAT_MODEL as MODEL } from "@/lib/anthropic/models";
 
-const MODEL = "claude-sonnet-4-5";
+export const dynamic = "force-dynamic";
 
 type Body =
   | { kind: "start" }
