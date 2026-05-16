@@ -18,7 +18,7 @@
 // to a top-level SSE error.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { signApprovalToken, verifyApprovalToken } from "@/lib/coach/approval-token";
+import { signApprovalToken, verifyApprovalToken, payloadHash, ApprovalTokenError } from "@/lib/coach/approval-token";
 import type { IntakePayload, PlanPayload, TrainingBlock, TrainingWeek } from "@/lib/data/types";
 import { buildPlanPayload } from "@/lib/coach/plan-builder";
 import { renderProfileMarkdown } from "@/lib/coach/profile-renderer";
@@ -176,7 +176,7 @@ function diffDays(start: string, end: string): number {
   return Math.round((b - a) / 86_400_000) + 1; // inclusive
 }
 
-export type ToolError = { error: string; hint?: string };
+export type ToolError = { error: string; hint?: string; code?: string };
 export type ToolResult<T> =
   | { ok: true; data: T; meta: { ms: number; result_rows: number; range_days: number; truncated: boolean } }
   | { ok: false; error: ToolError; meta: { ms: number; range_days: number } };
@@ -1089,11 +1089,11 @@ type ProposeWeekPlanInput = {
   rationale?: string;
 };
 
-// ── In-memory proposal cache (process-global) ─────────────────────────────────
-// Next.js routes share the same Node process for sequential requests within a
-// short window, so the propose_* result can be retrieved by the matching commit_*
-// call in the next assistant turn without a DB round-trip.
-const _proposalCache = new Map<string, { kind: "block" | "week" | "plan"; payload: unknown }>();
+// Approval tokens are stateless: the proposal payload is HMAC-signed and
+// embedded in the token itself (lib/coach/approval-token.ts). commit_* tools
+// decode it via verifyApprovalToken — no shared cache needed, so the flow
+// survives multi-process Vercel deployments where propose and commit can
+// land on different lambdas.
 
 // ── propose_block executor ────────────────────────────────────────────────────
 
@@ -1130,7 +1130,6 @@ export async function executeProposeBlock(opts: {
 
   const payload = i as unknown as ProposeBlockInput;
   const token = signApprovalToken({ userId: opts.userId, action: "block", payload });
-  _proposalCache.set(token, { kind: "block", payload });
   return {
     ok: true,
     data: { preview: payload, approval_token: token },
@@ -1152,17 +1151,17 @@ export async function executeCommitBlock(opts: {
   if (typeof token !== "string") {
     return { ok: false, error: { error: "approval_token required" }, meta: { ms: Date.now() - t0, range_days: 0 } };
   }
-  const cached = _proposalCache.get(token);
-  if (!cached || cached.kind !== "block") {
-    return { ok: false, error: { error: "no matching block proposal in cache; re-propose" }, meta: { ms: Date.now() - t0, range_days: 0 } };
-  }
+  let envelope;
   try {
-    verifyApprovalToken({ token, userId: opts.userId, action: "block", payload: cached.payload });
+    envelope = verifyApprovalToken({ token, userId: opts.userId, action: "block" });
   } catch (e) {
-    return { ok: false, error: { error: `token verification failed: ${(e as Error).message}` }, meta: { ms: Date.now() - t0, range_days: 0 } };
+    const err = e as ApprovalTokenError;
+    return { ok: false, error: { error: err.message, code: err.code ?? "verify_failed" }, meta: { ms: Date.now() - t0, range_days: 0 } };
   }
-
-  const p = cached.payload as ProposeBlockInput;
+  if (!envelope.payload || typeof envelope.payload !== "object") {
+    return { ok: false, error: { error: "approval-token: missing payload" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  const p = envelope.payload as ProposeBlockInput;
   const { data, error } = await opts.supabase
     .from("training_blocks")
     .insert({
@@ -1181,7 +1180,6 @@ export async function executeCommitBlock(opts: {
   if (error) {
     return { ok: false, error: { error: `insert failed: ${error.message}` }, meta: { ms: Date.now() - t0, range_days: 0 } };
   }
-  _proposalCache.delete(token);
   return {
     ok: true,
     data: data as TrainingBlock,
@@ -1212,7 +1210,6 @@ export async function executeProposeWeekPlan(opts: {
 
   const payload = i as unknown as ProposeWeekPlanInput;
   const token = signApprovalToken({ userId: opts.userId, action: "week", payload });
-  _proposalCache.set(token, { kind: "week", payload });
   return {
     ok: true,
     data: { preview: payload, approval_token: token },
@@ -1235,17 +1232,17 @@ export async function executeCommitWeekPlan(opts: {
   if (typeof token !== "string") {
     return { ok: false, error: { error: "approval_token required" }, meta: { ms: Date.now() - t0, range_days: 0 } };
   }
-  const cached = _proposalCache.get(token);
-  if (!cached || cached.kind !== "week") {
-    return { ok: false, error: { error: "no matching week proposal in cache; re-propose" }, meta: { ms: Date.now() - t0, range_days: 0 } };
-  }
+  let envelope;
   try {
-    verifyApprovalToken({ token, userId: opts.userId, action: "week", payload: cached.payload });
+    envelope = verifyApprovalToken({ token, userId: opts.userId, action: "week" });
   } catch (e) {
-    return { ok: false, error: { error: `token verification failed: ${(e as Error).message}` }, meta: { ms: Date.now() - t0, range_days: 0 } };
+    const err = e as ApprovalTokenError;
+    return { ok: false, error: { error: err.message, code: err.code ?? "verify_failed" }, meta: { ms: Date.now() - t0, range_days: 0 } };
   }
-
-  const p = cached.payload as ProposeWeekPlanInput;
+  if (!envelope.payload || typeof envelope.payload !== "object") {
+    return { ok: false, error: { error: "approval-token: missing payload" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  const p = envelope.payload as ProposeWeekPlanInput;
 
   // Find active block for block_id (nullable) — security invariant 2: .eq("user_id")
   const { data: active } = await opts.supabase
@@ -1279,7 +1276,6 @@ export async function executeCommitWeekPlan(opts: {
   if (error) {
     return { ok: false, error: { error: `upsert failed: ${error.message}` }, meta: { ms: Date.now() - t0, range_days: 0 } };
   }
-  _proposalCache.delete(token);
   return {
     ok: true,
     data: data as TrainingWeek,
@@ -1947,13 +1943,15 @@ export async function executeProposePlan(opts: {
     return { ok: false, error: { error: `update_failed: ${updErr.message}` }, meta: { ms: Date.now() - t0, range_days: 0 } };
   }
 
-  const tokenPayload = { doc_id: opts.draftDocId, plan_payload };
+  // Plan tokens carry a ref (doc_id + payload_hash) rather than the full
+  // plan_payload — plan_payload is large and already persisted on the draft
+  // row. Commit time re-reads the draft, recomputes the hash, and rejects if
+  // it drifted (e.g. the model called apply_* between propose and commit).
   const token = signApprovalToken({
     userId: opts.userId,
     action: "plan",
-    payload: tokenPayload,
+    ref: { doc_id: opts.draftDocId, payload_hash: payloadHash(plan_payload) },
   });
-  _proposalCache.set(token, { kind: "plan", payload: tokenPayload });
 
   return {
     ok: true,
@@ -1994,15 +1992,19 @@ export async function executeCommitPlan(opts: {
     return { ok: false, error: { error: "plan_payload missing; call propose_plan first" }, meta: { ms: Date.now() - t0, range_days: 0 } };
   }
 
+  let envelope;
   try {
-    verifyApprovalToken({
-      token,
-      userId: opts.userId,
-      action: "plan",
-      payload: { doc_id: opts.draftDocId, plan_payload: draft.plan_payload },
-    });
+    envelope = verifyApprovalToken({ token, userId: opts.userId, action: "plan" });
   } catch (e) {
-    return { ok: false, error: { error: `token verification failed: ${(e as Error).message}` }, meta: { ms: Date.now() - t0, range_days: 0 } };
+    const err = e as ApprovalTokenError;
+    return { ok: false, error: { error: err.message, code: err.code ?? "verify_failed" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  if (!envelope.ref || envelope.ref.doc_id !== opts.draftDocId) {
+    return { ok: false, error: { error: "approval-token: doc_id mismatch", code: "doc_mismatch" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  const currentHash = payloadHash(draft.plan_payload);
+  if (currentHash !== envelope.ref.payload_hash) {
+    return { ok: false, error: { error: "approval-token: plan_payload changed since propose; call propose_plan again", code: "payload_drift" }, meta: { ms: Date.now() - t0, range_days: 0 } };
   }
 
   // App-level supersede (mirrors Phase 1's non-transactional flow): find prior
@@ -2043,8 +2045,6 @@ export async function executeCommitPlan(opts: {
   if (ackErr) {
     return { ok: false, error: { error: `acknowledge_failed: ${ackErr.message}` }, meta: { ms: Date.now() - t0, range_days: 0 } };
   }
-
-  _proposalCache.delete(token);
 
   // Invalidate ISR caches that read athlete_profile_documents. Dynamic import
   // so this module stays usable from non-route contexts (scripts, tests, etc.)

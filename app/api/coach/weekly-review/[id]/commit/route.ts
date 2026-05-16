@@ -15,7 +15,7 @@ import {
   createSupabaseServerClient,
   createSupabaseServiceRoleClient,
 } from "@/lib/supabase/server";
-import { verifyApprovalToken } from "@/lib/coach/approval-token";
+import { verifyApprovalToken, payloadHash, ApprovalTokenError } from "@/lib/coach/approval-token";
 import { buildWeeklyReviewCommitPayload } from "@/lib/coach/weekly-review/commit-payload";
 import type { WeeklyReviewPayload } from "@/lib/data/types";
 import { revalidatePath } from "next/cache";
@@ -71,17 +71,29 @@ export async function POST(
     reviewPayload,
   });
 
+  let envelope;
   try {
-    verifyApprovalToken({
+    envelope = verifyApprovalToken({
       token: approval_token,
       userId: user.id,
       action: "weekly_review",
-      payload: commitPayload,
     });
   } catch (e) {
+    const err = e as ApprovalTokenError;
     return NextResponse.json(
-      { error: `bad approval: ${(e as Error).message}` },
+      { error: err.message, code: err.code ?? "verify_failed" },
       { status: 403 },
+    );
+  }
+  // Drift check: the issuer baked commitPayload into the token; reject if the
+  // review row has been re-generated since the token was minted.
+  if (payloadHash(envelope.payload) !== payloadHash(commitPayload)) {
+    return NextResponse.json(
+      {
+        error: "review payload changed since token was issued; refresh and re-approve",
+        code: "payload_drift",
+      },
+      { status: 409 },
     );
   }
 
