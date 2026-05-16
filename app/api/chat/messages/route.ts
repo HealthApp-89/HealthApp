@@ -11,7 +11,7 @@ import {
 } from "@/lib/supabase/server";
 import type { ChatMessage, ChatMessageImage, ChatRole, ChatStatus } from "@/lib/chat/types";
 import { type RichMessage, type ContentBlock } from "@/lib/anthropic/client";
-import { runChatStream } from "@/lib/coach/chat-stream";
+import { runChatStream, emptyUsageTotals } from "@/lib/coach/chat-stream";
 import type { ToolCallLog, MorningUI, WeeklyReviewCardUI } from "@/lib/data/types";
 import { buildSnapshot, buildEphemeralHeader } from "@/lib/coach/snapshot";
 import { todayInUserTz } from "@/lib/time";
@@ -468,6 +468,7 @@ export async function POST(req: Request) {
       req.signal.addEventListener("abort", onAbort);
 
       const toolCallSink: ToolCallLog[] = [];
+      const usageSink = emptyUsageTotals();
       try {
         for await (const ev of runChatStream({
           userId: user.id,
@@ -476,6 +477,7 @@ export async function POST(req: Request) {
           signal: req.signal,
           sr,
           toolCallSink,
+          usageSink,
           assistantMessageId: assistantId,
           mode: effectiveMode,
           draftDocId,
@@ -576,7 +578,12 @@ export async function POST(req: Request) {
           );
         }
 
-        // Structured log line for observability.
+        // Structured log line for observability. Includes prompt-cache hit
+        // ratio so we can tune ephemeral TTLs and snapshot stability.
+        const totalCachable = usageSink.cache_read_input_tokens + usageSink.cache_creation_input_tokens;
+        const cacheHitPct = totalCachable > 0
+          ? Math.round((usageSink.cache_read_input_tokens / totalCachable) * 100)
+          : null;
         // eslint-disable-next-line no-console
         console.log(
           JSON.stringify({
@@ -588,6 +595,14 @@ export async function POST(req: Request) {
             tool_calls: toolCallSink.length,
             tool_errors: toolCallSink.filter((c) => c.error !== null).length,
             latency_ms: Date.now() - startedAt,
+            usage: {
+              rounds: usageSink.rounds,
+              input_tokens: usageSink.input_tokens,
+              output_tokens: usageSink.output_tokens,
+              cache_creation_input_tokens: usageSink.cache_creation_input_tokens,
+              cache_read_input_tokens: usageSink.cache_read_input_tokens,
+              cache_hit_pct: cacheHitPct,
+            },
           }),
         );
 

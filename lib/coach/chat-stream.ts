@@ -110,6 +110,28 @@ export type ChatStreamYield =
   | { type: "done" }
   | { type: "error"; message: string };
 
+/** Cumulative Anthropic API token usage across all rounds of a chat turn.
+ *  Read by the route's finally block for structured logging — lets us track
+ *  prompt-cache hit rate, input/output tokens, and per-turn cost without
+ *  blocking the stream itself. */
+export type ChatUsageTotals = {
+  input_tokens: number;
+  output_tokens: number;
+  cache_creation_input_tokens: number;
+  cache_read_input_tokens: number;
+  rounds: number;
+};
+
+export function emptyUsageTotals(): ChatUsageTotals {
+  return {
+    input_tokens: 0,
+    output_tokens: 0,
+    cache_creation_input_tokens: 0,
+    cache_read_input_tokens: 0,
+    rounds: 0,
+  };
+}
+
 export type RunChatStreamOpts = {
   userId: string;
   /** Already concatenated: SCHEMA_EXPLAINER + (user prompt or default). */
@@ -135,6 +157,9 @@ export type RunChatStreamOpts = {
    *  (apply_*, set_*, propose_plan, commit_plan). Caller sets this when
    *  serving an /onboarding chat turn. Null/undefined in default/planning modes. */
   draftDocId?: string | null;
+  /** Mutable totals; the loop adds each round's finalMsg.usage. Read by the
+   *  route after the stream ends to log prompt-cache hit rate. */
+  usageSink?: ChatUsageTotals;
 };
 
 export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<ChatStreamYield> {
@@ -293,6 +318,23 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
     } catch (e) {
       yield { type: "error", message: `anthropic_finalize: ${(e as Error).message}` };
       return;
+    }
+
+    // Accumulate usage. Anthropic returns cache_read_input_tokens +
+    // cache_creation_input_tokens when prompt caching is in play; both can be
+    // 0 or missing on cache-cold turns.
+    if (opts.usageSink) {
+      const u = finalMsg.usage as {
+        input_tokens?: number;
+        output_tokens?: number;
+        cache_creation_input_tokens?: number | null;
+        cache_read_input_tokens?: number | null;
+      };
+      opts.usageSink.input_tokens += u.input_tokens ?? 0;
+      opts.usageSink.output_tokens += u.output_tokens ?? 0;
+      opts.usageSink.cache_creation_input_tokens += u.cache_creation_input_tokens ?? 0;
+      opts.usageSink.cache_read_input_tokens += u.cache_read_input_tokens ?? 0;
+      opts.usageSink.rounds += 1;
     }
 
     // Identify any tool_use blocks the model emitted in this round.
