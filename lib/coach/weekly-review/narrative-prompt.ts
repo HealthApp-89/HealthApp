@@ -20,6 +20,12 @@ TEACHING:
 ${jargonRuleForPrompt()}
 - Prefer everyday language. Avoid textbook tone.
 
+TRENDS DEEP CONTEXT (sub-project #5 — optional fields):
+- payload.trends.per_lift_slope[] may be present — each entry has a 4w slope in pct/wk and an R² confidence value. When referring to a specific lift's trajectory, cite its slope_pct_per_wk_4w if available.
+- payload.trends.plateau_spans[] flags lifts plateaued ≥ 3 weeks.
+- payload.trends.cross_insights[] holds short English sentences describing nutrition × weight and volume × recovery correlations. When the prose touches body composition or recovery, you may reference these insights verbatim or paraphrase them.
+- All three are OPTIONAL — when undefined, omit any reference to per-lift slope or correlation insights.
+
 RULES:
 1. Reference numbers ONLY when they appear in the payload. Never invent loads, percentages, or counts.
 2. Lead with the most important per-lift change and its rationale_tag meaning.
