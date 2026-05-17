@@ -11,9 +11,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { loadWorkouts } from "@/lib/data/workouts-server";
+import type { WorkoutSession } from "@/lib/data/workouts";
 import { nowInUserTz, relativeDateLabel, todayInUserTz } from "@/lib/time";
 import { renderProfileSummary } from "@/lib/coach/profile-renderer";
 import { mondayOf } from "@/lib/coach/weekly-review/date-utils";
+import { topSet } from "@/lib/coach/derived";
 import type { IntakePayload, PlanPayload } from "@/lib/data/types";
 
 /** Compose the NOW header for the LLM snapshot prefix. Includes an explicit
@@ -92,6 +94,94 @@ export function withDayReferenceInstruction(systemPrompt: string): string {
   return `${systemPrompt}\n\n${DAY_REFERENCE_INSTRUCTION}`;
 }
 
+/** Window (days, relative to `asOf`) bounding what counts as a "current" lift
+ *  in the live top-set block. Lifts not performed within this window are
+ *  excluded — beyond ~4 months, the notion of "current top set" stops being
+ *  meaningful and would just bloat the cached prefix. */
+const CURRENT_LIFT_WINDOW_DAYS = 120;
+
+/** Number of days between two YYYY-MM-DD strings (negative if `b` is before `a`). */
+function daysBetween(a: string, b: string): number {
+  const ms = Date.UTC(
+    Number(a.slice(0, 4)),
+    Number(a.slice(5, 7)) - 1,
+    Number(a.slice(8, 10)),
+  ) - Date.UTC(
+    Number(b.slice(0, 4)),
+    Number(b.slice(5, 7)) - 1,
+    Number(b.slice(8, 10)),
+  );
+  return Math.round(ms / 86_400_000);
+}
+
+/** For every distinct lift the athlete has performed within
+ *  CURRENT_LIFT_WINDOW_DAYS of `asOf`, emit the top working set of its
+ *  most-recent session (with e1RM when reps ≤ 12). This gives the coach AI
+ *  a LIVE anchor for "current top set per lift" so it never cites the
+ *  frozen intake-time `current_e1rm` baseline from the profile block.
+ *
+ *  Ordering: most-recent first — frequently-trained lifts naturally float
+ *  to the top. Bodyweight-only sets (kg=null, no duration) render as
+ *  `BW×reps`. Returns "" when nothing renders so callers can skip the
+ *  section cleanly. */
+function buildCurrentTopSetsBlock(
+  workouts: WorkoutSession[],
+  asOf: string,
+): string {
+  type Hit = {
+    name: string;
+    date: string;
+    ts: NonNullable<ReturnType<typeof topSet>> | null;
+    /** BW-reps fallback when topSet returns null but reps-only sets exist. */
+    bwReps: number | null;
+  };
+
+  const hits: Hit[] = [];
+  const seen = new Set<string>();
+  for (const w of workouts) {
+    if (w.date > asOf) continue;
+    if (daysBetween(asOf, w.date) > CURRENT_LIFT_WINDOW_DAYS) break; // workouts is desc — older lifts won't requalify
+    for (const ex of w.exercises) {
+      if (seen.has(ex.name)) continue;
+      const ts = topSet(ex.sets);
+      let bwReps: number | null = null;
+      if (!ts) {
+        const bw = ex.sets
+          .filter((s) => !s.warmup && !s.kg && s.reps)
+          .sort((a, b) => b.reps! - a.reps!)[0];
+        if (bw) bwReps = bw.reps;
+        else continue;
+      }
+      seen.add(ex.name);
+      hits.push({ name: ex.name, date: w.date, ts, bwReps });
+    }
+  }
+
+  if (hits.length === 0) return "";
+
+  const lines = hits.map((h) => {
+    const rel = relativeDateLabel(h.date, asOf);
+    let body: string;
+    if (h.ts && h.ts.kg !== null && h.ts.reps !== null) {
+      body = `${h.ts.kg}×${h.ts.reps}${h.ts.e1RM !== null ? ` (e1RM ${h.ts.e1RM})` : ""}`;
+    } else if (h.ts && h.ts.duration_seconds !== null) {
+      body = `${h.ts.duration_seconds}s hold`;
+    } else if (h.bwReps !== null) {
+      body = `BW×${h.bwReps}`;
+    } else {
+      return null;
+    }
+    return `  ${h.name} — ${h.date} (${rel}): ${body}`;
+  }).filter((l): l is string => l !== null);
+
+  if (lines.length === 0) return "";
+
+  return [
+    `CURRENT TOP SET per lift (most recent session within ${CURRENT_LIFT_WINDOW_DAYS}d; sourced live from workouts; SUPERSEDES any "Intake-time e1RMs" baseline values below):`,
+    ...lines,
+  ].join("\n");
+}
+
 export async function buildSnapshot(inputs: SnapshotInputs): Promise<SnapshotResult> {
   const { supabase, userId, since, until, workoutLimit = 5 } = inputs;
   const today = todayInUserTz();
@@ -132,13 +222,23 @@ export async function buildSnapshot(inputs: SnapshotInputs): Promise<SnapshotRes
     sets: w.sets,
     vol_kg: Math.round(w.vol),
     top: w.exercises.slice(0, 4).map((e) => {
-      // Prefer the heaviest weighted working set for this session. If the
-      // exercise has only bodyweight working sets in this session, fall back
-      // to the set with the most reps and label "BW×<reps>".
-      const weighted = e.sets
-        .filter((s) => !s.warmup && s.kg && s.reps)
-        .sort((a, b) => b.kg! - a.kg!)[0];
-      if (weighted) return `${e.name} ${weighted.kg}×${weighted.reps}`;
+      // Use the canonical topSet picker (sorts by e1RM, tie-breaks on kg) so
+      // a 90×7 rep PR doesn't get hidden behind an earlier 90×6 at the same
+      // weight. Also surfaces e1RM inline so the model doesn't have to derive
+      // it from kg×reps (which was the original failure mode behind cited
+      // stale e1RMs). topSet covers weighted + duration paths; pure
+      // bodyweight sets (kg=null, no duration) still fall through to the
+      // BW-reps fallback below.
+      const ts = topSet(e.sets);
+      if (ts) {
+        if (ts.kg !== null && ts.reps !== null) {
+          const e1rmSuffix = ts.e1RM !== null ? ` (e1RM ${ts.e1RM})` : "";
+          return `${e.name} ${ts.kg}×${ts.reps}${e1rmSuffix}`;
+        }
+        if (ts.duration_seconds !== null) {
+          return `${e.name} ${ts.duration_seconds}s`;
+        }
+      }
       const bw = e.sets
         .filter((s) => !s.warmup && !s.kg && s.reps)
         .sort((a, b) => b.reps! - a.reps!)[0];
@@ -146,6 +246,13 @@ export async function buildSnapshot(inputs: SnapshotInputs): Promise<SnapshotRes
       return e.name;
     }),
   }));
+
+  // Live "current top set per lift" — anchors against the frozen intake-time
+  // e1RMs in the profile summary below. Computed off ALL workouts (not just
+  // the 5-slice `workouts`) so a lift performed >5 sessions ago still
+  // surfaces. Bounded by `until ?? today` so historical snapshots
+  // (insights/weekly) reflect what was current at that point in time.
+  const currentTopSetsBlock = buildCurrentTopSetsBlock(allWorkouts, until ?? today);
 
   const fmt = (v: number | null | undefined, unit = "") =>
     v === null || v === undefined ? "—" : `${v}${unit}`;
@@ -170,6 +277,9 @@ export async function buildSnapshot(inputs: SnapshotInputs): Promise<SnapshotRes
     `ATHLETE: ${p?.name ?? "Athlete"}. GOAL: "${p?.goal ?? "general health"}".`,
     `BASELINES: ${JSON.stringify(p?.whoop_baselines ?? {})}`,
     `TRAINING PLAN: ${JSON.stringify(p?.training_plan ?? {})}`,
+    // Live current top set per lift FIRST, so the model anchors on live data
+    // before reading the intake-time baselines in the profile body.
+    ...(currentTopSetsBlock ? [``, currentTopSetsBlock] : []),
     ...(athleteProfileRow
       ? [``, renderProfileSummary(
           athleteProfileRow.intake_payload as IntakePayload,

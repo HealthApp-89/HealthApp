@@ -82,7 +82,7 @@ export function renderProfileSummary(
     ``,
     `Goal: ${g.primary_type} — ${g.primary_metric} ${g.target_value}${g.target_unit} by ${g.target_date}. Why: "${why}".`,
     ``,
-    `Trains ${t.sessions_per_week}×/wk (${daysAvailable}, ${l.earliest_session_time}-${l.latest_session_time} window). ${cap(t.training_age)} lifter, ${t.years_lifting}y. Current e1RMs: ${e1rmCompact}.`,
+    `Trains ${t.sessions_per_week}×/wk (${daysAvailable}, ${l.earliest_session_time}-${l.latest_session_time} window). ${cap(t.training_age)} lifter, ${t.years_lifting}y. Intake-time e1RMs (baseline at v${version} acknowledgment, NOT current — use CURRENT TOP SET block above for live values): ${e1rmCompact}.`,
     ``,
     `Equipment: ${equipmentList}.`,
     ``,
@@ -166,7 +166,7 @@ function renderTrainingSection(intake: IntakePayload): string {
   const lines: string[] = [
     `## Training history & equipment`,
     `${t.years_lifting} years lifting (${t.training_age}).`,
-    `Current e1RMs: squat ${fmtN(t.current_e1rm.squat)}, bench ${fmtN(t.current_e1rm.bench)}, deadlift ${fmtN(t.current_e1rm.deadlift)}, OHP ${fmtN(t.current_e1rm.ohp)}.`,
+    `Baseline e1RMs at intake: squat ${fmtN(t.current_e1rm.squat)}, bench ${fmtN(t.current_e1rm.bench)}, deadlift ${fmtN(t.current_e1rm.deadlift)}, OHP ${fmtN(t.current_e1rm.ohp)}.`,
   ];
   if (anyPr(t.best_ever_pr)) {
     lines.push(`Best PRs: squat ${fmtN(t.best_ever_pr.squat)}, bench ${fmtN(t.best_ever_pr.bench)}, deadlift ${fmtN(t.best_ever_pr.deadlift)}, OHP ${fmtN(t.best_ever_pr.ohp)}.`);
