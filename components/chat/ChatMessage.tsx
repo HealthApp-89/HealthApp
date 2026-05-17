@@ -156,7 +156,7 @@ export function ChatMessage({
                     borderRadius: "50%",
                     background: COLOR.textMuted,
                     animation:
-                      "brief-pulse-dot 1.2s ease-in-out infinite",
+                      "chat-pulse-dot 1.2s ease-in-out infinite",
                   }}
                 />
                 <span
@@ -166,7 +166,7 @@ export function ChatMessage({
                     borderRadius: "50%",
                     background: COLOR.textMuted,
                     animation:
-                      "brief-pulse-dot 1.2s ease-in-out infinite 0.2s",
+                      "chat-pulse-dot 1.2s ease-in-out infinite 0.2s",
                   }}
                 />
                 <span
@@ -176,7 +176,7 @@ export function ChatMessage({
                     borderRadius: "50%",
                     background: COLOR.textMuted,
                     animation:
-                      "brief-pulse-dot 1.2s ease-in-out infinite 0.4s",
+                      "chat-pulse-dot 1.2s ease-in-out infinite 0.4s",
                   }}
                 />
               </span>
