@@ -38,7 +38,7 @@ export function WeekPlanProposalCard({
     return (
       <CoachCard tone="ok">
         <CoachCard.Body>
-          <div style={{ color: "#16a34a", fontWeight: 700, fontSize: 13 }}>
+          <div style={{ color: COLOR.success, fontWeight: 700, fontSize: 13 }}>
             <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
               <Check size={14} strokeWidth={3} />
               Plan committed for {proposal.week_start}

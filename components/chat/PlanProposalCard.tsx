@@ -43,7 +43,7 @@ export function PlanProposalCard({
         <CoachCard.Body>
           <div
             style={{
-              color: "#16a34a",
+              color: COLOR.success,
               fontWeight: 700,
               fontSize: 13,
               display: "inline-flex",

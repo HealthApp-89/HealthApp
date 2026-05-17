@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Check } from "lucide-react";
 import { COLOR } from "@/lib/ui/theme";
 
 export type BlockProposal = {
@@ -31,8 +32,18 @@ export function BlockProposalCard({
   if (committed) {
     return (
       <div style={previewStyle}>
-        <div style={{ color: "#16a34a", fontWeight: 700, fontSize: "13px" }}>
-          ✓ Block created. Come back Sunday to plan week 1.
+        <div
+          style={{
+            color: COLOR.success,
+            fontWeight: 700,
+            fontSize: "13px",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4,
+          }}
+        >
+          <Check size={14} strokeWidth={3} aria-hidden="true" />
+          Block created. Come back Sunday to plan week 1.
         </div>
       </div>
     );
