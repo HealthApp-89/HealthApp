@@ -31,7 +31,8 @@ const nextConfig: NextConfig = {
       { source: "/health/:path*",   destination: "/metrics?sub=body",     permanent: true },
       { source: "/log",             destination: "/metrics?sub=strength", permanent: true },
       // Reserved for Slice 8 (coach trend rename).
-      { source: "/coach/trends",    destination: "/coach/progress",       permanent: true },
+      { source: "/coach/trends",        destination: "/coach/progress",       permanent: true },
+      { source: "/coach/trends/:path*", destination: "/coach/progress",       permanent: true },
     ];
   },
 };
