@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Check } from "lucide-react";
 import { CoachCard } from "@/components/coach/CoachCard";
 import { COLOR } from "@/lib/ui/theme";
 import { readSessionForDay } from "@/lib/coach/session-plan-reader";
@@ -38,7 +39,10 @@ export function WeekPlanProposalCard({
       <CoachCard tone="ok">
         <CoachCard.Body>
           <div style={{ color: "#16a34a", fontWeight: 700, fontSize: 13 }}>
-            ✓ Plan committed for {proposal.week_start}
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+              <Check size={14} strokeWidth={3} />
+              Plan committed for {proposal.week_start}
+            </span>
           </div>
         </CoachCard.Body>
       </CoachCard>
@@ -109,11 +113,11 @@ export function WeekPlanProposalCard({
             setBusy(true);
             onApprove(approvalToken);
           }}
-          style={btnPrimary}
+          style={{ ...btnPrimary, flex: 1 }}
         >
           Approve
         </button>
-        <button onClick={onTweak} style={btnSecondary}>
+        <button onClick={onTweak} style={{ ...btnSecondary, flex: 1 }}>
           Tweak in chat
         </button>
       </CoachCard.Actions>
