@@ -8,7 +8,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { ArrowUp } from "lucide-react";
+import { AlertTriangle, ArrowUp, Check, CheckCircle2 } from "lucide-react";
 import { COLOR, RADIUS } from "@/lib/ui/theme";
 import type { PlanPayload, StrengthMuscleVolume } from "@/lib/data/types";
 import { TARGETED_MUSCLE_GROUPS } from "@/lib/data/types";
@@ -39,8 +39,17 @@ export function PlanProposalCard({
   if (committed) {
     return (
       <div style={cardStyle}>
-        <div style={{ color: "#16a34a", fontWeight: 700, fontSize: 13 }}>
-          ✓ Plan committed
+        <div
+          style={{
+            color: "#16a34a",
+            fontWeight: 700,
+            fontSize: 13,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4,
+          }}
+        >
+          <Check size={14} strokeWidth={3} /> Plan committed
         </div>
       </div>
     );
@@ -445,10 +454,10 @@ function MuscleVolumeSection({
                 : `${thisWeekTarget} (no block — MAV mid)`;
             const statusIcon: ReactNode =
               band.source === "literature_with_ramp_floor"
-                ? "⚠"
+                ? <AlertTriangle size={12} />
                 : band.source === "literature_adjusted_up"
                   ? <ArrowUp size={12} />
-                  : "🟢";
+                  : <CheckCircle2 size={12} color="#14b870" />;
             const statusText =
               band.source === "literature_with_ramp_floor"
                 ? "below MEV — coach will ramp"
@@ -464,7 +473,9 @@ function MuscleVolumeSection({
                 </td>
                 <td style={{ padding: "4px 8px", color: COLOR.textMid }}>{thisWeekLabel}</td>
                 <td style={{ padding: "4px 8px", color: COLOR.textMuted }}>
-                  {statusIcon} {statusText}
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                    {statusIcon} {statusText}
+                  </span>
                 </td>
               </tr>
             );
