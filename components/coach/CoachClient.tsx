@@ -56,7 +56,9 @@ export function CoachClient({
   const { data: trainingWeek } = useTrainingWeek(userId, targetMonday);
   const { data: recent } = useCoachRecent(userId);
   const { data: intakeState } = useIntakeState(userId, todayDate);
-  const { data: todayBrief } = useTodayBrief(userId, todayDate);
+  const { data: todayBrief } = useTodayBrief(userId, todayDate, {
+    enabled: activeView === "today",
+  });
 
   // `?retry=brief` deep-link from TodayAnchor's brief_failed state. Fire the
   // retry endpoint once, refresh the affected caches, and strip the param so
