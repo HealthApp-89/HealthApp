@@ -8,9 +8,9 @@ import type { IntakeState as CheckinIntakeState } from "@/lib/data/types";
  * IntakeState union or `null` when no row exists yet (user hasn't started
  * today's intake).
  *
- * Used by Slice 4's BriefStateChip on the dashboard to decide which compact
- * pill to render above ReadinessHero. Note the column on `checkins` is
- * `date` (YYYY-MM-DD), so callers pass today's ISO date as `day`.
+ * Consumed by morning-intake/brief code paths to decide what UI to render
+ * for today (continue check-in, retry brief, etc.). Note the column on
+ * `checkins` is `date` (YYYY-MM-DD), so callers pass today's ISO date as `day`.
  *
  * Both variants throw on Supabase errors so TanStack Query lights up
  * `isError` rather than silently rendering a stale/wrong chip.

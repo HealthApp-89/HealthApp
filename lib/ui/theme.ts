@@ -98,8 +98,8 @@ export function modeColorLight(hex: string): string {
   }
 }
 
-// Hero card gradients — used by ReadinessHero, MorningBriefCard hero band,
-// and intensity-mode-mapped session heroes. Defined once, referenced everywhere.
+// Hero card gradients — used by MorningBriefCard hero band and the
+// intensity-mode-mapped session heroes. Defined once, referenced everywhere.
 export const GRADIENT = {
   heroAccent:      "linear-gradient(140deg, #4f5dff 0%, #6b78ff 100%)",
   heroAmber:       "linear-gradient(140deg, #b45309 0%, #d97706 100%)",
