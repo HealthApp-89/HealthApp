@@ -81,7 +81,7 @@ export function LogEntrySheet({ open, onClose }: Props) {
           <Row
             icon={<Apple size={18} aria-hidden="true" />}
             label="Meal"
-            href="/metrics?sub=trends&log=meal"
+            href="/metrics?sub=body&log=meal"
             onClick={onClose}
           />
           <Row
