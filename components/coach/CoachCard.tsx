@@ -4,7 +4,7 @@ import { COLOR, RADIUS, SHADOW } from "@/lib/ui/theme";
 type Tone = "default" | "alert" | "ok" | "accent";
 
 const TONE_ACCENT_BAR: Record<Tone, string> = {
-  default: COLOR.textMuted,
+  default: COLOR.divider,
   alert:   COLOR.danger,
   ok:      COLOR.success,
   accent:  COLOR.accent,
