@@ -7,9 +7,15 @@ import type { ProactiveNudgeCard as ProactiveNudgeCardUI } from "@/lib/data/type
 /** Card rendered for chat_messages with kind='proactive_nudge'. Visual
  *  lineage mirrors WeeklyReviewCard.tsx — same CoachCard chrome, same Link
  *  CTA pattern, warn-toned accent bar. */
+const SEVERITY_TO_TONE: Record<string, "default" | "alert" | "ok" | "accent"> = {
+  warn:  "alert",
+  alert: "alert",
+  ok:    "ok",
+  info:  "accent",
+};
+
 export function ProactiveNudgeCard({ ui }: { ui: ProactiveNudgeCardUI }) {
-  const tone =
-    ui.severity === "warn" ? "alert" : ("default" as const);
+  const tone = SEVERITY_TO_TONE[ui.severity] ?? "default";
   const accent = "#d97706"; // warn-amber, matches lib/coach/trends/ TrendsHeader
 
   return (
