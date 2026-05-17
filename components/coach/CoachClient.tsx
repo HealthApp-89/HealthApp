@@ -6,6 +6,7 @@ import dynamic from "next/dynamic";
 import type { ChatMode } from "@/lib/data/types";
 import { COLOR, CHAT } from "@/lib/ui/theme";
 import { CoachNav, type CoachView } from "@/components/coach/CoachNav";
+import { CoachAvatar } from "@/components/coach/CoachAvatar";
 import { BlockProgressCard } from "@/components/coach/BlockProgressCard";
 import { WeekPlanCard } from "@/components/coach/WeekPlanCard";
 import { PlanWeekCTA } from "@/components/coach/PlanWeekCTA";
@@ -93,17 +94,50 @@ export function CoachClient({
         <div style={{ fontSize: 12, color: COLOR.textMuted, fontWeight: 500 }}>
           {formatHeaderDate()}
         </div>
-        <h1
+        <div
           style={{
-            fontSize: 22,
-            fontWeight: 700,
-            letterSpacing: "-0.02em",
-            color: COLOR.textStrong,
-            margin: "2px 0 0",
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            marginTop: 4,
           }}
         >
-          Coach
-        </h1>
+          <CoachAvatar size={36} />
+          <div>
+            <div
+              style={{
+                fontSize: 16,
+                fontWeight: 700,
+                lineHeight: 1.1,
+                color: COLOR.textStrong,
+              }}
+            >
+              Coach Carter
+            </div>
+            <div
+              style={{
+                fontSize: 10,
+                color: COLOR.success,
+                fontWeight: 600,
+                marginTop: 2,
+                display: "flex",
+                alignItems: "center",
+                gap: 5,
+              }}
+            >
+              <span
+                style={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: "50%",
+                  background: COLOR.success,
+                }}
+                aria-hidden="true"
+              />
+              online
+            </div>
+          </div>
+        </div>
         <div style={{ marginTop: 12 }}>
           <CoachNav
             active={activeView}
