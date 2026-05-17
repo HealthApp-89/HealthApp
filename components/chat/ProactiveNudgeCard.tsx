@@ -1,58 +1,54 @@
 "use client";
 import Link from "next/link";
-import { Card, SectionLabel } from "@/components/ui/Card";
+import { CoachCard } from "@/components/coach/CoachCard";
 import { COLOR } from "@/lib/ui/theme";
 import type { ProactiveNudgeCard as ProactiveNudgeCardUI } from "@/lib/data/types";
 
 /** Card rendered for chat_messages with kind='proactive_nudge'. Visual
- *  lineage mirrors WeeklyReviewCard.tsx — same Card wrapper, same Link
- *  CTA pattern, warn-colored severity tag. */
+ *  lineage mirrors WeeklyReviewCard.tsx — same CoachCard chrome, same Link
+ *  CTA pattern, warn-toned accent bar. */
 export function ProactiveNudgeCard({ ui }: { ui: ProactiveNudgeCardUI }) {
+  const tone =
+    ui.severity === "warn" ? "alert" : ("default" as const);
   const accent = "#d97706"; // warn-amber, matches lib/coach/trends/ TrendsHeader
 
   return (
     <div style={{ padding: "6px 12px" }}>
-      <Card>
-        <SectionLabel>
+      <CoachCard tone={tone}>
+        <CoachCard.Eyebrow>
           <span style={{ color: accent }}>{ui.severity.toUpperCase()}</span> · COACH
-        </SectionLabel>
-        <div
-          style={{
-            fontSize: 14,
-            fontWeight: 700,
-            marginTop: 6,
-            color: COLOR.textStrong,
-          }}
-        >
-          {ui.headline}
-        </div>
-        <p
-          style={{
-            fontSize: 12,
-            color: COLOR.textMuted,
-            marginTop: 6,
-            lineHeight: 1.5,
-          }}
-        >
-          {ui.body_md}
-        </p>
-        <Link
-          href={ui.deep_link.href}
-          style={{
-            display: "inline-block",
-            marginTop: 10,
-            padding: "8px 12px",
-            background: COLOR.accent,
-            color: "#fff",
-            borderRadius: 9999,
-            fontWeight: 700,
-            fontSize: 12,
-            textDecoration: "none",
-          }}
-        >
-          {ui.deep_link.label}
-        </Link>
-      </Card>
+        </CoachCard.Eyebrow>
+        <CoachCard.Title>{ui.headline}</CoachCard.Title>
+        <CoachCard.Body>
+          <p
+            style={{
+              fontSize: 12,
+              color: COLOR.textMuted,
+              margin: 0,
+              lineHeight: 1.5,
+            }}
+          >
+            {ui.body_md}
+          </p>
+        </CoachCard.Body>
+        <CoachCard.Actions>
+          <Link
+            href={ui.deep_link.href}
+            style={{
+              display: "inline-block",
+              padding: "8px 12px",
+              background: COLOR.accent,
+              color: "#fff",
+              borderRadius: 9999,
+              fontWeight: 700,
+              fontSize: 12,
+              textDecoration: "none",
+            }}
+          >
+            {ui.deep_link.label}
+          </Link>
+        </CoachCard.Actions>
+      </CoachCard>
     </div>
   );
 }
