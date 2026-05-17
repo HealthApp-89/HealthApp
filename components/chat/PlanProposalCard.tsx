@@ -7,7 +7,8 @@
 
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
+import { ArrowUp } from "lucide-react";
 import { COLOR, RADIUS } from "@/lib/ui/theme";
 import type { PlanPayload, StrengthMuscleVolume } from "@/lib/data/types";
 import { TARGETED_MUSCLE_GROUPS } from "@/lib/data/types";
@@ -442,11 +443,11 @@ function MuscleVolumeSection({
               currentBlockWeek !== null
                 ? `${thisWeekTarget} (wk ${currentBlockWeek}/5)`
                 : `${thisWeekTarget} (no block — MAV mid)`;
-            const statusIcon =
+            const statusIcon: ReactNode =
               band.source === "literature_with_ramp_floor"
                 ? "⚠"
                 : band.source === "literature_adjusted_up"
-                  ? "⬆"
+                  ? <ArrowUp size={12} />
                   : "🟢";
             const statusText =
               band.source === "literature_with_ramp_floor"
