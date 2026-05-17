@@ -1,6 +1,9 @@
 // lib/query/fetchers/todayBrief.ts
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import type { MorningBriefCard } from "@/lib/data/types";
+
+const COLS = "ui, created_at";
 
 /**
  * Returns today's morning_brief `ui` payload, or null when no brief has been
@@ -12,25 +15,19 @@ import type { MorningBriefCard } from "@/lib/data/types";
  * filter client-side. The window of 3 days is wide enough to cover the
  * UTC/user-tz boundary; "today" is decided by date math, not `created_at`.
  *
- * Throws on Supabase error so TanStack Query lights up `isError`.
+ * Both variants throw on Supabase error so TanStack Query lights up `isError`.
+ *
+ * Server variant takes the supabase client as an argument so the caller (a
+ * Server Component) controls cookie/auth scoping — mirrors the pattern in
+ * dailyLogs.ts.
  */
-export async function fetchTodayBriefBrowser(
-  userId: string,
+
+/** Shared pure filter: pick the row whose recap.yesterday_date + 1 === today. */
+function pickTodayBrief(
+  rows: Array<{ ui: unknown; created_at: string }> | null,
   today: string,
-): Promise<MorningBriefCard | null> {
-  const supabase = createSupabaseBrowserClient();
-
-  const { data, error } = await supabase
-    .from("chat_messages")
-    .select("ui, created_at")
-    .eq("user_id", userId)
-    .eq("kind", "morning_brief")
-    .order("created_at", { ascending: false })
-    .limit(3);
-
-  if (error) throw error;
-
-  for (const row of data ?? []) {
+): MorningBriefCard | null {
+  for (const row of rows ?? []) {
     const ui = (row.ui ?? null) as MorningBriefCard | null;
     if (!ui) continue;
     const yesterday = ui.recap?.yesterday_date;
@@ -47,6 +44,42 @@ export async function fetchTodayBriefBrowser(
     const day = `${yy}-${mm}-${dd}`;
     if (day === today) return ui;
   }
-
   return null;
+}
+
+/** Server-side variant — uses the SSR Supabase client (cookie-bound, RLS). */
+export async function fetchTodayBriefServer(
+  supabase: SupabaseClient,
+  userId: string,
+  today: string,
+): Promise<MorningBriefCard | null> {
+  const { data, error } = await supabase
+    .from("chat_messages")
+    .select(COLS)
+    .eq("user_id", userId)
+    .eq("kind", "morning_brief")
+    .order("created_at", { ascending: false })
+    .limit(3);
+
+  if (error) throw error;
+  return pickTodayBrief(data ?? null, today);
+}
+
+/** Browser-side variant — uses the browser Supabase client (cookie-bound, RLS). */
+export async function fetchTodayBriefBrowser(
+  userId: string,
+  today: string,
+): Promise<MorningBriefCard | null> {
+  const supabase = createSupabaseBrowserClient();
+
+  const { data, error } = await supabase
+    .from("chat_messages")
+    .select(COLS)
+    .eq("user_id", userId)
+    .eq("kind", "morning_brief")
+    .order("created_at", { ascending: false })
+    .limit(3);
+
+  if (error) throw error;
+  return pickTodayBrief(data ?? null, today);
 }

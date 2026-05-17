@@ -5,6 +5,7 @@ import { makeServerQueryClient } from "@/lib/query/queryClient";
 import { queryKeys } from "@/lib/query/keys";
 import { computeBlockProgress } from "@/lib/query/fetchers/blockProgress";
 import { fetchTrainingWeekServer } from "@/lib/query/fetchers/trainingWeek";
+import { fetchTodayBriefServer } from "@/lib/query/fetchers/todayBrief";
 import { CoachClient } from "@/components/coach/CoachClient";
 import { type CoachView } from "@/components/coach/CoachNav";
 import { planningTargetMonday } from "@/lib/coach/week";
@@ -47,6 +48,10 @@ export default async function CoachPage(props: {
     queryClient.prefetchQuery({
       queryKey: queryKeys.trainingWeeks.one(user.id, targetMonday),
       queryFn: () => fetchTrainingWeekServer(supabase, user.id, targetMonday),
+    }),
+    queryClient.prefetchQuery({
+      queryKey: queryKeys.morningBrief.today(user.id, todayDate),
+      queryFn: () => fetchTodayBriefServer(supabase, user.id, todayDate),
     }),
   ]);
 
