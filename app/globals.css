@@ -120,3 +120,11 @@ body {
   border-radius: 50%;
   animation: brief-pulse 1.2s infinite;
 }
+
+/* Pulse-dot keyframe used by the chat streaming-indicator triplet. Scales +
+   fades so three staggered dots read as a typing animation, distinct from
+   the simpler opacity-only brief-pulse above. */
+@keyframes brief-pulse-dot {
+  0%, 60%, 100% { opacity: 0.35; transform: scale(0.85); }
+  30%          { opacity: 1;    transform: scale(1); }
+}
