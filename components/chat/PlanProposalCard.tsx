@@ -9,6 +9,7 @@
 
 import { useState, type ReactNode } from "react";
 import { AlertTriangle, ArrowUp, Check, CheckCircle2 } from "lucide-react";
+import { CoachCard } from "@/components/coach/CoachCard";
 import { COLOR, RADIUS } from "@/lib/ui/theme";
 import type { PlanPayload, StrengthMuscleVolume } from "@/lib/data/types";
 import { TARGETED_MUSCLE_GROUPS } from "@/lib/data/types";
@@ -38,73 +39,47 @@ export function PlanProposalCard({
 
   if (committed) {
     return (
-      <div style={cardStyle}>
-        <div
-          style={{
-            color: "#16a34a",
-            fontWeight: 700,
-            fontSize: 13,
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 4,
-          }}
-        >
-          <Check size={14} strokeWidth={3} /> Plan committed
-        </div>
-      </div>
+      <CoachCard tone="ok">
+        <CoachCard.Body>
+          <div
+            style={{
+              color: "#16a34a",
+              fontWeight: 700,
+              fontSize: 13,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+            }}
+          >
+            <Check size={14} strokeWidth={3} /> Plan committed
+          </div>
+        </CoachCard.Body>
+      </CoachCard>
     );
   }
 
   return (
-    <div style={cardStyle}>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "baseline",
-          justifyContent: "space-between",
-          marginBottom: 12,
-        }}
-      >
-        <div>
+    <CoachCard tone="accent">
+      <CoachCard.Eyebrow>Proposed coaching plan</CoachCard.Eyebrow>
+      <CoachCard.Title>
+        {plan.goal.primary_metric} → {plan.goal.target_value}
+        {plan.goal.target_unit} by {plan.goal.target_date}
+      </CoachCard.Title>
+      <CoachCard.Body>
+        {plan.goal.feasibility_note && (
           <div
             style={{
-              fontSize: 11,
-              textTransform: "uppercase",
-              letterSpacing: "0.06em",
-              color: COLOR.textMuted,
-              fontWeight: 600,
+              fontSize: 12,
+              color: COLOR.warning,
+              background: COLOR.warningSoft,
+              padding: "6px 10px",
+              borderRadius: 6,
+              marginBottom: 12,
             }}
           >
-            Proposed coaching plan
+            {plan.goal.feasibility_note}
           </div>
-          <h3
-            style={{
-              fontSize: 16,
-              fontWeight: 600,
-              margin: "4px 0 0",
-              color: COLOR.textStrong,
-            }}
-          >
-            {plan.goal.primary_metric} → {plan.goal.target_value}
-            {plan.goal.target_unit} by {plan.goal.target_date}
-          </h3>
-        </div>
-      </div>
-
-      {plan.goal.feasibility_note && (
-        <div
-          style={{
-            fontSize: 12,
-            color: COLOR.warning,
-            background: COLOR.warningSoft,
-            padding: "6px 10px",
-            borderRadius: 6,
-            marginBottom: 12,
-          }}
-        >
-          {plan.goal.feasibility_note}
-        </div>
-      )}
+        )}
 
       <PlanSection title="Goal">
         <p
@@ -287,14 +262,8 @@ export function PlanProposalCard({
         </div>
       </PlanSection>
 
-      <div
-        style={{
-          display: "flex",
-          gap: 8,
-          marginTop: 16,
-          justifyContent: "flex-end",
-        }}
-      >
+      </CoachCard.Body>
+      <CoachCard.Actions>
         <button
           type="button"
           disabled={busy}
@@ -316,8 +285,8 @@ export function PlanProposalCard({
         >
           {busy ? "Approving…" : "Approve plan"}
         </button>
-      </div>
-    </div>
+      </CoachCard.Actions>
+    </CoachCard>
   );
 }
 
@@ -486,11 +455,3 @@ function MuscleVolumeSection({
   );
 }
 
-const cardStyle: React.CSSProperties = {
-  background: COLOR.surface,
-  border: `1px solid ${COLOR.divider}`,
-  borderRadius: RADIUS.cardMid,
-  padding: 16,
-  margin: "8px 0",
-  maxWidth: 640,
-};
