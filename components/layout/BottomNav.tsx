@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { useState, useTransition, type ComponentType, type MouseEvent } from "react";
-import { Home, TrendingUp, MessageCircle, User, type LucideProps } from "lucide-react";
+import { Home, BarChart3, MessageCircle, User, type LucideProps } from "lucide-react";
 import { COLOR, RADIUS, SHADOW } from "@/lib/ui/theme";
 
 type Tab = {
@@ -15,15 +15,13 @@ type Tab = {
 
 const TABS: Tab[] = [
   { href: "/",        label: "Today",   Icon: Home,          match: (p) => p === "/" },
-  { href: "/trends",  label: "Trends",  Icon: TrendingUp,    match: (p) => p.startsWith("/trends") },
-  // Slot left empty for the FAB (rendered separately by <Fab />)
+  { href: "/metrics", label: "Metrics", Icon: BarChart3,     match: (p) => p.startsWith("/metrics") },
   { href: "/coach",   label: "Coach",   Icon: MessageCircle, match: (p) => p.startsWith("/coach") },
   { href: "/profile", label: "Profile", Icon: User,          match: (p) => p.startsWith("/profile") },
 ];
 
 /**
  * Mobile-only bottom nav. Hides at md and above (desktop uses TopNav).
- * Reserves a center gap for the floating <Fab />.
  *
  * Optimistic active state — the tab the user just tapped flips to "active"
  * immediately (before the new page finishes loading) so taps feel instant.
@@ -80,17 +78,7 @@ export function BottomNav() {
         zIndex: 40,
       }}
     >
-      {TABS.slice(0, 2).map((t) => (
-        <TabButton
-          key={t.href}
-          tab={t}
-          active={t.match(optimisticPath)}
-          onNavigate={handleNavigate}
-        />
-      ))}
-      {/* Spacer for the FAB */}
-      <div style={{ width: "56px", flexShrink: 0 }} aria-hidden="true" />
-      {TABS.slice(2).map((t) => (
+      {TABS.map((t) => (
         <TabButton
           key={t.href}
           tab={t}
