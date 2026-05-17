@@ -23,12 +23,14 @@ export default async function CoachReviewsPage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const { data: reviews } = await supabase
+  const { data: reviews, error } = await supabase
     .from("weekly_reviews")
     .select("week_start, status, version, payload")
     .eq("user_id", user.id)
     .order("week_start", { ascending: false })
     .order("version", { ascending: false });
+
+  if (error) throw error;
 
   return (
     <div style={{ padding: 16 }}>

@@ -9,7 +9,7 @@ import { todayInUserTz } from "@/lib/time";
 
 export const revalidate = 60;
 
-export default async function CoachTrendsRoute(props: {
+export default async function CoachProgressRoute(props: {
   searchParams: Promise<{ section?: string }>;
 }) {
   const sp = await props.searchParams;

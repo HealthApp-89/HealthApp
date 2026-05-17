@@ -20,14 +20,18 @@ const TABS: Tab[] = [
   {
     href: "/coach/progress",
     label: "Progress",
-    match: (p) => p.startsWith("/coach/progress"),
+    match: (p) => p === "/coach/progress" || p.startsWith("/coach/progress/"),
   },
   {
     href: "/coach/reviews",
     label: "Reviews",
     // /coach/weeks/[week_start] deep-links count as "Reviews" — those pages
     // are the individual review documents the index links to.
-    match: (p) => p.startsWith("/coach/reviews") || p.startsWith("/coach/weeks"),
+    match: (p) =>
+      p === "/coach/reviews" ||
+      p.startsWith("/coach/reviews/") ||
+      p === "/coach/weeks" ||
+      p.startsWith("/coach/weeks/"),
   },
 ];
 
