@@ -1,7 +1,7 @@
 // components/chat/ChatThread.tsx
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ChatMessage } from "@/lib/chat/types";
 import { ChatMessage as ChatMessageView } from "./ChatMessage";
 import { MorningBriefCard as MorningBriefCardComponent } from "@/components/morning/MorningBriefCard";
@@ -9,7 +9,7 @@ import { WeeklyReviewCard } from "@/components/chat/WeeklyReviewCard";
 import { ProactiveNudgeCard } from "@/components/chat/ProactiveNudgeCard";
 import type { MorningBriefCard, WeeklyReviewCardUI, ProactiveNudgeCard as ProactiveNudgeCardUI } from "@/lib/data/types";
 
-export function ChatThread({
+function ChatThreadInner({
   userId,
   messages,
   onLoadOlder,
@@ -221,3 +221,10 @@ export function ChatThread({
     </div>
   );
 }
+
+/** React.memo wrapper so a parent re-render (e.g. ChatPanel's composerText
+ *  state changing on every keystroke) doesn't deep-re-render the entire
+ *  thread + cards. The memo's shallow prop compare relies on the parent
+ *  passing stable callbacks (see useCallback in ChatPanel) and a stable
+ *  `messages` reference (see useMemo wrapping scopeCoachForRender). */
+export const ChatThread = memo(ChatThreadInner);

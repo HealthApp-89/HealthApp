@@ -1,7 +1,7 @@
 // components/chat/ChatPanel.tsx
 "use client";
 
-import { useCallback, useEffect, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import type { ChatMessage } from "@/lib/chat/types";
 import type { ChatMode, MorningBriefCard, MorningUI } from "@/lib/data/types";
 import { ChatThread } from "./ChatThread";
@@ -906,11 +906,36 @@ export default function ChatPanel({
   // Render-time scope for the coach lane (today + yesterday by default).
   // Computed inline so the toggle is instant — no refetch — and so
   // morning_intake mode (already scoped at dispatch) is unaffected.
-  const renderedMessages =
-    currentMode === "coach"
-      ? scopeCoachForRender(state.messages, today, showAllCoach)
-      : state.messages;
+  //
+  // useMemo'd to preserve array identity across keystrokes: ChatPanel
+  // re-renders on every composerText change (sibling chip visibility gating).
+  // Without memoization, scopeCoachForRender() returns a fresh array
+  // reference every render → ChatThread's messages prop changes → its
+  // children deep-re-render → with cards (MorningBriefCard, WeeklyReviewCard,
+  // etc.) this manifests as multi-second typing lag.
+  const renderedMessages = useMemo(
+    () =>
+      currentMode === "coach"
+        ? scopeCoachForRender(state.messages, today, showAllCoach)
+        : state.messages,
+    [currentMode, state.messages, today, showAllCoach],
+  );
   const hiddenEarlierCount = state.messages.length - renderedMessages.length;
+
+  // Stable callbacks for the memoized ChatThread. Inline arrows here would
+  // create a new ref every render and bypass React.memo entirely.
+  const handleSendUserMessageFromThread = useCallback(
+    (text: string) => {
+      void send(text, []);
+    },
+    [send],
+  );
+  const handleFocusComposerFromThread = useCallback((p: string) => {
+    setComposerHint(p);
+  }, []);
+  const handleStop = useCallback(() => {
+    abortRef.current?.abort();
+  }, []);
   const showEarlierPill =
     currentMode === "coach" && !showAllCoach && hiddenEarlierCount > 0;
 
@@ -964,8 +989,8 @@ export default function ChatPanel({
               messages={renderedMessages}
               onLoadOlder={loadOlder}
               onRetry={onRetry}
-              onSendUserMessage={(text) => void send(text, [])}
-              onFocusComposer={(p) => setComposerHint(p)}
+              onSendUserMessage={handleSendUserMessageFromThread}
+              onFocusComposer={handleFocusComposerFromThread}
             />
           </div>
         )}
@@ -1051,7 +1076,7 @@ export default function ChatPanel({
                 onFocus={() => setComposerFocused(true)}
                 onBlur={() => setComposerFocused(false)}
                 streaming={state.inFlightAssistantId !== null}
-                onStop={() => abortRef.current?.abort()}
+                onStop={handleStop}
               />
             </>
           );
@@ -1195,8 +1220,8 @@ export default function ChatPanel({
           messages={renderedMessages}
           onLoadOlder={loadOlder}
           onRetry={onRetry}
-          onSendUserMessage={(text) => void send(text, [])}
-          onFocusComposer={(p) => setComposerHint(p)}
+          onSendUserMessage={handleSendUserMessageFromThread}
+          onFocusComposer={handleFocusComposerFromThread}
         />
       )}
 
