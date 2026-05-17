@@ -1,3 +1,4 @@
+import { Target } from "lucide-react";
 import { priorityColor } from "@/lib/ui/colors";
 import { Card, SectionLabel } from "@/components/ui/Card";
 import { COLOR } from "@/lib/ui/theme";
@@ -72,7 +73,12 @@ export function CoachCards({ payload }: { payload: Payload }) {
   if (cats.length === 0) {
     return (
       <Card tint="coach">
-        <SectionLabel>🎯 STRENGTH COACH</SectionLabel>
+        <SectionLabel>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <Target size={14} aria-hidden="true" />
+            STRENGTH COACH
+          </span>
+        </SectionLabel>
         <div className="text-[11px] leading-relaxed" style={{ color: COLOR.textMid }}>
           The coach didn&apos;t return any exercise advice this run. Try{" "}
           <em>Refresh strength coach</em> in a moment — the model occasionally
@@ -84,7 +90,12 @@ export function CoachCards({ payload }: { payload: Payload }) {
 
   return (
     <Card tint="coach">
-      <SectionLabel>🎯 STRENGTH COACH</SectionLabel>
+      <SectionLabel>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <Target size={14} aria-hidden="true" />
+          STRENGTH COACH
+        </span>
+      </SectionLabel>
       <div className="text-[11px] mb-3 leading-relaxed" style={{ color: COLOR.textMuted }}>
         Based on {totalExercises} tracked exercises across {totalSessions} sessions.
       </div>

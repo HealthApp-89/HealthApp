@@ -1,3 +1,4 @@
+import { Dumbbell } from "lucide-react";
 import type { DailyPlan } from "@/lib/coach/readiness";
 import { Card } from "@/components/ui/Card";
 import { RADIUS, modeColorLight } from "@/lib/ui/theme";
@@ -43,7 +44,14 @@ export function TodayPlanCard({ plan, committedFromPlan, rirTarget, researchPhas
             Today&apos;s session
           </div>
           <div style={{ fontSize: "18px", fontWeight: 700, marginTop: "2px" }}>
-            {plan.sessionType === "REST" ? "Rest day" : `💪 ${plan.sessionType}`}
+            {plan.sessionType === "REST" ? (
+              "Rest day"
+            ) : (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <Dumbbell size={14} aria-hidden="true" />
+                {plan.sessionType}
+              </span>
+            )}
           </div>
         </div>
         {pillIsLink ? (

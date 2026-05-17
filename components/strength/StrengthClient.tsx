@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
+import { Dumbbell } from "lucide-react";
 import { COLOR } from "@/lib/ui/theme";
 import { Card, SectionLabel } from "@/components/ui/Card";
 import { SessionRow } from "@/components/strength/SessionRow";
@@ -177,7 +178,9 @@ export function StrengthClient({
         ) : !workouts.length ? (
           <Card>
             <div className="text-center py-12">
-              <div className="text-3xl mb-3">💪</div>
+              <div className="mb-3 flex justify-center" style={{ color: COLOR.textFaint }}>
+                <Dumbbell size={32} aria-hidden="true" />
+              </div>
               <div className="text-sm text-white/40 mb-2">No workouts logged yet</div>
               <div className="text-xs text-white/25 leading-relaxed">
                 Manual entry coming in Stage 4. Strong-app screenshot ingest planned.
