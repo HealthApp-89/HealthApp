@@ -29,7 +29,7 @@ const nextConfig: NextConfig = {
       { source: "/strength/:path*", destination: "/metrics?sub=strength", permanent: true },
       { source: "/health",          destination: "/metrics?sub=body",     permanent: true },
       { source: "/health/:path*",   destination: "/metrics?sub=body",     permanent: true },
-      { source: "/log",             destination: "/metrics?sub=strength", permanent: true },
+      { source: "/log",             destination: "/metrics?sub=log",      permanent: true },
       // Reserved for Slice 8 (coach trend rename).
       { source: "/coach/trends",        destination: "/coach/progress",       permanent: true },
       { source: "/coach/trends/:path*", destination: "/coach/progress",       permanent: true },

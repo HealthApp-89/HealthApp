@@ -21,6 +21,7 @@ export function MetricsShell({ children }: { children: React.ReactNode }) {
           { key: "strength", label: "Strength" },
           { key: "body", label: "Body" },
           { key: "trends", label: "Trends" },
+          { key: "log", label: "Log" },
         ]}
         defaultKey="strength"
       />
