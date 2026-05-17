@@ -85,6 +85,12 @@ export const queryKeys = {
   coachRecent: {
     list: (userId: string) => ["coach-recent", userId] as const,
   },
+  morningBrief: {
+    /** Today's morning_brief chat_messages row (the `ui` MorningBriefCard
+     *  payload) for a (user, day). Surfaced by the TodayAnchor on /coach. */
+    today: (userId: string, day: string) =>
+      ["morning-brief", userId, "today", day] as const,
+  },
   muscleVolume: {
     all: (userId: string) => ["muscleVolume", userId] as const,
     snapshot: (userId: string, today: string) =>

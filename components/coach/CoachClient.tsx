@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import React, { useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import type { ChatMode } from "@/lib/data/types";
@@ -15,6 +15,9 @@ import { ToolsView } from "@/components/coach/ToolsView";
 import { useBlockProgress, isActiveBlock } from "@/lib/query/hooks/useBlockProgress";
 import { useTrainingWeek } from "@/lib/query/hooks/useTrainingWeek";
 import { useCoachRecent } from "@/lib/query/hooks/useCoachRecent";
+import { useIntakeState } from "@/lib/query/hooks/useIntakeState";
+import { useTodayBrief } from "@/lib/query/hooks/useTodayBrief";
+import { TodayAnchor, type AnchorBrief } from "@/components/chat/TodayAnchor";
 import { Card } from "@/components/ui/Card";
 import { weekdayInUserTz, formatHeaderDate } from "@/lib/time";
 
@@ -49,6 +52,38 @@ export function CoachClient({
   const { data: blockProgress } = useBlockProgress(userId);
   const { data: trainingWeek } = useTrainingWeek(userId, targetMonday);
   const { data: recent } = useCoachRecent(userId);
+  const { data: intakeState } = useIntakeState(userId, todayDate);
+  const { data: todayBrief } = useTodayBrief(userId, todayDate);
+
+  // Map MorningBriefCard.ui → AnchorBrief shape. Keep this mapping local so
+  // TodayAnchor stays decoupled from the brief schema. Field paths mirror
+  // MorningBriefCard in lib/data/types.ts. We display the top 3 prescribed
+  // lifts (kg-loaded) — bodyweight/duration exercises have kg=null and would
+  // produce noisy "Mobility null" rows, so they're filtered.
+  const anchorBrief: AnchorBrief | null = todayBrief
+    ? {
+        sessionLabel: todayBrief.session?.type ?? null,
+        summaryLine:
+          (todayBrief.session?.exercises ?? [])
+            .filter((e) => e.kg != null)
+            .slice(0, 3)
+            .map((e) => `${e.name} ${e.kg}kg`)
+            .join(" · ") || null,
+        proteinFloor_g: todayBrief.macros?.protein_target_g ?? null,
+        readinessScore: todayBrief.readiness?.score ?? null,
+      }
+    : null;
+
+  // Map IntakeState union to the smaller anchor state. Only "today" cases
+  // matter — the anchor renders above the chat thread on /coach today view.
+  const anchorIntakeState: React.ComponentProps<typeof TodayAnchor>["intakeState"] =
+    intakeState === "brief_delivered" ||
+    intakeState === "brief_failed" ||
+    intakeState === "assembling_brief"
+      ? intakeState
+      : intakeState == null
+        ? "missing"
+        : "awaiting";
 
   const modeParam = search.get("mode");
   const initialChatMode: ChatMode = isChatMode(modeParam) ? modeParam : "default";
@@ -240,7 +275,12 @@ export function CoachClient({
           ) : null}
         </div>
       ) : (
-        /* Chat surface — embedded in-flow, no overlay chrome. */
+        /* Chat surface — embedded in-flow, no overlay chrome.
+         *
+         * TodayAnchor sits above the chat panel as a sticky card. It serves
+         * the V3 primary goal (always-visible Today: session + readiness +
+         * protein floor) and restores the brief-retry deep-link that Slice 3
+         * removed when it deleted BriefStateChip from the dashboard. */
         <div
           style={{
             flex: 1,
@@ -250,6 +290,10 @@ export function CoachClient({
             marginTop: 10,
           }}
         >
+          <TodayAnchor
+            intakeState={anchorIntakeState}
+            brief={anchorBrief}
+          />
           <ChatPanel
             userId={userId}
             initialKind="coach"
