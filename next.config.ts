@@ -17,6 +17,23 @@ const nextConfig: NextConfig = {
       dynamic: 30,
     },
   },
+
+  // 308 redirects for the routes consolidated under /metrics in Slice 7.
+  // Old URLs collapse to the matching sub-pill so deep-links, PWA shortcuts,
+  // and stale bookmarks land on the right surface.
+  async redirects() {
+    return [
+      { source: "/trends",          destination: "/metrics?sub=trends",   permanent: true },
+      { source: "/trends/:path*",   destination: "/metrics?sub=trends",   permanent: true },
+      { source: "/strength",        destination: "/metrics?sub=strength", permanent: true },
+      { source: "/strength/:path*", destination: "/metrics?sub=strength", permanent: true },
+      { source: "/health",          destination: "/metrics?sub=body",     permanent: true },
+      { source: "/health/:path*",   destination: "/metrics?sub=body",     permanent: true },
+      { source: "/log",             destination: "/metrics?sub=strength", permanent: true },
+      // Reserved for Slice 8 (coach trend rename).
+      { source: "/coach/trends",    destination: "/coach/progress",       permanent: true },
+    ];
+  },
 };
 
 export default nextConfig;
