@@ -1,4 +1,5 @@
 import type { DailyLog } from "@/lib/data/types";
+import type { ImpactSegment } from "./impact";
 import { SESSION_PLANS, getTodaySession, type PlannedExercise } from "./sessionPlans";
 
 const HRV_BASELINE_DEFAULT = 33;
@@ -129,6 +130,67 @@ export function getIntensityMode(readiness: ReadinessSummary, feel: FeelInput | 
   if (s >= 50) return MODE_MODERATE;
   if (s >= 35) return MODE_LIGHT;
   return MODE_REST;
+}
+
+export type NarrativeBand = "primed" | "moderate" | "easy" | "rest";
+
+/**
+ * Derive a coarse readiness band from a 0–100 score. Thresholds mirror the
+ * `getIntensityMode` cutoffs so the hero narrative matches the session-mode
+ * advice the rest of the app shows.
+ */
+export function readinessBandFromScore(score: number | null): NarrativeBand {
+  if (score == null) return "rest";
+  if (score >= 80) return "primed";
+  if (score >= 65) return "moderate";
+  if (score >= 35) return "easy";
+  return "rest";
+}
+
+/**
+ * One-sentence English summary of today's readiness, suitable for the
+ * dashboard hero. Pulls the two strongest *negative* contributors from the
+ * impact segments and tags it with a band-specific tone clause.
+ *
+ * Consumes `ImpactSegment[]` from `computeImpact` directly — no remapping
+ * required at the call site.
+ */
+export function buildNarrativeSentence(input: {
+  score: number | null;
+  band: NarrativeBand;
+  impacts: ImpactSegment[];
+}): string {
+  const negatives = input.impacts
+    .filter((s) => s.sign === "negative")
+    .sort((a, b) => b.magnitude - a.magnitude)
+    .slice(0, 2);
+
+  const bandClause: Record<NarrativeBand, string> = {
+    primed:   "All systems go.",
+    moderate: "Solid day — stay on plan.",
+    easy:     "Pull back today.",
+    rest:     "Rest day.",
+  };
+
+  if (negatives.length === 0) {
+    return bandClause[input.band];
+  }
+
+  const parts = negatives.map((n) => {
+    switch (n.key) {
+      case "hrv":      return "HRV pulled back";
+      case "sleep":    return "sleep ran light";
+      case "rhr":      return "resting HR elevated";
+      case "recovery": return "recovery is red";
+      case "strain":   return "strain is high on low recovery";
+      case "steps":    return "step volume was low";
+      case "protein":  return "protein came up short";
+      case "calories": return "calories off target";
+      default:         return `${n.label.toLowerCase()} dragged`;
+    }
+  });
+
+  return `${parts.join(" and ")}. ${bandClause[input.band]}`;
 }
 
 export function buildDailyPlan(
