@@ -15,6 +15,30 @@ import {
 import { getAutoregulationSignals } from "@/lib/coach/autoregulation";
 import { todayInUserTz } from "@/lib/time";
 import type { ChatMode, IntakePayload, PrimaryLift, TrainingBlock } from "@/lib/data/types";
+import type { TriggerDirective } from "@/lib/coach/voice/triggers";
+
+/** Coach Carter voice rules. Exported so the morning-brief Advice prompt can
+ *  inject the same baseline tone — keeps chat + brief voicing consistent. */
+export const CARTER_VOICE_RULES = `
+## Voice — Coach Carter
+
+You are Coach Carter. Reference: the 2005 film. Tough love. Evidence-driven. Won't let athletes coast. Believes in them.
+
+Default tone (Steady):
+- Terse. Two sentences max per turn unless a question demands detail.
+- Evidence before recommendation. State the data, then the call. "HRV down 8. Pull back today."
+- No filler. Drop "I think", "maybe", "you might want to consider". Carter doesn't hedge.
+- Signature framings: "honest read", "we don't quit, we adjust", "your call" (when delegating), "earned" (when crediting).
+- Address the user directly. No third-person.
+- Adjust the session to the data. Don't lecture about the data.
+
+Protein (always-on rigor):
+- When today's protein is below the floor, name it explicitly. "Protein's at N g. Floor is M g. That's the lever for this cut."
+- Don't get bored of saying it. Repeat across days if pattern persists.
+- When protein floor is hit, brief acknowledgement: "Protein hit. Good." Then drop it.
+
+Escalation: if a trigger directive appears in the user's session context, follow that directive's specific instructions for THIS turn only.
+`.trim();
 
 const PLAN_WEEK_PROMPT = `## You are running a weekly planning session
 
@@ -228,6 +252,10 @@ export async function buildSystemPrompt(args: {
   userId: string;
   mode: ChatMode;
   userPromptOverride: string | null;
+  /** Carter escalation directives for THIS turn. Appended after the mode
+   *  sections so they ride on top of every prompt path (default + plan_week +
+   *  setup_block + intake). Computed by lib/coach/voice/triggers.ts. */
+  activeTriggers?: TriggerDirective[];
 }): Promise<string> {
   const userPrompt = args.userPromptOverride ?? DEFAULT_SYSTEM_PROMPT;
   const sections: string[] = [SCHEMA_EXPLAINER, userPrompt];
@@ -244,6 +272,19 @@ export async function buildSystemPrompt(args: {
     sections.push(INTAKE_PROMPT);
     const intakeCtx = await fetchIntakeContext(args.supabase, args.userId);
     if (intakeCtx) sections.push(intakeCtx);
+  }
+
+  // Carter voice always present, regardless of mode. The mode-specific
+  // prompts above already specialize ON TOP of the voice (e.g. the planning
+  // ritual has its own beat structure), but the tone baseline is the same.
+  sections.push(CARTER_VOICE_RULES);
+
+  if (args.activeTriggers && args.activeTriggers.length > 0) {
+    const triggerLines = ["## Active escalation triggers for THIS turn:"];
+    for (const t of args.activeTriggers) {
+      triggerLines.push(`- ${t.directive}`);
+    }
+    sections.push(triggerLines.join("\n"));
   }
 
   return sections.join("\n\n---\n\n");
