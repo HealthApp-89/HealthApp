@@ -106,6 +106,6 @@ export async function POST(req: Request) {
     );
   }
 
-  revalidatePath("/health");
+  revalidatePath("/metrics");
   return NextResponse.json({ ok: true, row });
 }

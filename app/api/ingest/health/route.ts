@@ -205,14 +205,15 @@ export async function POST(request: Request) {
     }
   }
 
-  // Invalidate ISR caches so the dashboard / trends / strength pick up
+  // Invalidate ISR caches so the dashboard / metrics surface picks up
   // newly ingested Apple Health / Strong / Yazio data immediately.
+  // (Slice 7 folded /trends + /strength into /metrics.)
   if (result.days_upserted > 0) {
     revalidatePath("/");
-    revalidatePath("/trends");
+    revalidatePath("/metrics");
   }
   if (result.workouts_upserted > 0) {
-    revalidatePath("/strength");
+    revalidatePath("/metrics");
   }
   return NextResponse.json({ ok: true, source: sourceParam, ...result });
 }

@@ -61,6 +61,6 @@ export async function DELETE(
     // Best-effort: ignore failure.
   }
 
-  revalidatePath("/health");
+  revalidatePath("/metrics");
   return NextResponse.json({ ok: true });
 }

@@ -640,7 +640,7 @@ export async function POST(req: Request) {
           );
           if (committed) {
             revalidatePath("/coach");
-            revalidatePath("/strength");
+            revalidatePath("/metrics");
           }
         }
 

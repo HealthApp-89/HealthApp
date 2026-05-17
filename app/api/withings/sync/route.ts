@@ -31,10 +31,10 @@ async function syncForUser(userId: string) {
     .from("daily_logs")
     .upsert(Array.from(byDate.values()), { onConflict: "user_id,date" });
   if (error) throw error;
-  // Invalidate ISR caches so the dashboard / trends pick up new body comp
-  // and exercise minutes immediately.
+  // Invalidate ISR caches so the dashboard / metrics surface picks up
+  // new body comp and exercise minutes immediately.
   revalidatePath("/");
-  revalidatePath("/trends");
+  revalidatePath("/metrics");
   return {
     ok: true,
     upserted: byDate.size,

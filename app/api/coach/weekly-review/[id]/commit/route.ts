@@ -144,7 +144,7 @@ export async function POST(
 
   revalidatePath(`/coach/weeks/${row.next_week_start}`);
   revalidatePath("/coach");
-  revalidatePath("/strength");
+  revalidatePath("/metrics");
 
   return NextResponse.json({
     ok: true,

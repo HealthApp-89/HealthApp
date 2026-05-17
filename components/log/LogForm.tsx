@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { saveDailyLog } from "@/app/log/actions";
+import { saveDailyLog } from "@/lib/log/actions";
 import type { DailyLog } from "@/lib/data/types";
 import { Card, SectionLabel } from "@/components/ui/Card";
 import { COLOR, SHADOW } from "@/lib/ui/theme";
