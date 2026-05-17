@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { Check } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { COLOR, GRADIENT } from "@/lib/ui/theme";
 import { useLabAcknowledgments, useAckLabItem } from "@/lib/query/hooks/useLabAcknowledgments";
@@ -103,7 +104,7 @@ export function LabPromptCard({ userId }: { userId: string }) {
                   padding: 0,
                 }}
               >
-                {acked ? "✓" : ""}
+                {acked ? <Check size={14} strokeWidth={3} /> : null}
               </button>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 600, color: COLOR.textStrong }}>
