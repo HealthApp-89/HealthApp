@@ -28,9 +28,10 @@ export function MetricsShell({ children }: { children: React.ReactNode }) {
 
       <button
         onClick={() => setSheetOpen(true)}
+        aria-label="Log entry"
         style={{
           position: "fixed",
-          bottom: "calc(var(--nav-h, 70px) + 14px)",
+          bottom: "calc(var(--nav-h, 120px) + 14px)",
           left: 14,
           right: 14,
           maxWidth: 540,

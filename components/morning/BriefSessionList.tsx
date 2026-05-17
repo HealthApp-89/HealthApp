@@ -125,7 +125,7 @@ export function BriefSessionList({
           }}
         >
           Swapped to {liveType} —{" "}
-          <a href="/strength" style={{ color: COLOR.accent }}>
+          <a href="/metrics?sub=strength" style={{ color: COLOR.accent }}>
             see /strength
           </a>{" "}
           for the new session.

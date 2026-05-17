@@ -82,7 +82,7 @@ export function BriefCoachSuggestion({
         }}
       >
         ✓ Swapped to {currentType} at {formatHHmm(trainingWeek.updated_at)} —{" "}
-        <a href="/strength" style={{ color: "inherit", textDecoration: "underline" }}>
+        <a href="/metrics?sub=strength" style={{ color: "inherit", textDecoration: "underline" }}>
           see /strength
         </a>
       </div>
