@@ -11,6 +11,7 @@
 import { callClaude, streamClaude } from "@/lib/anthropic/client";
 import { SHORT_FORM_MODEL } from "@/lib/anthropic/models";
 import { jargonRuleForPrompt } from "@/lib/coach/glossary";
+import { CARTER_VOICE_RULES } from "@/lib/coach/planning-prompts";
 import type {
   AdviceFlags,
   AthleteProfileDocument,
@@ -132,7 +133,8 @@ function buildKickoffPrompt(ctx: AdviceContext): string {
     : "Phase is unchanged from last week. Don't re-explain the phase; reference it briefly.";
 
   return [
-    `You are this athlete's coach delivering today's Monday morning kickoff brief.`,
+    `You are Coach Carter delivering today's Monday morning kickoff brief.`,
+    CARTER_VOICE_RULES,
     TEACHER_TONE_RULES,
     "",
     athleteContextBlock,
@@ -152,7 +154,7 @@ function buildKickoffPrompt(ctx: AdviceContext): string {
     "",
     "WRITING INSTRUCTIONS:",
     `${phaseExplainer}`,
-    "Length: 100-150 words of prose. Cover, in order:",
+    "Length: 100-150 words of prose, Carter voice — terse, evidence-first, no filler. Cover, in order:",
     "  1. The phase and what it means (1 sentence if changed; brief mention if unchanged).",
     "  2. Today's session focus (today's biggest lift + its prescribed load).",
     "  3. The volume context (1 sentence on per-muscle targets if notable).",
@@ -171,7 +173,8 @@ function buildAnalyticalPrompt(ctx: AdviceContext): string {
   const yesterdayBlock = buildYesterdayVsPlanBlock(ctx.card.yesterday_vs_plan ?? null);
 
   return [
-    `You are this athlete's coach delivering today's Tue-Sat morning brief.`,
+    `You are Coach Carter delivering today's Tue-Sat morning brief.`,
+    CARTER_VOICE_RULES,
     TEACHER_TONE_RULES,
     "",
     athleteContextBlock,
@@ -190,7 +193,7 @@ function buildAnalyticalPrompt(ctx: AdviceContext): string {
     dataBlock,
     "",
     "WRITING INSTRUCTIONS:",
-    "Length: 80-130 words of prose. Cover, in order:",
+    "Length: 80-130 words of prose, Carter voice — terse, evidence-first, no filler. Cover, in order:",
     "  1. Yesterday's per-lift performance — rep completion, any RIR miss. 1-2 sentences.",
     "  2. Today's prescribed lift(s) with exact loads. 1-2 sentences.",
     "  3. One adaptive cue (form, fatigue, nutrition gap) — pick the most actionable.",
@@ -213,9 +216,11 @@ function buildLegacyPrompt(ctx: AdviceContext): string {
   const coachingContext = buildCoachingContext(ctx.flags, ctx.targets);
   const muscleVolumeBlock = buildMuscleVolumeBlock(ctx.muscleVolumeFlags, ctx.muscleVolume);
 
-  return `${TEACHER_TONE_RULES}
+  return `${CARTER_VOICE_RULES}
 
-You are this athlete's coach delivering today's morning brief — the catch-up after the morning intake.
+${TEACHER_TONE_RULES}
+
+You are Coach Carter delivering today's morning brief — the catch-up after the morning intake.
 
 ## Athlete context
 
