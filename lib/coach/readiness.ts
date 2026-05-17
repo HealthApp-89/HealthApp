@@ -167,8 +167,8 @@ export function buildNarrativeSentence(input: {
 
   const bandClause: Record<NarrativeBand, string> = {
     primed:   "All systems go.",
-    moderate: "Solid day — stay on plan.",
-    easy:     "Pull back today.",
+    moderate: "Solid day. Stay on plan.",
+    easy:     "Take it lighter today.",
     rest:     "Rest day.",
   };
 
