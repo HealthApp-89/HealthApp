@@ -102,7 +102,7 @@ export function CoachClient({
             marginTop: 4,
           }}
         >
-          <CoachAvatar size={36} />
+          <CoachAvatar size={36} decorative />
           <div>
             <div
               style={{

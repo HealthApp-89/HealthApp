@@ -3,14 +3,16 @@ import { COLOR } from "@/lib/ui/theme";
 
 type Size = 26 | 36 | 56;
 
-type Props = { size?: Size };
+type Props = { size?: Size; decorative?: boolean };
 
 const FONT_SIZE: Record<Size, number> = { 26: 11, 36: 15, 56: 22 };
 
-export function CoachAvatar({ size = 36 }: Props) {
+export function CoachAvatar({ size = 36, decorative = false }: Props) {
   return (
     <div
-      aria-label="Coach Carter"
+      {...(decorative
+        ? { "aria-hidden": "true" as const }
+        : { "aria-label": "Coach Carter" })}
       style={{
         width: size,
         height: size,
