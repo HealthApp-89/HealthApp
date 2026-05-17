@@ -104,7 +104,7 @@ function renderPlateau(event: ProactiveEvent, ctx?: RenderContext): ProactiveNud
     body_md: v.body_md,
     deep_link: {
       label: "See full trends →",
-      href: "/coach/trends?section=performance",
+      href: "/coach/progress?section=performance",
     },
   };
 }
@@ -138,7 +138,7 @@ function renderOffPace(event: ProactiveEvent, ctx?: RenderContext): ProactiveNud
       body_md: v.body_md,
       deep_link: {
         label: "Check composition →",
-        href: "/coach/trends?section=composition",
+        href: "/coach/progress?section=composition",
       },
     };
   }
@@ -168,7 +168,7 @@ function renderOffPace(event: ProactiveEvent, ctx?: RenderContext): ProactiveNud
     body_md: v.body_md,
     deep_link: {
       label: "Check composition →",
-      href: "/coach/trends?section=composition",
+      href: "/coach/progress?section=composition",
     },
   };
 }
@@ -206,7 +206,7 @@ function renderHrv(event: ProactiveEvent, ctx?: RenderContext): ProactiveNudgeCa
     body_md: v.body_md,
     deep_link: {
       label: "Check recovery →",
-      href: "/coach/trends?section=performance",
+      href: "/coach/progress?section=performance",
     },
   };
 }

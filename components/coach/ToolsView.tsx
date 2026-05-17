@@ -243,7 +243,7 @@ export function ToolsView({
         <ToolRow
           title="View trends"
           subtitle="Strength / Composition / Cross-metric"
-          onClick={() => router.push("/coach/trends")}
+          onClick={() => router.push("/coach/progress")}
         />
         <ToolRow
           title="Glossary"

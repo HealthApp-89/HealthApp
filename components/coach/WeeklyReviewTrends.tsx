@@ -30,7 +30,7 @@ export function WeeklyReviewTrends({
               : "—"
           }
           ok={trends.loss_rate_in_target_band}
-          href="/coach/trends?section=composition"
+          href="/coach/progress?section=composition"
         />
         <Cell
           label="Strength slope"
@@ -39,7 +39,7 @@ export function WeeklyReviewTrends({
               ? `${fmtNum(trends.strength_slope_pct_per_week * 100)}%/wk`
               : "—"
           }
-          href="/coach/trends?section=performance"
+          href="/coach/progress?section=performance"
         />
         <Cell
           label="/LBM slope"
@@ -48,7 +48,7 @@ export function WeeklyReviewTrends({
               ? `${fmtNum(trends.lbm_slope_pct_per_week * 100)}%/wk`
               : "—"
           }
-          href="/coach/trends?section=composition"
+          href="/coach/progress?section=composition"
         />
         <Cell
           label="Plateaus"
@@ -60,11 +60,11 @@ export function WeeklyReviewTrends({
               : "none"
           }
           ok={trends.plateau_flags.length === 0 ? true : false}
-          href="/coach/trends?section=performance"
+          href="/coach/progress?section=performance"
         />
       </div>
       <Link
-        href="/coach/trends"
+        href="/coach/progress"
         style={{
           display: "inline-block",
           marginTop: 8,
