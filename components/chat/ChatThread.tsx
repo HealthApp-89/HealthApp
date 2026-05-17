@@ -185,39 +185,66 @@ function ChatThreadInner({
       style={{ overflowAnchor: "none" }}
     >
       <div ref={sentinelRef} className="h-4" />
-      {items.map((it, i) =>
-        it.kind === "day" ? (
-          <div key={`d-${i}`} className="flex items-center gap-3 px-4 py-2">
-            <div className="flex-1 h-px bg-white/[0.06]" />
-            <div className="text-[10px] uppercase tracking-wider text-white/30">{it.label}</div>
-            <div className="flex-1 h-px bg-white/[0.06]" />
-          </div>
-        ) : it.m.kind === "morning_brief" ? (
-          <MorningBriefCardComponent
-            key={it.m.id}
-            userId={userId}
-            card={it.m.ui as MorningBriefCard}
-          />
-        ) : it.m.kind === "weekly_review" && it.m.ui ? (
-          <WeeklyReviewCard
-            key={it.m.id}
-            ui={it.m.ui as WeeklyReviewCardUI}
-          />
-        ) : it.m.kind === "proactive_nudge" && it.m.ui ? (
-          <ProactiveNudgeCard
-            key={it.m.id}
-            ui={it.m.ui as ProactiveNudgeCardUI}
-          />
-        ) : (
+      {items.map((it, i) => {
+        if (it.kind === "day") {
+          return (
+            <div key={`d-${i}`} className="flex items-center gap-3 px-4 py-2">
+              <div className="flex-1 h-px bg-white/[0.06]" />
+              <div className="text-[10px] uppercase tracking-wider text-white/30">{it.label}</div>
+              <div className="flex-1 h-px bg-white/[0.06]" />
+            </div>
+          );
+        }
+        if (it.m.kind === "morning_brief") {
+          return (
+            <MorningBriefCardComponent
+              key={it.m.id}
+              userId={userId}
+              card={it.m.ui as MorningBriefCard}
+            />
+          );
+        }
+        if (it.m.kind === "weekly_review" && it.m.ui) {
+          return (
+            <WeeklyReviewCard
+              key={it.m.id}
+              ui={it.m.ui as WeeklyReviewCardUI}
+            />
+          );
+        }
+        if (it.m.kind === "proactive_nudge" && it.m.ui) {
+          return (
+            <ProactiveNudgeCard
+              key={it.m.id}
+              ui={it.m.ui as ProactiveNudgeCardUI}
+            />
+          );
+        }
+        // Compute grouping: a coach turn is "first in group" when the prior
+        // item is a day divider, a special card, or a message from the
+        // opposite role. Day dividers and full-bleed cards both reset the
+        // chain, so the next chat-bubble row reasserts identity with an
+        // avatar.
+        const prevItem = items[i - 1];
+        const isFirstInGroup =
+          !prevItem ||
+          prevItem.kind === "day" ||
+          (prevItem.kind === "msg" &&
+            (prevItem.m.role !== it.m.role ||
+              prevItem.m.kind === "morning_brief" ||
+              prevItem.m.kind === "weekly_review" ||
+              prevItem.m.kind === "proactive_nudge"));
+        return (
           <ChatMessageView
             key={it.m.id}
             message={it.m}
+            isFirstInGroup={isFirstInGroup}
             onRetry={it.m.status === "error" ? () => onRetry(it.m.id) : undefined}
             onSendUserMessage={onSendUserMessage}
             onFocusComposer={onFocusComposer}
           />
-        ),
-      )}
+        );
+      })}
     </div>
   );
 }
