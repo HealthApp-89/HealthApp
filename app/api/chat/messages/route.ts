@@ -19,8 +19,10 @@ import { buildSnapshot, buildEphemeralHeader } from "@/lib/coach/snapshot";
 import { todayInUserTz } from "@/lib/time";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { buildSystemPrompt } from "@/lib/coach/planning-prompts";
-import type { ChatMode } from "@/lib/data/types";
+import type { ChatMode, DailyLog } from "@/lib/data/types";
 import { formatSseEvent } from "@/lib/chat/sse";
+import { computeActiveTriggers } from "@/lib/coach/voice/triggers";
+import { getTodayTargets } from "@/lib/morning/brief/get-today-targets";
 
 export const dynamic = "force-dynamic";
 
@@ -324,14 +326,27 @@ export async function POST(req: Request) {
   let messages: RichMessage[];
 
   try {
-    const sinceDate = new Date(`${todayInUserTz()}T00:00:00Z`);
+    const todayIso = todayInUserTz();
+    const sinceDate = new Date(`${todayIso}T00:00:00Z`);
     sinceDate.setUTCDate(sinceDate.getUTCDate() - 14);
     const since = sinceDate.toISOString().slice(0, 10);
+
+    // Carter escalation triggers: last 30 days of daily_logs (sleep/hrv/
+    // steps/protein) + last 14 days of workouts (count vs expected 6).
+    const triggersSinceDate = new Date(`${todayIso}T00:00:00Z`);
+    triggersSinceDate.setUTCDate(triggersSinceDate.getUTCDate() - 30);
+    const triggersSince = triggersSinceDate.toISOString().slice(0, 10);
+    const workoutsSinceDate = new Date(`${todayIso}T00:00:00Z`);
+    workoutsSinceDate.setUTCDate(workoutsSinceDate.getUTCDate() - 14);
+    const workoutsSince = workoutsSinceDate.toISOString().slice(0, 10);
 
     const [
       { data: profileRow },
       { body: snapshotBody },
       { data: windowRows },
+      { data: trigDailyLogsRows },
+      { data: trigWorkoutsRows },
+      todayTargets,
     ] = await Promise.all([
       sr.from("profiles")
         .select("system_prompt")
@@ -350,9 +365,45 @@ export async function POST(req: Request) {
         .neq("id", rpcTyped.user_message_id)
         .order("created_at", { ascending: false })
         .limit(ROLLING_WINDOW),
+      sr.from("daily_logs")
+        .select("date, sleep_hours, hrv, steps, protein_g")
+        .eq("user_id", user.id)
+        .gte("date", triggersSince)
+        .lte("date", todayIso)
+        .order("date", { ascending: true }),
+      sr.from("workouts")
+        .select("date, type")
+        .eq("user_id", user.id)
+        .gte("date", workoutsSince)
+        .lte("date", todayIso),
+      // getTodayTargets — null when athlete profile not active. We catch
+      // separately so a profile read failure doesn't kill the chat turn;
+      // the triggers compute falls back to a static protein floor.
+      getTodayTargets(sr as unknown as SupabaseClient, user.id).catch((err) => {
+        console.warn("[chat/triggers] getTodayTargets failed", err);
+        return null;
+      }),
     ]);
 
     snapshot = snapshotBody;
+
+    // Compute Carter active triggers for this turn. Protein floor source of
+    // truth is the active plan / GLP-1 mode (getTodayTargets.protein_g).
+    // Fallback to 180 g when no active plan exists — a reasonable default
+    // for a ~95 kg cutting athlete at 1.8 g/kg. The numeric default never
+    // applies to a user who has completed onboarding.
+    const trigDailyLogs = (trigDailyLogsRows ?? []) as DailyLog[];
+    const todayLog = trigDailyLogs.find((l) => l.date === todayIso) ?? null;
+    const proteinToday_g = todayLog?.protein_g ?? null;
+    const proteinFloor_g = todayTargets?.protein_g ?? 180;
+    const trigWorkouts = (trigWorkoutsRows ?? []) as Array<{ date: string; type: string | null }>;
+    const activeTriggers = computeActiveTriggers({
+      today: new Date(`${todayIso}T00:00:00Z`),
+      dailyLogs: trigDailyLogs,
+      workoutsLast14d: trigWorkouts,
+      proteinFloor_g,
+      proteinToday_g,
+    });
 
     // Resolve effective system prompt via mode-aware assembler.
     const userPromptOverride =
@@ -364,6 +415,7 @@ export async function POST(req: Request) {
       userId: user.id,
       mode: effectiveMode,
       userPromptOverride,
+      activeTriggers,
     });
 
     // Graceful degradation as the user approaches the daily cap: append a
