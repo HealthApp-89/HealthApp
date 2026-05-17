@@ -4,16 +4,18 @@
 import { Suspense, type ReactNode } from "react";
 import { Activity, Heart, Moon, Zap, Scale, Percent } from "lucide-react";
 import { WeekStrip } from "@/components/layout/WeekStrip";
-import { BriefStateChip } from "@/components/dashboard/BriefStateChip";
-import { ReadinessHero } from "@/components/dashboard/ReadinessHero";
+import { TodayHeroHybrid, type HeroMetricCell } from "@/components/dashboard/TodayHeroHybrid";
 import { RecentLiftsCard, type RecentSession } from "@/components/dashboard/RecentLiftsCard";
 import { MetricCard } from "@/components/charts/MetricCard";
 import { ImpactDonut } from "@/components/dashboard/ImpactDonut";
 import { InstallHint } from "@/components/layout/InstallHint";
 import { COLOR, METRIC_COLOR } from "@/lib/ui/theme";
-import { calcReadinessScore } from "@/lib/ui/score";
+import { calcReadinessScore, fmtNum } from "@/lib/ui/score";
 import { computeImpact } from "@/lib/coach/impact";
-import { buildDailyPlan, getIntensityMode } from "@/lib/coach/readiness";
+import {
+  buildNarrativeSentence,
+  readinessBandFromScore,
+} from "@/lib/coach/readiness";
 import { formatHeaderDate } from "@/lib/time";
 import { useProfile } from "@/lib/query/hooks/useProfile";
 import { useCheckin } from "@/lib/query/hooks/useCheckin";
@@ -139,22 +141,6 @@ export function TodayClient({
       }
     : null;
 
-  const feelInput = checkin
-    ? {
-        readiness: checkin.readiness ?? null,
-        energyLabel: checkin.energy_label ?? null,
-        mood: checkin.mood ?? null,
-        soreness: checkin.soreness ?? null,
-        notes: checkin.feel_notes ?? null,
-        sick: checkin.sick ?? false,
-        fatigue: checkin.fatigue ?? null,
-        sorenessAreas: checkin.soreness_areas ?? null,
-        sorenessSeverity: checkin.soreness_severity ?? null,
-      }
-    : null;
-  const dailyPlan = buildDailyPlan(selectedLog, feelInput, hrvBaseline);
-  const mode = getIntensityMode(dailyPlan.readiness, feelInput);
-
   const hrvAvg    = rollingAvg(last7Rows.map((r) => r.hrv));
   const rhrAvg    = rollingAvg(last7Rows.map((r) => r.resting_hr));
   const sleepAvg  = rollingAvg(last7Rows.map((r) => r.sleep_hours));
@@ -163,6 +149,59 @@ export function TodayClient({
   const rhrDelta    = selectedLog?.resting_hr != null && rhrAvg != null ? selectedLog.resting_hr - rhrAvg : null;
   const sleepDelta  = selectedLog?.sleep_hours != null && sleepAvg != null ? selectedLog.sleep_hours - sleepAvg : null;
   const strainDelta = selectedLog?.strain != null && strainAvg != null ? selectedLog.strain - strainAvg : null;
+
+  // Hybrid hero inputs — derived from already-computed state above. No refetch.
+  const heroBand = readinessBandFromScore(score);
+  const heroNarrative = buildNarrativeSentence({
+    score,
+    band: heroBand,
+    impacts: impact?.segments ?? [],
+  });
+  // Delta tone rules:
+  //   HRV / Sleep: drop → alert, rise → ok, missing → mute.
+  //   Strain: directionally ambiguous (high strain may be planned or overreach),
+  //   so always mute for v1 — the hero is about recovery framing, not workload.
+  const toneFromDelta = (d: number | null): HeroMetricCell["deltaTone"] => {
+    if (d == null) return "mute";
+    if (d < 0) return "alert";
+    if (d > 0) return "ok";
+    return "mute";
+  };
+  const heroMetrics: HeroMetricCell[] = [
+    {
+      key: "hrv",
+      value: selectedLog?.hrv ?? null,
+      deltaLabel:
+        selectedLog?.hrv == null
+          ? "—"
+          : hrvDelta == null
+            ? `${fmtNum(selectedLog.hrv)} ms`
+            : `${hrvDelta >= 0 ? "+" : ""}${fmtNum(hrvDelta)} ms`,
+      deltaTone: toneFromDelta(hrvDelta),
+    },
+    {
+      key: "sleep",
+      value: selectedLog?.sleep_hours ?? null,
+      deltaLabel:
+        selectedLog?.sleep_hours == null
+          ? "—"
+          : sleepDelta == null
+            ? `${fmtNum(selectedLog.sleep_hours)} h`
+            : `${sleepDelta >= 0 ? "+" : ""}${fmtNum(sleepDelta)} h`,
+      deltaTone: toneFromDelta(sleepDelta),
+    },
+    {
+      key: "strain",
+      value: selectedLog?.strain ?? null,
+      deltaLabel:
+        selectedLog?.strain == null
+          ? "—"
+          : strainDelta == null
+            ? fmtNum(selectedLog.strain)
+            : `${strainDelta >= 0 ? "+" : ""}${fmtNum(strainDelta)}`,
+      deltaTone: "mute",
+    },
+  ];
 
   const recentSessions: RecentSession[] = recentWorkoutsRaw.map((w) => {
     let vol = 0;
@@ -211,8 +250,13 @@ export function TodayClient({
       <WeekStrip selected={selectedDate} today={today} />
 
       <div style={{ display: "flex", flexDirection: "column", gap: "10px", padding: "0 8px" }}>
-        {isToday && <BriefStateChip userId={userId} todayIso={today} />}
-        <ReadinessHero score={score ?? null} status={mode.label.replace(/^[^\s]+\s/, "")} subtitle={mode.desc} />
+        <TodayHeroHybrid
+          narrative={heroNarrative}
+          score={score ?? null}
+          band={heroBand}
+          metrics={heroMetrics}
+          briefHref={isToday ? "/coach" : undefined}
+        />
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
           <MetricCard color={METRIC_COLOR.hrv}        icon={<Activity size={16} />} label="HRV"        value={selectedLog?.hrv ?? null}        unit="ms"  delta={hrvDelta}    deltaUnit="ms" />
