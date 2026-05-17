@@ -2,6 +2,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import { Activity, Heart, Moon, Zap, Scale, Percent } from "lucide-react";
 import { RangePills } from "@/components/ui/RangePills";
 import { MetricCard } from "@/components/charts/MetricCard";
 import type { LinePoint } from "@/components/charts/LineChart";
@@ -123,12 +124,12 @@ export function TrendsClient({
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: "10px", padding: "0 8px" }}>
-          <MetricCard color={METRIC_COLOR.hrv}        metricKey="hrv"        icon="♥" label="HRV"        value={latest(hrvTrend)}     unit="ms"  delta={halfDelta(hrvTrend)}    deltaUnit="ms"  compact trend={hrvTrend}    href="/trends/hrv" />
-          <MetricCard color={METRIC_COLOR.resting_hr} metricKey="resting_hr" icon="♥" label="Resting HR" value={latest(rhrTrend)}     unit="bpm" delta={halfDelta(rhrTrend)}    deltaUnit="bpm" inverted compact trend={rhrTrend}    href="/trends/resting_hr" />
-          <MetricCard color={METRIC_COLOR.sleep_hours} metricKey="sleep_hours" icon="☾" label="Sleep"   value={latest(sleepTrend)}   unit="h"   delta={halfDelta(sleepTrend)}  deltaUnit="h"   compact trend={sleepTrend}  href="/trends/sleep_hours" />
-          <MetricCard color={METRIC_COLOR.strain}     metricKey="strain"     icon="⚡" label="Strain"   value={latest(strainTrend)}                 delta={halfDelta(strainTrend)} compact trend={strainTrend} href="/trends/strain" />
-          <MetricCard color={METRIC_COLOR.weight_kg}  metricKey="weight_kg"  icon="⚖" label="Weight"   value={latest(weightTrend)}  unit="kg"  delta={halfDelta(weightTrend)} deltaUnit="kg"  compact trend={weightTrend} href="/trends/weight_kg" />
-          <MetricCard color={METRIC_COLOR.body_fat_pct} metricKey="body_fat_pct" icon="%" label="Body Fat" value={latest(bfTrend)} unit="%"  delta={halfDelta(bfTrend)}     deltaUnit="%"   compact trend={bfTrend}     href="/trends/body_fat_pct" />
+          <MetricCard color={METRIC_COLOR.hrv}        metricKey="hrv"        icon={<Activity size={16} />} label="HRV"        value={latest(hrvTrend)}     unit="ms"  delta={halfDelta(hrvTrend)}    deltaUnit="ms"  compact trend={hrvTrend}    href="/trends/hrv" />
+          <MetricCard color={METRIC_COLOR.resting_hr} metricKey="resting_hr" icon={<Heart size={16} />} label="Resting HR" value={latest(rhrTrend)}     unit="bpm" delta={halfDelta(rhrTrend)}    deltaUnit="bpm" inverted compact trend={rhrTrend}    href="/trends/resting_hr" />
+          <MetricCard color={METRIC_COLOR.sleep_hours} metricKey="sleep_hours" icon={<Moon size={16} />} label="Sleep"   value={latest(sleepTrend)}   unit="h"   delta={halfDelta(sleepTrend)}  deltaUnit="h"   compact trend={sleepTrend}  href="/trends/sleep_hours" />
+          <MetricCard color={METRIC_COLOR.strain}     metricKey="strain"     icon={<Zap size={16} />} label="Strain"   value={latest(strainTrend)}                 delta={halfDelta(strainTrend)} compact trend={strainTrend} href="/trends/strain" />
+          <MetricCard color={METRIC_COLOR.weight_kg}  metricKey="weight_kg"  icon={<Scale size={16} />} label="Weight"   value={latest(weightTrend)}  unit="kg"  delta={halfDelta(weightTrend)} deltaUnit="kg"  compact trend={weightTrend} href="/trends/weight_kg" />
+          <MetricCard color={METRIC_COLOR.body_fat_pct} metricKey="body_fat_pct" icon={<Percent size={16} />} label="Body Fat" value={latest(bfTrend)} unit="%"  delta={halfDelta(bfTrend)}     deltaUnit="%"   compact trend={bfTrend}     href="/trends/body_fat_pct" />
         </div>
       </div>
     </main>

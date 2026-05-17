@@ -2,6 +2,7 @@
 "use client";
 
 import { Suspense, type ReactNode } from "react";
+import { Activity, Heart, Moon, Zap, Scale, Percent } from "lucide-react";
 import { WeekStrip } from "@/components/layout/WeekStrip";
 import { BriefStateChip } from "@/components/dashboard/BriefStateChip";
 import { ReadinessHero } from "@/components/dashboard/ReadinessHero";
@@ -214,16 +215,16 @@ export function TodayClient({
         <ReadinessHero score={score ?? null} status={mode.label.replace(/^[^\s]+\s/, "")} subtitle={mode.desc} />
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
-          <MetricCard color={METRIC_COLOR.hrv}        icon="♥" label="HRV"        value={selectedLog?.hrv ?? null}        unit="ms"  delta={hrvDelta}    deltaUnit="ms" />
-          <MetricCard color={METRIC_COLOR.resting_hr} icon="♥" label="Resting HR" value={selectedLog?.resting_hr ?? null} unit="bpm" delta={rhrDelta}    deltaUnit="bpm" inverted />
-          <MetricCard color={METRIC_COLOR.sleep_hours} icon="☾" label="Sleep"     value={selectedLog?.sleep_hours ?? null} unit="h"  delta={sleepDelta}  deltaUnit="h" />
-          <MetricCard color={METRIC_COLOR.strain}     icon="⚡" label="Strain"    value={selectedLog?.strain ?? null}                delta={strainDelta} />
+          <MetricCard color={METRIC_COLOR.hrv}        icon={<Activity size={16} />} label="HRV"        value={selectedLog?.hrv ?? null}        unit="ms"  delta={hrvDelta}    deltaUnit="ms" />
+          <MetricCard color={METRIC_COLOR.resting_hr} icon={<Heart size={16} />} label="Resting HR" value={selectedLog?.resting_hr ?? null} unit="bpm" delta={rhrDelta}    deltaUnit="bpm" inverted />
+          <MetricCard color={METRIC_COLOR.sleep_hours} icon={<Moon size={16} />} label="Sleep"     value={selectedLog?.sleep_hours ?? null} unit="h"  delta={sleepDelta}  deltaUnit="h" />
+          <MetricCard color={METRIC_COLOR.strain}     icon={<Zap size={16} />} label="Strain"    value={selectedLog?.strain ?? null}                delta={strainDelta} />
         </div>
 
         {(selectedLog?.weight_kg != null || selectedLog?.body_fat_pct != null) && (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
-            <MetricCard color={METRIC_COLOR.weight_kg}    icon="⚖" label="Weight"   value={selectedLog?.weight_kg ?? null}    unit="kg" />
-            <MetricCard color={METRIC_COLOR.body_fat_pct} icon="%" label="Body Fat" value={selectedLog?.body_fat_pct ?? null} unit="%" />
+            <MetricCard color={METRIC_COLOR.weight_kg}    icon={<Scale size={16} />} label="Weight"   value={selectedLog?.weight_kg ?? null}    unit="kg" />
+            <MetricCard color={METRIC_COLOR.body_fat_pct} icon={<Percent size={16} />} label="Body Fat" value={selectedLog?.body_fat_pct ?? null} unit="%" />
           </div>
         )}
 
