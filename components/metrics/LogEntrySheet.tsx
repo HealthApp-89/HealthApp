@@ -2,7 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
-import { Dumbbell, Apple, Ruler, X } from "lucide-react";
+import { Dumbbell, Ruler, ClipboardList, X } from "lucide-react";
 import { COLOR, RADIUS } from "@/lib/ui/theme";
 
 type Props = {
@@ -12,10 +12,11 @@ type Props = {
 
 /**
  * Bottom sheet launched by the sticky "+ Log entry" button on /metrics.
- * Houses three quick-log entry points (lift, meal, body measurement);
- * each link carries a `?log=…` marker that sub-pill pages can react to
- * and auto-open the relevant form. Wiring the auto-open is downstream
- * of Slice 7; the marker just has to exist.
+ * Three entry points: daily metrics (all daily_logs fields), lift workout,
+ * and body measurement. The `?log=…` marker on the lift + body links is a
+ * hint that sub-pill pages can react to and auto-open the relevant form;
+ * wiring that auto-open is a follow-up. Daily metrics lands on the Log
+ * sub-pill which is already a fully-functional editor.
  */
 export function LogEntrySheet({ open, onClose }: Props) {
   if (!open) return null;
@@ -73,15 +74,15 @@ export function LogEntrySheet({ open, onClose }: Props) {
         </div>
         <div style={{ display: "grid", gap: 8 }}>
           <Row
-            icon={<Dumbbell size={18} aria-hidden="true" />}
-            label="Lift / workout"
-            href="/metrics?sub=strength&log=lift"
+            icon={<ClipboardList size={18} aria-hidden="true" />}
+            label="Daily metrics"
+            href="/metrics?sub=log"
             onClick={onClose}
           />
           <Row
-            icon={<Apple size={18} aria-hidden="true" />}
-            label="Meal"
-            href="/metrics?sub=body&log=meal"
+            icon={<Dumbbell size={18} aria-hidden="true" />}
+            label="Lift / workout"
+            href="/metrics?sub=strength&log=lift"
             onClick={onClose}
           />
           <Row
