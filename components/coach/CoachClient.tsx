@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 import type { ChatMode } from "@/lib/data/types";
 import { COLOR, CHAT } from "@/lib/ui/theme";
@@ -17,6 +18,7 @@ import { useTrainingWeek } from "@/lib/query/hooks/useTrainingWeek";
 import { useCoachRecent } from "@/lib/query/hooks/useCoachRecent";
 import { useIntakeState } from "@/lib/query/hooks/useIntakeState";
 import { useTodayBrief } from "@/lib/query/hooks/useTodayBrief";
+import { queryKeys } from "@/lib/query/keys";
 import { TodayAnchor, type AnchorBrief } from "@/components/chat/TodayAnchor";
 import { Card } from "@/components/ui/Card";
 import { weekdayInUserTz, formatHeaderDate } from "@/lib/time";
@@ -47,6 +49,7 @@ export function CoachClient({
 }) {
   const search = useSearchParams();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [activeView, setActiveView] = useState<CoachView>(initialView);
 
   const { data: blockProgress } = useBlockProgress(userId);
@@ -54,6 +57,41 @@ export function CoachClient({
   const { data: recent } = useCoachRecent(userId);
   const { data: intakeState } = useIntakeState(userId, todayDate);
   const { data: todayBrief } = useTodayBrief(userId, todayDate);
+
+  // `?retry=brief` deep-link from TodayAnchor's brief_failed state. Fire the
+  // retry endpoint once, refresh the affected caches, and strip the param so
+  // a refresh doesn't re-trigger. A ref guard prevents React strict-mode
+  // double-invocation in dev.
+  const retryFiredRef = useRef(false);
+  useEffect(() => {
+    if (search.get("retry") !== "brief") return;
+    if (retryFiredRef.current) return;
+    retryFiredRef.current = true;
+
+    (async () => {
+      try {
+        const res = await fetch("/api/chat/morning/retry-brief", {
+          method: "POST",
+          credentials: "include",
+        });
+        if (res.ok) {
+          await Promise.all([
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.morningBrief.today(userId, todayDate),
+            }),
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.intakeState.one(userId, todayDate),
+            }),
+          ]);
+        }
+      } finally {
+        const newSearch = new URLSearchParams(search.toString());
+        newSearch.delete("retry");
+        const qs = newSearch.toString();
+        router.replace(qs ? `/coach?${qs}` : "/coach");
+      }
+    })();
+  }, [search, queryClient, router, userId, todayDate]);
 
   // Map MorningBriefCard.ui → AnchorBrief shape. Keep this mapping local so
   // TodayAnchor stays decoupled from the brief schema. Field paths mirror
