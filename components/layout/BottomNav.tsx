@@ -140,7 +140,7 @@ function TabButton({
           transition: "background 120ms ease, color 120ms ease",
         }}
       >
-        <tab.Icon size={20} strokeWidth={1.75} />
+        <tab.Icon size={20} strokeWidth={1.75} aria-hidden="true" />
       </span>
       <span
         style={{
