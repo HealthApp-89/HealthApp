@@ -33,7 +33,7 @@ export function ExerciseTrendCard({ name, points }: Props) {
           📈 {display}
         </span>
         <Link
-          href="/strength"
+          href="/metrics?sub=strength"
           scroll={false}
           aria-label="Close exercise trend"
           className="p-2 -m-2 rounded-full text-lg leading-none touch-manipulation select-none"
