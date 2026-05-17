@@ -2,17 +2,23 @@
 
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
-import { useState, useTransition, type MouseEvent } from "react";
+import { useState, useTransition, type ComponentType, type MouseEvent } from "react";
+import { Home, TrendingUp, MessageCircle, User, type LucideProps } from "lucide-react";
 import { COLOR, RADIUS, SHADOW } from "@/lib/ui/theme";
 
-type Tab = { href: string; label: string; icon: string; match: (p: string) => boolean };
+type Tab = {
+  href: string;
+  label: string;
+  Icon: ComponentType<LucideProps>;
+  match: (p: string) => boolean;
+};
 
 const TABS: Tab[] = [
-  { href: "/",        label: "Today",   icon: "⌂",  match: (p) => p === "/" },
-  { href: "/trends",  label: "Trends",  icon: "📈", match: (p) => p.startsWith("/trends") },
+  { href: "/",        label: "Today",   Icon: Home,          match: (p) => p === "/" },
+  { href: "/trends",  label: "Trends",  Icon: TrendingUp,    match: (p) => p.startsWith("/trends") },
   // Slot left empty for the FAB (rendered separately by <Fab />)
-  { href: "/coach",   label: "Coach",   icon: "💬", match: (p) => p.startsWith("/coach") },
-  { href: "/profile", label: "Profile", icon: "👤", match: (p) => p.startsWith("/profile") },
+  { href: "/coach",   label: "Coach",   Icon: MessageCircle, match: (p) => p.startsWith("/coach") },
+  { href: "/profile", label: "Profile", Icon: User,          match: (p) => p.startsWith("/profile") },
 ];
 
 /**
@@ -129,13 +135,12 @@ function TabButton({
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          fontSize: "16px",
           // Smooth out the optimistic-active flip so it doesn't feel like a
           // hard cut. 120ms matches the "tactile but not laggy" sweet spot.
           transition: "background 120ms ease, color 120ms ease",
         }}
       >
-        {tab.icon}
+        <tab.Icon size={20} strokeWidth={1.75} />
       </span>
       <span
         style={{
