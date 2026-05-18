@@ -46,7 +46,7 @@ export const ALLOWED_COLUMNS = [
   "steps", "calories", "active_calories", "distance_km", "exercise_min",
   "weight_kg", "body_fat_pct",
   "fat_mass_kg", "fat_free_mass_kg", "muscle_mass_kg", "bone_mass_kg", "hydration_kg",
-  "protein_g", "carbs_g", "fat_g", "calories_eaten",
+  "protein_g", "carbs_g", "fat_g", "fiber_g", "calories_eaten",
   "notes",
 ] as const;
 export type AllowedColumn = (typeof ALLOWED_COLUMNS)[number];
