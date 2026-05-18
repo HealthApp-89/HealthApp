@@ -6,6 +6,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Card, SectionLabel } from "@/components/ui/Card";
 import { COLOR, RADIUS } from "@/lib/ui/theme";
 import { queryKeys } from "@/lib/query/keys";
+import { useProfile } from "@/lib/query/hooks/useProfile";
+import { setDisableYazioIngest } from "@/app/profile/actions";
 
 type Props = {
   userId: string;
@@ -28,9 +30,16 @@ export function IngestPanel({
   const [rawToken, setRawToken] = useState<string | null>(null);
   const [strongResult, setStrongResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [yazioToggleError, setYazioToggleError] = useState<string | null>(null);
+  const [yazioTogglePending, startYazioToggle] = useTransition();
   const fileRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
   const queryClient = useQueryClient();
+  // Live profile state — drives the Yazio opt-out checkbox. The toggle's
+  // onChange writes via setDisableYazioIngest (server action) and invalidates
+  // this query so the UI reflects the new state without a hard refresh.
+  const { data: profile } = useProfile(userId);
+  const yazioDisabled = profile?.disable_yazio_ingest ?? false;
 
   function rotate() {
     setError(null);
@@ -296,6 +305,87 @@ export function IngestPanel({
           }}
         >
           {strongResult}
+        </div>
+      )}
+
+      {/* Yazio opt-out — surfaces once in-app food logging is the primary path.
+          When enabled, /api/ingest/health short-circuits Yazio uploads entirely
+          (per-date precedence still applies for users who leave this off). */}
+      <div
+        style={{
+          fontSize: "10px",
+          textTransform: "uppercase",
+          letterSpacing: "0.12em",
+          color: COLOR.textFaint,
+          marginTop: "16px",
+          marginBottom: "6px",
+          fontWeight: 600,
+        }}
+      >
+        Yazio precedence
+      </div>
+      <label
+        style={{
+          display: "flex",
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+          gap: "12px",
+          padding: "10px 12px",
+          background: COLOR.surfaceAlt,
+          border: `1px solid ${COLOR.divider}`,
+          borderRadius: RADIUS.input,
+          cursor: yazioTogglePending ? "wait" : "pointer",
+          opacity: yazioTogglePending ? 0.6 : 1,
+        }}
+      >
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: "13px", color: COLOR.textStrong, fontWeight: 600 }}>
+            Stop importing Yazio
+          </div>
+          <div
+            style={{
+              fontSize: "11px",
+              color: COLOR.textMuted,
+              lineHeight: 1.4,
+              marginTop: "3px",
+            }}
+          >
+            I&apos;m logging meals in-app now. Skip all incoming Yazio uploads.
+            (Days where you log in-app already supersede Yazio automatically;
+            this flips the kill switch for everything else.)
+          </div>
+        </div>
+        <input
+          type="checkbox"
+          checked={yazioDisabled}
+          disabled={yazioTogglePending}
+          onChange={(e) => {
+            const next = e.target.checked;
+            setYazioToggleError(null);
+            startYazioToggle(async () => {
+              try {
+                await setDisableYazioIngest(next);
+                await queryClient.invalidateQueries({
+                  queryKey: queryKeys.profile.one(userId),
+                });
+              } catch (err) {
+                setYazioToggleError((err as Error).message);
+              }
+            });
+          }}
+          style={{ width: "18px", height: "18px", flexShrink: 0, marginTop: "2px" }}
+        />
+      </label>
+      {yazioToggleError && (
+        <div
+          style={{
+            fontSize: "11px",
+            fontFamily: "monospace",
+            marginTop: "6px",
+            color: COLOR.danger,
+          }}
+        >
+          ✗ {yazioToggleError}
         </div>
       )}
     </Card>

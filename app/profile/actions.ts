@@ -51,3 +51,21 @@ export async function saveProfile(formData: FormData) {
   revalidatePath("/profile");
   revalidatePath("/");
 }
+
+/** Single-field toggle for the Yazio opt-out. Lives separately from
+ *  saveProfile because IngestPanel doesn't host the full ProfileForm — the
+ *  toggle is a one-click affordance inside the ingest section. */
+export async function setDisableYazioIngest(next: boolean) {
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const { error } = await supabase
+    .from("profiles")
+    .update({ disable_yazio_ingest: next, updated_at: new Date().toISOString() })
+    .eq("user_id", user.id);
+  if (error) throw error;
+  revalidatePath("/profile");
+}

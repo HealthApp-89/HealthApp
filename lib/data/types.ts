@@ -47,6 +47,12 @@ export type Profile = {
   /** User-edited coach prompt. NULL = use code default from
    *  lib/coach/system-prompts.ts:DEFAULT_SYSTEM_PROMPT. */
   system_prompt: string | null;
+  /** Per-user opt-out for the legacy Yazio CSV→HealthKit ingest path. When
+   *  true, /api/ingest/health short-circuits incoming `?source=yazio` requests
+   *  with `{ ok: true, skipped: true }`. Default false. Independent of the
+   *  per-date precedence check that always skips nutrition columns when a
+   *  committed food_log_entries row exists for that date. */
+  disable_yazio_ingest: boolean;
 };
 
 export type WhoopTokensRow = {
