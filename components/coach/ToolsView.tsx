@@ -12,9 +12,9 @@ import { AdjustDeficitSheet } from "@/components/coach/AdjustDeficitSheet";
 import { useWeeklyReview } from "@/lib/query/hooks/useWeeklyReview";
 import { useTrainingWeek } from "@/lib/query/hooks/useTrainingWeek";
 import { useBlockProgress, isActiveBlock } from "@/lib/query/hooks/useBlockProgress";
+import { useIntakeState } from "@/lib/query/hooks/useIntakeState";
 import { weekdayInUserTz, LONG_TO_SHORT_WEEKDAY } from "@/lib/time";
 import { currentWeekMonday } from "@/lib/coach/week";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 /**
  * Tools tab — categorized list of all 8-10 user-facing coach actions.
@@ -41,6 +41,7 @@ export function ToolsView({
   const { data: trainingWeek } = useTrainingWeek(userId, currentMonday);
   const { data: weeklyReview } = useWeeklyReview(userId, currentMonday);
   const { data: blockProgress } = useBlockProgress(userId);
+  const { data: intakeState = null } = useIntakeState(userId, todayDate);
 
   const hasTrainingWeek = trainingWeek != null;
   const hasDraftReview = weeklyReview != null && weeklyReview.status === "draft";
@@ -54,23 +55,24 @@ export function ToolsView({
   const [glossaryOpen, setGlossaryOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [busy, setBusy] = useState<null | "brief" | "mobility" | "regen-review">(null);
-  const [intakeState, setIntakeState] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    const sb = createSupabaseBrowserClient();
-    void sb.from("checkins")
-      .select("intake_state")
-      .eq("user_id", userId)
-      .eq("date", todayDate)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (!cancelled) setIntakeState((data?.intake_state as string | undefined) ?? null);
-      });
-    return () => { cancelled = true; };
-  }, [userId, todayDate]);
 
   const canRegenerateBrief = intakeState === "brief_failed";
+
+  // Subtitle + tap-to-explain copy track the real intake_state so the row
+  // doesn't lie about *why* it's disabled. Retry only works on `brief_failed`
+  // (the endpoint guards on it); every other state needs different action.
+  const briefSubtitle =
+    busy === "brief" ? "Regenerating…" :
+    intakeState === "brief_failed" ? "Re-run today's brief" :
+    intakeState === "assembling_brief" ? "Brief is being generated…" :
+    intakeState === "brief_delivered" || intakeState === "delivered" ? "Brief is fine — nothing to retry" :
+    intakeState == null ? "No brief yet — open morning check-in" :
+    "Finish morning check-in first";
+  const briefExplain =
+    intakeState === "assembling_brief" ? "Brief is being generated — wait a moment." :
+    intakeState === "brief_delivered" || intakeState === "delivered" ? "Brief hasn't failed — nothing to retry." :
+    intakeState == null ? "No morning check-in started yet today." :
+    "Finish the morning check-in first.";
 
   // Auto-dismiss the inline toast after 3s so it never sticks.
   useEffect(() => {
@@ -167,15 +169,11 @@ export function ToolsView({
         />
         <ToolRow
           title="Regenerate morning brief"
-          subtitle={
-            busy === "brief" ? "Regenerating…"
-            : canRegenerateBrief ? "Re-run today's brief"
-            : "Brief is fine — nothing to retry"
-          }
+          subtitle={briefSubtitle}
           disabled={busy !== null || !canRegenerateBrief}
           onClick={() => canRegenerateBrief
             ? regenerateMorningBrief()
-            : explain("Brief hasn't failed — nothing to retry.")}
+            : explain(briefExplain)}
         />
         <ToolRow
           title="Mark mobility done"
@@ -232,7 +230,7 @@ export function ToolsView({
           disabled={!hasActiveBlock}
           onClick={() =>
             hasActiveBlock
-              ? router.push("/coach?view=today")
+              ? router.push("/coach/progress")
               : explain("Set up a block to enable this view.")
           }
         />
