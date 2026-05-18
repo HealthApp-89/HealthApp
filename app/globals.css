@@ -56,8 +56,7 @@
   --font-mono: var(--font-dm-mono), ui-monospace, monospace;
 }
 
-/* Bottom-nav reservation. Mobile only — desktop uses TopNav and needs no
-   bottom space. Math (above the iOS safe-area inset, mobile):
+/* Bottom-nav reservation. Math (above the iOS safe-area inset):
      nav offset    8px (BottomNav `bottom: env() + 8px`)
      nav height   72px (measured live in WebKit @ 390×844: 71.5px)
      breathing   ~40px (gap between last card and nav top edge)
@@ -69,9 +68,6 @@
    BottomNav padding/icon size, remeasure and update this. */
 :root {
   --nav-h: 120px;
-}
-@media (min-width: 768px) {
-  :root { --nav-h: 0px; }
 }
 
 /* Body padding for the iOS safe-area + the BottomNav reservation.

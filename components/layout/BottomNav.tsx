@@ -21,7 +21,7 @@ const TABS: Tab[] = [
 ];
 
 /**
- * Mobile-only bottom nav. Hides at md and above (desktop uses TopNav).
+ * Floating pill nav, shown at every viewport size.
  *
  * Optimistic active state — the tab the user just tapped flips to "active"
  * immediately (before the new page finishes loading) so taps feel instant.
@@ -58,12 +58,7 @@ export function BottomNav() {
 
   return (
     <nav
-      // `flex` activates the row layout on mobile; `md:hidden` cascades after
-      // it (ordered later in Tailwind's compiled CSS) so desktop ≥768px gets
-      // `display: none`. Do NOT add `display: "flex"` to the inline style —
-      // inline beats `md:hidden`'s class rule and the nav stays visible on
-      // desktop, hovering over content with no `--nav-h` reservation behind it.
-      className="flex md:hidden"
+      className="flex"
       style={{
         position: "fixed",
         left: "8px",

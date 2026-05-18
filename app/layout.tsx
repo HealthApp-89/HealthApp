@@ -49,8 +49,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, interactive-widget=resizes-content"
         />
       </head>
-      {/* Body padding-top (safe-area inset) and padding-bottom (safe-area
-          + BottomNav reservation via --nav-h) are set in globals.css. */}
+      {/* Body padding (safe-area insets + BottomNav reservation via --nav-h)
+          is set in globals.css. */}
       <body className="min-h-[100dvh] bg-bg">
         <QueryProvider>
           <main>{children}</main>
