@@ -2,12 +2,19 @@
 
 import React from "react";
 import Link from "next/link";
-import { Dumbbell, Ruler, ClipboardList, X } from "lucide-react";
+import { Dumbbell, Ruler, ClipboardList, Utensils, X } from "lucide-react";
 import { COLOR, RADIUS } from "@/lib/ui/theme";
 
 type Props = {
   open: boolean;
   onClose: () => void;
+  /**
+   * Optional callback for the "Log meal" row. When provided, the row is
+   * rendered and tapping it closes this sheet + invokes the callback so the
+   * parent can open the MealLoggerSheet. Omitted on screens that don't
+   * mount MealLoggerSheet.
+   */
+  onMealClick?: () => void;
 };
 
 /**
@@ -18,7 +25,7 @@ type Props = {
  * wiring that auto-open is a follow-up. Daily metrics lands on the Log
  * sub-pill which is already a fully-functional editor.
  */
-export function LogEntrySheet({ open, onClose }: Props) {
+export function LogEntrySheet({ open, onClose, onMealClick }: Props) {
   if (!open) return null;
   return (
     <div
@@ -73,6 +80,16 @@ export function LogEntrySheet({ open, onClose }: Props) {
           </button>
         </div>
         <div style={{ display: "grid", gap: 8 }}>
+          {onMealClick && (
+            <Row
+              icon={<Utensils size={18} aria-hidden="true" />}
+              label="Log meal"
+              onClick={() => {
+                onClose();
+                onMealClick();
+              }}
+            />
+          )}
           <Row
             icon={<ClipboardList size={18} aria-hidden="true" />}
             label="Daily metrics"
@@ -97,6 +114,13 @@ export function LogEntrySheet({ open, onClose }: Props) {
   );
 }
 
+/**
+ * Row variants:
+ *   - When `href` is provided → renders a Link (navigation row).
+ *   - When `href` is omitted  → renders a button (action-only row, e.g. opens
+ *     a sibling sheet like MealLoggerSheet without navigating).
+ * Both share identical styling.
+ */
 function Row({
   icon,
   label,
@@ -105,41 +129,60 @@ function Row({
 }: {
   icon: React.ReactNode;
   label: string;
-  href: string;
+  href?: string;
   onClick: () => void;
 }) {
-  return (
-    <Link
-      href={href}
-      onClick={onClick}
+  const rowStyle: React.CSSProperties = {
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+    padding: "14px 16px",
+    background: COLOR.surface,
+    borderRadius: RADIUS.card,
+    textDecoration: "none",
+    color: COLOR.textStrong,
+    fontSize: 15,
+    fontWeight: 600,
+  };
+  const iconBubble = (
+    <span
       style={{
-        display: "flex",
+        width: 32,
+        height: 32,
+        borderRadius: 10,
+        background: COLOR.accentSoft,
+        color: COLOR.accent,
+        display: "inline-flex",
         alignItems: "center",
-        gap: 12,
-        padding: "14px 16px",
-        background: COLOR.surface,
-        borderRadius: RADIUS.card,
-        textDecoration: "none",
-        color: COLOR.textStrong,
-        fontSize: 15,
-        fontWeight: 600,
+        justifyContent: "center",
       }}
     >
-      <span
-        style={{
-          width: 32,
-          height: 32,
-          borderRadius: 10,
-          background: COLOR.accentSoft,
-          color: COLOR.accent,
-          display: "inline-flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        {icon}
-      </span>
+      {icon}
+    </span>
+  );
+  if (href) {
+    return (
+      <Link href={href} onClick={onClick} style={rowStyle}>
+        {iconBubble}
+        {label}
+      </Link>
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        ...rowStyle,
+        border: "none",
+        width: "100%",
+        textAlign: "left",
+        cursor: "pointer",
+        font: "inherit",
+      }}
+    >
+      {iconBubble}
       {label}
-    </Link>
+    </button>
   );
 }
