@@ -92,7 +92,15 @@ async function lookupUsda(name: string): Promise<FoodDbCacheRow | null> {
     return null;
   }
   const url = `${USDA_SEARCH_URL}?api_key=${encodeURIComponent(apiKey)}&query=${encodeURIComponent(name)}&pageSize=1&dataType=Foundation,SR%20Legacy`;
-  const res = await fetch(url);
+  let res: Response;
+  try {
+    // 5s timeout — Vercel functions have a 10s budget; we must fail fast and
+    // fall through to the LLM rather than wedge the whole request.
+    res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+  } catch (err) {
+    console.warn(`[food-lookup] USDA fetch failed for query "${name}"`, err);
+    return null;
+  }
   if (!res.ok) {
     console.warn(`[food-lookup] USDA ${res.status} for query "${name}"`);
     return null;
@@ -169,8 +177,15 @@ export async function resolveItemMacros(name: string, qty_g: number): Promise<Fo
       confidence: "high",
     };
   }
-  // 3. LLM fallback
-  const per_100g = await llmEstimate(name);
+  // 3. LLM fallback — wrap so route handlers get a typed error instead of an
+  //    uncaught Anthropic-API or JSON-parse exception bubbling up as a 500.
+  let per_100g: FoodMacros;
+  try {
+    per_100g = await llmEstimate(name);
+  } catch (err) {
+    console.warn("[food-lookup] LLM estimate failed", err);
+    throw new Error(`resolveItemMacros: all lookup paths failed for "${name}"`);
+  }
   const macros = macrosForQty(per_100g, qty_g);
   return {
     name,

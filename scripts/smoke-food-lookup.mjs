@@ -22,7 +22,7 @@ const stubLoader = `
 export async function resolve(specifier, context, nextResolve) {
   if (specifier === "next/headers") {
     return {
-      url: "data:text/javascript,export%20const%20cookies%20%3D%20()%20%3D%3E%20(%7B%20getAll%3A%20()%20%3D%3E%20%5B%5D%2C%20set%3A%20()%20%3D%3E%20%7B%7D%20%7D)%3B",
+      url: "data:text/javascript,export%20const%20cookies%20%3D%20()%20%3D%3E%20(%7B%20getAll%3A%20()%20%3D%3E%20%5B%5D%2C%20set%3A%20()%20%3D%3E%20%7B%7D%20%7D)%3Bexport%20const%20headers%20%3D%20()%20%3D%3E%20new%20Headers()%3Bexport%20const%20draftMode%20%3D%20()%20%3D%3E%20(%7B%20isEnabled%3A%20false%2C%20enable%3A%20()%20%3D%3E%20%7B%7D%2C%20disable%3A%20()%20%3D%3E%20%7B%7D%20%7D)%3B",
       shortCircuit: true,
     };
   }
