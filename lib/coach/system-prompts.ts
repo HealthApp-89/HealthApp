@@ -91,6 +91,7 @@ NOW timestamp + TODAY (today's daily_logs row, may be partial — sources arrive
 ## Tools
 - query_daily_logs(start_date, end_date, columns?, aggregate?) — fetch daily_logs for any range. raw mode capped at 90 days; aggregate (avg/sum/min/max) is uncapped (returns one row). Aggregate responses include non_null_count + null_count per column — when non_null_count < days_in_range, mention sparse coverage rather than presenting the aggregate as a complete total.
 - query_workouts(start_date, end_date, exercise_name?, granularity) — granularity: "summary" (default, one row per workout), "sets" (one row per set), "by_week" / "by_month" (per-period rollups with set counts by category). Warmups always excluded from volume / e1RM / counts. e1RM uses Epley and is null when reps > 12 or for duration-based sets (planks/holds).
+- query_food_log(start_date, end_date, item_filter?) — fetch the in-app food log for a date range. Returns committed entries with per-item macros (name, qty_g, kcal, protein/carbs/fat/fiber). Use for food-choice and meal-composition questions; use query_daily_logs for day-level macro totals. Range capped at 90 days.
 
 ## Derived-field caveats
 - category: "uncategorized" is a missing-data flag, NOT a category. When filtering or rolling up by category, exclude or report these separately. Do not infer the category from the exercise name.

@@ -138,6 +138,17 @@ export async function composeTrends(args: {
       magnitude_pct: 0,
     }));
 
+  // In-app food-log signals — read committed entries over the Mon-Sun recap
+  // window and tally top items by frequency × total kcal. Optional: when the
+  // user logged <3 distinct days, omit the section entirely (insufficient
+  // signal to call anything a pattern).
+  const nutrition = await composeFoodLogTopItems({
+    supabase,
+    userId,
+    weekStart,
+    weekEnd: today,
+  });
+
   return {
     window_weeks: 4,
     weight_loss_kg_per_week: weightLossKgPerWeek,
@@ -148,7 +159,61 @@ export async function composeTrends(args: {
     per_lift_slope: strengthTrend.per_lift,
     plateau_spans: plateauSpans,
     cross_insights: crossInsights,
+    ...(nutrition ? { nutrition } : {}),
   };
+}
+
+/** Tally top items by frequency × total_kcal across committed
+ *  food_log_entries in the recap week. Returns null when fewer than 3
+ *  distinct days have entries (insufficient signal for the weekly
+ *  narrative to reference patterns). Items are keyed case-insensitively;
+ *  the rendered name uses the first occurrence's casing. */
+async function composeFoodLogTopItems(args: {
+  supabase: SupabaseClient;
+  userId: string;
+  weekStart: string;
+  weekEnd: string;
+}): Promise<TrendsOutput["nutrition"] | null> {
+  const { supabase, userId, weekStart, weekEnd } = args;
+  const { data, error } = await supabase
+    .from("food_log_entries")
+    .select("items, eaten_at")
+    .eq("user_id", userId)
+    .eq("status", "committed")
+    .gte("eaten_at", `${weekStart}T00:00:00Z`)
+    .lte("eaten_at", `${weekEnd}T23:59:59Z`);
+  if (error) {
+    // Degrade gracefully — the rest of trends is still valuable. Caller
+    // omits the nutrition field on null.
+    console.warn("[compose-trends] food_log_entries fetch failed", error);
+    return null;
+  }
+  const entries = (data ?? []) as Array<{
+    items: Array<{ name: string; kcal: number | null }>;
+    eaten_at: string;
+  }>;
+  if (entries.length === 0) return null;
+
+  const dayCount = new Set(entries.map((e) => e.eaten_at.slice(0, 10))).size;
+  if (dayCount < 3) return null;
+
+  const tally = new Map<string, { name: string; frequency: number; total_kcal: number }>();
+  for (const e of entries) {
+    for (const it of e.items ?? []) {
+      if (typeof it.name !== "string") continue;
+      const key = it.name.toLowerCase();
+      const kcal = typeof it.kcal === "number" && Number.isFinite(it.kcal) ? it.kcal : 0;
+      const cur = tally.get(key) ?? { name: it.name, frequency: 0, total_kcal: 0 };
+      cur.frequency += 1;
+      cur.total_kcal += kcal;
+      tally.set(key, cur);
+    }
+  }
+  const top_items = [...tally.values()]
+    .sort((a, b) => b.frequency * b.total_kcal - a.frequency * a.total_kcal)
+    .slice(0, 5);
+  if (top_items.length === 0) return null;
+  return { top_items };
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────────

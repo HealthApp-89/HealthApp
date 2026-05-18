@@ -60,6 +60,13 @@ export type AdviceContext = {
    *  so the prompt can reference band numbers and rationale. */
   muscleVolumeFlags?: MuscleVolumeFlag[];
   muscleVolume?: StrengthMuscleVolume | null;
+  /** Yesterday's top items by calories from committed food_log_entries.
+   *  Sourced by the orchestrator (lib/morning/brief/index.ts) — when present
+   *  with source='food_log', the prompt builders inject an optional section
+   *  the AI can use to ground food-choice advice. Card UI is unchanged. */
+  topItemsYesterday?:
+    | { source: "food_log" | "yazio"; items: Array<{ name: string; kcal: number; share_of_day_pct: number }> }
+    | { source: "none"; items: [] };
 };
 
 /** Throws on Anthropic failures (rate limit, network, malformed). Orchestrator
@@ -126,6 +133,7 @@ function buildKickoffPrompt(ctx: AdviceContext): string {
   const flagsBlock = buildFlagsBlock(ctx.flags);
   const coachingContext = buildCoachingContext(ctx.flags, ctx.targets);
   const muscleVolumeBlock = buildMuscleVolumeBlock(ctx.muscleVolumeFlags, ctx.muscleVolume);
+  const topItemsBlock = buildTopItemsBlock(ctx.topItemsYesterday);
   const planBlock = buildThisWeekPlanBlock(ctx.card.this_week_plan ?? null);
 
   const phaseExplainer = ctx.flags.phase_transition_this_week
@@ -149,6 +157,8 @@ function buildKickoffPrompt(ctx: AdviceContext): string {
     "",
     muscleVolumeBlock,
     "",
+    topItemsBlock,
+    "",
     "TODAY'S DATA:",
     dataBlock,
     "",
@@ -170,6 +180,7 @@ function buildAnalyticalPrompt(ctx: AdviceContext): string {
   const flagsBlock = buildFlagsBlock(ctx.flags);
   const coachingContext = buildCoachingContext(ctx.flags, ctx.targets);
   const muscleVolumeBlock = buildMuscleVolumeBlock(ctx.muscleVolumeFlags, ctx.muscleVolume);
+  const topItemsBlock = buildTopItemsBlock(ctx.topItemsYesterday);
   const yesterdayBlock = buildYesterdayVsPlanBlock(ctx.card.yesterday_vs_plan ?? null);
 
   return [
@@ -188,6 +199,8 @@ function buildAnalyticalPrompt(ctx: AdviceContext): string {
     coachingContext,
     "",
     muscleVolumeBlock,
+    "",
+    topItemsBlock,
     "",
     "TODAY'S DATA:",
     dataBlock,
@@ -215,6 +228,7 @@ function buildLegacyPrompt(ctx: AdviceContext): string {
   const flagsBlock = buildFlagsBlock(ctx.flags);
   const coachingContext = buildCoachingContext(ctx.flags, ctx.targets);
   const muscleVolumeBlock = buildMuscleVolumeBlock(ctx.muscleVolumeFlags, ctx.muscleVolume);
+  const topItemsBlock = buildTopItemsBlock(ctx.topItemsYesterday);
 
   return `${CARTER_VOICE_RULES}
 
@@ -233,7 +247,7 @@ ${dataBlock}
 ## Flags
 
 ${flagsBlock}
-${coachingContext ? `\n## Coaching context\n\n${coachingContext}` : ""}${muscleVolumeBlock ? `\n${muscleVolumeBlock}` : ""}
+${coachingContext ? `\n## Coaching context\n\n${coachingContext}` : ""}${muscleVolumeBlock ? `\n${muscleVolumeBlock}` : ""}${topItemsBlock ? `\n\n${topItemsBlock}` : ""}
 
 ## Your task
 
@@ -398,6 +412,26 @@ function buildFlagsBlock(flags: AdviceFlags): string {
   for (const [k, v] of Object.entries(rest)) {
     lines.push(`- ${k}: ${v}`);
   }
+  return lines.join("\n");
+}
+
+/** Builds the optional "Yesterday's top items by calories" section. Returns
+ *  empty string when no food_log data is available — Yazio-source and
+ *  legacy/none paths both skip; only first-class in-app food_log entries
+ *  light up the block. */
+function buildTopItemsBlock(
+  topItems: AdviceContext["topItemsYesterday"],
+): string {
+  if (!topItems || topItems.source !== "food_log" || topItems.items.length === 0) {
+    return "";
+  }
+  const lines = [
+    "## Yesterday's top items by calories",
+    ...topItems.items.map(
+      (it) => `- ${it.name} (${Math.round(it.kcal)} kcal, ${it.share_of_day_pct}% of day)`,
+    ),
+    "Use this when relevant to today's recommendation — e.g., probe a protein gap or call out a calorie-dense meal pattern.",
+  ];
   return lines.join("\n");
 }
 

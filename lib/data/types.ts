@@ -105,6 +105,7 @@ export type ToolCallLog = {
   name:
     | "query_daily_logs"
     | "query_workouts"
+    | "query_food_log"
     | "query_training_blocks"
     | "query_training_weeks"
     | "get_autoregulation_signals"
@@ -1053,6 +1054,13 @@ export type WeeklyReviewPayload = {
     plateau_spans?: Array<{ lift: string; weeks_flat: number; magnitude_pct: number }>;
     /** Sub-project #5: cross-metric insight summaries. */
     cross_insights?: CrossInsight[];
+    /** In-app food-log nutrition signals — optional, populated when
+     *  ≥3 days of committed food_log_entries exist in the recap week.
+     *  top_items: top-5 by frequency × total kcal, tying meal-composition
+     *  context into the weekly narrative. */
+    nutrition?: {
+      top_items?: Array<{ name: string; frequency: number; total_kcal: number }>;
+    };
   };
   prescription: {
     next_week_start: string;
