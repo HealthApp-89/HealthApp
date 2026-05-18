@@ -1,0 +1,80 @@
+// app/api/food/parse/route.ts
+//
+// POST { text, eaten_at? } → draft food_log_entries row + computed totals.
+//
+// Pipeline: extractItems(text) → resolveItemMacros(item) per item → insert
+// draft row → return entry shape to client for preview.
+
+import { NextResponse } from "next/server";
+import { z } from "zod";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { extractItems } from "@/lib/food/parse";
+import { resolveItemMacros } from "@/lib/food/lookup";
+import { sumMacros, type FoodItem } from "@/lib/food/types";
+
+const BodySchema = z.object({
+  text: z.string().min(1).max(2000),
+  eaten_at: z.string().datetime().optional(),
+});
+
+export async function POST(req: Request) {
+  const supabase = await createSupabaseServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+
+  const json = await req.json().catch(() => null);
+  const parsed = BodySchema.safeParse(json);
+  if (!parsed.success) return NextResponse.json({ error: parsed.error.message }, { status: 400 });
+
+  const { text, eaten_at } = parsed.data;
+
+  // 1. Extract items via Haiku
+  let extracted;
+  try {
+    extracted = await extractItems(text);
+  } catch (e) {
+    return NextResponse.json(
+      { error: "extraction_failed", detail: (e as Error).message },
+      { status: 502 },
+    );
+  }
+
+  // 2. Resolve macros per item (cache → USDA → LLM fallback).
+  //    Wrap in try/catch because lookup throws when all paths fail.
+  let items: FoodItem[];
+  try {
+    items = await Promise.all(
+      extracted.map((it) => resolveItemMacros(it.name, it.qty_g)),
+    );
+  } catch (e) {
+    return NextResponse.json(
+      { error: "macro_resolution_failed", detail: (e as Error).message },
+      { status: 502 },
+    );
+  }
+
+  const totals = sumMacros(items);
+  const is_estimated = items.some((it) => it.source === "llm");
+
+  // 3. Insert draft entry
+  const { data: inserted, error } = await supabase
+    .from("food_log_entries")
+    .insert({
+      user_id: user.id,
+      eaten_at: eaten_at ?? new Date().toISOString(),
+      kind: "text",
+      raw_input: { kind: "text", text },
+      items,
+      totals,
+      is_estimated,
+      status: "draft",
+    })
+    .select("id, eaten_at, kind, items, totals, is_estimated, status")
+    .single();
+  if (error) {
+    console.error("[/api/food/parse] insert failed", error);
+    return NextResponse.json({ error: "insert_failed" }, { status: 500 });
+  }
+
+  return NextResponse.json({ entry: inserted });
+}
