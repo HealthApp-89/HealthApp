@@ -6,6 +6,12 @@ import { extractBearer, resolveIngestToken } from "@/lib/ingest/auth";
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
+function addOneDayUtc(date: string): string {
+  return new Date(new Date(`${date}T00:00:00Z`).getTime() + 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+}
+
 /** Apple Health ingest webhook for the iOS Shortcut.
  *
  *  Authentication: Bearer token from `/api/ingest/token` (one per user).
@@ -129,7 +135,7 @@ export async function POST(request: Request) {
         .eq("user_id", userId)
         .eq("status", "committed")
         .gte("eaten_at", `${minDate}T00:00:00Z`)
-        .lte("eaten_at", `${maxDate}T23:59:59Z`);
+        .lt("eaten_at", `${addOneDayUtc(maxDate)}T00:00:00Z`);
       if (foodErr) {
         console.error("[ingest/yazio] food_log_entries lookup failed:", foodErr.message);
         return NextResponse.json({ ok: false, error: foodErr.message }, { status: 500 });
@@ -166,6 +172,7 @@ export async function POST(request: Request) {
     "protein_g",
     "carbs_g",
     "fat_g",
+    "fiber_g",
     "notes",
   ]);
 

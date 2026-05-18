@@ -68,4 +68,5 @@ export async function setDisableYazioIngest(next: boolean) {
     .eq("user_id", user.id);
   if (error) throw error;
   revalidatePath("/profile");
+  revalidatePath("/");
 }
