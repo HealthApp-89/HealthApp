@@ -13,6 +13,7 @@ type Product = {
 
 export function MealLoggerScanTab({ onCommitted }: { onCommitted: () => void }) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const scannedRef = useRef<boolean>(false);
   const [supported, setSupported] = useState<boolean | null>(null);
   const [scanned, setScanned] = useState<Product | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -39,10 +40,11 @@ export function MealLoggerScanTab({ onCommitted }: { onCommitted: () => void }) 
       formats: ["ean_13", "upc_a", "upc_e", "ean_8"],
     });
     const tick = async () => {
-      if (stopped || !videoRef.current || scanned) return;
+      if (stopped || !videoRef.current || scannedRef.current) return;
       try {
         const codes = await detector.detect(videoRef.current);
         if (codes[0]?.rawValue) {
+          scannedRef.current = true;
           await onDetected(codes[0].rawValue);
           return;
         }
@@ -56,7 +58,7 @@ export function MealLoggerScanTab({ onCommitted }: { onCommitted: () => void }) 
       stopped = true;
       stream?.getTracks().forEach((t) => t.stop());
     };
-  }, [scanned]);
+  }, []);
 
   const onDetected = async (upc: string) => {
     setBusy(true);
@@ -80,20 +82,30 @@ export function MealLoggerScanTab({ onCommitted }: { onCommitted: () => void }) 
   const commit = async () => {
     if (!scanned) return;
     setBusy(true);
+    setError(null);
     try {
       const res = await fetch("/api/food/commit", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ entry_id: scanned.entry.id }),
       });
-      if (!res.ok) throw new Error("commit_failed");
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({ error: "commit_failed" }));
+        throw new Error(json.error || "commit_failed");
+      }
       setScanned(null);
+      scannedRef.current = false;
       onCommitted();
     } catch (e) {
       setError((e as Error).message);
     } finally {
       setBusy(false);
     }
+  };
+
+  const rescan = () => {
+    scannedRef.current = false;
+    setScanned(null);
   };
 
   if (supported === false) {
@@ -120,7 +132,7 @@ export function MealLoggerScanTab({ onCommitted }: { onCommitted: () => void }) 
         </div>
         {error && <p className="text-xs text-red-400">{error}</p>}
         <div className="flex gap-2">
-          <button type="button" onClick={() => setScanned(null)} disabled={busy} className="flex-1 rounded-md border border-zinc-700 py-2 text-sm">
+          <button type="button" onClick={rescan} disabled={busy} className="flex-1 rounded-md border border-zinc-700 py-2 text-sm">
             Scan another
           </button>
           <button type="button" onClick={commit} disabled={busy} className="flex-1 rounded-md bg-zinc-100 py-2 text-sm text-zinc-900">

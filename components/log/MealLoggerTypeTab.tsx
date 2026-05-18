@@ -30,6 +30,7 @@ export function MealLoggerTypeTab({ onCommitted }: { onCommitted: () => void }) 
 
   const commit = async () => {
     if (!draft) return;
+    setError(null);
     setBusy(true);
     try {
       const res = await fetch("/api/food/commit", {
@@ -37,7 +38,10 @@ export function MealLoggerTypeTab({ onCommitted }: { onCommitted: () => void }) 
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ entry_id: draft.id }),
       });
-      if (!res.ok) throw new Error("commit_failed");
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({ error: "commit_failed" }));
+        throw new Error(json.error || "commit_failed");
+      }
       setText("");
       setDraft(null);
       onCommitted();
