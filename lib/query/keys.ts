@@ -105,4 +105,9 @@ export const queryKeys = {
     all: (userId: string) => ["coachTrends", userId] as const,
     one: (userId: string) => ["coachTrends", userId, "current"] as const,
   },
+  foodEntries: {
+    all: (userId: string) => ["food-entries", userId] as const,
+    range: (userId: string, from: string, to: string) =>
+      ["food-entries", userId, "range", from, to] as const,
+  },
 } as const;
