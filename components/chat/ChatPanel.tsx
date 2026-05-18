@@ -2,6 +2,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import type { ChatMessage } from "@/lib/chat/types";
 import type { ChatMode, MorningBriefCard, MorningUI } from "@/lib/data/types";
 import { ChatThread } from "./ChatThread";
@@ -16,6 +17,44 @@ import { useDailyLogs } from "@/lib/query/hooks/useDailyLogs";
 import { useCheckin } from "@/lib/query/hooks/useCheckin";
 import { todayInUserTz, ymdInUserTz } from "@/lib/time";
 import { COLOR } from "@/lib/ui/theme";
+
+/** Coach / Morning kind toggle. URL-driven (`?kind=morning_intake`) so refresh
+ *  preserves the user's choice and MorningTrigger can deep-link in. */
+function KindChips({
+  current,
+  onChange,
+}: {
+  current: "coach" | "morning_intake";
+  onChange: (k: "coach" | "morning_intake") => void;
+}) {
+  return (
+    <div style={{ display: "flex", gap: "4px" }}>
+      {(["coach", "morning_intake"] as const).map((m) => {
+        const label = m === "coach" ? "Coach" : "Morning";
+        const active = current === m;
+        return (
+          <button
+            key={m}
+            type="button"
+            onClick={() => onChange(m)}
+            style={{
+              padding: "6px 14px",
+              borderRadius: "999px",
+              background: active ? COLOR.accentSoft : "transparent",
+              color: active ? COLOR.accent : COLOR.textMid,
+              border: "none",
+              fontSize: "12px",
+              fontWeight: active ? 700 : 500,
+              cursor: "pointer",
+            }}
+          >
+            {label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 /** Narrow `chat_messages.ui` to the chip-rendering shape used by morning
  *  intake turns. The DB column carries different jsonb shapes per `kind`
@@ -222,6 +261,19 @@ export default function ChatPanel({
 
   const [currentMode, setCurrentMode] = useState<"coach" | "morning_intake">(initialKind);
   const [sickInFlight, setSickInFlight] = useState(false);
+
+  const router = useRouter();
+  /** Kind chip click writes the URL (preserving other params) and updates
+   *  internal state. Parent uses `key={initialKind}` to remount on external
+   *  URL changes (e.g. MorningTrigger redirect); the local setState here
+   *  covers the in-panel click path so the user sees an immediate UI swap. */
+  const handleKindChange = useCallback((m: "coach" | "morning_intake") => {
+    if (m === currentMode) return;
+    const url = new URL(window.location.href);
+    url.searchParams.set("kind", m);
+    router.replace(url.pathname + "?" + url.searchParams.toString(), { scroll: false });
+    setCurrentMode(m);
+  }, [currentMode, router]);
   /** When false (default), the coach lane renders only today + yesterday;
    *  a pill above the thread reveals older messages on tap. Reset on every
    *  mode switch — opening the Coach tab fresh shouldn't carry over a prior
@@ -953,6 +1005,9 @@ export default function ChatPanel({
           minHeight: 0,
         }}
       >
+        <div style={{ padding: "0 12px 8px" }}>
+          <KindChips current={currentMode} onChange={handleKindChange} />
+        </div>
         <ModeBanner
           mode={mode}
           context={initialModeContext}
@@ -1162,31 +1217,7 @@ export default function ChatPanel({
       }}
     >
       <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.06]">
-        <div style={{ display: "flex", gap: "4px", padding: "4px 0 0" }}>
-          {(["coach", "morning_intake"] as const).map((m) => {
-            const label = m === "coach" ? "Coach" : "Morning";
-            const active = currentMode === m;
-            return (
-              <button
-                key={m}
-                type="button"
-                onClick={() => setCurrentMode(m)}
-                style={{
-                  padding: "6px 14px",
-                  borderRadius: "999px",
-                  background: active ? COLOR.accentSoft : "transparent",
-                  color: active ? COLOR.accent : COLOR.textMid,
-                  border: "none",
-                  fontSize: "12px",
-                  fontWeight: active ? 700 : 500,
-                  cursor: "pointer",
-                }}
-              >
-                {label}
-              </button>
-            );
-          })}
-        </div>
+        <KindChips current={currentMode} onChange={handleKindChange} />
         <button
           type="button"
           onClick={onClose}

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
@@ -20,6 +20,7 @@ import { useIntakeState } from "@/lib/query/hooks/useIntakeState";
 import { useTodayBrief } from "@/lib/query/hooks/useTodayBrief";
 import { queryKeys } from "@/lib/query/keys";
 import { TodayAnchor, type AnchorBrief } from "@/components/chat/TodayAnchor";
+import { MorningTrigger } from "@/components/morning/MorningTrigger";
 import { Card } from "@/components/ui/Card";
 import { weekdayInUserTz, formatHeaderDate } from "@/lib/time";
 
@@ -34,6 +35,10 @@ const ChatPanel = dynamic(() => import("@/components/chat/ChatPanel"), {
 
 function isChatMode(v: string | null | undefined): v is ChatMode {
   return v === "default" || v === "plan_week" || v === "setup_block" || v === "intake";
+}
+
+function isChatKind(v: string | null | undefined): v is "coach" | "morning_intake" {
+  return v === "coach" || v === "morning_intake";
 }
 
 export function CoachClient({
@@ -59,6 +64,19 @@ export function CoachClient({
   const { data: todayBrief } = useTodayBrief(userId, todayDate, {
     enabled: activeView === "today",
   });
+
+  // Once the brief lands, strip `?kind=morning_intake` so a refresh doesn't
+  // re-mount the chat in intake kind (which would auto-fire the start endpoint
+  // again — guarded server-side, but ugly UX). Only acts when we're actually
+  // on that URL; coach-kind navigations are left alone.
+  useEffect(() => {
+    if (intakeState !== "brief_delivered") return;
+    if (search.get("kind") !== "morning_intake") return;
+    const newSearch = new URLSearchParams(search.toString());
+    newSearch.delete("kind");
+    const qs = newSearch.toString();
+    router.replace(qs ? `/coach?${qs}` : "/coach", { scroll: false });
+  }, [intakeState, search, router]);
 
   // `?retry=brief` deep-link from TodayAnchor's brief_failed state. Fire the
   // retry endpoint once, refresh the affected caches, and strip the param so
@@ -129,6 +147,21 @@ export function CoachClient({
   const initialChatMode: ChatMode = isChatMode(modeParam) ? modeParam : "default";
   const initialModeContext = search.get("ctx") ?? undefined;
   const draftDocId = search.get("doc") ?? undefined;
+  const kindParam = search.get("kind");
+  const chatKind: "coach" | "morning_intake" = isChatKind(kindParam) ? kindParam : "coach";
+
+  /** MorningTrigger fires this when today's intake hasn't started. Flips URL to
+   *  `?kind=morning_intake&view=today` (preserving other params), which forces
+   *  the ChatPanel remount via the `key={chatKind}` prop. Also routes the user
+   *  out of Tools/Recent into the chat surface where the intake renders. Same
+   *  callback is used by TodayAnchor's pending pill. */
+  const openMorningIntake = useCallback(() => {
+    const url = new URL(window.location.href);
+    url.searchParams.set("kind", "morning_intake");
+    url.searchParams.set("view", "today");
+    router.replace(url.pathname + "?" + url.searchParams.toString(), { scroll: false });
+    setActiveView("today");
+  }, [router]);
 
   const hasActiveBlock = isActiveBlock(blockProgress);
   const planExists = trainingWeek != null;
@@ -165,6 +198,7 @@ export function CoachClient({
         minHeight: "100dvh",
       }}
     >
+      <MorningTrigger userId={userId} onShouldOpen={openMorningIntake} />
       <header style={{ padding: "12px 16px 8px" }}>
         <div style={{ fontSize: 12, color: COLOR.textMuted, fontWeight: 500 }}>
           {formatHeaderDate()}
@@ -333,10 +367,12 @@ export function CoachClient({
           <TodayAnchor
             intakeState={anchorIntakeState}
             brief={anchorBrief}
+            onStartIntake={openMorningIntake}
           />
           <ChatPanel
+            key={chatKind}
             userId={userId}
-            initialKind="coach"
+            initialKind={chatKind}
             initialMode={initialChatMode}
             initialModeContext={initialModeContext}
             draftDocId={draftDocId}

@@ -2,7 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
-import { ChevronRight, AlertTriangle, RefreshCw } from "lucide-react";
+import { AlertTriangle, ChevronRight, RefreshCw } from "lucide-react";
 import { COLOR, RADIUS } from "@/lib/ui/theme";
 
 export type AnchorBrief = {
@@ -29,6 +29,9 @@ type Props = {
     | null;
   brief: AnchorBrief | null;
   onTapBrief?: () => void;
+  /** Tapping the "Morning check-in pending" pill calls this. When undefined,
+   *  the pill renders as a non-interactive div. */
+  onStartIntake?: () => void;
 };
 
 /**
@@ -44,7 +47,7 @@ type Props = {
  * - missing/awaiting → faint "Morning check-in pending" hint.
  * - brief_delivered → full happy-path card.
  */
-export function TodayAnchor({ intakeState, brief, onTapBrief }: Props) {
+export function TodayAnchor({ intakeState, brief, onTapBrief, onStartIntake }: Props) {
   // brief_failed → retry chip variant
   if (intakeState === "brief_failed") {
     return (
@@ -98,32 +101,38 @@ export function TodayAnchor({ intakeState, brief, onTapBrief }: Props) {
     );
   }
 
-  // No brief yet (missing or awaiting)
+  // No brief yet (missing or awaiting). Interactive when the parent provides
+  // an onStartIntake callback (drops the user into morning intake kind);
+  // otherwise informational only.
   if (!brief || brief.sessionLabel == null) {
-    return (
-      <Link
-        href="#"
-        style={{
-          position: "sticky",
-          top: 0,
-          zIndex: 5,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          background: COLOR.surface,
-          border: `1px solid ${COLOR.divider}`,
-          borderRadius: RADIUS.card,
-          padding: "10px 12px",
-          margin: "8px 12px 12px",
-          textDecoration: "none",
-          color: COLOR.textMuted,
-          fontSize: 12,
-        }}
-      >
-        <span>Morning check-in pending</span>
-        <ChevronRight size={14} aria-hidden="true" />
-      </Link>
-    );
+    const baseStyle: React.CSSProperties = {
+      position: "sticky",
+      top: 0,
+      zIndex: 5,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      background: COLOR.surface,
+      border: `1px solid ${COLOR.divider}`,
+      borderRadius: RADIUS.card,
+      padding: "10px 12px",
+      margin: "8px 12px 12px",
+      color: COLOR.textMuted,
+      fontSize: 12,
+    };
+    if (onStartIntake) {
+      return (
+        <button
+          type="button"
+          onClick={onStartIntake}
+          style={{ ...baseStyle, width: "calc(100% - 24px)", border: `1px solid ${COLOR.divider}`, cursor: "pointer", textAlign: "left", font: "inherit" }}
+        >
+          <span>Morning check-in pending</span>
+          <ChevronRight size={14} aria-hidden="true" />
+        </button>
+      );
+    }
+    return <div style={baseStyle}>Morning check-in pending</div>;
   }
 
   // Happy path — brief_delivered with content
