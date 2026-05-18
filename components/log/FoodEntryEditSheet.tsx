@@ -1,0 +1,128 @@
+"use client";
+
+import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { BottomSheet } from "@/components/ui/BottomSheet";
+import { macrosForQty, type FoodItem, type FoodLogEntry } from "@/lib/food/types";
+import { fmtNum } from "@/lib/ui/score";
+
+export function FoodEntryEditSheet({
+  entry,
+  onClose,
+}: {
+  entry: FoodLogEntry;
+  onClose: () => void;
+}) {
+  const [items, setItems] = useState<FoodItem[]>(entry.items);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const qc = useQueryClient();
+
+  const setQty = (idx: number, qty_g: number) => {
+    setItems((prev) =>
+      prev.map((it, i) => {
+        if (i !== idx) return it;
+        const macros = macrosForQty(it.per_100g, qty_g);
+        return { ...it, qty_g, ...macros };
+      }),
+    );
+  };
+
+  const invalidate = async () => {
+    // Match MealLoggerSheet pattern: predicate-based invalidation works without
+    // userId (single-user app), matches all food-entries and daily-logs queries.
+    await qc.invalidateQueries({
+      predicate: (q) => q.queryKey[0] === "food-entries",
+    });
+    await qc.invalidateQueries({
+      predicate: (q) => q.queryKey[0] === "daily-logs",
+    });
+  };
+
+  const save = async () => {
+    setError(null);
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/food/entries/${entry.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ items }),
+      });
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({ error: "update_failed" }));
+        throw new Error(json.error || "update_failed");
+      }
+      await invalidate();
+      onClose();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const del = async () => {
+    if (!confirm("Delete this entry?")) return;
+    setError(null);
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/food/entries/${entry.id}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({ error: "delete_failed" }));
+        throw new Error(json.error || "delete_failed");
+      }
+      await invalidate();
+      onClose();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <BottomSheet open onClose={onClose} title="Edit meal">
+      <div className="space-y-3 p-4">
+        {items.map((it, idx) => (
+          <div key={idx} className="rounded-md border border-zinc-800 p-3">
+            <div className="text-sm font-medium">{it.name}</div>
+            <label className="mt-2 block text-xs text-zinc-400">
+              Quantity (g)
+              <input
+                type="number"
+                value={it.qty_g}
+                onChange={(e) => setQty(idx, parseFloat(e.target.value) || 0)}
+                className="mt-1 w-full rounded-md border border-zinc-700 bg-zinc-900 p-2 text-sm"
+              />
+            </label>
+            <div className="mt-2 text-xs text-zinc-500">
+              {fmtNum(it.kcal)} kcal · {fmtNum(it.protein_g)} P ·{" "}
+              {fmtNum(it.carbs_g)} C · {fmtNum(it.fat_g)} F
+            </div>
+          </div>
+        ))}
+        {error && <p className="text-xs text-red-400">{error}</p>}
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={del}
+            disabled={busy}
+            className="flex-1 rounded-md border border-red-700 py-2 text-sm text-red-400"
+          >
+            Delete
+          </button>
+          <button
+            type="button"
+            onClick={save}
+            disabled={busy}
+            className="flex-1 rounded-md bg-zinc-100 py-2 text-sm text-zinc-900"
+          >
+            {busy ? "..." : "Save"}
+          </button>
+        </div>
+      </div>
+    </BottomSheet>
+  );
+}

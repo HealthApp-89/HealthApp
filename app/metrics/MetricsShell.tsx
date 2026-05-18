@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { Plus } from "lucide-react";
 import { SubPillNav } from "@/components/layout/SubPillNav";
 import { LogEntrySheet } from "@/components/metrics/LogEntrySheet";
+import { MealLoggerSheet } from "@/components/log/MealLoggerSheet";
 import { COLOR } from "@/lib/ui/theme";
 
 /**
@@ -14,6 +15,7 @@ import { COLOR } from "@/lib/ui/theme";
  */
 export function MetricsShell({ children }: { children: React.ReactNode }) {
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [mealSheetOpen, setMealSheetOpen] = useState(false);
   return (
     <div style={{ paddingBottom: 92 }}>
       <SubPillNav
@@ -56,7 +58,15 @@ export function MetricsShell({ children }: { children: React.ReactNode }) {
         <Plus size={16} strokeWidth={2.5} aria-hidden="true" /> Log entry
       </button>
 
-      <LogEntrySheet open={sheetOpen} onClose={() => setSheetOpen(false)} />
+      <LogEntrySheet
+        open={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+        onMealClick={() => setMealSheetOpen(true)}
+      />
+      <MealLoggerSheet
+        open={mealSheetOpen}
+        onClose={() => setMealSheetOpen(false)}
+      />
     </div>
   );
 }

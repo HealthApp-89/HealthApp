@@ -5,6 +5,7 @@ import { makeServerQueryClient } from "@/lib/query/queryClient";
 import { queryKeys } from "@/lib/query/keys";
 import { fetchDailyLogsServer } from "@/lib/query/fetchers/dailyLogs";
 import { fetchCheckinServer } from "@/lib/query/fetchers/checkin";
+import { fetchFoodEntriesServer } from "@/lib/query/fetchers/foodEntries";
 import { LogClient } from "@/components/log/LogClient";
 import { todayInUserTz } from "@/lib/time";
 
@@ -34,6 +35,10 @@ export async function LogSubPill({ date: rawDate }: { date?: string }) {
     queryClient.prefetchQuery({
       queryKey: queryKeys.checkin.one(user.id, date),
       queryFn: () => fetchCheckinServer(supabase, user.id, date),
+    }),
+    queryClient.prefetchQuery({
+      queryKey: queryKeys.foodEntries.range(user.id, date, date),
+      queryFn: () => fetchFoodEntriesServer(supabase, user.id, date, date),
     }),
   ]);
 

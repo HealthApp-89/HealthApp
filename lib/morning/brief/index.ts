@@ -40,18 +40,37 @@ export async function prepareBriefExceptAdvice(
   // Fan out the base inputs in parallel with the three sub-project #2
   // data sources (this-week prescription, yesterday flat workout for
   // the analytical comparator, previous-week committed review for the
-  // phase-transition flag).
+  // phase-transition flag). Also fetch yesterday's committed
+  // food_log_entries — the AI advice prompt gets the top items as
+  // optional context (card UI unchanged).
   const [
     inputs,
     thisWeekPrescription,
     yesterdayWorkoutForBlock,
     previousCommittedReview,
+    yesterdayFoodEntriesRes,
   ] = await Promise.all([
     fetchBriefInputs(supabase, userId, today),
     getThisWeekPrescription(supabase, userId, today),
     getYesterdayWorkoutFlat(supabase, userId, yesterday),
     getPreviousCommittedReview(supabase, userId, weekStart),
+    supabase
+      .from("food_log_entries")
+      .select("items, totals")
+      .eq("user_id", userId)
+      .eq("status", "committed")
+      .gte("eaten_at", `${yesterday}T00:00:00Z`)
+      .lte("eaten_at", `${yesterday}T23:59:59Z`),
   ]);
+
+  // Top items yesterday — computed from food_log_entries. Degrade gracefully
+  // on read error (the rest of the brief is still valuable). Source = 'none'
+  // when no entries or fetch failed; the prompt builder treats both the same.
+  const topItemsYesterday = computeTopItemsYesterday(
+    yesterdayFoodEntriesRes.error ? null : (yesterdayFoodEntriesRes.data as Array<{
+      items: Array<{ name: string; kcal: number | null }>;
+    }> | null),
+  );
 
   // Did yesterday's session type get swapped from the original prescription?
   // training_weeks.original_session_plan is nullable (migration 0012) — null
@@ -150,8 +169,49 @@ export async function prepareBriefExceptAdvice(
     targets: inputs.todayTargets,
     muscleVolumeFlags,
     muscleVolume,
+    topItemsYesterday,
   };
   return { partial, adviceCtx };
+}
+
+/** Top-3 items by calories from yesterday's committed food_log_entries.
+ *  Returns source='none' when no entries exist (or fetch failed) — the
+ *  prompt builder skips the section entirely in that case. Items are
+ *  deduplicated by name (case-insensitive) and ranked by total kcal. */
+function computeTopItemsYesterday(
+  entries: Array<{ items: Array<{ name: string; kcal: number | null }> }> | null,
+): { source: "food_log"; items: Array<{ name: string; kcal: number; share_of_day_pct: number }> }
+  | { source: "none"; items: [] } {
+  if (!entries || entries.length === 0) return { source: "none", items: [] };
+  const flatItems = entries.flatMap((e) => e.items ?? []);
+  const cleanItems = flatItems
+    .filter((it): it is { name: string; kcal: number } =>
+      typeof it.name === "string" && typeof it.kcal === "number" && Number.isFinite(it.kcal))
+    .map((it) => ({ name: it.name, kcal: it.kcal }));
+  const dayKcal = cleanItems.reduce((s, it) => s + it.kcal, 0);
+  if (dayKcal <= 0 || cleanItems.length === 0) return { source: "none", items: [] };
+
+  // Dedupe by lowercased name (preserve first-seen casing).
+  const tally = new Map<string, { name: string; kcal: number }>();
+  for (const it of cleanItems) {
+    const key = it.name.toLowerCase();
+    const cur = tally.get(key);
+    if (cur) {
+      cur.kcal += it.kcal;
+    } else {
+      tally.set(key, { name: it.name, kcal: it.kcal });
+    }
+  }
+
+  const items = [...tally.values()]
+    .sort((a, b) => b.kcal - a.kcal)
+    .slice(0, 3)
+    .map((it) => ({
+      name: it.name,
+      kcal: it.kcal,
+      share_of_day_pct: Math.round((it.kcal / dayKcal) * 100),
+    }));
+  return { source: "food_log", items };
 }
 
 /** Full pipeline (blocking advice). Kept for callers that don't need

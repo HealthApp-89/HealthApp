@@ -26,6 +26,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   DAILY_LOGS_TOOL,
   WORKOUTS_TOOL,
+  FOOD_LOG_TOOL,
   TRAINING_PLAN_TOOL,
   AUTOREGULATION_TOOL,
   ADHERENCE_TOOL,
@@ -54,6 +55,7 @@ import {
   REGENERATE_MORNING_BRIEF_TOOL,
   executeQueryDailyLogs,
   executeQueryWorkouts,
+  executeQueryFoodLog,
   executeQueryTrainingPlan,
   executeGetAutoregulationSignals,
   executeComputeAdherence,
@@ -183,6 +185,7 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
   const allTools = [
     DAILY_LOGS_TOOL,
     WORKOUTS_TOOL,
+    FOOD_LOG_TOOL,
     TRAINING_PLAN_TOOL,
     AUTOREGULATION_TOOL,
     ADHERENCE_TOOL,
@@ -375,6 +378,12 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
           });
         } else if (block.name === "query_workouts") {
           result = await executeQueryWorkouts({
+            supabase: opts.sr,
+            userId: opts.userId,
+            input: block.input,
+          });
+        } else if (block.name === "query_food_log") {
+          result = await executeQueryFoodLog({
             supabase: opts.sr,
             userId: opts.userId,
             input: block.input,

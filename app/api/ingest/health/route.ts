@@ -6,6 +6,12 @@ import { extractBearer, resolveIngestToken } from "@/lib/ingest/auth";
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
+function addOneDayUtc(date: string): string {
+  return new Date(new Date(`${date}T00:00:00Z`).getTime() + 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+}
+
 /** Apple Health ingest webhook for the iOS Shortcut.
  *
  *  Authentication: Bearer token from `/api/ingest/token` (one per user).
@@ -74,6 +80,81 @@ export async function POST(request: Request) {
     workouts_upserted: 0,
   };
 
+  // ── Yazio precedence (CLAUDE.md "Data sources & precedence") ──────────────
+  // In-app food logging owns the nutrition columns; Yazio is legacy-fallback.
+  // Per-user opt-out short-circuits the whole request — the user has migrated
+  // off Yazio entirely and doesn't want stragglers re-populating their day.
+  // Resolved once up-front so we never need a second profile lookup inside
+  // the days loop.
+  if (sourceParam === "yazio") {
+    const { data: profile } = await sr
+      .from("profiles")
+      .select("disable_yazio_ingest")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (profile?.disable_yazio_ingest) {
+      console.info(`[ingest/yazio] user ${userId} opted out — skipping batch`);
+      return NextResponse.json({
+        ok: true,
+        skipped: true,
+        reason: "yazio_ingest_disabled",
+      });
+    }
+  }
+
+  // Nutrition columns owned by the in-app food log on a per-date basis. For
+  // each date in this batch where the user has any committed food_log_entries
+  // row, we strip the nutrition fields before upsert so Yazio can't overwrite
+  // the in-app totals. Non-nutrition Yazio fields (none today, but reserved)
+  // would still flow through. Only consulted when sourceParam === 'yazio'.
+  const YAZIO_NUTRITION_FIELDS = new Set([
+    "calories_eaten",
+    "protein_g",
+    "carbs_g",
+    "fat_g",
+    "fiber_g",
+  ]);
+  const datesWithInAppFoodLog = new Set<string>();
+  if (sourceParam === "yazio" && Array.isArray(body.days) && body.days.length > 0) {
+    const candidateDates = Array.from(
+      new Set(
+        body.days
+          .map((d) => (typeof d.date === "string" ? d.date.slice(0, 10) : null))
+          .filter((d): d is string => !!d),
+      ),
+    );
+    if (candidateDates.length > 0) {
+      // Day-bucketing matches sum_food_entries (UTC). Querying with a wide
+      // range and grouping client-side avoids N round-trips per batch.
+      const minDate = candidateDates.reduce((a, b) => (a < b ? a : b));
+      const maxDate = candidateDates.reduce((a, b) => (a > b ? a : b));
+      const { data: entries, error: foodErr } = await sr
+        .from("food_log_entries")
+        .select("eaten_at")
+        .eq("user_id", userId)
+        .eq("status", "committed")
+        .gte("eaten_at", `${minDate}T00:00:00Z`)
+        .lt("eaten_at", `${addOneDayUtc(maxDate)}T00:00:00Z`);
+      if (foodErr) {
+        console.error("[ingest/yazio] food_log_entries lookup failed:", foodErr.message);
+        return NextResponse.json({ ok: false, error: foodErr.message }, { status: 500 });
+      }
+      for (const e of entries ?? []) {
+        const eatenAt = e.eaten_at as string;
+        if (typeof eatenAt === "string") {
+          datesWithInAppFoodLog.add(eatenAt.slice(0, 10));
+        }
+      }
+      if (datesWithInAppFoodLog.size > 0) {
+        console.info(
+          `[ingest/yazio] skipping nutrition for ${datesWithInAppFoodLog.size} date(s) — in-app food log present:`,
+          Array.from(datesWithInAppFoodLog).sort().join(", "),
+        );
+      }
+    }
+  }
+
   // ── Days ────────────────────────────────────────────────────────────────────
   const ALLOWED_DAY_FIELDS = new Set([
     "steps",
@@ -91,6 +172,7 @@ export async function POST(request: Request) {
     "protein_g",
     "carbs_g",
     "fat_g",
+    "fiber_g",
     "notes",
   ]);
 
@@ -115,10 +197,17 @@ export async function POST(request: Request) {
         source: sourceParam,
         updated_at: new Date().toISOString(),
       };
+      const skipNutritionForDate =
+        sourceParam === "yazio" && datesWithInAppFoodLog.has(date);
       for (const [k, v] of Object.entries(d)) {
         if (k === "date") continue;
         if (!ALLOWED_DAY_FIELDS.has(k)) continue;
         if (v === null || v === undefined) continue;
+        // Yazio precedence: in-app food log owns the nutrition columns for
+        // this date. Strip nutrition fields so upsert can't overwrite the
+        // committed in-app totals. Other Yazio fields (none today, but
+        // reserved) flow through normally.
+        if (skipNutritionForDate && YAZIO_NUTRITION_FIELDS.has(k)) continue;
         // iOS Shortcuts often serializes Dictionary values as JSON strings
         // even when the underlying HealthKit Magic Variable is numeric (e.g.
         // `"8421"` for steps). Coerce numeric strings up-front so a Postgres
@@ -139,6 +228,14 @@ export async function POST(request: Request) {
           row[k] = val;
         }
       }
+      // Skip rows that ended up with only metadata (user_id/date/source/updated_at).
+      // Happens for Yazio when every nutrition field was stripped because in-app
+      // entries already own the date — without this guard we'd churn `source`
+      // and `updated_at` on an existing daily_logs row for no reason.
+      const hasPayload = Object.keys(row).some(
+        (k) => k !== "user_id" && k !== "date" && k !== "source" && k !== "updated_at",
+      );
+      if (!hasPayload) continue;
       rows.push(row);
     }
     if (rows.length > 0) {

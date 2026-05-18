@@ -46,7 +46,7 @@ export const ALLOWED_COLUMNS = [
   "steps", "calories", "active_calories", "distance_km", "exercise_min",
   "weight_kg", "body_fat_pct",
   "fat_mass_kg", "fat_free_mass_kg", "muscle_mass_kg", "bone_mass_kg", "hydration_kg",
-  "protein_g", "carbs_g", "fat_g", "calories_eaten",
+  "protein_g", "carbs_g", "fat_g", "fiber_g", "calories_eaten",
   "notes",
 ] as const;
 export type AllowedColumn = (typeof ALLOWED_COLUMNS)[number];
@@ -100,6 +100,21 @@ export const WORKOUTS_TOOL = {
         enum: ALLOWED_GRANULARITIES,
         default: "summary",
       },
+    },
+  },
+};
+
+export const FOOD_LOG_TOOL = {
+  name: "query_food_log",
+  description:
+    "Query the in-app food log for a date range. Returns committed entries with per-item macros (name, qty_g, kcal, protein/carbs/fat/fiber, source). Use for food-choice and meal-composition questions — distinct from query_daily_logs which returns day-level macro totals only. Range capped at 90 days. Optional item_filter is a case-insensitive substring match on item name.",
+  input_schema: {
+    type: "object" as const,
+    required: ["start_date", "end_date"],
+    properties: {
+      start_date: { type: "string", format: "date" },
+      end_date: { type: "string", format: "date" },
+      item_filter: { type: "string", description: "Case-insensitive substring match on item name." },
     },
   },
 };
@@ -605,6 +620,116 @@ export async function executeQueryWorkouts(opts: {
     ok: true,
     data: periodRows,
     meta: { ms: Date.now() - t0, result_rows: periodRows.length, range_days, truncated: false },
+  };
+}
+
+// ── query_food_log executor ──────────────────────────────────────────────────
+
+type FoodLogItem = {
+  name: string;
+  qty_g: number | null;
+  kcal: number | null;
+  protein_g: number | null;
+  carbs_g: number | null;
+  fat_g: number | null;
+  fiber_g: number | null;
+  source?: string;
+};
+type FoodLogEntryRow = {
+  eaten_at: string;
+  kind: string;
+  items: FoodLogItem[];
+  totals: { kcal: number; protein_g: number; carbs_g: number; fat_g: number; fiber_g: number };
+};
+type FoodLogToolData = { rows: FoodLogEntryRow[] };
+
+export async function executeQueryFoodLog(opts: {
+  supabase: SupabaseClient;
+  userId: string;
+  input: unknown;
+}): Promise<ToolResult<FoodLogToolData>> {
+  const t0 = Date.now();
+  const i = (opts.input ?? {}) as Record<string, unknown>;
+
+  // --- Validation (security invariants 3, 4) ---
+  if (!isYmd(i.start_date) || !isYmd(i.end_date)) {
+    return {
+      ok: false,
+      error: { error: "start_date and end_date must be YYYY-MM-DD" },
+      meta: { ms: Date.now() - t0, range_days: 0 },
+    };
+  }
+  let start: string, end: string;
+  try {
+    start = reformatYmd(i.start_date);
+    end = reformatYmd(i.end_date);
+  } catch {
+    return {
+      ok: false,
+      error: { error: "invalid calendar date" },
+      meta: { ms: Date.now() - t0, range_days: 0 },
+    };
+  }
+  if (start > end) {
+    return {
+      ok: false,
+      error: { error: "start_date must be <= end_date" },
+      meta: { ms: Date.now() - t0, range_days: 0 },
+    };
+  }
+  const range_days = diffDays(start, end);
+
+  // --- Range cap (security invariant 5) ---
+  if (range_days > 90) {
+    return {
+      ok: false,
+      error: {
+        error: `query_food_log max 90 days; got ${range_days}`,
+        hint: "narrow start_date",
+      },
+      meta: { ms: Date.now() - t0, range_days },
+    };
+  }
+
+  // item_filter is free-form (no enum), but must be a string when present.
+  const filterRaw = i.item_filter;
+  if (filterRaw !== undefined && typeof filterRaw !== "string") {
+    return {
+      ok: false,
+      error: { error: "item_filter must be a string or omitted" },
+      meta: { ms: Date.now() - t0, range_days },
+    };
+  }
+  const itemFilter = (filterRaw as string | undefined)?.toLowerCase() ?? null;
+
+  // --- Query (security invariant 2: .eq("user_id", userId)) ---
+  const { data, error } = await opts.supabase
+    .from("food_log_entries")
+    .select("eaten_at, kind, items, totals")
+    .eq("user_id", opts.userId)
+    .eq("status", "committed")
+    .gte("eaten_at", `${start}T00:00:00Z`)
+    .lte("eaten_at", `${end}T23:59:59Z`)
+    .order("eaten_at", { ascending: false });
+  if (error) {
+    return {
+      ok: false,
+      error: { error: `db_error: ${error.message}` },
+      meta: { ms: Date.now() - t0, range_days },
+    };
+  }
+
+  let rows = (data ?? []) as FoodLogEntryRow[];
+  if (itemFilter) {
+    rows = rows
+      .map((r) => ({ ...r, items: r.items.filter((it) => it.name.toLowerCase().includes(itemFilter)) }))
+      .filter((r) => r.items.length > 0);
+  }
+
+  return {
+    ok: true,
+    data: { rows },
+    meta: { ms: Date.now() - t0, result_rows: rows.length, range_days, truncated: false },
   };
 }
 

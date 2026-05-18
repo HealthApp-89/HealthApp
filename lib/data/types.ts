@@ -29,6 +29,7 @@ export type DailyLog = {
   protein_g: number | null;
   carbs_g: number | null;
   fat_g: number | null;
+  fiber_g: number | null;
   respiratory_rate: number | null;
   notes: string | null;
   source: string | null;
@@ -46,6 +47,12 @@ export type Profile = {
   /** User-edited coach prompt. NULL = use code default from
    *  lib/coach/system-prompts.ts:DEFAULT_SYSTEM_PROMPT. */
   system_prompt: string | null;
+  /** Per-user opt-out for the legacy Yazio CSV→HealthKit ingest path. When
+   *  true, /api/ingest/health short-circuits incoming `?source=yazio` requests
+   *  with `{ ok: true, skipped: true }`. Default false. Independent of the
+   *  per-date precedence check that always skips nutrition columns when a
+   *  committed food_log_entries row exists for that date. */
+  disable_yazio_ingest: boolean;
 };
 
 export type WhoopTokensRow = {
@@ -98,6 +105,7 @@ export type ToolCallLog = {
   name:
     | "query_daily_logs"
     | "query_workouts"
+    | "query_food_log"
     | "query_training_blocks"
     | "query_training_weeks"
     | "get_autoregulation_signals"
@@ -1046,6 +1054,13 @@ export type WeeklyReviewPayload = {
     plateau_spans?: Array<{ lift: string; weeks_flat: number; magnitude_pct: number }>;
     /** Sub-project #5: cross-metric insight summaries. */
     cross_insights?: CrossInsight[];
+    /** In-app food-log nutrition signals — optional, populated when
+     *  ≥3 days of committed food_log_entries exist in the recap week.
+     *  top_items: top-5 by frequency × total kcal, tying meal-composition
+     *  context into the weekly narrative. */
+    nutrition?: {
+      top_items?: Array<{ name: string; frequency: number; total_kcal: number }>;
+    };
   };
   prescription: {
     next_week_start: string;

@@ -1,6 +1,7 @@
 "use client";
 
 import { LogForm } from "@/components/log/LogForm";
+import { TodaysMeals } from "@/components/log/TodaysMeals";
 import { WeekStrip } from "@/components/layout/WeekStrip";
 import { MetricCard } from "@/components/charts/MetricCard";
 import { COLOR, METRIC_COLOR } from "@/lib/ui/theme";
@@ -49,6 +50,10 @@ export function LogClient({
       </div>
 
       <WeekStrip selected={date} today={todayInUserTz()} />
+
+      <div style={{ padding: "0 8px 14px" }}>
+        <TodaysMeals userId={userId} date={date} />
+      </div>
 
       <div
         style={{
