@@ -177,7 +177,7 @@ export async function prepareBriefExceptAdvice(
 /** Top-3 items by calories from yesterday's committed food_log_entries.
  *  Returns source='none' when no entries exist (or fetch failed) — the
  *  prompt builder skips the section entirely in that case. Items are
- *  flattened across entries and ranked by raw kcal. */
+ *  deduplicated by name (case-insensitive) and ranked by total kcal. */
 function computeTopItemsYesterday(
   entries: Array<{ items: Array<{ name: string; kcal: number | null }> }> | null,
 ): { source: "food_log"; items: Array<{ name: string; kcal: number; share_of_day_pct: number }> }
@@ -190,7 +190,20 @@ function computeTopItemsYesterday(
     .map((it) => ({ name: it.name, kcal: it.kcal }));
   const dayKcal = cleanItems.reduce((s, it) => s + it.kcal, 0);
   if (dayKcal <= 0 || cleanItems.length === 0) return { source: "none", items: [] };
-  const top = [...cleanItems]
+
+  // Dedupe by lowercased name (preserve first-seen casing).
+  const tally = new Map<string, { name: string; kcal: number }>();
+  for (const it of cleanItems) {
+    const key = it.name.toLowerCase();
+    const cur = tally.get(key);
+    if (cur) {
+      cur.kcal += it.kcal;
+    } else {
+      tally.set(key, { name: it.name, kcal: it.kcal });
+    }
+  }
+
+  const items = [...tally.values()]
     .sort((a, b) => b.kcal - a.kcal)
     .slice(0, 3)
     .map((it) => ({
@@ -198,7 +211,7 @@ function computeTopItemsYesterday(
       kcal: it.kcal,
       share_of_day_pct: Math.round((it.kcal / dayKcal) * 100),
     }));
-  return { source: "food_log", items: top };
+  return { source: "food_log", items };
 }
 
 /** Full pipeline (blocking advice). Kept for callers that don't need

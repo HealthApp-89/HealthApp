@@ -194,6 +194,8 @@ async function composeFoodLogTopItems(args: {
   }>;
   if (entries.length === 0) return null;
 
+  // eaten_at is UTC; slice(0,10) gives the UTC date (matches the query bounds
+  // above which use T00:00:00Z / T23:59:59Z anchoring).
   const dayCount = new Set(entries.map((e) => e.eaten_at.slice(0, 10))).size;
   if (dayCount < 3) return null;
 

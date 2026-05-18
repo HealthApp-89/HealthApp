@@ -60,7 +60,10 @@ export type AdviceContext = {
    *  so the prompt can reference band numbers and rationale. */
   muscleVolumeFlags?: MuscleVolumeFlag[];
   muscleVolume?: StrengthMuscleVolume | null;
-  /** Yesterday's top items by calories from committed food_log_entries.
+  /** topItemsYesterday: produced by the brief orchestrator from food_log_entries.
+   *  The 'yazio' source value is reserved for a future Yazio-fallback path
+   *  (when no in-app entries exist but Yazio totals do) — not yet emitted.
+   *  buildTopItemsBlock currently renders ONLY when source === 'food_log'.
    *  Sourced by the orchestrator (lib/morning/brief/index.ts) — when present
    *  with source='food_log', the prompt builders inject an optional section
    *  the AI can use to ground food-choice advice. Card UI is unchanged. */
