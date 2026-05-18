@@ -10,7 +10,7 @@ import type { DailyLog } from "@/lib/data/types";
 // correctly. Trends has its own narrower projection (TREND_COLS below) for
 // payload size; everywhere else expects the full shape.
 const COLS =
-  "user_id, date, hrv, resting_hr, recovery, spo2, skin_temp_c, strain, sleep_hours, sleep_score, deep_sleep_hours, rem_sleep_hours, weight_kg, body_fat_pct, fat_mass_kg, fat_free_mass_kg, muscle_mass_kg, bone_mass_kg, hydration_kg, steps, calories, active_calories, distance_km, exercise_min, calories_eaten, protein_g, carbs_g, fat_g, respiratory_rate, notes, source, updated_at";
+  "user_id, date, hrv, resting_hr, recovery, spo2, skin_temp_c, strain, sleep_hours, sleep_score, deep_sleep_hours, rem_sleep_hours, weight_kg, body_fat_pct, fat_mass_kg, fat_free_mass_kg, muscle_mass_kg, bone_mass_kg, hydration_kg, steps, calories, active_calories, distance_km, exercise_min, calories_eaten, protein_g, carbs_g, fat_g, fiber_g, respiratory_rate, notes, source, updated_at";
 
 /**
  * Server variant takes the supabase client as an argument so the caller (a

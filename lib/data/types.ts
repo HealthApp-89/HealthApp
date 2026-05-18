@@ -29,6 +29,7 @@ export type DailyLog = {
   protein_g: number | null;
   carbs_g: number | null;
   fat_g: number | null;
+  fiber_g: number | null;
   respiratory_rate: number | null;
   notes: string | null;
   source: string | null;
