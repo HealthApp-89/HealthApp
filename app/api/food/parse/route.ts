@@ -40,18 +40,31 @@ export async function POST(req: Request) {
   }
 
   // 2. Resolve macros per item (cache → USDA → LLM fallback).
-  //    Wrap in try/catch because lookup throws when all paths fail.
-  let items: FoodItem[];
-  try {
-    items = await Promise.all(
-      extracted.map((it) => resolveItemMacros(it.name, it.qty_g)),
-    );
-  } catch (e) {
-    return NextResponse.json(
-      { error: "macro_resolution_failed", detail: (e as Error).message },
-      { status: 502 },
-    );
-  }
+  //    Per-item try/catch: one item exhausting all fallback paths becomes a
+  //    zero-macro low-confidence placeholder, not a batch abort. The user
+  //    can edit qty or remove the item in preview before committing.
+  const items: FoodItem[] = await Promise.all(
+    extracted.map(async (it) => {
+      try {
+        return await resolveItemMacros(it.name, it.qty_g);
+      } catch (err) {
+        console.warn(`[/api/food/parse] all lookup paths failed for "${it.name}"`, err);
+        return {
+          name: it.name,
+          qty_g: it.qty_g,
+          kcal: 0,
+          protein_g: 0,
+          carbs_g: 0,
+          fat_g: 0,
+          fiber_g: 0,
+          per_100g: { kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0, fiber_g: 0 },
+          source: "llm" as const,
+          db_ref: null,
+          confidence: "low" as const,
+        };
+      }
+    }),
+  );
 
   const totals = sumMacros(items);
   const is_estimated = items.some((it) => it.source === "llm");

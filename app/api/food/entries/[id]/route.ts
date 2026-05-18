@@ -10,21 +10,22 @@ import { revalidatePath } from "next/cache";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { reaggregateDay } from "@/lib/food/aggregate";
 import { sumMacros, type FoodItem } from "@/lib/food/types";
+import { utcDate, isToday } from "@/lib/food/date";
 
 const ItemSchema = z.object({
   name: z.string(),
   qty_g: z.number().positive().finite(),
-  kcal: z.number(),
-  protein_g: z.number(),
-  carbs_g: z.number(),
-  fat_g: z.number(),
-  fiber_g: z.number(),
+  kcal: z.number().nonnegative(),
+  protein_g: z.number().nonnegative(),
+  carbs_g: z.number().nonnegative(),
+  fat_g: z.number().nonnegative(),
+  fiber_g: z.number().nonnegative(),
   per_100g: z.object({
-    kcal: z.number(),
-    protein_g: z.number(),
-    carbs_g: z.number(),
-    fat_g: z.number(),
-    fiber_g: z.number(),
+    kcal: z.number().nonnegative(),
+    protein_g: z.number().nonnegative(),
+    carbs_g: z.number().nonnegative(),
+    fat_g: z.number().nonnegative(),
+    fiber_g: z.number().nonnegative(),
   }),
   source: z.enum(["db", "llm"]),
   db_ref: z
@@ -39,14 +40,6 @@ const ItemSchema = z.object({
 const PatchSchema = z.object({
   items: z.array(ItemSchema).min(1),
 });
-
-function utcDate(iso: string): string {
-  return iso.slice(0, 10);
-}
-
-function isToday(iso: string): boolean {
-  return utcDate(iso) === utcDate(new Date().toISOString());
-}
 
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
@@ -66,6 +59,9 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     .eq("user_id", user.id)
     .single();
   if (!existing) return NextResponse.json({ error: "not_found" }, { status: 404 });
+  // Note: UTC date bucketing — entries logged 23:00-00:00 local in CET may
+  // not be editable as "today" once the UTC midnight tick has passed. Known
+  // limitation; see spec §"Open items" for the per-user-TZ fix path.
   if (!isToday(existing.eaten_at)) {
     return NextResponse.json({ error: "edit_past_day_disallowed" }, { status: 403 });
   }

@@ -8,14 +8,11 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { reaggregateDay } from "@/lib/food/aggregate";
+import { utcDate } from "@/lib/food/date";
 
 const BodySchema = z.object({
   entry_id: z.string().uuid(),
 });
-
-function utcDate(iso: string): string {
-  return iso.slice(0, 10);
-}
 
 export async function POST(req: Request) {
   const supabase = await createSupabaseServerClient();
@@ -36,9 +33,14 @@ export async function POST(req: Request) {
     .eq("user_id", user.id)
     .select("id, eaten_at, totals")
     .single();
-  if (error || !updated) {
+  if (error) {
     console.error("[/api/food/commit] update failed", error);
     return NextResponse.json({ error: "commit_failed" }, { status: 500 });
+  }
+  if (!updated) {
+    // Entry doesn't exist, isn't owned by this user, or has already been
+    // committed/rejected (status update matched 0 rows).
+    return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
 
   const date = utcDate(updated.eaten_at);
