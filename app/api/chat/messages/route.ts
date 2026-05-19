@@ -114,6 +114,7 @@ export async function GET(req: Request) {
     created_at: r.created_at,
     updated_at: r.updated_at,
     images: imagesByMsg.get(r.id) ?? [],
+    speaker: (r as { speaker?: import("@/lib/data/types").ChatSpeaker }).speaker ?? ("peter" as const),
     kind: (r.kind as "coach" | "morning_intake" | "morning_brief" | "weekly_review") ?? "coach",
     ui: (r.ui as MorningUI | WeeklyReviewCardUI | null) ?? null,
     tool_calls: (r as { tool_calls?: import("@/lib/data/types").ToolCallLog[] | null }).tool_calls ?? null,

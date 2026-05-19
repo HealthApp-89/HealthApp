@@ -43,8 +43,11 @@ export type ChatMessage = {
   created_at: string;
   updated_at: string;
   images: ChatMessageImage[];
+  /** Coach persona delivering this message. Default 'peter' for assistant turns;
+   *  'user' for user-authored messages. */
+  speaker: import("@/lib/data/types").ChatSpeaker;
   /** Default 'coach'. ChatPanel filters its render by this. */
-  kind: "coach" | "morning_intake" | "morning_brief" | "weekly_review" | "proactive_nudge";
+  kind: "coach" | "morning_intake" | "morning_brief" | "weekly_review" | "proactive_nudge" | "system_routing";
   /** Chips / rendering hints for morning_intake turns; structured card UI
    *  for morning_brief / weekly_review / proactive_nudge turns. */
   ui: MorningUI | MorningBriefCard | WeeklyReviewCardUI | ProactiveNudgeCard | null;

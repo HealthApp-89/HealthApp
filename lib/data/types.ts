@@ -1,5 +1,15 @@
 // Database row shapes — snake_case, mirrors supabase/schema.sql.
 
+// ── Multi-coach team (coach-team arc) ─────────────────────────────────────────
+
+export const SPEAKERS = ["peter", "carter", "nora", "remi"] as const;
+export type Speaker = (typeof SPEAKERS)[number];
+
+/** Speaker as it can appear in chat_messages.speaker — includes 'user'. */
+export type ChatSpeaker = Speaker | "user";
+
+// ── Data rows ─────────────────────────────────────────────────────────────────
+
 export type DailyLog = {
   user_id: string;
   date: string; // YYYY-MM-DD
@@ -88,10 +98,14 @@ export type ChatMessageRow = {
   model: string | null;
   /** [{name, input, ms, result_rows, range_days, truncated, error}] */
   tool_calls: ToolCallLog[] | null;
+  /** Coach persona delivering this message. Default 'peter' for assistant turns;
+   *  'user' for user-authored messages. */
+  speaker: ChatSpeaker;
   /** Default 'coach' for the existing free-form chat thread; 'morning_intake'
    *  segregates the daily check-in conversation in ChatPanel; 'morning_brief'
-   *  and 'weekly_review' are structured assistant-only cards. */
-  kind: "coach" | "morning_intake" | "morning_brief" | "weekly_review" | "proactive_nudge";
+   *  and 'weekly_review' are structured assistant-only cards; 'system_routing'
+   *  for system-triggered handoffs between speakers. */
+  kind: "coach" | "morning_intake" | "morning_brief" | "weekly_review" | "proactive_nudge" | "system_routing";
   /** Chip definitions / rendering hints for the morning intake bot, or
    *  structured card payload for morning_brief / weekly_review / proactive_nudge. NULL on
    *  free-form coach turns. */

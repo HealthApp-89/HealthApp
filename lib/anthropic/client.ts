@@ -73,11 +73,13 @@ export function parseClaudeJson<T>(raw: string): T {
 
 export type { CacheControl, ContentBlock, RichMessage } from "@/lib/chat/types";
 import type { CacheControl, RichMessage } from "@/lib/chat/types";
+import type { Speaker } from "@/lib/data/types";
 
 export type StreamEvent =
   | { type: "delta"; text: string }
   | { type: "done" }
-  | { type: "error"; message: string };
+  | { type: "error"; message: string }
+  | { type: "handoff"; from: Speaker; to: Speaker; briefing: string | null };
 
 export type StreamOptions = {
   model?: string;
