@@ -6,6 +6,18 @@
 //
 // Used by <DraftReview/>'s "Change food" swap. /api/food/draft does the same
 // inline; this endpoint exists so Edit-swap doesn't need to spin a throwaway draft.
+//
+// TODO (multi-user): the POST handler accepts client-supplied per_100g macros
+// and writes them to the shared food_db_cache. In the single-user threat
+// model this is moot, but if other users ever share the cache, a malicious
+// client could inject fabricated macros that surface in other users' trigram
+// lookups. Mitigation when needed: re-fetch from the candidate.source API
+// server-side and compare, or tag client-pick rows with source='manual' so
+// they don't pollute the USDA/OFF lookup signal.
+//
+// TODO: food_db_cache has no (source, name) uniqueness for upc-null rows;
+// repeated picks of the same OFF/USDA result accumulate duplicate rows.
+// Harmless (trigram lookup picks one) but worth a dedup migration.
 
 import { NextResponse } from "next/server";
 import { z } from "zod";

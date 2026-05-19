@@ -3,6 +3,7 @@ import { useState } from "react";
 import type { MealSlot, SearchCandidate, FoodLogEntry } from "@/lib/food/types";
 import { FoodSearchPicker } from "./FoodSearchPicker";
 import { DraftReview } from "./DraftReview";
+import { fmtNum } from "@/lib/ui/score";
 
 type DraftItem = { candidate: SearchCandidate; qty_g: number };
 
@@ -103,7 +104,7 @@ export function MealLoggerSearchTab({
               <li key={idx} className="flex items-center justify-between p-2 text-sm">
                 <div className="min-w-0">
                   <div className="truncate">{p.candidate.name}</div>
-                  <div className="text-xs text-zinc-400">{p.qty_g} g</div>
+                  <div className="text-xs text-zinc-400">{fmtNum(p.qty_g)} g</div>
                 </div>
                 <button
                   type="button"

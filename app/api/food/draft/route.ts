@@ -7,6 +7,9 @@
 //   - If canonical_id is null (fresh OFF/USDA hit), insert into food_db_cache
 //     to obtain a canonical_id (cache write at pick-time, not search-time).
 //   - Compute macros via macrosForQty and build a FoodItem.
+//
+// TODO (multi-user): same caveat as /api/food/cache-pick — client-supplied
+// per_100g macros land in the shared food_db_cache. Moot for single-user.
 
 import { NextResponse } from "next/server";
 import { z } from "zod";

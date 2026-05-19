@@ -2,13 +2,17 @@
 //
 // Multi-source food search used by /api/food/search and the SEARCH tab's
 // FoodSearchPicker. Fanout in parallel:
-//   1. food_db_cache trigram match (loose threshold 0.4 — user picks the
-//      result, so we accept fuzzier matches than the parser's resolve chain)
+//   1. food_db_cache substring match via ilike
 //   2. OpenFoodFacts cgi/search.pl
 //   3. USDA /foods/search
 //
 // Merge + dedupe (case-insensitive name match), sort by source preference
 // (db > off > usda) then by token-overlap score. Return top 20.
+//
+// TODO: cache lookup uses ilike substring not trigram similarity — misses
+// plurals ("eggs" → cache "Egg"). Trade-off acknowledged: OFF/USDA will
+// surface the canonical form anyway since we always fan out (no short-
+// circuit). Migrate to a pg_trgm RPC if recall becomes a real problem.
 //
 // CACHE WRITE-BACK happens at PICK TIME (/api/food/draft), NOT during search,
 // to keep search idempotent and avoid polluting the cache with rows the user
@@ -140,29 +144,26 @@ async function searchUsda(query: string): Promise<SearchCandidate[]> {
 export async function searchFoods(query: string, limit = 20): Promise<SearchCandidate[]> {
   if (query.trim().length < 2) return [];
 
-  // Cache first — if we have a high-trigram-score local hit, short-circuit.
-  const cacheHits = await searchCacheTrigram(query);
-  const topCacheScore = cacheHits.length > 0
-    ? Math.max(...cacheHits.map((c) => scoreOverlap(query, c.name)))
-    : 0;
-  if (topCacheScore >= 0.7) {
-    return cacheHits
-      .sort((a, b) => scoreOverlap(query, b.name) - scoreOverlap(query, a.name))
-      .slice(0, limit);
-  }
-
-  const [offHits, usdaHits] = await Promise.all([
+  // Always fan out to all three sources. A previous version short-circuited
+  // on a high cache score, but that meant a single bad past pick (e.g.
+  // "Oil, corn, peanut, and olive" from the broken pre-scoring USDA path)
+  // could poison every future search for "olive oil" by hiding fresh
+  // OFF/USDA candidates. Latency cost ≈ 500ms parallel; acceptable for an
+  // active-typing search.
+  const [cacheHits, offHits, usdaHits] = await Promise.all([
+    searchCacheTrigram(query),
     searchOpenFoodFacts(query),
     searchUsda(query),
   ]);
   const all = [...cacheHits, ...offHits, ...usdaHits];
 
-  // Dedupe by lowercase name. Keep the first occurrence (favours db > off > usda
-  // because of array order).
+  // Dedupe by case-insensitive name with whitespace collapsed. Keep first
+  // occurrence — array order favours db > off > usda which matches the
+  // SOURCE_RANK preference applied below.
   const seen = new Set<string>();
   const deduped: SearchCandidate[] = [];
   for (const c of all) {
-    const key = c.name.toLowerCase().trim();
+    const key = c.name.toLowerCase().replace(/\s+/g, " ").trim();
     if (seen.has(key)) continue;
     seen.add(key);
     deduped.push(c);
