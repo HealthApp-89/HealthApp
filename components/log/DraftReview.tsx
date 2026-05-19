@@ -7,6 +7,33 @@ import { FoodSearchPicker } from "./FoodSearchPicker";
 
 const QTY_PRESETS = [50, 100, 150, 200] as const;
 
+type ChipState = "db-high" | "off-high" | "low-match" | "estimated" | null;
+
+function chipFor(item: { source: "db" | "llm"; db_ref: { source: string } | null; match_score: number | null }): ChipState {
+  if (item.source === "llm") return "estimated";
+  if (item.source !== "db") return null;
+  const score = item.match_score ?? 1.0;
+  if (score < 0.7) return "low-match";
+  if (item.db_ref?.source === "openfoodfacts") return "off-high";
+  return "db-high";
+}
+
+function ChipBadge({ state }: { state: ChipState }) {
+  if (state === null) return null;
+  const cfg = {
+    "db-high":   { color: "bg-emerald-500", label: null as string | null },
+    "off-high":  { color: "bg-sky-500",     label: null as string | null },
+    "low-match": { color: "bg-amber-500",   label: "low match" },
+    "estimated": { color: "bg-amber-500",   label: "estimated" },
+  }[state];
+  return (
+    <span className="inline-flex items-center gap-1">
+      <span className={`inline-block h-2 w-2 rounded-full ${cfg.color}`} />
+      {cfg.label && <span className="text-xs text-amber-400">{cfg.label}</span>}
+    </span>
+  );
+}
+
 /** Sums kcal/P/C/F/fiber across items — used for local totals after a PATCH.
  *  The server also recomputes; this lets the UI update without a round-trip. */
 function sumItems(items: FoodItem[]) {
@@ -226,9 +253,15 @@ export function DraftReview({
               <div className="min-w-0 flex-1">
                 <div className="flex items-baseline gap-2">
                   <span className="font-medium">{it.name}</span>
-                  {it.source === "llm" && (
-                    <span className="text-xs text-amber-400">estimated</span>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => startEdit(idx)}
+                    aria-label={`Edit ${it.name}`}
+                    disabled={editBusy}
+                    className="cursor-pointer disabled:cursor-default"
+                  >
+                    <ChipBadge state={chipFor(it)} />
+                  </button>
                 </div>
                 <div className="text-xs text-zinc-400">
                   {fmtNum(it.qty_g)} g · {fmtNum(it.kcal)} kcal · {fmtNum(it.protein_g)} P · {fmtNum(it.carbs_g)} C · {fmtNum(it.fat_g)} F
