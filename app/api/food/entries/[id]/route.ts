@@ -38,7 +38,9 @@ const ItemSchema = z.object({
 });
 
 const PatchSchema = z.object({
-  items: z.array(ItemSchema).min(1),
+  items: z.array(ItemSchema).min(1).optional(),
+  meal_slot: z.enum(["breakfast", "lunch", "dinner", "snack"]).optional(),
+  eaten_at: z.string().datetime().optional(),
 });
 
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
@@ -66,13 +68,38 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     return NextResponse.json({ error: "edit_past_day_disallowed" }, { status: 403 });
   }
 
-  const items = parsed.data.items as FoodItem[];
-  const totals = sumMacros(items);
-  const is_estimated = items.some((it) => it.source === "llm");
+  const updates: Record<string, unknown> = {
+    updated_at: new Date().toISOString(),
+  };
+
+  if (parsed.data.items) {
+    const items = parsed.data.items as FoodItem[];
+    updates.items = items;
+    updates.totals = sumMacros(items);
+    updates.is_estimated = items.some((it) => it.source === "llm");
+  }
+
+  if (parsed.data.meal_slot) {
+    updates.meal_slot = parsed.data.meal_slot;
+  }
+
+  if (parsed.data.eaten_at) {
+    // Preserve the today-only invariant + ensure we don't shift the row
+    // to a different UTC day (would require re-aggregating a second day).
+    const existingDate = utcDate(existing.eaten_at);
+    const newDate = utcDate(parsed.data.eaten_at);
+    if (existingDate !== newDate) {
+      return NextResponse.json(
+        { error: "eaten_at must stay within the same UTC day" },
+        { status: 400 },
+      );
+    }
+    updates.eaten_at = parsed.data.eaten_at;
+  }
 
   const { error } = await supabase
     .from("food_log_entries")
-    .update({ items, totals, is_estimated, updated_at: new Date().toISOString() })
+    .update(updates)
     .eq("id", id)
     .eq("user_id", user.id);
   if (error) return NextResponse.json({ error: "update_failed" }, { status: 500 });
