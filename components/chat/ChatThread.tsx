@@ -1,13 +1,20 @@
 // components/chat/ChatThread.tsx
 "use client";
 
-import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Fragment, memo, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ChatMessage } from "@/lib/chat/types";
 import { ChatMessage as ChatMessageView } from "./ChatMessage";
+import { HandoffLine } from "./HandoffLine";
 import { MorningBriefCard as MorningBriefCardComponent } from "@/components/morning/MorningBriefCard";
 import { WeeklyReviewCard } from "@/components/chat/WeeklyReviewCard";
 import { ProactiveNudgeCard } from "@/components/chat/ProactiveNudgeCard";
-import type { MorningBriefCard, WeeklyReviewCardUI, ProactiveNudgeCard as ProactiveNudgeCardUI } from "@/lib/data/types";
+import { isCoachSpeaker } from "@/lib/coach/speakers";
+import type {
+  MorningBriefCard,
+  Speaker,
+  WeeklyReviewCardUI,
+  ProactiveNudgeCard as ProactiveNudgeCardUI,
+} from "@/lib/data/types";
 
 function ChatThreadInner({
   userId,
@@ -234,15 +241,37 @@ function ChatThreadInner({
               prevItem.m.kind === "morning_brief" ||
               prevItem.m.kind === "weekly_review" ||
               prevItem.m.kind === "proactive_nudge"));
+
+        // Render a HandoffLine when two adjacent assistant turns belong to
+        // different coach speakers. Briefing prose is live-only; replayed
+        // history passes null. ChatPanel's SSE consumer surfaces the live
+        // briefing via an injected synthetic message — see Step 5.
+        const showHandoff =
+          prevItem &&
+          prevItem.kind === "msg" &&
+          prevItem.m.role === "assistant" &&
+          it.m.role === "assistant" &&
+          isCoachSpeaker(prevItem.m.speaker) &&
+          isCoachSpeaker(it.m.speaker) &&
+          prevItem.m.speaker !== it.m.speaker;
+
         return (
-          <ChatMessageView
-            key={it.m.id}
-            message={it.m}
-            isFirstInGroup={isFirstInGroup}
-            onRetry={it.m.status === "error" ? () => onRetry(it.m.id) : undefined}
-            onSendUserMessage={onSendUserMessage}
-            onFocusComposer={onFocusComposer}
-          />
+          <Fragment key={it.m.id}>
+            {showHandoff && (
+              <HandoffLine
+                from={(prevItem as { kind: "msg"; m: ChatMessage }).m.speaker as Speaker}
+                to={it.m.speaker as Speaker}
+                briefing={null}
+              />
+            )}
+            <ChatMessageView
+              message={it.m}
+              isFirstInGroup={isFirstInGroup}
+              onRetry={it.m.status === "error" ? () => onRetry(it.m.id) : undefined}
+              onSendUserMessage={onSendUserMessage}
+              onFocusComposer={onFocusComposer}
+            />
+          </Fragment>
         );
       })}
     </div>
