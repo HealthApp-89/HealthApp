@@ -20,6 +20,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { signApprovalToken, verifyApprovalToken, payloadHash, ApprovalTokenError, approvalTokenUserMessage } from "@/lib/coach/approval-token";
 import type { IntakePayload, PlanPayload, TrainingBlock, TrainingWeek } from "@/lib/data/types";
+import type { MealSlot } from "@/lib/food/types";
 import { buildPlanPayload } from "@/lib/coach/plan-builder";
 import { renderProfileMarkdown } from "@/lib/coach/profile-renderer";
 import {
@@ -107,7 +108,7 @@ export const WORKOUTS_TOOL = {
 export const FOOD_LOG_TOOL = {
   name: "query_food_log",
   description:
-    "Query the in-app food log for a date range. Returns committed entries with per-item macros (name, qty_g, kcal, protein/carbs/fat/fiber, source). Use for food-choice and meal-composition questions — distinct from query_daily_logs which returns day-level macro totals only. Range capped at 90 days. Optional item_filter is a case-insensitive substring match on item name.",
+    "Query the in-app food log for a date range. Returns committed entries with per-item macros (name, qty_g, kcal, protein/carbs/fat/fiber, source) and meal_slot. Use for food-choice and meal-composition questions — distinct from query_daily_logs which returns day-level macro totals only. Range capped at 90 days. Optional item_filter is a case-insensitive substring match on item name. Optional meal_slot filter narrows results to a single slot — useful for questions like 'how much protein at breakfast last week?'.",
   input_schema: {
     type: "object" as const,
     required: ["start_date", "end_date"],
@@ -115,6 +116,7 @@ export const FOOD_LOG_TOOL = {
       start_date: { type: "string", format: "date" },
       end_date: { type: "string", format: "date" },
       item_filter: { type: "string", description: "Case-insensitive substring match on item name." },
+      meal_slot: { type: "string", enum: ["breakfast", "lunch", "dinner", "snack"] },
     },
   },
 };
@@ -637,6 +639,7 @@ type FoodLogItem = {
 };
 type FoodLogEntryRow = {
   eaten_at: string;
+  meal_slot: MealSlot;
   kind: string;
   items: FoodLogItem[];
   totals: { kcal: number; protein_g: number; carbs_g: number; fat_g: number; fiber_g: number };
@@ -702,15 +705,31 @@ export async function executeQueryFoodLog(opts: {
   }
   const itemFilter = (filterRaw as string | undefined)?.toLowerCase() ?? null;
 
+  // Validate meal_slot if present (before issuing the query).
+  const mealSlot = i.meal_slot as string | undefined;
+  if (mealSlot !== undefined && !["breakfast", "lunch", "dinner", "snack"].includes(mealSlot)) {
+    return {
+      ok: false,
+      error: { error: `invalid meal_slot: ${mealSlot}` },
+      meta: { ms: Date.now() - t0, range_days },
+    };
+  }
+
   // --- Query (security invariant 2: .eq("user_id", userId)) ---
-  const { data, error } = await opts.supabase
+  let queryBuilder = opts.supabase
     .from("food_log_entries")
-    .select("eaten_at, kind, items, totals")
+    .select("eaten_at, meal_slot, kind, items, totals")
     .eq("user_id", opts.userId)
     .eq("status", "committed")
     .gte("eaten_at", `${start}T00:00:00Z`)
     .lte("eaten_at", `${end}T23:59:59Z`)
     .order("eaten_at", { ascending: false });
+
+  if (mealSlot) {
+    queryBuilder = queryBuilder.eq("meal_slot", mealSlot);
+  }
+
+  const { data, error } = await queryBuilder;
   if (error) {
     return {
       ok: false,
