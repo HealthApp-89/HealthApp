@@ -1,10 +1,9 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { Card, SectionLabel } from "@/components/ui/Card";
-import { LineChart, type LinePoint } from "@/components/charts/LineChart";
+import { MetricCard, type MetricDatum } from "@/components/charts/MetricCard";
 import { MonitorTile } from "@/components/dashboard/MonitorTile";
 import { DashboardSection } from "@/components/dashboard/DashboardSection";
 import { avg, buildWeekWindow, fmtNum } from "@/lib/ui/score";
-import { COLOR, METRIC_COLOR } from "@/lib/ui/theme";
+import { METRIC_COLOR } from "@/lib/ui/theme";
 import type { DailyLog } from "@/lib/data/types";
 
 type Status = "ok" | "watch" | "alert" | "muted";
@@ -103,164 +102,73 @@ export async function WeeklyRollups({ userId, today, todayHrv, todayRhr, hrvBase
       {(hasSteps || hasCals || hasWeight) && (
         <DashboardSection label="Last 7 days">
           <div className="flex flex-col gap-3">
-            {hasSteps && (
-              <Card tint="steps">
-                <div className="flex justify-between items-center mb-2.5">
-                  <SectionLabel>Steps</SectionLabel>
-                  <span className="text-lg font-bold font-mono" style={{ color: METRIC_COLOR.steps }}>
-                    {wSteps[6] != null ? wSteps[6]!.toLocaleString() : "—"}
-                  </span>
-                </div>
-                <LineChart
-                  data={wSteps.map((y) => ({ y }))}
+            {hasSteps && (() => {
+              const data: MetricDatum[] = week.dates.map((d, i) => ({ date: d, value: wSteps[i] }));
+              const stepsAvg = avg(wSteps);
+              const stepsBest = wSteps
+                .filter((v): v is number => typeof v === "number")
+                .reduce((m, v) => Math.max(m, v), -Infinity);
+              const subtitle = [
+                stepsAvg != null ? `7-day avg ${fmtInt(stepsAvg)}` : null,
+                Number.isFinite(stepsBest) ? `best ${stepsBest.toLocaleString()}` : null,
+              ].filter(Boolean).join(" · ") || undefined;
+              return (
+                <MetricCard
+                  title="Steps"
+                  value={wSteps[6] ?? null}
+                  subtitle={subtitle}
+                  data={data}
                   color={METRIC_COLOR.steps}
-                  variant="mini"
-                  height={40}
+                  type="bar"
                 />
-                <div className="flex justify-between mt-1.5">
-                  {week.labels.map((d, i) => (
-                    <span
-                      key={i}
-                      className="text-[8px] uppercase"
-                      style={{ color: d === "Today" ? METRIC_COLOR.steps : COLOR.textFaint }}
-                    >
-                      {d}
-                    </span>
-                  ))}
-                </div>
-                <div className="mt-2.5 flex gap-2">
-                  <StatTile label="7-day avg" value={fmtInt(avg(wSteps))} color={METRIC_COLOR.steps} />
-                  <StatTile
-                    label="Goal"
-                    value="8,000"
-                    color={(wSteps[6] ?? 0) >= 8000 ? METRIC_COLOR.steps : METRIC_COLOR.calories}
-                  />
-                  <StatTile
-                    label="Best"
-                    value={
-                      wSteps.filter((v): v is number => typeof v === "number").length
-                        ? Math.max(
-                            ...wSteps.filter((v): v is number => typeof v === "number"),
-                          ).toLocaleString()
-                        : "—"
-                    }
-                    color={METRIC_COLOR.steps}
-                  />
-                </div>
-              </Card>
-            )}
+              );
+            })()}
 
-            {hasCals && (
-              <Card tint="nutrition">
-                <div className="flex justify-between items-center mb-2.5">
-                  <SectionLabel>Calories</SectionLabel>
-                  <span className="text-lg font-bold font-mono" style={{ color: METRIC_COLOR.calories }}>
-                    {wCals[6] != null ? wCals[6]!.toLocaleString() : "—"}
-                    <span className="text-[10px] font-normal ml-1" style={{ color: COLOR.textFaint }}>kcal</span>
-                  </span>
-                </div>
-                <LineChart
-                  data={wCals.map((y) => ({ y }))}
+            {hasCals && (() => {
+              const data: MetricDatum[] = week.dates.map((d, i) => ({ date: d, value: wCals[i] }));
+              const calsAvg = avg(wCals);
+              return (
+                <MetricCard
+                  title="Calories"
+                  value={wCals[6] ?? null}
+                  unit="kcal"
+                  subtitle={calsAvg != null ? `7-day avg ${fmtInt(calsAvg)}` : undefined}
+                  data={data}
                   color={METRIC_COLOR.calories}
-                  variant="mini"
-                  height={40}
+                  type="bar"
                 />
-                <div className="flex justify-between mt-1.5 mb-2.5">
-                  {week.labels.map((d, i) => (
-                    <span
-                      key={i}
-                      className="text-[8px] uppercase"
-                      style={{ color: d === "Today" ? METRIC_COLOR.calories : COLOR.textFaint }}
-                    >
-                      {d}
-                    </span>
-                  ))}
-                </div>
-                <div className="flex gap-2">
-                  <StatTile label="7-day avg" value={fmtInt(avg(wCals))} color={METRIC_COLOR.calories} />
-                </div>
-              </Card>
-            )}
+              );
+            })()}
 
-            {hasWeight && (
-              <Card tint="weight">
-                <div className="flex justify-between items-center mb-2.5">
-                  <SectionLabel>Weight trend</SectionLabel>
-                  <span className="text-lg font-bold font-mono" style={{ color: METRIC_COLOR.weight_kg }}>
-                    {latestWeightRow?.weight_kg != null
-                      ? `${fmtNum(latestWeightRow.weight_kg)} kg`
-                      : "—"}
-                  </span>
-                </div>
-                {validWts.length > 1 && (
-                  <>
-                    <LineChart
-                      data={wWgt.map((y, i) => ({ x: week.dates[i], y }))}
-                      color={METRIC_COLOR.weight_kg}
-                      variant="mini"
-                      height={40}
-                      metricKey="weight_kg"
-                    />
-                    <div className="flex justify-between mt-1.5 mb-2.5">
-                      {week.labels.map((d, i) => (
-                        <span
-                          key={i}
-                          className="text-[8px] uppercase"
-                          style={{ color: d === "Today" ? METRIC_COLOR.weight_kg : COLOR.textFaint }}
-                        >
-                          {d}
-                        </span>
-                      ))}
-                    </div>
-                  </>
-                )}
-                <div className="flex gap-2">
-                  <StatTile
-                    label="Low"
-                    value={validWts.length ? `${fmtNum(Math.min(...validWts))} kg` : "—"}
-                    color={METRIC_COLOR.weight_kg}
-                  />
-                  <StatTile
-                    label="High"
-                    value={validWts.length ? `${fmtNum(Math.max(...validWts))} kg` : "—"}
-                    color={METRIC_COLOR.weight_kg}
-                  />
-                  <StatTile
-                    label="7d change"
-                    value={
-                      validWts.length > 1
-                        ? `${validWts[validWts.length - 1] - validWts[0] > 0 ? "+" : ""}${fmtNum(
-                            validWts[validWts.length - 1] - validWts[0],
-                          )} kg`
-                        : "—"
-                    }
-                    color={
-                      validWts.length > 1
-                        ? validWts[validWts.length - 1] - validWts[0] < 0
-                          ? COLOR.success
-                          : validWts[validWts.length - 1] - validWts[0] > 0
-                          ? COLOR.danger
-                          : COLOR.textMuted
-                        : COLOR.textMuted
-                    }
-                  />
-                </div>
-              </Card>
-            )}
+            {hasWeight && (() => {
+              const data: MetricDatum[] = week.dates.map((d, i) => ({ date: d, value: wWgt[i] }));
+              const change =
+                validWts.length > 1
+                  ? validWts[validWts.length - 1] - validWts[0]
+                  : null;
+              const subtitle = [
+                validWts.length
+                  ? `${fmtNum(Math.min(...validWts))}–${fmtNum(Math.max(...validWts))} kg`
+                  : null,
+                change != null
+                  ? `${change > 0 ? "+" : change < 0 ? "−" : ""}${fmtNum(Math.abs(change))} kg over 7d`
+                  : null,
+              ].filter(Boolean).join(" · ") || undefined;
+              return (
+                <MetricCard
+                  title="Weight trend"
+                  value={latestWeightRow?.weight_kg ?? null}
+                  unit="kg"
+                  subtitle={subtitle}
+                  data={data}
+                  color={METRIC_COLOR.weight_kg}
+                  type="area"
+                />
+              );
+            })()}
           </div>
         </DashboardSection>
       )}
     </>
-  );
-}
-
-function StatTile({ label, value, color }: { label: string; value: string; color: string }) {
-  return (
-    <div className="flex-1 rounded-lg px-2.5 py-2" style={{ background: COLOR.surfaceAlt }}>
-      <div className="text-[9px] uppercase tracking-[0.08em] mb-0.5" style={{ color: COLOR.textFaint }}>{label}</div>
-      <div className="text-[15px] font-bold font-mono" style={{ color }}>
-        {value}
-      </div>
-    </div>
   );
 }

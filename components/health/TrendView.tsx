@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Card } from "@/components/ui/Card";
+import { MetricCard, type MetricDatum } from "@/components/charts/MetricCard";
 import { COLOR, RADIUS } from "@/lib/ui/theme";
 import { fmtNum } from "@/lib/ui/score";
 import { CIRCUMFERENCE_METRICS } from "@/lib/charts/circumferenceChartConfig";
@@ -204,25 +204,30 @@ function BodyCompTrendCards({ points }: { points: HealthTrendPoint[] }) {
   return (
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
       {FIELDS.map((f) => {
-        const series = points
-          .map((p) => ({ x: p.date, y: (p[f.key] as number | null) ?? null }))
-          .filter((p) => p.y != null) as { x: string; y: number }[];
-        const first = series[0]?.y ?? null;
-        const last = series[series.length - 1]?.y ?? null;
+        const series: MetricDatum[] = points.map((p) => ({
+          date: p.date,
+          value: (p[f.key] as number | null) ?? null,
+        }));
+        const present = series.filter(
+          (p): p is { date: string; value: number } => p.value != null,
+        );
+        const first = present[0]?.value ?? null;
+        const last = present[present.length - 1]?.value ?? null;
         const d = first != null && last != null ? last - first : null;
+        const subtitle = d == null
+          ? undefined
+          : `${d > 0 ? "+" : d < 0 ? "−" : ""}${fmtNum(Math.abs(d))} ${f.unit} since start`;
         return (
-          <Card variant="compact" key={f.key as string}>
-            <div style={{ fontSize: "10px", fontWeight: 700, color: COLOR.textMuted, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-              {f.label}
-            </div>
-            <div data-tnum style={{ fontSize: "18px", fontWeight: 700, color: COLOR.textStrong, marginTop: "4px" }}>
-              {fmtNum(last)} <span style={{ fontSize: "11px", color: COLOR.textMuted }}>{f.unit}</span>
-            </div>
-            <div data-tnum style={{ fontSize: "11px", color: d == null ? COLOR.textFaint : d < 0 ? COLOR.success : COLOR.danger, fontWeight: 600 }}>
-              {d == null ? "—" : `${d > 0 ? "+" : ""}${fmtNum(d)}`} since start
-            </div>
-            <Sparkline series={series} color={f.color} />
-          </Card>
+          <MetricCard
+            key={f.key as string}
+            title={f.label}
+            value={last}
+            unit={f.unit}
+            subtitle={subtitle}
+            data={series}
+            color={f.color}
+            type="area"
+          />
         );
       })}
     </div>
@@ -233,63 +238,33 @@ function CircumferenceSparklines({ measurements }: { measurements: BodyMeasureme
   return (
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
       {CIRCUMFERENCE_METRICS.map((m) => {
-        const series = measurements
-          .map((row) => ({ x: row.measured_on, y: m.read(row) }))
-          .filter((p) => p.y != null) as { x: string; y: number }[];
-        const first = series[0]?.y ?? null;
-        const last = series[series.length - 1]?.y ?? null;
+        const series: MetricDatum[] = measurements.map((row) => ({
+          date: row.measured_on,
+          value: m.read(row),
+        }));
+        const present = series.filter(
+          (p): p is { date: string; value: number } => p.value != null,
+        );
+        const first = present[0]?.value ?? null;
+        const last = present[present.length - 1]?.value ?? null;
         const d = first != null && last != null ? last - first : null;
+        const decimals = m.id === "whr" ? 3 : 1;
+        const subtitle = d == null
+          ? undefined
+          : `${d > 0 ? "+" : d < 0 ? "−" : ""}${fmtNum(Math.abs(d), decimals)}${m.unit ? ` ${m.unit}` : ""} since start`;
         return (
-          <Card variant="compact" key={m.id}>
-            <div style={{ fontSize: "10px", fontWeight: 700, color: COLOR.textMuted, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-              {m.label}
-            </div>
-            <div data-tnum style={{ fontSize: "18px", fontWeight: 700, color: COLOR.textStrong, marginTop: "4px" }}>
-              {last == null ? "—" : fmtNum(last, m.id === "whr" ? 3 : 1)}
-              {m.unit && <span style={{ fontSize: "11px", color: COLOR.textMuted, marginLeft: "4px" }}>{m.unit}</span>}
-            </div>
-            <div data-tnum style={{ fontSize: "11px", color: d == null ? COLOR.textFaint : d < 0 ? COLOR.success : COLOR.danger, fontWeight: 600 }}>
-              {d == null ? "—" : `${d > 0 ? "+" : ""}${fmtNum(d, m.id === "whr" ? 3 : 1)}`} since start
-            </div>
-            <Sparkline series={series} color={m.color} />
-          </Card>
+          <MetricCard
+            key={m.id}
+            title={m.label}
+            value={last}
+            unit={m.unit}
+            subtitle={subtitle}
+            data={series}
+            color={m.color}
+            type="area"
+          />
         );
       })}
     </div>
-  );
-}
-
-/** Minimal SVG sparkline — avoids depending on /trends' chart primitives
- *  (their range pills and interpolation aren't needed at this resolution). */
-function Sparkline({ series, color }: { series: { x: string; y: number }[]; color: string }) {
-  if (series.length < 2) {
-    return (
-      <div style={{ height: "32px", display: "flex", alignItems: "center", fontSize: "10px", color: COLOR.textFaint }}>
-        Need ≥ 2 points
-      </div>
-    );
-  }
-  const values = series.map((p) => p.y);
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const W = 120;
-  const H = 32;
-  const range = max - min || 1;
-  const pts = series
-    .map((p, i) => {
-      const x = (i / (series.length - 1)) * W;
-      const y = H - ((p.y - min) / range) * H;
-      return `${x.toFixed(1)},${y.toFixed(1)}`;
-    })
-    .join(" ");
-  return (
-    <svg width="100%" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ marginTop: "6px", display: "block" }}>
-      <polyline fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" points={pts} />
-      {series.map((_, i) => {
-        const x = (i / (series.length - 1)) * W;
-        const y = H - ((series[i].y - min) / range) * H;
-        return <circle key={i} cx={x} cy={y} r={1.6} fill={color} />;
-      })}
-    </svg>
   );
 }

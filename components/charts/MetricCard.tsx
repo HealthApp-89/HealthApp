@@ -1,154 +1,118 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
-import Link from "next/link";
-import { Card } from "@/components/ui/Card";
-import { LineChart, type LinePoint } from "@/components/charts/LineChart";
+import {
+  Area,
+  AreaChart,
+  Bar,
+  BarChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+} from "recharts";
 import { COLOR } from "@/lib/ui/theme";
-import { fmtNum } from "@/lib/ui/score";
-import type { DailyLogKey } from "@/lib/ui/colors";
 
-type MetricCardProps = {
-  /** Per-metric color from METRIC_COLOR. Tints the icon chip and chart line. */
-  color: string;
-  /** Glyph or emoji rendered inside the icon chip. */
-  icon: ReactNode;
-  label: string;
-  value: number | string | null;
-  unit?: string;
-  /** Numeric delta vs prior; sign drives color. */
-  delta?: number | null;
-  deltaUnit?: string;
-  /** Reverse semantic — for resting HR, lower is better. Affects delta color. */
-  inverted?: boolean;
-  /** Compact card variant (16px radius, tighter). */
-  compact?: boolean;
-  /** Optional sparkline. Renders a `mini` LineChart below value. When present
-   *  AND a hover is active, the header value is overridden with the hovered
-   *  point's value (and the delta slot shows the hovered date instead). */
-  trend?: LinePoint[];
-  /** Optional href — wraps in a Link with chevron affordance. */
-  href?: string;
-  /** Optional — drives sparkline interpolation lookup. */
-  metricKey?: DailyLogKey;
+export type MetricDatum = {
+  date: string;
+  value: number | null;
 };
 
+type MetricCardProps = {
+  title: string;
+  value: number | null;
+  unit?: string;
+  subtitle?: string;
+  data: MetricDatum[];
+  color: string;
+  type: "area" | "bar";
+};
+
+const WEEKDAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+function weekdayLabel(iso: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
+  const [y, m, d] = iso.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return WEEKDAY[dt.getUTCDay()];
+}
+
+function formatTooltipDate(iso: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
+  const [y, m, d] = iso.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return dt.toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  });
+}
+
+function formatValue(v: number | null): string {
+  if (v == null || !Number.isFinite(v)) return "—";
+  return v.toLocaleString(undefined, { maximumFractionDigits: 2 });
+}
+
+const gradientId = (color: string) =>
+  `mc-grad-${color.replace(/[^a-z0-9]/gi, "")}`;
+
 export function MetricCard({
-  color,
-  icon,
-  label,
+  title,
   value,
   unit,
-  delta,
-  deltaUnit,
-  inverted,
-  compact,
-  trend,
-  href,
-  metricKey,
+  subtitle,
+  data,
+  color,
+  type,
 }: MetricCardProps) {
-  // Hover swap-in: when the user is dragging across the trend, surface the
-  // hovered point's value and date in the header. Falls back to the normal
-  // value + delta when not hovering.
-  const [hover, setHover] = useState<LinePoint | null>(null);
-  const isHovering = hover !== null && hover.y !== null;
+  const numericData = data.filter(
+    (d): d is { date: string; value: number } =>
+      d.value != null && Number.isFinite(d.value),
+  );
+  const hasChart = numericData.length >= 1;
+  const gid = gradientId(color);
 
-  const goodWhenPositive = !inverted;
-  const deltaColor =
-    delta == null
-      ? COLOR.textFaint
-      : delta === 0
-      ? COLOR.textFaint
-      : (delta > 0) === goodWhenPositive
-      ? COLOR.success
-      : COLOR.danger;
-
-  const displayValue: number | string | null = isHovering ? hover!.y : value;
-  const valueDisplay =
-    displayValue == null
-      ? "—"
-      : typeof displayValue === "number"
-      ? fmtNum(displayValue)
-      : displayValue;
-
-  const inner = (
-    <Card variant={compact ? "compact" : "standard"}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <div
-            style={{
-              width: compact ? "24px" : "28px",
-              height: compact ? "24px" : "28px",
-              borderRadius: compact ? "7px" : "8px",
-              background: hexToBgChip(color),
-              color,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: compact ? "12px" : "14px",
-              fontWeight: 700,
-              flexShrink: 0,
-            }}
-          >
-            {icon}
-          </div>
-          <span
-            style={{
-              fontSize: compact ? "12px" : "11px",
-              fontWeight: 600,
-              color: COLOR.textMid,
-              letterSpacing: "0.02em",
-            }}
-          >
-            {label}
-          </span>
-        </div>
-        {isHovering && hover!.x ? (
-          <span
-            data-tnum
-            style={{
-              fontSize: "11px",
-              fontWeight: 600,
-              color: COLOR.textFaint,
-              letterSpacing: "0.02em",
-            }}
-          >
-            {formatHoverDate(hover!.x)}
-          </span>
-        ) : delta != null ? (
-          <span
-            data-tnum
-            style={{
-              fontSize: "11px",
-              fontWeight: 700,
-              color: deltaColor,
-            }}
-          >
-            {delta > 0 ? "+" : ""}
-            {fmtNum(delta)}
-            {deltaUnit ? ` ${deltaUnit}` : ""}
-          </span>
-        ) : null}
+  return (
+    <div
+      style={{
+        background: COLOR.surface,
+        borderRadius: "16px",
+        boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+        padding: "20px",
+      }}
+    >
+      <div
+        style={{
+          fontSize: "11px",
+          fontWeight: 600,
+          letterSpacing: "0.08em",
+          textTransform: "uppercase",
+          color: COLOR.textMuted,
+        }}
+      >
+        {title}
       </div>
 
       <div
         data-tnum
         style={{
-          fontSize: compact ? "20px" : "24px",
-          fontWeight: 800,
-          letterSpacing: "-0.02em",
-          marginTop: "4px",
+          marginTop: "6px",
+          display: "flex",
+          alignItems: "baseline",
+          gap: "6px",
           color: COLOR.textStrong,
+          fontSize: "36px",
+          fontWeight: 600,
+          letterSpacing: "-0.02em",
+          lineHeight: 1.05,
         }}
       >
-        {valueDisplay}
-        {unit ? (
+        <span>{formatValue(value)}</span>
+        {unit && value != null ? (
           <span
             style={{
-              fontSize: "11px",
+              fontSize: "16px",
               fontWeight: 500,
-              color: COLOR.textFaint,
-              marginLeft: "4px",
+              color: COLOR.textMuted,
             }}
           >
             {unit}
@@ -156,47 +120,133 @@ export function MetricCard({
         ) : null}
       </div>
 
-      {trend && trend.length > 0 && (
-        <div style={{ marginTop: "6px" }}>
-          <LineChart
-            data={trend}
-            color={color}
-            variant="mini"
-            metricKey={metricKey}
-            onHoverChange={setHover}
-          />
+      {subtitle ? (
+        <div
+          style={{
+            marginTop: "4px",
+            fontSize: "13px",
+            color: COLOR.textMuted,
+          }}
+        >
+          {subtitle}
         </div>
-      )}
-    </Card>
+      ) : null}
+
+      {hasChart ? (
+        <div style={{ marginTop: "12px", height: "120px" }}>
+          <ResponsiveContainer width="100%" height="100%">
+            {type === "area" ? (
+              <AreaChart
+                data={numericData}
+                margin={{ top: 4, right: 4, bottom: 4, left: 4 }}
+              >
+                <defs>
+                  <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={color} stopOpacity={0.4} />
+                    <stop offset="100%" stopColor={color} stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <XAxis
+                  dataKey="date"
+                  tickFormatter={weekdayLabel}
+                  tick={{ fill: COLOR.textMuted, fontSize: 11 }}
+                  axisLine={false}
+                  tickLine={false}
+                  interval="preserveStartEnd"
+                  minTickGap={20}
+                />
+                <Tooltip
+                  cursor={{ stroke: COLOR.divider, strokeWidth: 1 }}
+                  content={<MetricTooltip color={color} unit={unit} />}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="value"
+                  stroke={color}
+                  strokeWidth={2.5}
+                  fill={`url(#${gid})`}
+                  isAnimationActive={false}
+                  dot={false}
+                  activeDot={{ r: 4, fill: color, stroke: COLOR.surface, strokeWidth: 2 }}
+                />
+              </AreaChart>
+            ) : (
+              <BarChart
+                data={numericData}
+                margin={{ top: 4, right: 4, bottom: 4, left: 4 }}
+                barCategoryGap="30%"
+              >
+                <XAxis
+                  dataKey="date"
+                  tickFormatter={weekdayLabel}
+                  tick={{ fill: COLOR.textMuted, fontSize: 11 }}
+                  axisLine={false}
+                  tickLine={false}
+                  interval="preserveStartEnd"
+                  minTickGap={20}
+                />
+                <Tooltip
+                  cursor={{ fill: COLOR.surfaceAlt }}
+                  content={<MetricTooltip color={color} unit={unit} />}
+                />
+                <Bar
+                  dataKey="value"
+                  fill={color}
+                  radius={[6, 6, 6, 6]}
+                  isAnimationActive={false}
+                />
+              </BarChart>
+            )}
+          </ResponsiveContainer>
+        </div>
+      ) : null}
+    </div>
   );
-
-  if (href) {
-    return (
-      <Link href={href} style={{ display: "block", textDecoration: "none", color: "inherit" }}>
-        {inner}
-      </Link>
-    );
-  }
-  return inner;
 }
 
-/**
- * Lighten a #rrggbb to a soft chip background. Linearly mixes 18% color into
- * white. Ad-hoc but keeps the chip in the same hue family as the icon.
- */
-function hexToBgChip(hex: string): string {
-  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
-  if (!m) return "#f5f6fa";
-  const [r, g, b] = [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)];
-  const blend = 0.82; // 82% white, 18% color
-  const mix = (v: number) => Math.round(v * (1 - blend) + 255 * blend);
-  return `rgb(${mix(r)}, ${mix(g)}, ${mix(b)})`;
-}
+type TooltipPayload = {
+  active?: boolean;
+  payload?: Array<{ payload: { date: string; value: number } }>;
+};
 
-/** ISO date → "May 4". Returns the input as-is if not a parseable ISO date. */
-function formatHoverDate(x: string): string {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(x)) return x;
-  const [y, m, d] = x.split("-").map(Number);
-  const dt = new Date(Date.UTC(y, m - 1, d));
-  return dt.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+function MetricTooltip({
+  active,
+  payload,
+  color,
+  unit,
+}: TooltipPayload & { color: string; unit?: string }) {
+  if (!active || !payload || payload.length === 0) return null;
+  const point = payload[0].payload;
+  return (
+    <div
+      style={{
+        background: COLOR.surface,
+        borderRadius: "10px",
+        boxShadow: "0 8px 24px rgba(20,30,80,0.12)",
+        padding: "8px 10px",
+        fontSize: "12px",
+        lineHeight: 1.3,
+        pointerEvents: "none",
+      }}
+    >
+      <div
+        data-tnum
+        style={{
+          color,
+          fontWeight: 700,
+          fontSize: "14px",
+        }}
+      >
+        {formatValue(point.value)}
+        {unit ? (
+          <span style={{ color: COLOR.textMuted, fontWeight: 500, marginLeft: "3px" }}>
+            {unit}
+          </span>
+        ) : null}
+      </div>
+      <div style={{ color: COLOR.textMuted, marginTop: "2px" }}>
+        {formatTooltipDate(point.date)}
+      </div>
+    </div>
+  );
 }

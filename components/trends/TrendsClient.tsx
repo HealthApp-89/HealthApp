@@ -2,11 +2,10 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { Activity, Heart, Moon, Zap, Scale, Percent } from "lucide-react";
 import { RangePills } from "@/components/ui/RangePills";
-import { MetricCard } from "@/components/charts/MetricCard";
-import type { LinePoint } from "@/components/charts/LineChart";
+import { MetricCard, type MetricDatum } from "@/components/charts/MetricCard";
 import { COLOR, METRIC_COLOR } from "@/lib/ui/theme";
+import { fmtNum } from "@/lib/ui/score";
 import { useDailyLogsTrend } from "@/lib/query/hooks/useDailyLogsTrend";
 import {
   resolvePeriod,
@@ -30,34 +29,35 @@ const RANGE_LABEL: Partial<Record<PeriodPreset, string>> = {
   "ly":  "last year",
 };
 
-function toPoints(series: { date: string; value: number | null }[]): LinePoint[] {
-  return series.map((p) => ({ x: p.date, y: p.value }));
-}
-
-function avg(points: LinePoint[]): number | null {
+function avg(points: MetricDatum[]): number | null {
   let sum = 0, n = 0;
   for (const p of points) {
-    if (p.y !== null && Number.isFinite(p.y)) { sum += p.y; n++; }
+    if (p.value !== null && Number.isFinite(p.value)) { sum += p.value; n++; }
   }
   return n > 0 ? sum / n : null;
 }
 
-function latest(points: LinePoint[]): number | null {
+function latest(points: MetricDatum[]): number | null {
   for (let i = points.length - 1; i >= 0; i--) {
-    const v = points[i].y;
+    const v = points[i].value;
     if (v !== null && Number.isFinite(v)) return v;
   }
   return null;
 }
 
-function halfDelta(points: LinePoint[]): number | null {
+function halfDelta(points: MetricDatum[]): number | null {
   const mid = Math.floor(points.length / 2);
-  const w1 = points.slice(0, mid);
-  const w2 = points.slice(mid);
-  const a1 = avg(w1);
-  const a2 = avg(w2);
+  const a1 = avg(points.slice(0, mid));
+  const a2 = avg(points.slice(mid));
   if (a1 === null || a2 === null) return null;
   return Math.round((a2 - a1) * 100) / 100;
+}
+
+function deltaSubtitle(delta: number | null, unit: string, periodLabel: string): string | undefined {
+  if (delta == null) return undefined;
+  const sign = delta > 0 ? "+" : delta < 0 ? "−" : "";
+  const abs  = Math.abs(delta);
+  return `${sign}${fmtNum(abs)}${unit ? ` ${unit}` : ""} over ${periodLabel}`;
 }
 
 export function TrendsClient({
@@ -91,19 +91,12 @@ export function TrendsClient({
   const granularity = pickGranularity(days);
   const rangeLabel = RANGE_LABEL[period] ?? `${days} days`;
 
-  const aggHRV     = aggregateSeries(sliced, (l) => l.hrv,          granularity);
-  const aggRHR     = aggregateSeries(sliced, (l) => l.resting_hr,   granularity);
-  const aggSleepH  = aggregateSeries(sliced, (l) => l.sleep_hours,  granularity);
-  const aggStrain  = aggregateSeries(sliced, (l) => l.strain,       granularity);
-  const aggWeight  = aggregateSeries(sliced, (l) => l.weight_kg,    granularity);
-  const aggBodyFat = aggregateSeries(sliced, (l) => l.body_fat_pct, granularity);
-
-  const hrvTrend     = toPoints(aggHRV);
-  const rhrTrend     = toPoints(aggRHR);
-  const sleepTrend   = toPoints(aggSleepH);
-  const strainTrend  = toPoints(aggStrain);
-  const weightTrend  = toPoints(aggWeight);
-  const bfTrend      = toPoints(aggBodyFat);
+  const hrvTrend:    MetricDatum[] = aggregateSeries(sliced, (l) => l.hrv,          granularity);
+  const rhrTrend:    MetricDatum[] = aggregateSeries(sliced, (l) => l.resting_hr,   granularity);
+  const sleepTrend:  MetricDatum[] = aggregateSeries(sliced, (l) => l.sleep_hours,  granularity);
+  const strainTrend: MetricDatum[] = aggregateSeries(sliced, (l) => l.strain,       granularity);
+  const weightTrend: MetricDatum[] = aggregateSeries(sliced, (l) => l.weight_kg,    granularity);
+  const bfTrend:     MetricDatum[] = aggregateSeries(sliced, (l) => l.body_fat_pct, granularity);
 
   return (
     <main style={{ background: COLOR.bg, minHeight: "100dvh" }}>
@@ -124,12 +117,12 @@ export function TrendsClient({
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: "10px", padding: "0 8px" }}>
-          <MetricCard color={METRIC_COLOR.hrv}        metricKey="hrv"        icon={<Activity size={16} />} label="HRV"        value={latest(hrvTrend)}     unit="ms"  delta={halfDelta(hrvTrend)}    deltaUnit="ms"  compact trend={hrvTrend}    href="/trends/hrv" />
-          <MetricCard color={METRIC_COLOR.resting_hr} metricKey="resting_hr" icon={<Heart size={16} />} label="Resting HR" value={latest(rhrTrend)}     unit="bpm" delta={halfDelta(rhrTrend)}    deltaUnit="bpm" inverted compact trend={rhrTrend}    href="/trends/resting_hr" />
-          <MetricCard color={METRIC_COLOR.sleep_hours} metricKey="sleep_hours" icon={<Moon size={16} />} label="Sleep"   value={latest(sleepTrend)}   unit="h"   delta={halfDelta(sleepTrend)}  deltaUnit="h"   compact trend={sleepTrend}  href="/trends/sleep_hours" />
-          <MetricCard color={METRIC_COLOR.strain}     metricKey="strain"     icon={<Zap size={16} />} label="Strain"   value={latest(strainTrend)}                 delta={halfDelta(strainTrend)} compact trend={strainTrend} href="/trends/strain" />
-          <MetricCard color={METRIC_COLOR.weight_kg}  metricKey="weight_kg"  icon={<Scale size={16} />} label="Weight"   value={latest(weightTrend)}  unit="kg"  delta={halfDelta(weightTrend)} deltaUnit="kg"  compact trend={weightTrend} href="/trends/weight_kg" />
-          <MetricCard color={METRIC_COLOR.body_fat_pct} metricKey="body_fat_pct" icon={<Percent size={16} />} label="Body Fat" value={latest(bfTrend)} unit="%"  delta={halfDelta(bfTrend)}     deltaUnit="%"   compact trend={bfTrend}     href="/trends/body_fat_pct" />
+          <MetricCard title="HRV"        value={latest(hrvTrend)}    unit="ms"  subtitle={deltaSubtitle(halfDelta(hrvTrend),    "ms",  rangeLabel)} data={hrvTrend}    color={METRIC_COLOR.hrv}          type="area" />
+          <MetricCard title="Resting HR" value={latest(rhrTrend)}    unit="bpm" subtitle={deltaSubtitle(halfDelta(rhrTrend),    "bpm", rangeLabel)} data={rhrTrend}    color={METRIC_COLOR.resting_hr}   type="area" />
+          <MetricCard title="Sleep"      value={latest(sleepTrend)}  unit="h"   subtitle={deltaSubtitle(halfDelta(sleepTrend),  "h",   rangeLabel)} data={sleepTrend}  color={METRIC_COLOR.sleep_hours}  type="area" />
+          <MetricCard title="Strain"     value={latest(strainTrend)}            subtitle={deltaSubtitle(halfDelta(strainTrend), "",    rangeLabel)} data={strainTrend} color={METRIC_COLOR.strain}       type="area" />
+          <MetricCard title="Weight"     value={latest(weightTrend)} unit="kg"  subtitle={deltaSubtitle(halfDelta(weightTrend), "kg",  rangeLabel)} data={weightTrend} color={METRIC_COLOR.weight_kg}    type="area" />
+          <MetricCard title="Body Fat"   value={latest(bfTrend)}     unit="%"   subtitle={deltaSubtitle(halfDelta(bfTrend),     "%",   rangeLabel)} data={bfTrend}     color={METRIC_COLOR.body_fat_pct} type="area" />
         </div>
       </div>
     </main>
