@@ -3,25 +3,29 @@ import { useState } from "react";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { MealLoggerTypeTab } from "./MealLoggerTypeTab";
 import { MealLoggerScanTab } from "./MealLoggerScanTab";
+import { MealLoggerLibraryTab } from "./MealLoggerLibraryTab";
 import { MealLoggerComingSoonTab } from "./MealLoggerComingSoonTab";
 import { useQueryClient } from "@tanstack/react-query";
 import type { MealSlot } from "@/lib/food/types";
 import { deriveMealSlot, mealSlotLabel } from "@/lib/food/meal-slot";
 
-type Tab = "type" | "scan" | "photo" | "voice";
+type Tab = "type" | "scan" | "library" | "photo" | "voice";
 
 export function MealLoggerSheet({
   open,
   onClose,
+  userId,
   initialMealSlot,
   initialEatenAt,
 }: {
   open: boolean;
   onClose: () => void;
+  userId: string;
   initialMealSlot?: MealSlot;
   initialEatenAt?: string;
 }) {
   const [tab, setTab] = useState<Tab>("type");
+  const [, setHistoryPickerOpen] = useState(false);
   const queryClient = useQueryClient();
 
   const mealSlot: MealSlot =
@@ -53,7 +57,7 @@ export function MealLoggerSheet({
   return (
     <BottomSheet open={open} onClose={onClose} title={title}>
       <div className="flex gap-1 border-b border-zinc-800 px-3 pt-2">
-        {(["type", "scan", "photo", "voice"] as const).map((t) => (
+        {(["type", "scan", "library", "photo", "voice"] as const).map((t) => (
           <button
             key={t}
             type="button"
@@ -79,6 +83,15 @@ export function MealLoggerSheet({
             mealSlot={mealSlot}
             eatenAt={eatenAt}
             onCommitted={onCommitted}
+          />
+        )}
+        {tab === "library" && (
+          <MealLoggerLibraryTab
+            userId={userId}
+            mealSlot={mealSlot}
+            eatenAt={eatenAt}
+            onCommitted={onCommitted}
+            onOpenHistoryPicker={() => setHistoryPickerOpen(true)}
           />
         )}
         {tab === "photo" && <MealLoggerComingSoonTab modality="photo" />}

@@ -13,7 +13,7 @@ import { COLOR } from "@/lib/ui/theme";
  *   - Sticky "+ Log entry" button that opens LogEntrySheet
  *   - Bottom padding so content isn't covered by the sticky button
  */
-export function MetricsShell({ children }: { children: React.ReactNode }) {
+export function MetricsShell({ userId, children }: { userId: string; children: React.ReactNode }) {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [mealSheetOpen, setMealSheetOpen] = useState(false);
   return (
@@ -65,6 +65,7 @@ export function MetricsShell({ children }: { children: React.ReactNode }) {
       <MealLoggerSheet
         open={mealSheetOpen}
         onClose={() => setMealSheetOpen(false)}
+        userId={userId}
       />
     </div>
   );

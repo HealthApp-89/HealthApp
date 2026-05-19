@@ -92,6 +92,7 @@ export function MealJournalClient({
         <MealLoggerSheet
           open
           onClose={() => setLoggerOpen(null)}
+          userId={userId}
           initialMealSlot={loggerOpen}
           initialEatenAt={initialEatenAtForLogger()}
         />
