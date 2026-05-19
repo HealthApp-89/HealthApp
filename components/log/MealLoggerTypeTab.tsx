@@ -71,6 +71,7 @@ export function MealLoggerTypeTab({
     return (
       <DraftReview
         entry={draft}
+        onChange={setDraft}
         busy={busy}
         error={error}
         onCommit={commit}
