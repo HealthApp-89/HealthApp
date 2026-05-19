@@ -33,9 +33,12 @@ All three reuse the existing parse → preview → commit pipeline. The only new
 6. **No regressions in meal-slot attribution.** Every code path that creates a new `food_log_entries` row carries a slot. Copy carries source's slot by default with optional override. Favorites carry their slot context. Recent / Frequent / Catalog draft creations use the MealLoggerSheet's `initialMealSlot` (which always has a value — defaulted via `deriveMealSlot(now())` when not explicit).
 7. **Per-slot "Copy from yesterday" on `/meal`.** When a slot is empty today AND yesterday's same slot has ≥1 entry, render a "Copy from yesterday" pill on the slot card. Tap clones yesterday's slot entries into today's slot. Fast path for the common journal workflow.
 
+8. **`HistoryPickerSheet` for multi-source meal assembly.** A bottom sheet for browsing any past date (within 60 days), multi-selecting items across dates and meals, and committing them as one new draft. Persistent selection bucket survives date-scrub navigation. Powers three use cases in one surface: (a) copy a whole past meal to any current slot, (b) compose a new meal from items across multiple past dates, (c) cherry-pick partial items from a past meal. Replaces the per-entry "Copy to…" date picker.
+
 ## Non-Goals
 
-- **Multi-select build-a-meal.** Tap on Library rows creates a single-item draft (or for whole-meal favorites, the clone of that meal). User can't tap 3 items to compose a 3-item draft in one move. v2 if it becomes painful — the current pattern is "build the meal one item at a time, or type the whole thing."
+- **Multi-select inside the Library tab** (Favorites / Recent / Frequent / Catalog rows). Library rows remain single-tap → single-item draft (or whole-meal clone for favorite meals). Multi-source assembly across past entries IS in scope via `HistoryPickerSheet` (see §"UI surfaces"); composing across favorites/recent/frequent in one move stays a future v1.2.
+- **Browsing history older than 60 days** in `HistoryPickerSheet`. The date scrubber caps at today-60d. Older entries are rare to want to re-add; if you really need one, edit via DB.
 - **Drag-to-reorder favorites.** The `display_order` column on `food_item_favorites` exists for forward-compat, but no v1 UI to reorder. Order falls through to `display_order ASC, created_at DESC`.
 - **Folder / category grouping of favorites.** No "Breakfast favorites" folder. The slot-aware ranking inside the Library tab is sufficient for v1.
 - **Coach-proposed favorites.** ("Peter noticed you eat oats most days, want to favorite it?") Fun future feature; not in v1.
@@ -93,8 +96,12 @@ All three reuse the existing parse → preview → commit pipeline. The only new
 
 **Outside MealLoggerSheet**, the entry-row UI on `/metrics?sub=log` (TodaysMeals) and `/meal` (MealSlotCard) gain:
 - Star icon next to existing edit/delete → toggles `is_favorite`
-- Copy icon next to existing edit/delete → opens action sheet with "Copy to today" / "Copy to…" date picker → calls `/api/food/entries/[id]/copy`
-- On `MealSlotEmptyCard` (when slot has no entries today): "Copy from yesterday" pill when yesterday's same slot has ≥1 entry → calls `/api/food/entries/[id]/copy` with today + same slot
+- Copy icon next to existing edit/delete → 1-tap "Copy to today" via `/api/food/entries/[id]/copy` (no submenu — for date / partial-items, user uses MealLoggerSheet → "Pick from history")
+- On `MealSlotEmptyCard` (when slot has no entries today): two pills:
+  - `[📋 Copy yesterday's <slot>]` — 1-tap fast path when yesterday has ≥1 entry for the same slot
+  - `[📚 Pick from history]` — opens `HistoryPickerSheet` with destination preset to this slot
+
+**`HistoryPickerSheet`** is a bottom sheet (peer of MealLoggerSheet's tabs) that opens from: (a) the `[📚 Pick from history]` pill on `MealSlotEmptyCard`, (b) a `[📚 Pick from history]` button at the top of MealLoggerSheet's Library tab. Surface details in §"UI surfaces".
 
 ## Data model
 
@@ -447,39 +454,69 @@ Performance note: this is 4-5 small queries running in parallel. The trigram ind
 
 ### `POST /api/food/library/draft`
 
-Single endpoint that creates a draft entry from any library row. Replaces ad-hoc draft-creation logic for each section.
+Single endpoint that creates a draft entry from any library row OR a multi-item assembly. Replaces ad-hoc draft-creation logic for each section.
 
 Body:
 ```ts
 {
-  source_kind: "favorite_meal" | "favorite_item" | "recent" | "frequent" | "catalog";
+  source_kind: "favorite_meal" | "favorite_item" | "recent" | "frequent" | "catalog" | "history_picker";
   source_id?: string;          // entry id for favorite_meal; favorite id for favorite_item; cache canonical_id for catalog
-  item?: {                     // direct shape for recent / frequent (no persistent source row)
+  item?: {                     // single-item path for recent / frequent
     name: string;
     qty_g: number;
     per_100g: FoodMacros;
     source: "db" | "llm";
     db_ref?: FoodItem["db_ref"];
   };
+  items?: FoodItem[];          // multi-item path for history_picker (and future v1.2 Library multi-select)
+  source_entry_ids?: string[]; // history_picker only: provenance — which past entries items came from
   meal_slot: MealSlot;
   eaten_at?: string;
-  qty_g?: number;              // override default qty
+  qty_g?: number;              // override default qty (single-item paths only)
 }
 ```
 
 Server flow:
-1. Auth-gate + zod-validate. Exactly one of `source_id` or `item` must be present.
+1. Auth-gate + zod-validate. Exactly one of `{source_id, item, items}` populated.
 2. Resolve the source:
-   - `favorite_meal` → fetch entry, clone its items array (this is the multi-item case)
+   - `favorite_meal` → fetch entry, clone its items array
    - `favorite_item` → fetch `food_item_favorites` row, build single-item array
    - `catalog` → fetch `food_db_cache` row, build single-item array using `qty_g` (default 100g or row's `serving_size_g`)
-   - `recent` / `frequent` → use `body.item` directly (these don't have persistent source rows; the client sends what it has)
+   - `recent` / `frequent` → use `body.item` directly (no persistent source row)
+   - `history_picker` → use `body.items` directly. Server validates each item shape (zod array of FoodItem). Optionally records `source_entry_ids` in `raw_input` for provenance.
 3. Compute `totals = sumMacros(items)`, `is_estimated = items.some(i => i.source === 'llm')`.
-4. Insert draft entry with `kind = 'library'` (new kind value), `raw_input = { kind: 'library', source_kind, source_id? }`, `meal_slot = body.meal_slot`, `eaten_at = body.eaten_at ?? now()`, `status = 'draft'`.
+4. Insert draft entry with `kind = 'library'`, `raw_input = { kind: 'library', source_kind, source_id?, source_entry_ids? }`, `meal_slot = body.meal_slot`, `eaten_at = body.eaten_at ?? now()`, `status = 'draft'`.
 5. Return the draft (same response shape as parse/barcode).
 
 Schema additions:
 - Extend `food_log_entries.kind` check constraint to include `'library'` and `'copy'` (see Migration 0022 below).
+
+### `GET /api/food/history?from=YYYY-MM-DD&to=YYYY-MM-DD`
+
+Powers `HistoryPickerSheet`'s day view. Returns committed entries in the date range, grouped by date and slot.
+
+Query params:
+- `from` (required) — YYYY-MM-DD inclusive lower bound. Server clamps to `>= today - 60d`.
+- `to` (required) — YYYY-MM-DD inclusive upper bound.
+
+Response:
+```ts
+{
+  days: Array<{
+    date: string;                                       // YYYY-MM-DD
+    slots: Record<MealSlot, FoodLogEntry[]>;            // breakfast / lunch / dinner / snack
+  }>;
+}
+```
+
+Server flow:
+1. Auth-gate.
+2. Validate dates; clamp `from` to today-60d if it's older.
+3. Single query: `food_log_entries WHERE user_id AND status='committed' AND eaten_at >= from AND eaten_at < (to + 1 day) ORDER BY eaten_at DESC`.
+4. Group server-side by `eaten_at::date` then by `meal_slot`. Empty slots stay omitted (or rendered empty, client's choice — server returns the actual present slots).
+5. Return grouped payload.
+
+The 60-day clamp is enforced server-side (defensive against client-side date inputs trying older dates). Client UI prevents scrubbing past it.
 
 ## Client cache integration
 
@@ -523,20 +560,103 @@ Each entry row gains two new icon buttons (alongside existing edit/delete area):
 ```
 
 - ☆ → `useFavoriteEntryToggle()` mutation → PATCH /favorite. Optimistic update.
-- 📋 → opens a small action sheet: "Copy to today" (one-tap) or "Copy to…" (date picker, defaults to today). On select → POST /copy → open the draft in the existing FoodEntryEditSheet for review → user can adjust qty / commit.
+- 📋 → 1-tap "Copy to today" → POST `/api/food/entries/[id]/copy` (no submenu — for any other date or for partial items, the user opens MealLoggerSheet and uses "Pick from history"). The newly-created draft opens in the existing preview UI so the user can adjust qty / commit.
 
 ### `/meal` route — `MealSlotCard.tsx` + `MealSlotEmptyCard.tsx`
 
 Each entry inside a `MealSlotCard` gets the same ☆ + 📋 affordances as TodaysMeals.
 
-`MealSlotEmptyCard` (when slot has zero entries today) gains a "Copy from yesterday" pill when yesterday's same slot has ≥1 entry. Server check via a small new endpoint:
+`MealSlotEmptyCard` (when slot has zero entries today) gains two pills side-by-side:
 
 ```
-GET /api/food/yesterday-slot?date=YYYY-MM-DD&slot=breakfast
-→ { has_entries: boolean, entry_ids?: string[] }
+┌──────────────────────────────────────────────┐
+│  Breakfast — no entries logged              │
+│                                             │
+│   [📋 Copy yesterday's breakfast (2 items)] │
+│   [📚 Pick from history]                    │
+│                                             │
+│   [+ Log breakfast]                         │  ← existing
+└──────────────────────────────────────────────┘
 ```
 
-Pill shows: `[📋 Copy yesterday's breakfast (2 items)]`. Tap → POST /copy for each entry id (parallel) → open a small confirmation showing what was copied → done. (Multi-entry copies don't open the preview UI — they commit directly with source slot/qty. If the user wants to edit, they tap individual items afterward.)
+- **`[📋 Copy yesterday's …]`** — 1-tap. Only rendered when yesterday's same slot has ≥1 entry. Server check via `GET /api/food/yesterday-slot?date=YYYY-MM-DD&slot=breakfast → { has_entries: boolean, entry_ids?: string[] }`. Tap → POST /copy for each entry id (parallel) → silent success (no preview — fast path) → slot refreshes.
+- **`[📚 Pick from history]`** — opens `HistoryPickerSheet` with `destinationSlot = this slot`. Used when "Copy yesterday" doesn't fit (older date, or want partial items, or want to mix from multiple meals).
+
+### `MealLoggerSheet.tsx` Library tab — add "Pick from history" entry point
+
+At the top of the Library tab, above the search bar:
+
+```
+┌──────────────────────────────────────────┐
+│  [📚 Pick from history]                  │  ← new
+├──────────────────────────────────────────┤
+│  [ 🔍 Search foods, meals…          ✕ ]  │
+├──────────────────────────────────────────┤
+│  ★ Favorites                              │
+│  …
+```
+
+Tap → opens `HistoryPickerSheet` overlaying the MealLoggerSheet. Destination slot = MealLoggerSheet's current `initialMealSlot`.
+
+### `HistoryPickerSheet.tsx` — the new multi-source picker
+
+Bottom sheet, full-height variant (taller than the standard MealLoggerSheet so the date view has room).
+
+```
+┌──────────────────────────────────────────┐
+│  Pick items from history            [✕]  │
+├──────────────────────────────────────────┤
+│  ◀  [Tue May 17]  ▶                      │  ← date scrubber: ◀ ▶ + date pill (tappable for calendar)
+│         capped at today - 60d            │
+├──────────────────────────────────────────┤
+│  Selected (3)  Add to: [Dinner ▼]        │  ← persistent bucket header
+│  ─ Chicken breast 200g    ×  · May 14   │
+│  ─ Avocado 80g            ×  · May 16   │
+│  ─ Rice basmati 150g      ×  · May 16   │
+│                              [Clear all] │
+├──────────────────────────────────────────┤
+│  Tue May 17 — Breakfast (3 items)        │
+│    [Select all] [Add meal to selected]   │  ← shortcuts
+│  ☑ Oats 80g · 380 kcal · 14P · 60C       │
+│  ☐ Banana 120g · 105 kcal                │
+│  ☐ Peanut butter 16g · 95 kcal           │
+├──────────────────────────────────────────┤
+│  Tue May 17 — Lunch (2 items)            │
+│  ☐ Greek yogurt 200g · 110 kcal          │
+│  ☐ Honey 10g · 30 kcal                   │
+├──────────────────────────────────────────┤
+│           [ Add 3 items to dinner ]      │  ← bottom CTA, sticky
+└──────────────────────────────────────────┘
+```
+
+**Component breakdown:**
+- `components/log/HistoryPickerSheet.tsx` — orchestrator. Owns: current date in scrubber, selection bucket state (`SelectedItem[]`), destination slot.
+- `components/log/HistoryPickerDateBar.tsx` — date scrubber (◀ ▶ + tappable date pill that opens a native date picker). Disables ▶ if current date == today (no future dates). Disables ◀ if current date == today-60d.
+- `components/log/HistoryPickerBucket.tsx` — collapsible "Selected (N)" tray at top. Shows each item with source date, × to remove, "Clear all", and destination-slot select.
+- `components/log/HistoryPickerSlotCard.tsx` — one card per (date, slot) shown for the chosen date. Per-item checkboxes. "Select all" shortcut. "Add meal to selected" shortcut (clones the whole entry's items into the bucket in one tap).
+- Sticky bottom CTA: `[Add N items to <slot>]`. Disabled when N == 0.
+
+**Selection bucket data model (client-state only — no DB write until commit):**
+
+```ts
+type SelectedItem = {
+  item: FoodItem;            // the actual item shape (name, qty_g, macros, etc.)
+  source_entry_id: string;   // for provenance + dedupe
+  source_date: string;       // YYYY-MM-DD, for UI display only
+};
+```
+
+**Multi-add behavior:**
+- Tapping the same item twice (e.g., from two different days) ADDS both copies. The bucket can contain duplicates because the user might legitimately want "2x chicken breast 200g" across two meals.
+- Tap × in bucket → removes that single entry from the bucket (not all duplicates).
+- "Clear all" → empties bucket entirely.
+
+**Commit flow:**
+- Tap `[Add N items to <slot>]` → POST `/api/food/library/draft` with body `{ source_kind: 'history_picker', items: <SelectedItem.item[]>, source_entry_ids: <SelectedItem.source_entry_id[]>, meal_slot: <destination>, eaten_at: now() }`.
+- Server creates a draft → response opens it in the existing preview UI (the user can tweak qty before final commit).
+- Preview commit → POST `/api/food/commit` → reaggregate → close all sheets → /meal or /log shows the new entry.
+
+**Pre-loaded date for the per-entry copy shortcut on TodaysMeals:** out of scope. The TodaysMeals `📋` button is 1-tap copy-to-today only; it doesn't open HistoryPickerSheet. If the user wants the rich picker, they open MealLoggerSheet first.
 
 ### `MealLoggerSheet.tsx` — new **Library** tab
 
@@ -612,15 +732,19 @@ The new `food_recent_items` and `food_frequent_items` SQL helpers are read-only 
   - `app/api/food/item-favorites/route.ts` (GET + POST)
   - `app/api/food/item-favorites/[id]/route.ts` (DELETE)
   - `app/api/food/library/route.ts` (GET)
-  - `app/api/food/library/draft/route.ts` (POST)
-  - `app/api/food/yesterday-slot/route.ts` (GET — small helper for the "Copy from yesterday" pill)
-- Client cache (`lib/query/`): `foodLibrary` + `foodItemFavorites` key families + matching fetchers + hooks.
+  - `app/api/food/library/draft/route.ts` (POST — extended body accepts `items[]` + `source_entry_ids[]` for history_picker)
+  - `app/api/food/yesterday-slot/route.ts` (GET — small helper for the "Copy yesterday" pill)
+  - `app/api/food/history/route.ts` (GET — date-range query powering `HistoryPickerSheet`'s day view)
+- Client cache (`lib/query/`): `foodLibrary` + `foodItemFavorites` + `foodHistory` key families + matching fetchers + hooks.
 - UI:
   - `components/log/MealLoggerLibraryTab.tsx`
   - `components/log/LibrarySection.tsx`
   - `components/log/LibraryRow.tsx`
-  - `components/log/CopyEntryActionSheet.tsx` (the action sheet for "Copy to today" / "Copy to…")
-  - Updates to `TodaysMeals.tsx`, `MealSlotCard.tsx`, `MealSlotEmptyCard.tsx`, `FoodEntryEditSheet.tsx`, `MealLoggerTypeTab.tsx`, `MealLoggerSheet.tsx` (Library tab registration).
+  - `components/log/HistoryPickerSheet.tsx`
+  - `components/log/HistoryPickerDateBar.tsx`
+  - `components/log/HistoryPickerBucket.tsx`
+  - `components/log/HistoryPickerSlotCard.tsx`
+  - Updates to `TodaysMeals.tsx` (☆ + 📋 affordances; 📋 is 1-tap copy-to-today), `MealSlotCard.tsx`, `MealSlotEmptyCard.tsx` (two pills: Copy yesterday + Pick from history), `FoodEntryEditSheet.tsx` (per-item ☆), `MealLoggerTypeTab.tsx` (per-item ☆ on draft preview), `MealLoggerSheet.tsx` (Library tab registration + Pick-from-history launcher).
 - `lib/ui/theme.ts` — star-fill color + source-chip subdued colors.
 - `lib/data/types.ts` — re-export of new types if needed (food types stay in `lib/food/types.ts` per existing convention).
 - CLAUDE.md update — new sub-section on copy/favorites/library; migration 0022 listed.
@@ -640,8 +764,9 @@ No new env vars. No new external API integrations. Everything operates on existi
 
 ## Future specs that build on this
 
-- **Multi-select build-a-meal** in Library tab — tap 3 favorite items + 2 frequent items, commit as one entry. Adds a "Selected (5)" pill + "Add to meal" CTA.
+- **Multi-select inside the Library tab** — tap 3 favorite items + 2 frequent rows + commit as one entry. The `items[]` body on `/api/food/library/draft` already supports this; the addition is a per-section selection bucket UI in the Library tab (mirroring `HistoryPickerBucket`'s pattern). Easy v1.2.
 - **Drag-reorder favorites** — `display_order` column already exists; UI hookup later.
 - **Coach-proposed favorites** — Peter notices recurring meals; suggests favoriting them via a chat card. Lands cleanly because the `food_item_favorites` table is already user-scoped and the favorites toggle endpoint exists.
 - **"Most-eaten this week" widget** on `/meal` summary card — uses `food_frequent_items` with `p_days=7`. Trivial to slot in.
 - **Catalog rows showing original source rich info** — when tapping a Catalog row, show the OFF product image (already cached in `food_db_cache.raw_payload`) or the USDA description in the preview. Minor polish.
+- **History older than 60 days** — extend the scrubber cap if a real need emerges. The data is there; only the client-side cap and the server clamp need lifting.
