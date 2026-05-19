@@ -48,6 +48,9 @@ export function ChatMessage({
   const hasCommittedPlan = toolCalls.some(
     (c) => c.name === "commit_plan" && !c.error,
   );
+  const hasCommittedNutritionTargets = toolCalls.some(
+    (c) => c.name === "commit_nutrition_targets" && !c.error,
+  );
 
   if (isUser) {
     return (
@@ -298,7 +301,7 @@ export function ChatMessage({
                   <NutritionTargetsProposalCard
                     proposal={result.preview as NutritionTargetsProposal}
                     approvalToken={result.approval_token}
-                    committed={false}
+                    committed={hasCommittedNutritionTargets}
                     onApprove={(token) =>
                       onSendUserMessage?.(`[approve:${token}]`)
                     }

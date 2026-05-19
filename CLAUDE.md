@@ -86,7 +86,7 @@ When adding a new metric, decide the owner first, then ensure no other sync path
 
 ### Routes
 
-App Router pages under [app/](app/): `/` (dashboard), `/log`, `/strength`, `/trends`, `/coach`, `/profile`, `/login`, `/privacy`. Server-side data fetching with `Promise.all` and `Suspense` for streaming heavier queries (see [app/page.tsx](app/page.tsx) for the pattern — fast queries gate first paint, weekly rollups stream).
+App Router pages under [app/](app/): `/` (dashboard), `/meal`, `/metrics`, `/strength`, `/trends`, `/coach`, `/profile`, `/login`, `/privacy`. Server-side data fetching with `Promise.all` and `Suspense` for streaming heavier queries (see [app/page.tsx](app/page.tsx) for the pattern — fast queries gate first paint, weekly rollups stream).
 
 API routes under [app/api/](app/api/): `whoop/{auth,callback,sync,backfill}`, `withings/{auth,callback,sync,backfill,disconnect}`, `ingest/{health,strong,token}`, `insights`, `recommendations`, `auth/signout`. Sync routes call `revalidatePath()` so 60s ISR on `/` invalidates immediately.
 
