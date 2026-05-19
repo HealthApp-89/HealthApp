@@ -75,6 +75,7 @@ export function MealLoggerSheet({
       <div className="p-4">
         {tab === "type" && (
           <MealLoggerTypeTab
+            userId={userId}
             mealSlot={mealSlot}
             eatenAt={eatenAt}
             onCommitted={onCommitted}

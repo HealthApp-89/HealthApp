@@ -112,7 +112,7 @@ export function MealJournalClient({
         />
       )}
       {editing && (
-        <FoodEntryEditSheet entry={editing} onClose={() => setEditing(null)} />
+        <FoodEntryEditSheet entry={editing} userId={userId} onClose={() => setEditing(null)} />
       )}
     </main>
   );
