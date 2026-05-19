@@ -11,7 +11,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTodayTargets } from "@/lib/query/hooks/useTodayTargets";
@@ -26,8 +26,10 @@ export function NutritionTargetsSection({
   const { data: targets } = useTodayTargets(userId, date);
   const qc = useQueryClient();
 
-  // Local editable state — only POSTed on "Save".
-  const [kcal, setKcal] = useState<number>(targets?.kcal ?? 2000);
+  // Local editable state — only POSTed on "Save". Seeded from the resolved
+  // `targets` (overrides → plan → intake → defaults) so the inputs reflect
+  // what's actually active. Re-syncs after invalidation when `targets` changes.
+  const [kcal, setKcal] = useState<number>(2000);
   const [proteinPct, setProteinPct] = useState<number>(35);
   const [carbsPct, setCarbsPct] = useState<number>(35);
   const [fatPct, setFatPct] = useState<number>(30);
@@ -37,6 +39,23 @@ export function NutritionTargetsSection({
   const [snPct, setSnPct] = useState<number>(5);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Pre-populate inputs from resolved targets on first load + any
+  // invalidation (after a save / coach commit). Derives macro % from grams
+  // (4 kcal/g protein+carb, 9 kcal/g fat) and meal % from meal_ratios.
+  useEffect(() => {
+    if (!targets) return;
+    setKcal(targets.kcal);
+    if (targets.kcal > 0) {
+      setProteinPct(Math.round((targets.protein_g * 4 * 100) / targets.kcal));
+      setCarbsPct(Math.round((targets.carb_g * 4 * 100) / targets.kcal));
+      setFatPct(Math.round((targets.fat_g * 9 * 100) / targets.kcal));
+    }
+    setBfPct(Math.round(targets.meal_ratios.breakfast * 100));
+    setLuPct(Math.round(targets.meal_ratios.lunch * 100));
+    setDiPct(Math.round(targets.meal_ratios.dinner * 100));
+    setSnPct(Math.round(targets.meal_ratios.snacks * 100));
+  }, [targets]);
 
   const src = targets?.source_per_field;
 
