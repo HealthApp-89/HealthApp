@@ -140,11 +140,12 @@ export type RunChatStreamOpts = {
   /** Chat mode — controls which tools are exposed to the model.
    *  Default mode hides propose_ and commit_ tools to prevent accidental plan writes. */
   mode?: ChatMode;
-  /** Which coach voice is producing this turn. Default 'peter' (Head Coach,
-   *  has access to delegate_to_specialist). Specialists ('carter' | 'nora' |
-   *  'remi') get a restricted tool subset via toolsForSpeaker() and a column-
-   *  filtered query_daily_logs via colsForSpeaker(). The route spawns a
-   *  fresh stream with speaker=event.to after seeing a 'handoff' yield. */
+  /** Which coach voice is producing this turn. Default 'peter' (Head Coach).
+   *  All four coaches share handoff_to; specialists ('carter' | 'nora' |
+   *  'remi') get a restricted lane-specific tool subset via toolsForSpeaker()
+   *  and a column-filtered query_daily_logs via colsForSpeaker(). The route
+   *  spawns a fresh stream with speaker=event.to after seeing a 'handoff'
+   *  yield. */
   speaker?: Speaker;
   /** Athlete-profile draft document id; required for intake-mode tools
    *  (apply_*, set_*, propose_plan, commit_plan). Caller sets this when
