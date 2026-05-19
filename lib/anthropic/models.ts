@@ -22,6 +22,10 @@ export const NARRATIVE_MODEL = "claude-sonnet-4-6";
  *  short outputs (≤350 output tokens). */
 export const SHORT_FORM_MODEL = "claude-haiku-4-5-20251001";
 
+/** Pre-stream chat routing classifier. Tiny single-token completion (one of
+ *  peter/carter/nora/remi). Tool-free, prompt-cached system, 1.2s soft deadline. */
+export const ROUTER_MODEL = "claude-haiku-4-5-20251001";
+
 /** Default for the bare `callClaude` helper when no model is specified.
  *  Matches CHAT_MODEL by convention; callers needing a specific role should
  *  import the named constant. */
