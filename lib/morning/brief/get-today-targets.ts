@@ -29,6 +29,14 @@ import type {
   PhaseStep,
 } from "@/lib/data/types";
 import { todayInUserTz } from "@/lib/time";
+import type { MealRatios } from "@/lib/food/meal-targets";
+export type { MealRatios };
+
+export type TodayTargetsSourceMap = {
+  kcal: "override" | "plan" | "intake";
+  macros: "override" | "plan" | "intake";
+  meal_ratios: "override" | "plan" | "default";
+};
 
 export type TodayTargets = {
   kcal: number;
@@ -56,6 +64,8 @@ export type TodayTargets = {
    *  (cut | diet_break | reverse | maintain). null otherwise.
    *  Consumed by the Advice prompt for diet-break / reverse context. */
   today_phase_mode: PhaseStep["mode"] | null;
+  meal_ratios: MealRatios;
+  source_per_field: TodayTargetsSourceMap;
 };
 
 function resolveMode(
@@ -128,6 +138,69 @@ async function rolling7dDeficit(
   };
 }
 
+type NutritionOverrides = {
+  kcal?: number;
+  macro_ratios?: { protein_pct: number; carbs_pct: number; fat_pct: number };
+  meal_ratios?: MealRatios;
+} | null;
+
+async function getOverrides(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<NutritionOverrides> {
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("nutrition_overrides")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) throw error;
+  return (data?.nutrition_overrides ?? null) as NutritionOverrides;
+}
+
+const DEFAULT_MEAL_RATIOS: MealRatios = {
+  breakfast: 0.30, lunch: 0.35, dinner: 0.30, snacks: 0.05,
+};
+
+function applyOverrides(
+  base: Omit<TodayTargets, "meal_ratios" | "source_per_field">,
+  overrides: NutritionOverrides,
+): TodayTargets {
+  // Per-field override semantics:
+  //  - override.kcal alone changes only kcal; protein_g/carb_g/fat_g stay
+  //    at the base values (acceptable UX: the user opted into manual
+  //    control, the meal-split display surfaces the discrepancy).
+  //  - override.macro_ratios recomputes grams against the effective kcal.
+  //  - override.meal_ratios is orthogonal to kcal/macros.
+  const finalKcal = overrides?.kcal ?? base.kcal;
+
+  let protein_g = base.protein_g;
+  let carb_g = base.carb_g;
+  let fat_g = base.fat_g;
+  if (overrides?.macro_ratios) {
+    protein_g = Math.round((finalKcal * overrides.macro_ratios.protein_pct) / 4);
+    carb_g    = Math.round((finalKcal * overrides.macro_ratios.carbs_pct)   / 4);
+    fat_g     = Math.round((finalKcal * overrides.macro_ratios.fat_pct)     / 9);
+  }
+
+  const meal_ratios = overrides?.meal_ratios ?? DEFAULT_MEAL_RATIOS;
+
+  const source_per_field: TodayTargetsSourceMap = {
+    kcal:        overrides?.kcal !== undefined         ? "override" : (base.source as "plan" | "intake"),
+    macros:      overrides?.macro_ratios !== undefined ? "override" : (base.source as "plan" | "intake"),
+    meal_ratios: overrides?.meal_ratios !== undefined  ? "override" : "default",
+  };
+
+  return {
+    ...base,
+    kcal: finalKcal,
+    protein_g,
+    carb_g,
+    fat_g,
+    meal_ratios,
+    source_per_field,
+  };
+}
+
 /** Returns null when the user has no active athlete_profile_documents row
  *  (i.e., they haven't completed Phase 1 onboarding yet). Callers should
  *  degrade gracefully — the brief still renders with placeholder macros. */
@@ -144,6 +217,7 @@ export async function getTodayTargets(
   if (error) throw error;
   if (!data) return null;
 
+  const overrides = await getOverrides(supabase, userId);
   const today = todayInUserTz();
 
   // Phase 2 path: plan_payload exists
@@ -160,7 +234,7 @@ export async function getTodayTargets(
         glp1.deficit_alarm_kcal,
         Math.round(glp1.tdee_estimate_kcal * glp1.deficit_alarm_pct),
       );
-      return {
+      const base = {
         kcal: plan.nutrition.kcal_target,
         protein_g: plan.nutrition.protein_g,
         carb_g: plan.nutrition.carb_g,
@@ -168,8 +242,8 @@ export async function getTodayTargets(
         bedtime: plan.sleep.bedtime_target,
         sleep_hours_target: (plan.sleep.target_hours_min + plan.sleep.target_hours_max) / 2,
         phase: plan.nutrition.phase,
-        source: "plan",
-        mode: "glp1_active",
+        source: "plan" as const,
+        mode: "glp1_active" as const,
         is_training_day,
         deficit_alarm: {
           threshold_kcal_per_day: threshold,
@@ -181,12 +255,13 @@ export async function getTodayTargets(
         sodium_target_mg: is_training_day ? glp1.sodium_training_day_mg : null,
         today_phase_mode: null,
       };
+      return applyOverrides(base, overrides);
     }
 
     if (mode === "glp1_tapering" && glp1) {
       const def = await rolling7dDeficit(supabase, userId, today, glp1.tdee_estimate_kcal);
       const threshold = Math.round(glp1.deficit_alarm_kcal * 0.85);  // relaxed during taper
-      return {
+      const base = {
         kcal: plan.nutrition.kcal_target,    // composer leaves this at active-phase value
         protein_g: plan.nutrition.protein_g,
         carb_g: plan.nutrition.carb_g,
@@ -194,8 +269,8 @@ export async function getTodayTargets(
         bedtime: plan.sleep.bedtime_target,
         sleep_hours_target: (plan.sleep.target_hours_min + plan.sleep.target_hours_max) / 2,
         phase: plan.nutrition.phase,
-        source: "plan",
-        mode: "glp1_tapering",
+        source: "plan" as const,
+        mode: "glp1_tapering" as const,
         is_training_day,
         deficit_alarm: {
           threshold_kcal_per_day: threshold,
@@ -207,6 +282,7 @@ export async function getTodayTargets(
         sodium_target_mg: is_training_day ? glp1.sodium_training_day_mg : null,
         today_phase_mode: null,
       };
+      return applyOverrides(base, overrides);
     }
 
     if (mode === "classical" && classical) {
@@ -230,7 +306,7 @@ export async function getTodayTargets(
       const carbDelta = is_training_day ? (uplift?.carb_g ?? 0) : (restDelta?.carb_g ?? 0);
       const fatDelta = is_training_day ? 0 : (restDelta?.fat_g ?? 0);
 
-      return {
+      const base = {
         kcal: step.kcal + kcalDelta,
         protein_g: step.protein_g,
         carb_g: step.carb_g + carbDelta,
@@ -238,22 +314,23 @@ export async function getTodayTargets(
         bedtime: plan.sleep.bedtime_target,
         sleep_hours_target: (plan.sleep.target_hours_min + plan.sleep.target_hours_max) / 2,
         phase:
-          step.mode === "cut" ? "cut" :
-          step.mode === "diet_break" ? "cut" :     // still in a cut context
-          step.mode === "reverse" ? "maintain" :
-          "maintain",
-        source: "plan",
-        mode: "classical",
+          step.mode === "cut" ? "cut" as const :
+          step.mode === "diet_break" ? "cut" as const :     // still in a cut context
+          step.mode === "reverse" ? "maintain" as const :
+          "maintain" as const,
+        source: "plan" as const,
+        mode: "classical" as const,
         is_training_day,
         deficit_alarm: null,
         hydration_target_ml: null,
         sodium_target_mg: null,
         today_phase_mode: step.mode,
       };
+      return applyOverrides(base, overrides);
     }
 
     // steady_state fallback: existing Phase 2 behavior
-    return {
+    const base = {
       kcal: plan.nutrition.kcal_target,
       protein_g: plan.nutrition.protein_g,
       carb_g: plan.nutrition.carb_g,
@@ -261,19 +338,20 @@ export async function getTodayTargets(
       bedtime: plan.sleep.bedtime_target,
       sleep_hours_target: (plan.sleep.target_hours_min + plan.sleep.target_hours_max) / 2,
       phase: plan.nutrition.phase,
-      source: "plan",
-      mode: "steady_state",
+      source: "plan" as const,
+      mode: "steady_state" as const,
       is_training_day,
       deficit_alarm: null,
       hydration_target_ml: null,
       sodium_target_mg: null,
       today_phase_mode: null,
     };
+    return applyOverrides(base, overrides);
   }
 
   // Phase 1 fallback: intake_payload only
   const payload = data.intake_payload as IntakePayload;
-  return {
+  const base = {
     kcal: payload.nutrition.current_kcal,
     protein_g: payload.nutrition.current_macros.protein_g,
     carb_g: payload.nutrition.current_macros.carb_g,
@@ -281,12 +359,13 @@ export async function getTodayTargets(
     bedtime: payload.sleep_recovery.typical_bedtime,
     sleep_hours_target: payload.sleep_recovery.avg_sleep_hours,
     phase: payload.nutrition.current_phase,
-    source: "intake",
-    mode: "steady_state",
+    source: "intake" as const,
+    mode: "steady_state" as const,
     is_training_day: false,
     deficit_alarm: null,
     hydration_target_ml: null,
     sodium_target_mg: null,
     today_phase_mode: null,
   };
+  return applyOverrides(base, overrides);
 }
