@@ -4,7 +4,7 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import type { FoodLogEntry } from "@/lib/food/types";
 
 const COLS =
-  "id, user_id, eaten_at, kind, raw_input, items, totals, is_estimated, status, created_at, updated_at";
+  "id, user_id, eaten_at, meal_slot, kind, raw_input, items, totals, is_estimated, status, created_at, updated_at";
 
 /**
  * Server-side variant — uses the SSR Supabase client (cookie-bound, RLS).
