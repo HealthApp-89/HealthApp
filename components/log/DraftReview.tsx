@@ -1,8 +1,9 @@
 "use client";
 import { useState } from "react";
-import type { FoodItem, FoodLogEntry } from "@/lib/food/types";
+import type { FoodItem, FoodLogEntry, SearchCandidate } from "@/lib/food/types";
 import { fmtNum } from "@/lib/ui/score";
 import { macrosForQty } from "@/lib/food/types";
+import { FoodSearchPicker } from "./FoodSearchPicker";
 
 const QTY_PRESETS = [50, 100, 150, 200] as const;
 
@@ -41,6 +42,7 @@ export function DraftReview({
   const [editQty, setEditQty] = useState<number>(0);
   const [editError, setEditError] = useState<string | null>(null);
   const [editBusy, setEditBusy] = useState(false);
+  const [pickingFor, setPickingFor] = useState<number | null>(null);
 
   const startEdit = (idx: number) => {
     setEditing(idx);
@@ -51,6 +53,7 @@ export function DraftReview({
   const cancelEdit = () => {
     setEditing(null);
     setEditError(null);
+    setPickingFor(null);
   };
 
   const patchItems = async (updatedItems: FoodItem[]): Promise<boolean> => {
@@ -102,11 +105,74 @@ export function DraftReview({
     await patchItems(updatedItems);
   };
 
+  const swapFood = async (idx: number, candidate: SearchCandidate, qty_g: number) => {
+    setEditBusy(true);
+    setEditError(null);
+    try {
+      let canonical_id = candidate.canonical_id;
+      let db_source: "usda" | "openfoodfacts" | "manual" = "openfoodfacts";
+
+      if (candidate.source === "db") {
+        if (!canonical_id) throw new Error("db_candidate_missing_canonical_id");
+        const r = await fetch(`/api/food/cache-pick?canonical_id=${canonical_id}`);
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.error || "cache_lookup_failed");
+        db_source = j.source;
+      } else {
+        const r = await fetch("/api/food/cache-pick", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ candidate }),
+        });
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.error || "cache_pick_failed");
+        canonical_id = j.canonical_id;
+        db_source = j.source;
+      }
+
+      const macros = macrosForQty(candidate.per_100g, qty_g);
+      const newItem: FoodItem = {
+        name: candidate.name,
+        qty_g,
+        ...macros,
+        per_100g: candidate.per_100g,
+        source: "db",
+        db_ref: { source: db_source, canonical_id: canonical_id! },
+        confidence: "high",
+        match_score: 1.0,
+      };
+
+      const updatedItems = entry.items.map((it, i) => (i === idx ? newItem : it));
+      const ok = await patchItems(updatedItems);
+      if (ok) {
+        setEditing(null);
+        setPickingFor(null);
+      }
+    } catch (e) {
+      setEditError((e as Error).message);
+    } finally {
+      setEditBusy(false);
+    }
+  };
+
   return (
     <div className="space-y-3">
       <ul className="divide-y divide-zinc-800 rounded-md border border-zinc-800">
         {entry.items.map((it, idx) => {
           if (editing === idx) {
+            if (pickingFor === idx) {
+              return (
+                <li key={idx} className="space-y-2 bg-zinc-900/60 p-3 text-sm">
+                  <div className="text-xs uppercase tracking-wider text-zinc-400">
+                    Replacing: {it.name}
+                  </div>
+                  <FoodSearchPicker
+                    onPicked={(candidate, qty_g) => swapFood(idx, candidate, qty_g)}
+                    onCancel={() => setPickingFor(null)}
+                  />
+                </li>
+              );
+            }
             return (
               <li key={idx} className="space-y-2 bg-zinc-900/60 p-3 text-sm">
                 <div className="text-xs uppercase tracking-wider text-zinc-400">
@@ -137,6 +203,13 @@ export function DraftReview({
                   </div>
                 </div>
                 {editError && <p className="text-xs text-red-400">{editError}</p>}
+                <button
+                  type="button"
+                  onClick={() => setPickingFor(idx)}
+                  className="text-xs text-zinc-400 underline"
+                >
+                  Change food →
+                </button>
                 <div className="flex gap-2">
                   <button type="button" onClick={cancelEdit} disabled={editBusy} className="flex-1 rounded-md border border-zinc-700 py-1 text-xs">
                     Cancel
