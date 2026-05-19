@@ -45,6 +45,10 @@ export type ClassifyTurnOpts = {
 };
 
 const HAIKU_TIMEOUT_MS = 1200;
+/** Minimum max(points)/total ratio for the keyword classifier to commit to
+ *  a speaker without falling through to the Haiku tiebreaker. Below this,
+ *  the message is treated as cross-domain enough that the LLM should decide. */
+const KEYWORD_CONFIDENCE_THRESHOLD = 0.8;
 
 // ── Keyword tables ────────────────────────────────────────────────────────
 // Single-word keywords match on `\b` word boundaries (case-insensitive).
@@ -203,7 +207,7 @@ export async function classifyTurn(opts: ClassifyTurnOpts): Promise<RouterDecisi
     let maxPts = 0;
     for (const sp of SPEAKERS) if (points[sp] > maxPts) maxPts = points[sp];
     const confidence = maxPts / total;
-    if (confidence >= 0.8) {
+    if (confidence >= KEYWORD_CONFIDENCE_THRESHOLD) {
       // Ties broken by TIE_BREAK_ORDER.
       let winner: Speaker = "peter";
       for (const sp of TIE_BREAK_ORDER) {
