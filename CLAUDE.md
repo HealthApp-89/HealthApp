@@ -54,6 +54,8 @@ Apply in order via Supabase Dashboard → SQL Editor:
 
 19. [supabase/migrations/0021_profile_nutrition_overrides.sql](supabase/migrations/0021_profile_nutrition_overrides.sql) — adds `profiles.nutrition_overrides jsonb` storing optional per-field overrides (`kcal`, `macro_ratios`, `meal_ratios`). `NULL` means "no overrides, fall through to plan/intake". Read by `getTodayTargets`; written by `/api/profile/nutrition-overrides` and the `commit_nutrition_targets` coach tool.
 
+22. [supabase/migrations/0022_exercise_overrides.sql](supabase/migrations/0022_exercise_overrides.sql) — adds nullable `training_weeks.exercise_overrides jsonb` storing per-day reordered exercise lists. NULL fallback to static `SESSION_PLANS`. Permutation-only (same name set, different order). Written by `/api/training-weeks/[week_start]/exercise-overrides`.
+
 `supabase` CLI is now linked (`supabase link --project-ref eopfwwergisvskxqvsqe`); future migrations apply via `supabase db push` after `repair --status applied <history>` if needed.
 
 Row shapes mirrored in [lib/data/types.ts](lib/data/types.ts). Schema is snake_case; keep DB columns and TS types in sync.
