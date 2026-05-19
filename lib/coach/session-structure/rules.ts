@@ -107,20 +107,32 @@ export function findOrderingWarnings(exercises: PlannedExercise[]): OrderingWarn
     return m?.primary ?? [];
   });
 
-  // Rule 1: tier ascending. Iterate post-warmup; for each pair (i-1, i),
-  // require tiers[i] >= tiers[i-1]. Skip the comparison when the predecessor
-  // is pre-exhaust-tagged.
-  for (let i = 1; i < exercises.length; i++) {
-    if (tiers[i - 1] === 0) continue; // warm-up doesn't establish a floor
-    if (isPreExhaustTagged(exercises[i - 1])) continue;
-    if (tiers[i] < tiers[i - 1] && tiers[i] > 0) {
+  // Rule 1: tier ascending. Track the highest non-warmup tier seen so far and
+  // the exercise that established it. A later exercise with a lower tier is a
+  // violation — and `related_exercise` points to that earlier high-tier
+  // exercise (not just the immediately-prior one), so the displayed message
+  // matches the user's intuition on non-adjacent violations.
+  let highTierSeen: FatigueTier = 0;
+  let highTierExercise = "";
+  for (let i = 0; i < exercises.length; i++) {
+    if (tiers[i] === 0) continue; // warm-up doesn't establish a floor
+    if (tiers[i] < highTierSeen) {
       warnings.push({
         rule: "tier_ascending",
         exercise: exercises[i].name,
-        related_exercise: exercises[i - 1].name,
-        message: `${exercises[i].name} (tier ${tiers[i]}) is sequenced after ${exercises[i - 1].name} (tier ${tiers[i - 1]}). Heavier compounds should come first when the body is fresh.`,
+        related_exercise: highTierExercise,
+        message: `${exercises[i].name} (tier ${tiers[i]}) is sequenced after ${highTierExercise} (tier ${highTierSeen}). Heavier compounds should come first when the body is fresh.`,
         suggested_action: "swap_with",
       });
+      continue;
+    }
+    // Pre-exhaust tag still raises the floor for subsequent comparisons —
+    // but allows the next exercise to drop without firing. We model that
+    // by NOT updating highTierSeen when the current exercise is pre-exhaust-tagged.
+    if (isPreExhaustTagged(exercises[i])) continue;
+    if (tiers[i] > highTierSeen) {
+      highTierSeen = tiers[i];
+      highTierExercise = exercises[i].name;
     }
   }
 
