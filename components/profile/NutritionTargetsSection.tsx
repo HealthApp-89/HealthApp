@@ -124,7 +124,7 @@ export function NutritionTargetsSection({
             onChange={(e) => setKcal(parseInt(e.target.value, 10) || 0)}
             min={800}
             max={6000}
-            className="w-32 rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-sm"
+            className="w-32 rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-sm text-zinc-100"
           />
           <button
             type="button"
@@ -230,7 +230,7 @@ function PctInput({
         onChange={(e) => onChange(parseInt(e.target.value, 10) || 0)}
         min={0}
         max={100}
-        className="mt-1 w-full rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1"
+        className="mt-1 w-full rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-zinc-100"
       />
     </label>
   );
