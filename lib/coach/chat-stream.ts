@@ -60,7 +60,7 @@ import {
   type ToolResult,
   type ToolSchema,
 } from "@/lib/coach/tools";
-import { DELEGATE_TOOL_NAME } from "@/lib/coach/delegate-tool";
+import { DELEGATE_TOOL_NAME } from "@/lib/coach/handoff-tool";
 import { speakerSystemPrompt } from "@/lib/coach/system-prompts";
 import { SPEAKERS, type ChatMode, type Speaker, type ToolCallLog } from "@/lib/data/types";
 import type { ContentBlock, RichMessage } from "@/lib/chat/types";
