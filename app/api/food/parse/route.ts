@@ -14,6 +14,7 @@ import { sumMacros, type FoodItem } from "@/lib/food/types";
 
 const BodySchema = z.object({
   text: z.string().min(1).max(2000),
+  meal_slot: z.enum(["breakfast", "lunch", "dinner", "snack"]),
   eaten_at: z.string().datetime().optional(),
 });
 
@@ -76,13 +77,14 @@ export async function POST(req: Request) {
       user_id: user.id,
       eaten_at: eaten_at ?? new Date().toISOString(),
       kind: "text",
+      meal_slot: parsed.data.meal_slot,
       raw_input: { kind: "text", text },
       items,
       totals,
       is_estimated,
       status: "draft",
     })
-    .select("id, eaten_at, kind, items, totals, is_estimated, status")
+    .select("id, eaten_at, meal_slot, kind, items, totals, is_estimated, status")
     .single();
   if (error) {
     console.error("[/api/food/parse] insert failed", error);

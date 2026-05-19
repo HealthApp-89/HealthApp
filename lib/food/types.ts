@@ -5,6 +5,8 @@
 // because they're narrowly used by lib/food/* and the food UI; the broader
 // DailyLog types stay in lib/data/types.ts.
 
+export type MealSlot = "breakfast" | "lunch" | "dinner" | "snack";
+
 export type FoodMacros = {
   kcal: number;
   protein_g: number;
@@ -46,6 +48,7 @@ export type FoodLogEntry = {
   user_id: string;
   eaten_at: string;
   kind: FoodLogEntryKind;
+  meal_slot: MealSlot;
   raw_input: FoodLogEntryRawInput;
   items: FoodItem[];
   totals: FoodMacros;

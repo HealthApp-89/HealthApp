@@ -26,7 +26,7 @@ export async function GET(req: Request) {
 
   const { data, error } = await supabase
     .from("food_log_entries")
-    .select("id, user_id, eaten_at, kind, raw_input, items, totals, is_estimated, status, created_at, updated_at")
+    .select("id, user_id, eaten_at, meal_slot, kind, raw_input, items, totals, is_estimated, status, created_at, updated_at")
     .eq("user_id", user.id)
     .eq("status", "committed")
     .gte("eaten_at", `${parsed.data.from}T00:00:00Z`)

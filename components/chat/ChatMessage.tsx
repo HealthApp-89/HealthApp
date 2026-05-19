@@ -9,6 +9,7 @@ import { CoachAvatar } from "@/components/coach/CoachAvatar";
 import { WeekPlanProposalCard, type WeekProposal } from "./WeekPlanProposalCard";
 import { BlockProposalCard, type BlockProposal } from "./BlockProposalCard";
 import { PlanProposalCard } from "./PlanProposalCard";
+import { NutritionTargetsProposalCard, type NutritionTargetsProposal } from "./NutritionTargetsProposalCard";
 import type { PlanPayload } from "@/lib/data/types";
 
 export function ChatMessage({
@@ -46,6 +47,9 @@ export function ChatMessage({
   );
   const hasCommittedPlan = toolCalls.some(
     (c) => c.name === "commit_plan" && !c.error,
+  );
+  const hasCommittedNutritionTargets = toolCalls.some(
+    (c) => c.name === "commit_nutrition_targets" && !c.error,
   );
 
   if (isUser) {
@@ -286,6 +290,23 @@ export function ChatMessage({
                       onFocusComposer?.(
                         "e.g., 'change the goal to bench instead'",
                       )
+                    }
+                  />
+                </div>
+              );
+            }
+            if (call.name === "propose_nutrition_targets") {
+              return (
+                <div key={i} style={{ marginTop: 8 }}>
+                  <NutritionTargetsProposalCard
+                    proposal={result.preview as NutritionTargetsProposal}
+                    approvalToken={result.approval_token}
+                    committed={hasCommittedNutritionTargets}
+                    onApprove={(token) =>
+                      onSendUserMessage?.(`[approve:${token}]`)
+                    }
+                    onTweak={() =>
+                      onFocusComposer?.("e.g., 'lower kcal to 1800'")
                     }
                   />
                 </div>

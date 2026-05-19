@@ -1,9 +1,17 @@
 "use client";
 import { useState } from "react";
-import type { FoodLogEntry } from "@/lib/food/types";
+import type { FoodLogEntry, MealSlot } from "@/lib/food/types";
 import { fmtNum } from "@/lib/ui/score";
 
-export function MealLoggerTypeTab({ onCommitted }: { onCommitted: () => void }) {
+export function MealLoggerTypeTab({
+  mealSlot,
+  eatenAt,
+  onCommitted,
+}: {
+  mealSlot: MealSlot;
+  eatenAt: string;
+  onCommitted: () => void;
+}) {
   const [text, setText] = useState("");
   const [draft, setDraft] = useState<Pick<FoodLogEntry, "id" | "items" | "totals" | "is_estimated"> | null>(null);
   const [busy, setBusy] = useState(false);
@@ -16,7 +24,7 @@ export function MealLoggerTypeTab({ onCommitted }: { onCommitted: () => void }) 
       const res = await fetch("/api/food/parse", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text, meal_slot: mealSlot, eaten_at: eatenAt }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "parse_failed");

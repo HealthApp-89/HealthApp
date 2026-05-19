@@ -1,7 +1,7 @@
 // app/api/food/commit/route.ts
 //
 // POST { entry_id } → flip status to 'committed', reaggregate daily_logs
-// for the entry's date, invalidate /log via revalidatePath.
+// for the entry's date, invalidate /meal via revalidatePath.
 
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -46,7 +46,7 @@ export async function POST(req: Request) {
   const date = utcDate(updated.eaten_at);
   const macros = await reaggregateDay(supabase, user.id, date);
 
-  revalidatePath("/log");
+  revalidatePath("/meal");
   revalidatePath("/");
 
   return NextResponse.json({ ok: true, date, totals: macros });

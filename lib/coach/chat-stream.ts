@@ -34,6 +34,8 @@ import {
   COMMIT_BLOCK_TOOL,
   PROPOSE_WEEK_PLAN_TOOL,
   COMMIT_WEEK_PLAN_TOOL,
+  PROPOSE_NUTRITION_TARGETS_TOOL,
+  COMMIT_NUTRITION_TARGETS_TOOL,
   APPLY_GOAL_TARGET_TOOL,
   APPLY_BEDTIME_CORRECTION_TOOL,
   APPLY_MACROS_CORRECTION_TOOL,
@@ -63,6 +65,8 @@ import {
   executeCommitBlock,
   executeProposeWeekPlan,
   executeCommitWeekPlan,
+  executeProposeNutritionTargets,
+  executeCommitNutritionTargets,
   executeApplyGoalTarget,
   executeApplyBedtimeCorrection,
   executeApplyMacrosCorrection,
@@ -96,6 +100,8 @@ const PERSIST_RESULT_TOOLS = new Set([
   "commit_week_plan",
   "propose_plan",
   "commit_plan",
+  "propose_nutrition_targets",
+  "commit_nutrition_targets",
 ]);
 function shouldPersistResult(name: string): boolean {
   return PERSIST_RESULT_TOOLS.has(name);
@@ -193,6 +199,8 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
     COMMIT_BLOCK_TOOL,
     PROPOSE_WEEK_PLAN_TOOL,
     COMMIT_WEEK_PLAN_TOOL,
+    PROPOSE_NUTRITION_TARGETS_TOOL,
+    COMMIT_NUTRITION_TARGETS_TOOL,
     APPLY_GOAL_TARGET_TOOL,
     APPLY_BEDTIME_CORRECTION_TOOL,
     APPLY_MACROS_CORRECTION_TOOL,
@@ -254,16 +262,18 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
     // default mode — coach lane normal chat. Surfaces the milestone-style
     // active-plan mutators (set_glp1_taper_started, mark_glp1_discontinued)
     // plus regenerate_morning_brief for the user-challenges-brief flow.
-    toolsForMode = allTools.filter(
-      (t) =>
-        !t.name.startsWith("propose_") &&
-        !t.name.startsWith("commit_") &&
-        !t.name.startsWith("apply_") &&
-        (
-          !t.name.startsWith("set_") ||
-          t.name === "set_glp1_taper_started"
-        ),
-    );
+    // Exception: nutrition_targets propose/commit are allowed here so the
+    // coach can recommend kcal/macros without entering plan_week or intake.
+    const defaultModeAllowed = (name: string): boolean => {
+      if (name === "propose_nutrition_targets") return true;
+      if (name === "commit_nutrition_targets") return true;
+      if (name.startsWith("propose_")) return false;
+      if (name.startsWith("commit_")) return false;
+      if (name.startsWith("apply_")) return false;
+      if (name.startsWith("set_") && name !== "set_glp1_taper_started") return false;
+      return true;
+    };
+    toolsForMode = allTools.filter((t) => defaultModeAllowed(t.name));
   }
 
   while (true) {
@@ -430,6 +440,18 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
             userId: opts.userId,
             input: block.input,
             chatMessageId: opts.assistantMessageId ?? null,
+          });
+        } else if (block.name === "propose_nutrition_targets") {
+          result = await executeProposeNutritionTargets({
+            supabase: opts.sr,
+            userId: opts.userId,
+            input: block.input,
+          });
+        } else if (block.name === "commit_nutrition_targets") {
+          result = await executeCommitNutritionTargets({
+            supabase: opts.sr,
+            userId: opts.userId,
+            input: block.input,
           });
         } else if (block.name === "set_glp1_taper_started") {
           result = await executeSetGlp1TaperStarted({
