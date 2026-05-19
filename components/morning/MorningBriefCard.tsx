@@ -5,6 +5,7 @@ import { useMemo } from "react";
 import { COLOR, RADIUS, GRADIENT } from "@/lib/ui/theme";
 import { fmtNum } from "@/lib/ui/score";
 import type { MorningBriefCard as MorningBriefCardData, MorningBriefHydration, Weekday } from "@/lib/data/types";
+import { SpeakerChip } from "@/components/chat/SpeakerChip";
 import { BriefRecapStats } from "@/components/morning/BriefRecapStats";
 import { BriefSessionList } from "@/components/morning/BriefSessionList";
 import { BriefRestActions } from "@/components/morning/BriefRestActions";
@@ -89,7 +90,10 @@ export function MorningBriefCard({
           gap: 14,
         }}
       >
-        <SectionLabel>Yesterday</SectionLabel>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <SectionLabel>Yesterday</SectionLabel>
+          <SpeakerChip speaker="peter" size="sm" />
+        </div>
         <BriefRecapStats recap={card.recap} />
         <Divider />
         {/* Non-rest variants (training, kickoff, analytical) share the
@@ -99,13 +103,16 @@ export function MorningBriefCard({
             non-rest variants inherit the session-list path by default. */}
         {card.variant !== "rest" ? (
           <>
-            <SectionLabel>
-              Today ·{" "}
-              <span style={{ textDecoration: isSwapped ? "line-through" : "none" }}>
-                {card.session.type}
-              </span>
-              {card.session.start_time ? ` · ${card.session.start_time}` : null}
-            </SectionLabel>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <SectionLabel>
+                Today ·{" "}
+                <span style={{ textDecoration: isSwapped ? "line-through" : "none" }}>
+                  {card.session.type}
+                </span>
+                {card.session.start_time ? ` · ${card.session.start_time}` : null}
+              </SectionLabel>
+              <SpeakerChip speaker="carter" size="sm" />
+            </div>
             <BriefSessionList
               session={card.session}
               isSwapped={isSwapped}
@@ -123,19 +130,28 @@ export function MorningBriefCard({
           </>
         ) : (
           <>
-            <SectionLabel>Today · REST</SectionLabel>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <SectionLabel>Today · REST</SectionLabel>
+              <SpeakerChip speaker="carter" size="sm" />
+            </div>
             <BriefRestActions bedtime={card.tonight.bedtime_target} />
           </>
         )}
         {card.hydration && (
           <>
             <Divider />
-            <SectionLabel>Hydration today</SectionLabel>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <SectionLabel>Hydration today</SectionLabel>
+              <SpeakerChip speaker="nora" size="sm" />
+            </div>
             <BriefHydration hydration={card.hydration} />
           </>
         )}
         <Divider />
-        <SectionLabel>Macros today</SectionLabel>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <SectionLabel>Macros today</SectionLabel>
+          <SpeakerChip speaker="nora" size="sm" />
+        </div>
         <BriefMacrosGrid macros={card.macros} />
         <Divider />
         <BriefAdvice md={card.advice_md} />
@@ -229,14 +245,24 @@ function BriefHero({ card }: { card: MorningBriefCardData }) {
     >
       <div
         style={{
-          fontSize: 10,
-          fontWeight: 700,
-          letterSpacing: "0.06em",
-          textTransform: "uppercase",
-          opacity: 0.85,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 8,
         }}
       >
-        {`Today's brief · ${todayLabel}`}
+        <div
+          style={{
+            fontSize: 10,
+            fontWeight: 700,
+            letterSpacing: "0.06em",
+            textTransform: "uppercase",
+            opacity: 0.85,
+          }}
+        >
+          {`Today's brief · ${todayLabel}`}
+        </div>
+        <SpeakerChip speaker="remi" size="sm" />
       </div>
       <div
         style={{
