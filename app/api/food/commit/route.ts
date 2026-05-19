@@ -7,8 +7,9 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { reaggregateDay } from "@/lib/food/aggregate";
+import { reaggregateDay, sumFoodEntriesForDate } from "@/lib/food/aggregate";
 import { utcDate } from "@/lib/food/date";
+import { foodLogOwnsDailyLogs } from "@/lib/food/ownership";
 
 const BodySchema = z.object({
   entry_id: z.string().uuid(),
@@ -44,7 +45,12 @@ export async function POST(req: Request) {
   }
 
   const date = utcDate(updated.eaten_at);
-  const macros = await reaggregateDay(supabase, user.id, date);
+  // When the kill switch is off, Yazio remains the source of truth for the
+  // daily_logs nutrition columns — sum the committed entries for the response
+  // (so the UI can render today's running totals) but skip the upsert.
+  const macros = foodLogOwnsDailyLogs()
+    ? await reaggregateDay(supabase, user.id, date)
+    : await sumFoodEntriesForDate(supabase, user.id, date);
 
   revalidatePath("/meal");
   revalidatePath("/");

@@ -7,12 +7,15 @@ import { macrosForQty, type FoodItem, type FoodLogEntry } from "@/lib/food/types
 import { fmtNum } from "@/lib/ui/score";
 import { MEAL_SLOTS, mealSlotLabel } from "@/lib/food/meal-slot";
 import type { MealSlot } from "@/lib/food/types";
+import { useFoodItemFavorites } from "@/lib/query/hooks/useFoodItemFavorites";
 
 export function FoodEntryEditSheet({
   entry,
+  userId,
   onClose,
 }: {
   entry: FoodLogEntry;
+  userId: string;
   onClose: () => void;
 }) {
   const [items, setItems] = useState<FoodItem[]>(entry.items);
@@ -21,6 +24,10 @@ export function FoodEntryEditSheet({
   const [mealSlot, setMealSlot] = useState<MealSlot>(entry.meal_slot);
   const [eatenAt, setEatenAt]   = useState<string>(entry.eaten_at);
   const qc = useQueryClient();
+  const { data: itemFavorites = [] } = useFoodItemFavorites(userId);
+
+  const isItemFavorite = (name: string) =>
+    itemFavorites.some((f) => f.name.toLowerCase() === name.toLowerCase());
 
   const setQty = (idx: number, qty_g: number) => {
     setItems((prev) =>
@@ -115,7 +122,43 @@ export function FoodEntryEditSheet({
         </div>
         {items.map((it, idx) => (
           <div key={idx} className="rounded-md border border-zinc-800 p-3">
-            <div className="text-sm font-medium">{it.name}</div>
+            <div className="flex items-center justify-between">
+              <div className="text-sm font-medium">{it.name}</div>
+              <button
+                type="button"
+                aria-label={isItemFavorite(it.name) ? "Unfavorite item" : "Favorite item"}
+                onClick={async () => {
+                  const starred = isItemFavorite(it.name);
+                  try {
+                    if (starred) {
+                      const fav = itemFavorites.find((f) => f.name.toLowerCase() === it.name.toLowerCase());
+                      if (!fav) return;
+                      await fetch(`/api/food/item-favorites/${fav.id}`, { method: "DELETE" });
+                    } else {
+                      await fetch("/api/food/item-favorites", {
+                        method: "POST",
+                        headers: { "content-type": "application/json" },
+                        body: JSON.stringify({
+                          name: it.name,
+                          qty_g: it.qty_g,
+                          per_100g: it.per_100g,
+                          source: it.source,
+                          db_ref: it.db_ref ?? null,
+                          default_meal_slot: entry.meal_slot,
+                        }),
+                      });
+                    }
+                    await qc.invalidateQueries({ predicate: (q) => q.queryKey[0] === "food-item-favorites" });
+                    await qc.invalidateQueries({ predicate: (q) => q.queryKey[0] === "food-library" });
+                  } catch (e) {
+                    console.error("Failed to toggle favorite:", e);
+                  }
+                }}
+                className="text-lg"
+              >
+                {isItemFavorite(it.name) ? "★" : "☆"}
+              </button>
+            </div>
             <label className="mt-2 block text-xs text-zinc-400">
               Quantity (g)
               <input

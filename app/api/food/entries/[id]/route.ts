@@ -9,6 +9,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { reaggregateDay } from "@/lib/food/aggregate";
+import { foodLogOwnsDailyLogs } from "@/lib/food/ownership";
 import { sumMacros, type FoodItem } from "@/lib/food/types";
 import { utcDate, isToday } from "@/lib/food/date";
 
@@ -106,7 +107,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   if (error) return NextResponse.json({ error: "update_failed" }, { status: 500 });
 
   const date = utcDate(existing.eaten_at);
-  await reaggregateDay(supabase, user.id, date);
+  if (foodLogOwnsDailyLogs()) await reaggregateDay(supabase, user.id, date);
   revalidatePath("/meal");
   return NextResponse.json({ ok: true });
 }
@@ -133,7 +134,7 @@ export async function DELETE(req: Request, ctx: { params: Promise<{ id: string }
   if (error) return NextResponse.json({ error: "delete_failed" }, { status: 500 });
 
   const date = utcDate(existing.eaten_at);
-  await reaggregateDay(supabase, user.id, date);
+  if (foodLogOwnsDailyLogs()) await reaggregateDay(supabase, user.id, date);
   revalidatePath("/meal");
   return NextResponse.json({ ok: true });
 }

@@ -4,7 +4,7 @@
 
 **Goal:** Ship v1.1 of in-app food logging — copy past entries, two-level favorites (meal + item), Library tab in MealLoggerSheet with search across user history and shared food DB cache, and a HistoryPickerSheet for multi-source meal assembly across dates.
 
-**Architecture:** All additive. Reuses the existing parse → preview → commit pipeline; the new primitives (copy, favorites, library, history-picker) are just starting points into that pipeline. Backend: one migration (0022) adds `is_favorite` flag, `food_item_favorites` table, and three SQL helpers (`food_recent_items`, `food_frequent_items`, `food_cache_search`). Five new API routes plus extensions to existing ones. Frontend: one new tab in MealLoggerSheet (Library), one new bottom sheet (HistoryPickerSheet), and row-level affordances (☆ favorite, 📋 copy, per-item ☆) on TodaysMeals, MealSlotCard, FoodEntryEditSheet, and MealLoggerTypeTab.
+**Architecture:** All additive. Reuses the existing parse → preview → commit pipeline; the new primitives (copy, favorites, library, history-picker) are just starting points into that pipeline. Backend: one migration (0023; bumped from planned 0022 because the parallel `feat/session-structure` branch took 0022) adds `is_favorite` flag, `food_item_favorites` table, and three SQL helpers (`food_recent_items`, `food_frequent_items`, `food_cache_search`). Five new API routes plus extensions to existing ones. Frontend: one new tab in MealLoggerSheet (Library), one new bottom sheet (HistoryPickerSheet), and row-level affordances (☆ favorite, 📋 copy, per-item ☆) on TodaysMeals, MealSlotCard, FoodEntryEditSheet, and MealLoggerTypeTab.
 
 **Tech Stack:** Next.js 15 App Router, Supabase (Postgres + RLS + `pg_trgm` from migration 0018), TanStack Query (hybrid SSR-hydrate), Tailwind v4. No new external integrations. No new Anthropic calls. No test framework in this project — verification uses `npm run typecheck` + manual exercise via `npm run dev` + an audit script.
 
@@ -37,7 +37,7 @@ Expected: exits 0. If it doesn't, stop and fix unrelated breakage before continu
 **New files (24):**
 
 ```
-supabase/migrations/0022_food_log_favorites_and_library.sql
+supabase/migrations/0023_food_log_favorites_and_library.sql
 
 app/api/food/entries/[id]/copy/route.ts
 app/api/food/entries/[id]/favorite/route.ts
@@ -77,22 +77,22 @@ components/log/FoodEntryEditSheet.tsx      — per-item ☆ on edit sheet
 components/log/TodaysMeals.tsx             — per-row ☆ + 📋 affordances
 components/meal/MealSlotCard.tsx           — per-row ☆ + 📋 affordances
 components/meal/MealSlotEmptyCard.tsx      — two pills: Copy yesterday + Pick from history
-CLAUDE.md                                  — migration 0022 + v1.1 sub-section
+CLAUDE.md                                  — migration 0023 + v1.1 sub-section
 ```
 
 ---
 
-## Task 1: Migration 0022 — favorites + Library SQL helpers
+## Task 1: Migration 0023 — favorites + Library SQL helpers
 
 **Files:**
-- Create: `supabase/migrations/0022_food_log_favorites_and_library.sql`
+- Create: `supabase/migrations/0023_food_log_favorites_and_library.sql`
 
 - [ ] **Step 1.1: Write the migration**
 
-Create `supabase/migrations/0022_food_log_favorites_and_library.sql` with this exact content:
+Create `supabase/migrations/0023_food_log_favorites_and_library.sql` with this exact content:
 
 ```sql
--- 0022_food_log_favorites_and_library.sql
+-- 0023_food_log_favorites_and_library.sql
 --
 -- v1.1 of in-app food logging. Adds:
 --   - food_log_entries.is_favorite for meal-level favorites
@@ -279,7 +279,7 @@ $$;
 supabase db push
 ```
 
-Expected: prints `Applying migration 0022_food_log_favorites_and_library.sql...` and exits 0.
+Expected: prints `Applying migration 0023_food_log_favorites_and_library.sql...` and exits 0.
 
 If `supabase db push` reports a history mismatch, run:
 ```bash
@@ -301,8 +301,8 @@ Expected: each returns rows or an empty result, no error.
 - [ ] **Step 1.4: Commit**
 
 ```bash
-git add supabase/migrations/0022_food_log_favorites_and_library.sql
-git commit -m "feat(food-log): migration 0022 — favorites + Library SQL helpers"
+git add supabase/migrations/0023_food_log_favorites_and_library.sql
+git commit -m "feat(food-log): migration 0023 — favorites + Library SQL helpers"
 ```
 
 ---
@@ -2576,10 +2576,10 @@ Expected: prints rows for each section + `✓ audit-food-library passed`. If any
 
 - [ ] **Step 13.3: Update CLAUDE.md**
 
-In `CLAUDE.md`, add migration 0022 to the Database migrations chain (after the existing 0021 entry — adjust the numbering to match the existing pattern):
+In `CLAUDE.md`, add migration 0023 to the Database migrations chain (after the existing 0021 entry — adjust the numbering to match the existing pattern):
 
 ```markdown
-18. [supabase/migrations/0022_food_log_favorites_and_library.sql](supabase/migrations/0022_food_log_favorites_and_library.sql) — v1.1 of in-app food logging: adds `food_log_entries.is_favorite` for meal-level favorites, `food_item_favorites` table for item-level favorites, three SQL helpers (`food_recent_items`, `food_frequent_items`, `food_cache_search`), and extends `food_log_entries.kind` allowlist with `'copy'` and `'library'`.
+18. [supabase/migrations/0023_food_log_favorites_and_library.sql](supabase/migrations/0023_food_log_favorites_and_library.sql) — v1.1 of in-app food logging: adds `food_log_entries.is_favorite` for meal-level favorites, `food_item_favorites` table for item-level favorites, three SQL helpers (`food_recent_items`, `food_frequent_items`, `food_cache_search`), and extends `food_log_entries.kind` allowlist with `'copy'` and `'library'`.
 ```
 
 In the same file, find the "In-app food logging" sub-section under "Data sources & precedence" and append:

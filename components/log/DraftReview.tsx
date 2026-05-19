@@ -1,9 +1,11 @@
 "use client";
 import { useState } from "react";
-import type { FoodItem, FoodLogEntry, SearchCandidate } from "@/lib/food/types";
+import type { FoodItem, FoodLogEntry, MealSlot, SearchCandidate } from "@/lib/food/types";
 import { fmtNum } from "@/lib/ui/score";
 import { macrosForQty } from "@/lib/food/types";
 import { FoodSearchPicker } from "./FoodSearchPicker";
+import { useFoodItemFavorites } from "@/lib/query/hooks/useFoodItemFavorites";
+import { useQueryClient } from "@tanstack/react-query";
 
 const QTY_PRESETS = [50, 100, 150, 200] as const;
 
@@ -51,6 +53,8 @@ function sumItems(items: FoodItem[]) {
 
 export function DraftReview({
   entry,
+  userId,
+  mealSlot,
   onChange,
   busy,
   error,
@@ -58,6 +62,10 @@ export function DraftReview({
   onDiscard,
 }: {
   entry: Pick<FoodLogEntry, "id" | "items" | "totals" | "is_estimated">;
+  /** When set, each row shows a star to toggle item-favorite. Omit to hide. */
+  userId?: string;
+  /** Default meal slot for newly-created item favorites. */
+  mealSlot?: MealSlot;
   /** Called after a successful PATCH with the updated entry. */
   onChange: (updated: Pick<FoodLogEntry, "id" | "items" | "totals" | "is_estimated">) => void;
   busy: boolean;
@@ -70,6 +78,40 @@ export function DraftReview({
   const [editError, setEditError] = useState<string | null>(null);
   const [editBusy, setEditBusy] = useState(false);
   const [pickingFor, setPickingFor] = useState<number | null>(null);
+  const { data: itemFavorites = [] } = useFoodItemFavorites(userId ?? "");
+  const qc = useQueryClient();
+
+  const isItemFavorite = (name: string) =>
+    itemFavorites.some((f) => f.name.toLowerCase() === name.toLowerCase());
+
+  const toggleFavorite = async (it: FoodItem) => {
+    if (!userId || !mealSlot) return;
+    const starred = isItemFavorite(it.name);
+    try {
+      if (starred) {
+        const fav = itemFavorites.find((f) => f.name.toLowerCase() === it.name.toLowerCase());
+        if (!fav) return;
+        await fetch(`/api/food/item-favorites/${fav.id}`, { method: "DELETE" });
+      } else {
+        await fetch("/api/food/item-favorites", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            name: it.name,
+            qty_g: it.qty_g,
+            per_100g: it.per_100g,
+            source: it.source,
+            db_ref: it.db_ref ?? null,
+            default_meal_slot: mealSlot,
+          }),
+        });
+      }
+      await qc.invalidateQueries({ predicate: (q) => q.queryKey[0] === "food-item-favorites" });
+      await qc.invalidateQueries({ predicate: (q) => q.queryKey[0] === "food-library" });
+    } catch (e) {
+      console.error("Failed to toggle favorite:", e);
+    }
+  };
 
   const startEdit = (idx: number) => {
     setEditing(idx);
@@ -268,6 +310,16 @@ export function DraftReview({
                 </div>
               </div>
               <div className="flex shrink-0 gap-1">
+                {userId && mealSlot && (
+                  <button
+                    type="button"
+                    onClick={() => toggleFavorite(it)}
+                    aria-label={isItemFavorite(it.name) ? "Unfavorite item" : "Favorite item"}
+                    className="rounded p-1 text-zinc-400 hover:bg-zinc-800 hover:text-amber-400"
+                  >
+                    {isItemFavorite(it.name) ? "★" : "☆"}
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => startEdit(idx)}

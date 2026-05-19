@@ -8,10 +8,12 @@ import { fmtNum } from "@/lib/ui/score";
 type DraftItem = { candidate: SearchCandidate; qty_g: number };
 
 export function MealLoggerSearchTab({
+  userId,
   mealSlot,
   eatenAt,
   onCommitted,
 }: {
+  userId: string;
   mealSlot: MealSlot;
   eatenAt: string;
   onCommitted: () => void;
@@ -85,6 +87,8 @@ export function MealLoggerSearchTab({
     return (
       <DraftReview
         entry={draft}
+        userId={userId}
+        mealSlot={mealSlot}
         onChange={setDraft}
         busy={busy}
         error={error}

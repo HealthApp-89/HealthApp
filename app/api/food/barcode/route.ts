@@ -56,9 +56,10 @@ export async function POST(req: Request) {
       items: [item],
       totals: macros,
       is_estimated: false,
+      is_favorite: false,
       status: "draft",
     })
-    .select("id, eaten_at, meal_slot, kind, items, totals, is_estimated, status")
+    .select("id, eaten_at, meal_slot, kind, items, totals, is_estimated, is_favorite, status")
     .single();
   if (error) {
     console.error("[/api/food/barcode] insert failed", error);

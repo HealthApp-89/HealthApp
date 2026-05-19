@@ -4,10 +4,12 @@ import type { FoodLogEntry, MealSlot } from "@/lib/food/types";
 import { DraftReview } from "./DraftReview";
 
 export function MealLoggerTypeTab({
+  userId,
   mealSlot,
   eatenAt,
   onCommitted,
 }: {
+  userId: string;
   mealSlot: MealSlot;
   eatenAt: string;
   onCommitted: () => void;
@@ -71,6 +73,8 @@ export function MealLoggerTypeTab({
     return (
       <DraftReview
         entry={draft}
+        userId={userId}
+        mealSlot={mealSlot}
         onChange={setDraft}
         busy={busy}
         error={error}
