@@ -105,10 +105,10 @@ All three reuse the existing parse → preview → commit pipeline. The only new
 
 ## Data model
 
-### Migration 0022 — `food_log_entries.is_favorite` + `food_item_favorites` + RPCs
+### Migration 0023 — `food_log_entries.is_favorite` + `food_item_favorites` + RPCs
 
 ```sql
--- 0022_food_log_favorites_and_library.sql
+-- 0023_food_log_favorites_and_library.sql
 --
 -- v1.1 of in-app food logging. Adds:
 --   - food_log_entries.is_favorite for meal-level favorites
@@ -365,7 +365,7 @@ Server flow:
 4. Insert new `food_log_entries` row with: same `items`, same `totals`, same `is_estimated`, `kind = 'copy'` (new kind value), `raw_input = { kind: 'copy', source_id: <uuid> }`, `eaten_at = body.eaten_at ?? new Date().toISOString()`, `meal_slot = body.meal_slot ?? source.meal_slot`, `status = 'draft'`, `is_favorite = false` (copies start unfavorited).
 5. Return the draft.
 
-Schema additions in migration 0022:
+Schema additions in migration 0023:
 - Extend `food_log_entries.kind` check constraint to include `'copy'`.
 - Document the `raw_input` shape for `kind='copy'`: `{ kind: 'copy', source_id: uuid }`.
 
@@ -489,7 +489,7 @@ Server flow:
 5. Return the draft (same response shape as parse/barcode).
 
 Schema additions:
-- Extend `food_log_entries.kind` check constraint to include `'library'` and `'copy'` (see Migration 0022 below).
+- Extend `food_log_entries.kind` check constraint to include `'library'` and `'copy'` (see Migration 0023 below).
 
 ### `GET /api/food/history?from=YYYY-MM-DD&to=YYYY-MM-DD`
 
@@ -724,7 +724,7 @@ The new `food_recent_items` and `food_frequent_items` SQL helpers are read-only 
 
 ## Deliverables
 
-- `supabase/migrations/0022_food_log_favorites_and_library.sql` — `is_favorite` column, `food_item_favorites` table + RLS, `food_recent_items` + `food_frequent_items` + `food_cache_search` functions, `kind` constraint extension to include `'copy'` and `'library'`.
+- `supabase/migrations/0023_food_log_favorites_and_library.sql` — `is_favorite` column, `food_item_favorites` table + RLS, `food_recent_items` + `food_frequent_items` + `food_cache_search` functions, `kind` constraint extension to include `'copy'` and `'library'`.
 - Types (`lib/food/types.ts`): `FoodItemFavorite`, `FoodRecentItem`, `FoodFrequentItem`, `FoodLibrarySections`. `FoodLogEntry` gains `is_favorite: boolean`.
 - API routes:
   - `app/api/food/entries/[id]/copy/route.ts` (POST)
@@ -747,7 +747,7 @@ The new `food_recent_items` and `food_frequent_items` SQL helpers are read-only 
   - Updates to `TodaysMeals.tsx` (☆ + 📋 affordances; 📋 is 1-tap copy-to-today), `MealSlotCard.tsx`, `MealSlotEmptyCard.tsx` (two pills: Copy yesterday + Pick from history), `FoodEntryEditSheet.tsx` (per-item ☆), `MealLoggerTypeTab.tsx` (per-item ☆ on draft preview), `MealLoggerSheet.tsx` (Library tab registration + Pick-from-history launcher).
 - `lib/ui/theme.ts` — star-fill color + source-chip subdued colors.
 - `lib/data/types.ts` — re-export of new types if needed (food types stay in `lib/food/types.ts` per existing convention).
-- CLAUDE.md update — new sub-section on copy/favorites/library; migration 0022 listed.
+- CLAUDE.md update — new sub-section on copy/favorites/library; migration 0023 listed.
 - Audit script: `scripts/audit-food-library.mjs` — read-only audit that for a given user verifies `food_recent_items` and `food_frequent_items` outputs are internally consistent (no nulls in required fields, lowercased-name dedup works, counts make sense). Run once after migration applies.
 
 ## Environment / config
@@ -758,7 +758,7 @@ No new env vars. No new external API integrations. Everything operates on existi
 
 - **Optimistic UI cadence for star toggles.** The plan should specify TanStack mutation `onMutate` shape for instant feedback before server confirms.
 - **"Copy from yesterday" multi-entry confirmation UX.** If yesterday's breakfast has 3 entries, does the pill say "Copy 3 items" or open a multi-select? v1 starts with "copy all" via a single tap; if user wants finer control they do it from the Library tab.
-- **Migration 0022 backfill behavior.** New columns + tables only — no existing data to migrate. (Existing entries have `is_favorite = false` by the default; no manual backfill needed.)
+- **Migration 0023 backfill behavior.** New columns + tables only — no existing data to migrate. (Existing entries have `is_favorite = false` by the default; no manual backfill needed.)
 - **Date scrubber on `/meal` and Library "Recent" — UTC vs local.** Recent's `last_eaten_at` is a timestamp; UI should format in user TZ but the SQL function's day-bucketing is interval-based (`now() - 30 days`) which is timezone-agnostic. No edge case here.
 - **Whether to surface `occurrence_count` on Frequent rows** as a visible chip (`×18`) — yes, see the UI mock. Per-row layout treats it as a small subdued chip.
 
