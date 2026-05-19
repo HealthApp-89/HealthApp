@@ -337,10 +337,10 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
     // ignores handoff events from non-Peter streams.
     const delegateBlock = toolUseBlocks.find((b) => b.name === DELEGATE_TOOL_NAME);
     if (delegateBlock) {
-      const input = (delegateBlock.input ?? {}) as { specialist?: string; briefing?: string };
-      const target = typeof input.specialist === "string" ? input.specialist : "";
+      const input = (delegateBlock.input ?? {}) as { target?: string; briefing?: string };
+      const target = typeof input.target === "string" ? input.target : "";
       if (!SPEAKERS.includes(target as Speaker) || target === "peter") {
-        yield { type: "error", message: `invalid_specialist: ${target}` };
+        yield { type: "error", message: `invalid_handoff_target: ${target}` };
         return;
       }
       yield {
