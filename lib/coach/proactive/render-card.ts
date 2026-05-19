@@ -11,6 +11,7 @@
 import type {
   ProactiveEvent,
   ProactiveNudgeCard,
+  Speaker,
 } from "@/lib/data/types";
 
 /** Strip the "(Barbell)" / "(Dumbbell)" suffix for shorter card headlines. */
@@ -106,6 +107,7 @@ function renderPlateau(event: ProactiveEvent, ctx?: RenderContext): ProactiveNud
       label: "See full trends →",
       href: "/coach/progress?section=performance",
     },
+    speaker: "carter",
   };
 }
 
@@ -140,6 +142,7 @@ function renderOffPace(event: ProactiveEvent, ctx?: RenderContext): ProactiveNud
         label: "Check composition →",
         href: "/coach/progress?section=composition",
       },
+      speaker: "nora",
     };
   }
 
@@ -170,6 +173,7 @@ function renderOffPace(event: ProactiveEvent, ctx?: RenderContext): ProactiveNud
       label: "Check composition →",
       href: "/coach/progress?section=composition",
     },
+    speaker: "nora",
   };
 }
 
@@ -208,5 +212,6 @@ function renderHrv(event: ProactiveEvent, ctx?: RenderContext): ProactiveNudgeCa
       label: "Check recovery →",
       href: "/coach/progress?section=performance",
     },
+    speaker: "remi",
   };
 }

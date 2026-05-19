@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Card, SectionLabel } from "@/components/ui/Card";
+import { SpeakerChip } from "@/components/chat/SpeakerChip";
 import { COLOR } from "@/lib/ui/theme";
 import type { CoachTrendsPayload, CrossInsight, TrendWindow } from "@/lib/data/types";
 import { WindowToggle } from "./WindowToggle";
@@ -10,6 +11,10 @@ import { ScatterChart } from "./ScatterChart";
 export function CrossSection({ insights }: { insights: CoachTrendsPayload["cross_insights"] }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+        <h2 style={{ fontSize: 13, fontWeight: 700, margin: 0 }}>Cross-metric insights</h2>
+        <SpeakerChip speaker="peter" size="sm" />
+      </div>
       <PairCard pair="nutrition_x_weight" title="Nutrition × Weight" insights={insights} />
       <PairCard pair="volume_x_recovery" title="Volume × Recovery" insights={insights} />
     </div>

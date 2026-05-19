@@ -1281,6 +1281,9 @@ export type ProactiveNudgeCard = {
   /** 1-2 sentences. */
   body_md: string;
   deep_link: { label: string; href: string };
+  /** Speaker delivering the nudge. Optional for back-compat with persisted cards
+   *  that predate the speaker field; consumers default to 'peter' when missing. */
+  speaker?: Speaker;
 };
 
 export type ReconfirmResponse = { chip_value: string; answered_at: string };
