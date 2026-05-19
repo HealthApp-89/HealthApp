@@ -1,10 +1,11 @@
-// lib/coach/system-prompts.ts — multi-coach team (sub-project #2)
+// lib/coach/system-prompts.ts — multi-coach team
 //
-// Four coach voices. PETER is the default chat agent and the only one with
-// access to delegate_to_specialist. CARTER / NORA / REMI run with restricted
-// tool subsets when delegated to. Cross-domain surfaces (morning brief
-// advice block, weekly review narrative, plan-builder narrative) are voiced
-// by PETER.
+// Four coach voices. Pre-turn routing (lib/coach/router.ts) picks the speaker
+// before the Anthropic stream opens, so each coach sees only the turns that
+// matched their lane. All four share `handoff_to` as a sparingly-used mid-
+// answer escape hatch; CARTER / NORA / REMI run with restricted lane-specific
+// tool subsets. Cross-domain surfaces (morning brief advice block, weekly
+// review narrative, plan-builder narrative) stay voiced by PETER.
 //
 // User customization: profiles.system_prompt is interpreted as PETER's
 // override. The three specialists stay code-defined for v1.
