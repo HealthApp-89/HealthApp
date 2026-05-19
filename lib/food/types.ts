@@ -53,6 +53,7 @@ export type FoodLogEntry = {
   items: FoodItem[];
   totals: FoodMacros;
   is_estimated: boolean;
+  is_favorite: boolean;
   status: FoodLogEntryStatus;
   created_at: string;
   updated_at: string;
@@ -102,3 +103,48 @@ export function macrosForQty(per_100g: FoodMacros, qty_g: number): FoodMacros {
     fiber_g:   per_100g.fiber_g   * k,
   };
 }
+
+export type FoodItemFavorite = {
+  id: string;
+  user_id: string;
+  name: string;
+  qty_g: number;
+  per_100g: FoodMacros;
+  source: "db" | "llm";
+  db_ref: { source: "usda" | "openfoodfacts" | "manual"; canonical_id: string } | null;
+  default_meal_slot: MealSlot | null;
+  display_order: number;
+  created_at: string;
+};
+
+export type FoodRecentItem = {
+  name: string;
+  qty_g: number;
+  per_100g: FoodMacros;
+  source: "db" | "llm";
+  db_ref: FoodItem["db_ref"];
+  last_eaten_at: string;
+  meal_slot: MealSlot;
+};
+
+export type FoodFrequentItem = {
+  name: string;
+  qty_g: number;
+  per_100g: FoodMacros;
+  source: "db" | "llm";
+  db_ref: FoodItem["db_ref"];
+  occurrence_count: number;
+};
+
+export type FoodLibrarySections = {
+  favorite_meals: Array<Pick<FoodLogEntry, "id" | "eaten_at" | "meal_slot" | "items" | "totals"> & { is_favorite: true }>;
+  favorite_items: FoodItemFavorite[];
+  recent: FoodRecentItem[];
+  frequent: FoodFrequentItem[];
+  catalog?: FoodDbCacheRow[];
+};
+
+export type HistoryDay = {
+  date: string;
+  slots: Record<MealSlot, FoodLogEntry[]>;
+};
