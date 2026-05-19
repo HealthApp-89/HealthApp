@@ -110,4 +110,9 @@ export const queryKeys = {
     range: (userId: string, from: string, to: string) =>
       ["food-entries", userId, "range", from, to] as const,
   },
+  todayTargets: {
+    all: (userId: string) => ["today-targets", userId] as const,
+    byDate: (userId: string, date: string) =>
+      ["today-targets", userId, date] as const,
+  },
 } as const;
