@@ -45,7 +45,7 @@ const REPLACE_TYPES: ReadonlySet<string> = new Set([
 ]);
 
 const TRAINING_WEEK_SELECT =
-  "id, user_id, block_id, week_start, session_plan, original_session_plan, weekly_focus, intensity_modifier, rir_target, research_phase, proposed_by, chat_message_id, committed_at, created_at, updated_at";
+  "id, user_id, block_id, week_start, session_plan, original_session_plan, exercise_overrides, weekly_focus, intensity_modifier, rir_target, research_phase, proposed_by, chat_message_id, committed_at, created_at, updated_at";
 
 function isWeekday(s: unknown): s is Weekday {
   return typeof s === "string" && WEEKDAYS.has(s);
