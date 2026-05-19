@@ -321,12 +321,22 @@ export async function POST(req: Request) {
   if (effectiveMode === "intake") {
     routerDecision = { speaker: "peter", method: "manual", confidence: 1 };
   } else {
-    routerDecision = await classifyTurn({
-      text: content,
-      mode: effectiveMode,
-      override: overrideSpeaker,
-      abortSignal: req.signal,
-    });
+    // classifyTurn() catches all internal errors and returns a fallback
+    // decision, but we wrap it defensively: any unexpected throw here would
+    // skip the assistant-stub error-state update below, leaving the row
+    // stranded in status='streaming' and blocking the
+    // chat_messages_one_streaming_per_user unique constraint.
+    try {
+      routerDecision = await classifyTurn({
+        text: content,
+        mode: effectiveMode,
+        override: overrideSpeaker,
+        abortSignal: req.signal,
+      });
+    } catch (routeErr) {
+      console.error("[chat] classifyTurn threw — falling back to peter", routeErr);
+      routerDecision = { speaker: "peter", method: "fallback", confidence: 0.5 };
+    }
   }
   const initialSpeaker: Speaker = routerDecision.speaker;
 
