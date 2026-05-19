@@ -9,6 +9,10 @@ import type { MealSlot } from "./types";
 
 export const MEAL_SLOTS = ["breakfast", "lunch", "dinner", "snack"] as const;
 
+// Uses local-clock hours — matches the user's felt mealtime (the SQL
+// backfill in migration 0020 used UTC hours, which is fine for the
+// one-shot legacy backfill but diverges for late-night entries; runtime
+// going forward uses this local-clock derivation).
 export function deriveMealSlot(d: Date): MealSlot {
   const h = d.getHours();
   if (h >= 4 && h <= 10) return "breakfast";
@@ -24,5 +28,9 @@ export function mealSlotLabel(s: MealSlot): string {
     case "lunch":     return "Lunch";
     case "dinner":    return "Dinner";
     case "snack":     return "Snacks";
+    default: {
+      const _exhaustive: never = s;
+      return _exhaustive;
+    }
   }
 }
