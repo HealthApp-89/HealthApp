@@ -109,7 +109,7 @@ export function MealLoggerTypeTab({
         onChange={(e) => setText(e.target.value)}
         rows={4}
         placeholder="e.g. 200g grilled chicken breast and 1 cup white rice"
-        className="w-full rounded-md border border-zinc-800 bg-zinc-900 p-3 text-sm"
+        className="w-full rounded-md border border-zinc-800 bg-zinc-900 p-3 text-sm text-zinc-100 placeholder:text-zinc-500"
       />
       {error && <p className="text-xs text-red-400">{error}</p>}
       <button

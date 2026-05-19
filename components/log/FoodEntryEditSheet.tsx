@@ -95,7 +95,7 @@ export function FoodEntryEditSheet({
             <select
               value={mealSlot}
               onChange={(e) => setMealSlot(e.target.value as MealSlot)}
-              className="mt-1 w-full rounded-md border border-zinc-700 bg-zinc-900 p-2 text-sm"
+              className="mt-1 w-full rounded-md border border-zinc-700 bg-zinc-900 p-2 text-sm text-zinc-100"
             >
               {MEAL_SLOTS.map((s) => (
                 <option key={s} value={s}>{mealSlotLabel(s)}</option>
@@ -109,7 +109,7 @@ export function FoodEntryEditSheet({
               type="datetime-local"
               value={toLocalInputValue(eatenAt)}
               onChange={(e) => setEatenAt(fromLocalInputValue(e.target.value))}
-              className="mt-1 w-full rounded-md border border-zinc-700 bg-zinc-900 p-2 text-sm"
+              className="mt-1 w-full rounded-md border border-zinc-700 bg-zinc-900 p-2 text-sm text-zinc-100"
             />
           </label>
         </div>
@@ -122,7 +122,7 @@ export function FoodEntryEditSheet({
                 type="number"
                 value={it.qty_g}
                 onChange={(e) => setQty(idx, parseFloat(e.target.value) || 0)}
-                className="mt-1 w-full rounded-md border border-zinc-700 bg-zinc-900 p-2 text-sm"
+                className="mt-1 w-full rounded-md border border-zinc-700 bg-zinc-900 p-2 text-sm text-zinc-100"
               />
             </label>
             <div className="mt-2 text-xs text-zinc-500">
