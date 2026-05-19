@@ -29,13 +29,13 @@ import type {
   PhaseStep,
 } from "@/lib/data/types";
 import { todayInUserTz } from "@/lib/time";
-import type { MealRatios } from "@/lib/food/meal-targets";
+import { type MealRatios, DEFAULT_MEAL_RATIOS } from "@/lib/food/meal-targets";
 export type { MealRatios };
 
 export type TodayTargetsSourceMap = {
   kcal: "override" | "plan" | "intake";
   macros: "override" | "plan" | "intake";
-  meal_ratios: "override" | "plan" | "default";
+  meal_ratios: "override" | "default";
 };
 
 export type TodayTargets = {
@@ -156,10 +156,6 @@ async function getOverrides(
   if (error) throw error;
   return (data?.nutrition_overrides ?? null) as NutritionOverrides;
 }
-
-const DEFAULT_MEAL_RATIOS: MealRatios = {
-  breakfast: 0.30, lunch: 0.35, dinner: 0.30, snacks: 0.05,
-};
 
 function applyOverrides(
   base: Omit<TodayTargets, "meal_ratios" | "source_per_field">,
