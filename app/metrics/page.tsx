@@ -3,7 +3,6 @@ import { redirect } from "next/navigation";
 import { StrengthSubPill } from "./_sub/StrengthSubPill";
 import { BodySubPill } from "./_sub/BodySubPill";
 import { TrendsSubPill } from "./_sub/TrendsSubPill";
-import { LogSubPill } from "./_sub/LogSubPill";
 
 // Sub-pill content varies per request and embeds dynamic Supabase data
 // — disable static optimisation so each sub-pill always renders fresh.
@@ -23,7 +22,7 @@ type SP = {
   }>;
 };
 
-const VALID_SUBS = ["strength", "body", "trends", "log"] as const;
+const VALID_SUBS = ["strength", "body", "trends"] as const;
 
 export default async function MetricsPage({ searchParams }: SP) {
   const sp = (await searchParams) ?? {};
@@ -45,7 +44,6 @@ export default async function MetricsPage({ searchParams }: SP) {
           params={{ period: sp.period, start: sp.start, end: sp.end }}
         />
       )}
-      {sub === "log" && <LogSubPill date={sp.date} />}
     </Suspense>
   );
 }
