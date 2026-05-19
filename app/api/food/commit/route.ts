@@ -46,7 +46,7 @@ export async function POST(req: Request) {
   const date = utcDate(updated.eaten_at);
   const macros = await reaggregateDay(supabase, user.id, date);
 
-  revalidatePath("/log");
+  revalidatePath("/meal");
   revalidatePath("/");
 
   return NextResponse.json({ ok: true, date, totals: macros });

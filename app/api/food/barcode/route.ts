@@ -11,6 +11,7 @@ import { macrosForQty, type FoodItem } from "@/lib/food/types";
 const BodySchema = z.object({
   upc: z.string().regex(/^\d{8,14}$/),
   qty_g: z.number().positive().finite().optional(),
+  meal_slot: z.enum(["breakfast", "lunch", "dinner", "snack"]),
   eaten_at: z.string().datetime().optional(),
 });
 
@@ -49,6 +50,7 @@ export async function POST(req: Request) {
       user_id: user.id,
       eaten_at: eaten_at ?? new Date().toISOString(),
       kind: "barcode",
+      meal_slot: parsed.data.meal_slot,
       raw_input: { kind: "barcode", upc, qty_g },
       items: [item],
       totals: macros,

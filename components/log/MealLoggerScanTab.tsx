@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import type { MealSlot } from "@/lib/food/types";
 import { fmtNum } from "@/lib/ui/score";
 
 type Product = {
@@ -11,7 +12,15 @@ type Product = {
   product_image: string | null;
 };
 
-export function MealLoggerScanTab({ onCommitted }: { onCommitted: () => void }) {
+export function MealLoggerScanTab({
+  mealSlot,
+  eatenAt,
+  onCommitted,
+}: {
+  mealSlot: MealSlot;
+  eatenAt: string;
+  onCommitted: () => void;
+}) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const scannedRef = useRef<boolean>(false);
   const [supported, setSupported] = useState<boolean | null>(null);
@@ -67,7 +76,7 @@ export function MealLoggerScanTab({ onCommitted }: { onCommitted: () => void }) 
       const res = await fetch("/api/food/barcode", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ upc }),
+        body: JSON.stringify({ upc, meal_slot: mealSlot, eaten_at: eatenAt }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "scan_failed");
