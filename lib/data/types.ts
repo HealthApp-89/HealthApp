@@ -114,6 +114,8 @@ export type ToolCallLog = {
     | "commit_block"
     | "propose_week_plan"
     | "commit_week_plan"
+    | "propose_nutrition_targets"
+    | "commit_nutrition_targets"
     | "apply_goal_target"
     | "apply_bedtime_correction"
     | "apply_macros_correction"

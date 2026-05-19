@@ -1253,6 +1253,40 @@ export const COMMIT_WEEK_PLAN_TOOL = {
   },
 };
 
+export const PROPOSE_NUTRITION_TARGETS_TOOL = {
+  name: "propose_nutrition_targets",
+  description:
+    "Propose daily nutrition targets (kcal + macro split + meal split) for the user. Compute kcal from BMR (Mifflin-St Jeor) × activity multiplier × goal-phase adjustment using the athlete profile's age/sex/weight/height/training_days_per_week/goal_phase. Macro split typically 30–35% protein, 30–45% carbs, 25–35% fat depending on goal. Meal split defaults to 30/35/30/5 (B/L/D/S). Returns a structured proposal + HMAC token; the user must approve via commit_nutrition_targets to apply.",
+  input_schema: {
+    type: "object" as const,
+    required: ["kcal", "protein_pct", "carbs_pct", "fat_pct", "rationale"],
+    properties: {
+      kcal:          { type: "number", minimum: 800, maximum: 6000 },
+      protein_pct:   { type: "number", minimum: 0, maximum: 1 },
+      carbs_pct:     { type: "number", minimum: 0, maximum: 1 },
+      fat_pct:       { type: "number", minimum: 0, maximum: 1 },
+      breakfast_pct: { type: "number", minimum: 0, maximum: 1 },
+      lunch_pct:     { type: "number", minimum: 0, maximum: 1 },
+      dinner_pct:    { type: "number", minimum: 0, maximum: 1 },
+      snacks_pct:    { type: "number", minimum: 0, maximum: 1 },
+      rationale:     { type: "string", description: "Plain-language reasoning shown to user on the approval chip." },
+    },
+  },
+};
+
+export const COMMIT_NUTRITION_TARGETS_TOOL = {
+  name: "commit_nutrition_targets",
+  description:
+    "Commit a previously proposed set of nutrition targets to the user's profile.nutrition_overrides. Requires the approval_token from propose_nutrition_targets.",
+  input_schema: {
+    type: "object" as const,
+    required: ["approval_token"],
+    properties: {
+      approval_token: { type: "string" },
+    },
+  },
+};
+
 // ── Write tool executor types ─────────────────────────────────────────────────
 
 type ProposeBlockInput = {
@@ -1473,6 +1507,120 @@ export async function executeCommitWeekPlan(opts: {
     ok: true,
     data: data as TrainingWeek,
     meta: { ms: Date.now() - t0, result_rows: 1, range_days: 7, truncated: false },
+  };
+}
+
+// ── propose_nutrition_targets executor ────────────────────────────────────────
+
+type NutritionTargetsPayload = {
+  kcal: number;
+  macro_ratios: { protein_pct: number; carbs_pct: number; fat_pct: number };
+  meal_ratios:  { breakfast: number; lunch: number; dinner: number; snacks: number };
+  rationale: string;
+};
+
+export async function executeProposeNutritionTargets(opts: {
+  supabase: SupabaseClient;
+  userId: string;
+  input: unknown;
+}): Promise<ToolResult<{ preview: NutritionTargetsPayload; approval_token: string }>> {
+  const t0 = Date.now();
+  const i = (opts.input ?? {}) as Record<string, unknown>;
+
+  const kcal = i.kcal as number;
+  const protein_pct = i.protein_pct as number;
+  const carbs_pct   = i.carbs_pct   as number;
+  const fat_pct     = i.fat_pct     as number;
+  const breakfast = (i.breakfast_pct as number | undefined) ?? 0.30;
+  const lunch     = (i.lunch_pct     as number | undefined) ?? 0.35;
+  const dinner    = (i.dinner_pct    as number | undefined) ?? 0.30;
+  const snacks    = (i.snacks_pct    as number | undefined) ?? 0.05;
+  const rationale = typeof i.rationale === "string" ? i.rationale : "";
+
+  if (!Number.isFinite(kcal) || kcal < 800 || kcal > 6000) {
+    return { ok: false, error: { error: `kcal must be 800–6000, got ${kcal}` }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  const macroSum = protein_pct + carbs_pct + fat_pct;
+  if (!Number.isFinite(macroSum) || Math.abs(macroSum - 1) >= 0.01) {
+    return { ok: false, error: { error: `macro ratios must sum to 1.0, got ${macroSum}` }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  const mealSum = breakfast + lunch + dinner + snacks;
+  if (!Number.isFinite(mealSum) || Math.abs(mealSum - 1) >= 0.01) {
+    return { ok: false, error: { error: `meal ratios must sum to 1.0, got ${mealSum}` }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  if (rationale.length === 0) {
+    return { ok: false, error: { error: "rationale required" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+
+  const payload: NutritionTargetsPayload = {
+    kcal,
+    macro_ratios: { protein_pct, carbs_pct, fat_pct },
+    meal_ratios:  { breakfast, lunch, dinner, snacks },
+    rationale,
+  };
+
+  const token = signApprovalToken({ userId: opts.userId, action: "nutrition_targets", payload });
+  return {
+    ok: true,
+    data: { preview: payload, approval_token: token },
+    meta: { ms: Date.now() - t0, result_rows: 1, range_days: 0, truncated: false },
+  };
+}
+
+// ── commit_nutrition_targets executor ────────────────────────────────────────
+
+export async function executeCommitNutritionTargets(opts: {
+  supabase: SupabaseClient;
+  userId: string;
+  input: unknown;
+}): Promise<ToolResult<{ applied: Omit<NutritionTargetsPayload, "rationale"> }>> {
+  const t0 = Date.now();
+  const i = (opts.input ?? {}) as Record<string, unknown>;
+  const token = i.approval_token;
+  if (typeof token !== "string") {
+    return { ok: false, error: { error: "approval_token required" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+
+  let envelope;
+  try {
+    envelope = verifyApprovalToken({ token, userId: opts.userId, action: "nutrition_targets" });
+  } catch (e) {
+    if (e instanceof ApprovalTokenError) {
+      return { ok: false, error: { error: approvalTokenUserMessage(e.code), code: e.code }, meta: { ms: Date.now() - t0, range_days: 0 } };
+    }
+    return { ok: false, error: { error: (e as Error).message, code: "verify_failed" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  if (!envelope.payload || typeof envelope.payload !== "object") {
+    return { ok: false, error: { error: "That approval is missing the nutrition targets. Please re-propose.", code: "missing_payload" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  const p = envelope.payload as NutritionTargetsPayload;
+
+  // Merge into existing overrides — preserves any field the user/coach set
+  // through a different path.
+  const { data: existing } = await opts.supabase
+    .from("profiles")
+    .select("nutrition_overrides")
+    .eq("user_id", opts.userId)
+    .maybeSingle();
+  const current = (existing?.nutrition_overrides ?? {}) as Record<string, unknown>;
+  const next = {
+    ...current,
+    kcal: p.kcal,
+    macro_ratios: p.macro_ratios,
+    meal_ratios: p.meal_ratios,
+  };
+
+  const { error } = await opts.supabase
+    .from("profiles")
+    .update({ nutrition_overrides: next })
+    .eq("user_id", opts.userId);
+  if (error) {
+    return { ok: false, error: { error: "Couldn't save nutrition targets. Please try again.", code: error.code ?? "update_failed" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  return {
+    ok: true,
+    data: { applied: { kcal: p.kcal, macro_ratios: p.macro_ratios, meal_ratios: p.meal_ratios } },
+    meta: { ms: Date.now() - t0, result_rows: 1, range_days: 0, truncated: false },
   };
 }
 
