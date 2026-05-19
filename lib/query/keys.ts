@@ -115,4 +115,17 @@ export const queryKeys = {
     byDate: (userId: string, date: string) =>
       ["today-targets", userId, date] as const,
   },
+  foodLibrary: {
+    all: (userId: string) => ["food-library", userId] as const,
+    sections: (userId: string, slot: string | null, q: string) =>
+      ["food-library", userId, "sections", slot ?? "no-slot", q] as const,
+  },
+  foodItemFavorites: {
+    all: (userId: string) => ["food-item-favorites", userId] as const,
+  },
+  foodHistory: {
+    all: (userId: string) => ["food-history", userId] as const,
+    range: (userId: string, from: string, to: string) =>
+      ["food-history", userId, "range", from, to] as const,
+  },
 } as const;
