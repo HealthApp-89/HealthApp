@@ -12,6 +12,8 @@ import {
 import type { ChatMessage, ChatMessageImage, ChatRole, ChatStatus } from "@/lib/chat/types";
 import { type RichMessage, type ContentBlock } from "@/lib/anthropic/client";
 import { runChatStream, emptyUsageTotals } from "@/lib/coach/chat-stream";
+import { classifyTurn, type RouterDecision } from "@/lib/coach/router";
+import { SPEAKERS } from "@/lib/data/types";
 import { CHAT_MODEL } from "@/lib/anthropic/models";
 import { findFabricatedNumbers } from "@/lib/coach/fabrication-check";
 import type { ToolCallLog, MorningUI, WeeklyReviewCardUI, Speaker } from "@/lib/data/types";
@@ -155,7 +157,15 @@ const DAILY_USER_MSG_CAP = 200;
 const TERSE_MODE_THRESHOLD = 150;
 const MODEL = CHAT_MODEL;
 
-type SendBody = { content?: string; image_ids?: string[]; mode?: string; doc?: string };
+type SendBody = {
+  content?: string;
+  image_ids?: string[];
+  mode?: string;
+  doc?: string;
+  /** Composer picker forces a specific coach. One of peter|carter|nora|remi.
+   *  Bypasses keyword + Haiku in classifyTurn(). Ignored in intake mode. */
+  speaker_override?: string;
+};
 
 export async function POST(req: Request) {
   const supabase = await createSupabaseServerClient();
@@ -299,6 +309,53 @@ export async function POST(req: Request) {
     .from("chat_messages")
     .update({ mode: effectiveMode, updated_at: new Date().toISOString() })
     .in("id", [rpcTyped.user_message_id, rpcTyped.assistant_message_id]);
+
+  // ── Pre-stream routing ────────────────────────────────────────────────
+  // Intake mode is single-voice (Peter). All other modes run the router.
+  const overrideRaw = typeof body.speaker_override === "string" ? body.speaker_override : "";
+  const overrideSpeaker: Speaker | null = SPEAKERS.includes(overrideRaw as Speaker)
+    ? (overrideRaw as Speaker)
+    : null;
+
+  let routerDecision: RouterDecision;
+  if (effectiveMode === "intake") {
+    routerDecision = { speaker: "peter", method: "manual", confidence: 1 };
+  } else {
+    routerDecision = await classifyTurn({
+      text: content,
+      mode: effectiveMode,
+      override: overrideSpeaker,
+      abortSignal: req.signal,
+    });
+  }
+  const initialSpeaker: Speaker = routerDecision.speaker;
+
+  // Stamp the assistant stub with the chosen speaker so the SSE chip swap
+  // matches and the final persisted row carries the correct attribution.
+  await sr
+    .from("chat_messages")
+    .update({ speaker: initialSpeaker, updated_at: new Date().toISOString() })
+    .eq("id", rpcTyped.assistant_message_id);
+
+  // Write the routing audit row. Filtered out of visible history by the
+  // chat_messages_visible_idx partial index (kind='system_routing').
+  await sr.from("chat_messages").insert({
+    user_id: user.id,
+    role: "assistant",
+    speaker: initialSpeaker,
+    kind: "system_routing",
+    status: "done",
+    model: MODEL,
+    content: `[routed via ${routerDecision.method} → ${initialSpeaker}]`,
+    ui: {
+      user_message_id: rpcTyped.user_message_id,
+      decided_speaker: initialSpeaker,
+      method: routerDecision.method,
+      confidence: routerDecision.confidence,
+      matched_terms: routerDecision.matched_terms ?? null,
+      override_source: overrideSpeaker ? "picker" : routerDecision.method === "mention" ? "mention" : null,
+    },
+  });
 
   // Three independent reads in parallel: user's editable system prompt,
   // the cached 14-day snapshot prefix, and the rolling chat-history window.
@@ -558,11 +615,10 @@ export async function POST(req: Request) {
 
       const toolCallSink: ToolCallLog[] = [];
       const usageSink = emptyUsageTotals();
-      // Speaker for the active turn. Starts as Peter (Head Coach); flips to
-      // the specialist after a 'handoff' yield from runChatStream. The final
-      // persisted speaker on the assistant stub is whichever stream produced
-      // the visible text.
-      let activeSpeaker: Speaker = "peter";
+      // Speaker for the active turn. Initial speaker comes from the pre-
+      // stream router; flips to the handoff target if a mid-stream
+      // handoff_to fires (capped at depth 1).
+      let activeSpeaker: Speaker = initialSpeaker;
       try {
         // Drain one runChatStream pass. Returns the handoff details if Peter
         // delegated; otherwise the stream ran to completion (or errored) and
@@ -572,6 +628,7 @@ export async function POST(req: Request) {
         async function drainStream(
           streamSpeaker: Speaker,
           streamMessages: RichMessage[],
+          handoffDepth: number,
         ): Promise<{ to: Speaker; briefing: string | null } | null> {
           for await (const ev of runChatStream({
             userId,
@@ -585,6 +642,7 @@ export async function POST(req: Request) {
             mode: effectiveMode,
             draftDocId,
             speaker: streamSpeaker,
+            handoffDepth,
           })) {
             if (req.signal.aborted) {
               aborted = true;
@@ -615,15 +673,6 @@ export async function POST(req: Request) {
                 ),
               );
             } else if (ev.type === "handoff") {
-              // Specialists never delegate (DELEGATE_TOOL is Peter-only).
-              // Defensive: if a non-Peter stream emits handoff, drop it.
-              if (streamSpeaker !== "peter") {
-                console.warn("[chat-stream] specialist attempted delegation", {
-                  from: ev.from,
-                  to: ev.to,
-                });
-                continue;
-              }
               return { to: ev.to, briefing: ev.briefing };
             } else if (ev.type === "error") {
               errored = ev.message;
@@ -635,24 +684,28 @@ export async function POST(req: Request) {
           return null;
         }
 
-        const handoff = await drainStream(activeSpeaker, messages);
+        const handoff = await drainStream(activeSpeaker, messages, 0);
         if (handoff && !errored && !aborted) {
-          // 1) Persist hidden audit row tracking the routing decision.
-          //    kind='system_routing' is filtered out by the visible-history
-          //    partial index (see migration 0024). speaker stays 'peter' —
-          //    this row records who DID the delegating.
+          // 1) Persist hidden audit row tracking the mid-stream handoff.
           await sr.from("chat_messages").insert({
             user_id: userId,
             role: "assistant",
-            speaker: "peter",
+            speaker: activeSpeaker,
             kind: "system_routing",
             status: "done",
             model: MODEL,
-            content: `[delegated to ${handoff.to}]`,
+            content: `[handoff ${activeSpeaker} → ${handoff.to}]`,
+            ui: {
+              user_message_id: rpcTyped.user_message_id,
+              decided_speaker: handoff.to,
+              method: "handoff",
+              confidence: 1,
+              handoff: { from: activeSpeaker, to: handoff.to, briefing: handoff.briefing },
+            },
             tool_calls: [
               {
-                name: "delegate_to_specialist",
-                input: { specialist: handoff.to, briefing: handoff.briefing },
+                name: "handoff_to",
+                input: { target: handoff.to, briefing: handoff.briefing },
                 ms: 0,
                 result_rows: 0,
                 range_days: 0,
@@ -663,30 +716,27 @@ export async function POST(req: Request) {
           });
 
           // 2) Emit handoff SSE event so the client can render the chip swap
-          //    and reset its accumulated-text buffer before the specialist
-          //    starts streaming.
+          //    and reset its accumulated-text buffer.
           controller.enqueue(
             encoder.encode(
               formatSseEvent({
                 event: "handoff",
-                data: { from: "peter", to: handoff.to, briefing: handoff.briefing },
+                data: { from: activeSpeaker, to: handoff.to, briefing: handoff.briefing },
               }),
             ),
           );
 
-          // 3) Re-stamp the assistant stub's speaker so the final visible
-          //    message is correctly attributed.
+          // 3) Re-stamp the assistant stub so the final visible message is
+          //    correctly attributed to the receiving coach.
+          const fromSpeaker = activeSpeaker;
           activeSpeaker = handoff.to;
           await sr
             .from("chat_messages")
             .update({ speaker: activeSpeaker, updated_at: new Date().toISOString() })
             .eq("id", assistantId);
 
-          // 4) Build the specialist's message array: same snapshot prefix +
-          //    window, but rewrite the LAST user turn to prepend Peter's
-          //    briefing note. The original turn already has the ephemeral
-          //    header as block 0; we keep it as block 0 so the NOW
-          //    timestamp stays first.
+          // 4) Build the receiving coach's message array. Insert the briefing
+          //    AFTER block 0 so the ephemeral NOW-timestamp block stays first.
           const specialistMessages: RichMessage[] = messages.slice();
           if (handoff.briefing && specialistMessages.length > 0) {
             const lastIdx = specialistMessages.length - 1;
@@ -694,11 +744,11 @@ export async function POST(req: Request) {
             if (last.role === "user") {
               const briefingBlock: ContentBlock = {
                 type: "text",
-                text: `[Routed by Peter — briefing: ${handoff.briefing}]`,
+                text: `[Routed from ${fromSpeaker} — briefing: ${handoff.briefing}]`,
               };
               const existing: ContentBlock[] = Array.isArray(last.content)
-                ? last.content
-                : [{ type: "text", text: last.content }];
+                ? (last.content as ContentBlock[])
+                : [{ type: "text", text: String(last.content) }];
               const withBriefing: ContentBlock[] =
                 existing.length > 0
                   ? [existing[0], briefingBlock, ...existing.slice(1)]
@@ -707,13 +757,19 @@ export async function POST(req: Request) {
             }
           }
 
-          // 5) Reset accumulated text — only the specialist's reply is the
-          //    visible message.
+          // 5) Reset accumulated text — only the receiving coach's reply
+          //    becomes the visible assistant message.
           accumulated = "";
 
-          // 6) Spawn the specialist stream. Any 'handoff' it yields is
-          //    dropped by drainStream's defensive branch above.
-          await drainStream(activeSpeaker, specialistMessages);
+          // 6) Re-enter drainStream with handoffDepth=1. The chat-stream
+          //    tool filter removes HANDOFF_TOOL on this round, so the
+          //    receiving coach must answer or end the turn — no ping-pong.
+          const secondHandoff = await drainStream(activeSpeaker, specialistMessages, 1);
+          if (secondHandoff) {
+            // The tool was filtered out at depth>=1, so the model can't
+            // call it. Defensive: log and ignore.
+            console.warn("[chat-stream] handoff at depth>=1 was emitted unexpectedly", secondHandoff);
+          }
         }
       } catch (e) {
         errored = (e as Error).message;
