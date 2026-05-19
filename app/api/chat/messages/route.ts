@@ -364,6 +364,7 @@ export async function POST(req: Request) {
         .eq("user_id", user.id)
         .neq("status", "streaming")
         .neq("id", rpcTyped.user_message_id)
+        .neq("kind", "system_routing")
         .order("created_at", { ascending: false })
         .limit(ROLLING_WINDOW),
       sr.from("daily_logs")
