@@ -100,6 +100,8 @@ const PERSIST_RESULT_TOOLS = new Set([
   "commit_week_plan",
   "propose_plan",
   "commit_plan",
+  "propose_nutrition_targets",
+  "commit_nutrition_targets",
 ]);
 function shouldPersistResult(name: string): boolean {
   return PERSIST_RESULT_TOOLS.has(name);
