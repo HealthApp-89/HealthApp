@@ -14,16 +14,20 @@
 //      - ?confirm=false (default) AND conflicts non-empty → 409 with preview.
 //      - Otherwise → proceed.
 //   7. Identity-restore detection — if new === original, set original to NULL.
-//   8. UPDATE with COALESCE-on-first-edit (set original=current) OR
+//   8. Clear exercise_overrides[weekday] for any day whose session type
+//      changed. Stale overrides would hold exercises for the old session
+//      type. NULL the entire column when the resulting map is empty.
+//   9. UPDATE with COALESCE-on-first-edit (set original=current) OR
 //      identity-restore-clears (set original=null) OR no-op (subsequent edit).
-//   9. Return SwapResult.
+//  10. Return SwapResult.
 
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { applySwap, detectConflicts, plansEqual } from "@/lib/training-weeks/apply-swap";
-import { readSessionForDay } from "@/lib/coach/session-plan-reader";
+import { readSessionForDay, SHORT_TO_FULL } from "@/lib/coach/session-plan-reader";
 import { SESSION_PLANS } from "@/lib/coach/sessionPlans";
 import type {
+  ExerciseOverrides,
   SessionPlan,
   SwapBody,
   SwapConflictResponse,
@@ -169,9 +173,30 @@ export async function POST(
   // 7. Identity-restore detection
   const isIdentityRestore = original !== null && plansEqual(newPlan, original);
 
-  // 8. UPDATE
+  // 8. Clear exercise_overrides for any day whose session type changed.
+  //    Stale overrides would hold exercises for the previous session type.
+  const currentOverrides =
+    (row.exercise_overrides as ExerciseOverrides | null) ?? null;
+  let nextOverrides: ExerciseOverrides | null = currentOverrides;
+  if (currentOverrides) {
+    const drop: string[] = [];
+    for (const shortKey of ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const) {
+      const fullKey = SHORT_TO_FULL[shortKey];
+      if (current[shortKey] !== newPlan[shortKey] && currentOverrides[fullKey]) {
+        drop.push(fullKey);
+      }
+    }
+    if (drop.length > 0) {
+      const cleaned: ExerciseOverrides = { ...currentOverrides };
+      for (const k of drop) delete cleaned[k];
+      nextOverrides = Object.keys(cleaned).length > 0 ? cleaned : null;
+    }
+  }
+
+  // 9. UPDATE
   const update: Record<string, unknown> = {
     session_plan: newPlan,
+    exercise_overrides: nextOverrides,
     updated_at: new Date().toISOString(),
   };
   if (isIdentityRestore) {
@@ -196,7 +221,7 @@ export async function POST(
     );
   }
 
-  // 9. Build response — before/after at source_day
+  // 10. Build response — before/after at source_day
   const before =
     readSessionForDay(current as Record<string, string>, body.source_day) ?? "";
   const after =
