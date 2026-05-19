@@ -5,6 +5,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { macrosForQty, type FoodItem, type FoodLogEntry } from "@/lib/food/types";
 import { fmtNum } from "@/lib/ui/score";
+import { MEAL_SLOTS, mealSlotLabel } from "@/lib/food/meal-slot";
+import type { MealSlot } from "@/lib/food/types";
 
 export function FoodEntryEditSheet({
   entry,
@@ -16,6 +18,8 @@ export function FoodEntryEditSheet({
   const [items, setItems] = useState<FoodItem[]>(entry.items);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [mealSlot, setMealSlot] = useState<MealSlot>(entry.meal_slot);
+  const [eatenAt, setEatenAt]   = useState<string>(entry.eaten_at);
   const qc = useQueryClient();
 
   const setQty = (idx: number, qty_g: number) => {
@@ -46,7 +50,7 @@ export function FoodEntryEditSheet({
       const res = await fetch(`/api/food/entries/${entry.id}`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ items }),
+        body: JSON.stringify({ items, meal_slot: mealSlot, eaten_at: eatenAt }),
       });
       if (!res.ok) {
         const json = await res.json().catch(() => ({ error: "update_failed" }));
@@ -85,6 +89,30 @@ export function FoodEntryEditSheet({
   return (
     <BottomSheet open onClose={onClose} title="Edit meal">
       <div className="space-y-3 p-4">
+        <div className="grid grid-cols-2 gap-2">
+          <label className="text-xs text-zinc-400">
+            Meal
+            <select
+              value={mealSlot}
+              onChange={(e) => setMealSlot(e.target.value as MealSlot)}
+              className="mt-1 w-full rounded-md border border-zinc-700 bg-zinc-900 p-2 text-sm"
+            >
+              {MEAL_SLOTS.map((s) => (
+                <option key={s} value={s}>{mealSlotLabel(s)}</option>
+              ))}
+            </select>
+          </label>
+
+          <label className="text-xs text-zinc-400">
+            Time
+            <input
+              type="datetime-local"
+              value={toLocalInputValue(eatenAt)}
+              onChange={(e) => setEatenAt(fromLocalInputValue(e.target.value))}
+              className="mt-1 w-full rounded-md border border-zinc-700 bg-zinc-900 p-2 text-sm"
+            />
+          </label>
+        </div>
         {items.map((it, idx) => (
           <div key={idx} className="rounded-md border border-zinc-800 p-3">
             <div className="text-sm font-medium">{it.name}</div>
@@ -125,4 +153,16 @@ export function FoodEntryEditSheet({
       </div>
     </BottomSheet>
   );
+}
+
+// `datetime-local` expects "YYYY-MM-DDTHH:mm" in local time, no seconds
+// or timezone suffix. Helpers translate to/from full ISO strings.
+function toLocalInputValue(iso: string): string {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function fromLocalInputValue(v: string): string {
+  return new Date(v).toISOString();
 }
