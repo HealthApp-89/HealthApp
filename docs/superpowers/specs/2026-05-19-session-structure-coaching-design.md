@@ -27,6 +27,7 @@ This spec encodes that expertise as **deterministic rules** that annotate any pr
 4. Strength tab integration — same annotations + same banner via shared component.
 5. Reorder endpoint `POST /api/training-weeks/[week_start]/exercise-overrides`.
 6. `DEFAULT_SYSTEM_PROMPT` augmentation so Carter cites brief-computed rest/RPE values in chat.
+7. **One-shot fix to the static `SESSION_PLANS.Chest`**: move OHP from slot 5 to slot 2 (right after Decline Bench, the canonical `BIG_FOUR`-leads-pattern order), and drop the now-redundant `note: "Do BEFORE Incline DB"` on OHP. The current static order already documents this intent manually; the rule engine codifies it, so the static plan should land in the corrected order. The rule engine still earns its keep on AI-committed `session_plan` orderings + future user reorderings.
 
 **Out of scope (deferred):**
 - Readiness-based rest scaling (low-recovery day → +30s rest).
@@ -269,10 +270,7 @@ Note: the user's saved system prompt (`profiles.system_prompt`) overrides the de
 No test suite. Manual verification:
 
 1. **Migration applies cleanly** — `supabase db push` (or dashboard SQL editor). Verify column exists with default NULL on existing rows.
-2. **Static plan exposes a known issue** — load `/` on a Chest day; expect rest/RPE chips on every exercise, AND warnings fired on OHP. Tier sequence in the current static `SESSION_PLANS.Chest`: Push Up [tier 0, warmup] → Decline Bench [tier 1] → Incline DB [tier 2] → Chest Fly [tier 3] → OHP [tier 1] → Lateral Raise [tier 3] → Triceps Pushdown [tier 3].
-   - **Rule 1 fires**: Chest Fly (tier 3) → OHP (tier 1) violates tier ascending.
-   - **Rule 3 fires**: OHP (`BIG_FOUR`, push pattern) appears after Incline DB (non-`BIG_FOUR`, push pattern).
-   - The existing `note: "Do BEFORE Incline DB"` on OHP is already documenting this manually — the rule engine codifies it. The "Apply reorder" chip should move OHP up to after Decline Bench. This is the integration-confidence test: the rules correctly flag a known issue the prototype author already knew about.
+2. **Static plan is clean** — load `/` on a Chest day; expect rest/RPE chips on every exercise and **no** warnings. With the v1 in-scope OHP reorder applied, `SESSION_PLANS.Chest` is: Push Up [tier 0, warmup] → Decline Bench [tier 1] → OHP [tier 1, `BIG_FOUR`] → Incline DB [tier 2] → Chest Fly [tier 3] → Lateral Raise [tier 3] → Triceps Pushdown [tier 3]. Tier sequence: 0 → 1 → 1 → 2 → 3 → 3 → 3 — strictly non-decreasing. No rule fires. This is the integration-confidence test for the happy path.
 3. **Synthetic bad order via SQL** — manually write `exercise_overrides` for today putting Push Up after Triceps Pushdown:
    ```sql
    update training_weeks
@@ -298,7 +296,7 @@ No test suite. Manual verification:
 - `components/strength/SessionStructureBanner.tsx`
 
 **Modify:**
-- `lib/coach/sessionPlans.ts` — add `getEffectiveSessionPlan()` resolver helper + `ExerciseOverrides` type.
+- `lib/coach/sessionPlans.ts` — add `getEffectiveSessionPlan()` resolver helper + `ExerciseOverrides` type. Also: reorder `SESSION_PLANS.Chest` to put OHP in slot 2 (after Decline Bench, before Incline DB) and drop the redundant `note` on OHP. Rationale per scope item #7.
 - `lib/morning/brief/index.ts` — call resolver + annotate, embed `session.structure`.
 - `lib/morning/brief/types.ts` (or wherever `MorningBriefCard` is defined) — `session.structure?: SessionStructure`.
 - `components/morning/MorningBriefCard.tsx` — render chip, cue, banner.
