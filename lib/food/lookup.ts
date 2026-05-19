@@ -161,6 +161,7 @@ export async function resolveItemMacros(name: string, qty_g: number): Promise<Fo
       source: "db",
       db_ref: { source: cached.source, canonical_id: cached.canonical_id },
       confidence: "high",
+      match_score: null,
     };
   }
   // 2. USDA
@@ -175,6 +176,7 @@ export async function resolveItemMacros(name: string, qty_g: number): Promise<Fo
       source: "db",
       db_ref: { source: "usda", canonical_id: usda.canonical_id },
       confidence: "high",
+      match_score: null,
     };
   }
   // 3. LLM fallback — wrap so route handlers get a typed error instead of an
@@ -195,5 +197,6 @@ export async function resolveItemMacros(name: string, qty_g: number): Promise<Fo
     source: "llm",
     db_ref: null,
     confidence: "low",
+    match_score: null,
   };
 }

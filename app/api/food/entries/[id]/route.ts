@@ -35,6 +35,7 @@ const ItemSchema = z.object({
     })
     .nullable(),
   confidence: z.enum(["high", "medium", "low"]).nullable(),
+  match_score: z.number().min(0).max(1).nullable().optional(),
 });
 
 const PatchSchema = z.object({
