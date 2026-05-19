@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { CoachCard } from "@/components/coach/CoachCard";
+import { SpeakerChip } from "@/components/chat/SpeakerChip";
 import { COLOR } from "@/lib/ui/theme";
 import type { ProactiveNudgeCard as ProactiveNudgeCardUI } from "@/lib/data/types";
 
@@ -21,9 +22,12 @@ export function ProactiveNudgeCard({ ui }: { ui: ProactiveNudgeCardUI }) {
   return (
     <div style={{ padding: "6px 12px" }}>
       <CoachCard tone={tone}>
-        <CoachCard.Eyebrow>
-          <span style={{ color: accent }}>{ui.severity.toUpperCase()}</span> · COACH
-        </CoachCard.Eyebrow>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+          <CoachCard.Eyebrow>
+            <span style={{ color: accent }}>{ui.severity.toUpperCase()}</span> · COACH
+          </CoachCard.Eyebrow>
+          {ui.speaker && <SpeakerChip speaker={ui.speaker} size="sm" />}
+        </div>
         <CoachCard.Title>{ui.headline}</CoachCard.Title>
         <CoachCard.Body>
           <p
