@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { Card, SectionLabel } from "@/components/ui/Card";
+import { SpeakerChip } from "@/components/chat/SpeakerChip";
 import { COLOR } from "@/lib/ui/theme";
 import { fmtNum } from "@/lib/ui/score";
 import type { WeeklyReviewPayload } from "@/lib/data/types";
@@ -31,6 +32,7 @@ export function WeeklyReviewTrends({
           }
           ok={trends.loss_rate_in_target_band}
           href="/coach/progress?section=composition"
+          speaker="nora"
         />
         <Cell
           label="Strength slope"
@@ -40,6 +42,7 @@ export function WeeklyReviewTrends({
               : "—"
           }
           href="/coach/progress?section=performance"
+          speaker="carter"
         />
         <Cell
           label="/LBM slope"
@@ -49,6 +52,7 @@ export function WeeklyReviewTrends({
               : "—"
           }
           href="/coach/progress?section=composition"
+          speaker="nora"
         />
         <Cell
           label="Plateaus"
@@ -61,6 +65,7 @@ export function WeeklyReviewTrends({
           }
           ok={trends.plateau_flags.length === 0 ? true : false}
           href="/coach/progress?section=performance"
+          speaker="carter"
         />
       </div>
       <Link
@@ -84,15 +89,28 @@ function Cell({
   value,
   ok,
   href,
+  speaker,
 }: {
   label: string;
   value: string;
   ok?: boolean | null;
   href?: string;
+  speaker?: "peter" | "carter" | "nora" | "remi";
 }) {
   const content = (
     <div>
-      <div style={{ color: COLOR.textMuted }}>{label}</div>
+      <div
+        style={{
+          color: COLOR.textMuted,
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: 4,
+        }}
+      >
+        <span>{label}</span>
+        {speaker && <SpeakerChip speaker={speaker} size="sm" />}
+      </div>
       <div
         style={{
           color:

@@ -1,10 +1,57 @@
 "use client";
 import { Card, SectionLabel } from "@/components/ui/Card";
 import { JargonPill } from "@/components/coach/JargonPill";
+import { SpeakerChip } from "@/components/chat/SpeakerChip";
 import { stripPrescriptionSuffix } from "@/lib/coach/glossary";
 import { COLOR } from "@/lib/ui/theme";
 import { fmtNum } from "@/lib/ui/score";
-import type { WeeklyReviewPayload } from "@/lib/data/types";
+import type { WeeklyReviewPayload, Speaker, PrescriptionRationaleTag } from "@/lib/data/types";
+
+/**
+ * Map prescription rationale tags to the coach specialist who proposed it.
+ * - Lift swaps / set-rep adjustments → Carter
+ * - Deficit / macro adjustments → Nora
+ * - Deload / sleep recommendations → Remi
+ * - Block transitions / strategic shifts → Peter
+ */
+function getRationaleTagSpeaker(tag: PrescriptionRationaleTag): Speaker {
+  const cleanTag = tag.replace(/_increment_floor|_increment_capped$/, "");
+
+  // Carter: lifting mechanics, rep completions, RIR issues, MEV/MAV/MRV progression
+  if (
+    cleanTag === "cutting_hold" ||
+    cleanTag === "recovery_hold" ||
+    cleanTag === "rep_completion_miss" ||
+    cleanTag === "rir_missed_twice" ||
+    cleanTag === "rir_missed" ||
+    cleanTag === "form_hold" ||
+    cleanTag === "mev_to_mav_clearance" ||
+    cleanTag === "mav_to_mav_step" ||
+    cleanTag === "mav_to_mrv_advance" ||
+    cleanTag === "mrv_volume_drive" ||
+    cleanTag === "plateau_rep_shift"
+  ) {
+    return "carter";
+  }
+
+  // Peter: block structure, periodization, major phase transitions
+  if (
+    cleanTag === "block_start_baseline" ||
+    cleanTag === "plateau_deload_reset" ||
+    cleanTag === "deload_load_volume_cut"
+  ) {
+    return "peter";
+  }
+
+  // Nora: deficit/composition adjustments
+  // (currently minimal direct tags, but included for future extensibility)
+
+  // Remi: recovery focus
+  // (currently minimal direct tags, but included for future extensibility)
+
+  // Default to Peter for unknown tags
+  return "peter";
+}
 
 export function WeeklyReviewPrescription({
   prescription,
@@ -38,6 +85,7 @@ export function WeeklyReviewPrescription({
         <tbody>
           {prescription.per_lift.map((p) => {
             const last = recap.per_lift.find((r) => r.lift === p.lift)?.top_set;
+            const speaker = getRationaleTagSpeaker(p.rationale_tag);
             return (
               <tr key={p.lift}>
                 <td style={{ padding: "2px 0" }}>{shortName(p.lift)}</td>
@@ -58,11 +106,16 @@ export function WeeklyReviewPrescription({
                     textAlign: "right",
                     color: COLOR.textFaint,
                     padding: "2px 0",
+                    display: "flex",
+                    gap: 4,
+                    alignItems: "center",
+                    justifyContent: "flex-end",
                   }}
                 >
                   <JargonPill termKey={stripPrescriptionSuffix(p.rationale_tag)}>
                     {p.rationale_tag.replaceAll("_", " ")}
                   </JargonPill>
+                  <SpeakerChip speaker={speaker} size="sm" />
                 </td>
               </tr>
             );
