@@ -43,10 +43,10 @@ export function MorningBriefCard({
 }) {
   const today = useMemo(() => todayInUserTz(), []);
   const weekStart = useMemo(() => weekStartOfInline(today), [today]);
+  const fullWeekday = useMemo(() => weekdayInUserTz(new Date(`${today}T12:00:00Z`)), [today]);
   const sourceDay = useMemo<Weekday>(() => {
-    const full = weekdayInUserTz(new Date(`${today}T12:00:00Z`));
-    return FULL_TO_SHORT_INLINE[full] ?? "Mon";
-  }, [today]);
+    return FULL_TO_SHORT_INLINE[fullWeekday] ?? "Mon";
+  }, [fullWeekday]);
   const { data: liveWeek } = useTrainingWeek(userId, weekStart);
   const liveType =
     liveWeek && readSessionForDay(liveWeek.session_plan as Record<string, string>, sourceDay);
@@ -111,6 +111,8 @@ export function MorningBriefCard({
               isSwapped={isSwapped}
               liveType={liveType ?? null}
               thisWeekPlan={card.this_week_plan}
+              weekStart={weekStart}
+              weekday={fullWeekday}
             />
             {card.variant === "kickoff" && card.this_week_plan && (
               <BriefThisWeekPlan plan={card.this_week_plan} />

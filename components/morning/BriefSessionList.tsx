@@ -4,17 +4,38 @@ import { COLOR } from "@/lib/ui/theme";
 import { BIG_FOUR_SET } from "@/lib/coach/big-four";
 import { JargonPill } from "@/components/coach/JargonPill";
 import type { MorningBriefCard, MorningBriefExercise } from "@/lib/data/types";
+import type { SessionStructure } from "@/lib/coach/session-structure";
+import { SessionStructureBanner } from "@/components/strength/SessionStructureBanner";
+
+function fmtRestRange(r: { min: number; max: number }): string {
+  if (r.min >= 60 && r.max >= 90 && r.min % 60 === 0 && r.max % 60 === 0) {
+    return `${r.min / 60}–${r.max / 60} min`;
+  }
+  return `${r.min}–${r.max} s`;
+}
+
+function findAnnotation(
+  structure: SessionStructure | null | undefined,
+  name: string,
+): SessionStructure["exercises"][number] | null {
+  if (!structure) return null;
+  return structure.exercises.find((e) => e.name === name) ?? null;
+}
 
 export function BriefSessionList({
   session,
   isSwapped,
   liveType,
   thisWeekPlan,
+  weekStart,
+  weekday,
 }: {
   session: MorningBriefCard["session"];
   isSwapped: boolean;
   liveType: string | null;
   thisWeekPlan?: MorningBriefCard["this_week_plan"];
+  weekStart: string;
+  weekday: string;
 }) {
   const { exercises, volume_gaps } = session;
 
@@ -32,6 +53,13 @@ export function BriefSessionList({
   }
   return (
     <div>
+      {session.structure && session.structure.warnings.length > 0 && (
+        <SessionStructureBanner
+          structure={session.structure}
+          weekStart={weekStart}
+          weekday={weekday}
+        />
+      )}
       <div
         style={{
           background: COLOR.surfaceAlt,
@@ -77,6 +105,22 @@ export function BriefSessionList({
                     {e.note}
                   </div>
                 )}
+                {(() => {
+                  const ann = findAnnotation(session.structure, e.name);
+                  if (!ann?.cue) return null;
+                  return (
+                    <div
+                      style={{
+                        fontSize: 11,
+                        color: COLOR.warningDeep,
+                        fontStyle: "italic",
+                        marginTop: 2,
+                      }}
+                    >
+                      ⚠ {ann.cue}
+                    </div>
+                  );
+                })()}
               </div>
               <div
                 style={{
@@ -107,6 +151,24 @@ export function BriefSessionList({
                     </JargonPill>
                   </div>
                 )}
+                {(() => {
+                  const ann = findAnnotation(session.structure, e.name);
+                  if (!ann) return null;
+                  return (
+                    <div
+                      style={{
+                        fontSize: 10,
+                        color: COLOR.textFaint,
+                        lineHeight: 1.2,
+                        fontFamily: "var(--font-dm-mono), monospace",
+                        marginTop: 1,
+                      }}
+                      aria-label={`Rest ${fmtRestRange(ann.rest_seconds)}, ${ann.rpe_target}`}
+                    >
+                      {fmtRestRange(ann.rest_seconds)} · {ann.rpe_target.replace(/across sets, top set .*/, "").trim()}
+                    </div>
+                  );
+                })()}
               </div>
             </div>
           );
