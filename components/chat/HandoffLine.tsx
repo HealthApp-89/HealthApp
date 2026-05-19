@@ -1,9 +1,9 @@
 // components/chat/HandoffLine.tsx
 //
 // Tiny centered divider rendered between two assistant messages when the
-// speaker changes (e.g., Peter → Carter after a delegate_to_specialist
-// handoff). Briefing prose is shown only during live streaming — replayed
-// history passes briefing=null.
+// speaker changes (e.g., Carter → Peter after a handoff_to tool call).
+// Briefing prose is shown only during live streaming — replayed history
+// passes briefing=null.
 "use client";
 
 import { speakerName } from "@/lib/coach/speakers";

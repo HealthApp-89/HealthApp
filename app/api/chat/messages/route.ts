@@ -578,7 +578,14 @@ export async function POST(req: Request) {
         if (url) newTurnBlocks.push({ type: "image", source: { type: "url", url } });
       }
     }
-    if (content) newTurnBlocks.push({ type: "text", text: content });
+    // When the user prefixed @Name to address a specific coach, the router
+    // returned the stripped text for the model. The DB row keeps the original
+    // (audit honesty); the model sees only the substantive ask.
+    const llmText =
+      routerDecision.method === "mention" && typeof routerDecision.stripped_text === "string"
+        ? routerDecision.stripped_text
+        : content;
+    if (llmText) newTurnBlocks.push({ type: "text", text: llmText });
     // Ephemeral header is the FIRST text block of the new user turn (preceding
     // the actual content). Stays out of the cached snapshot prefix and adjacent
     // to the user's question so the model has the freshest context next to the
@@ -708,8 +715,11 @@ export async function POST(req: Request) {
             ui: {
               user_message_id: rpcTyped.user_message_id,
               decided_speaker: handoff.to,
-              method: "handoff",
-              confidence: 1,
+              // Carry forward the ORIGINAL routing method so audit histograms
+              // still attribute the decision to its origin classifier (per
+              // spec §5). The handoff sub-object captures the second hop.
+              method: routerDecision.method,
+              confidence: routerDecision.confidence,
               handoff: { from: activeSpeaker, to: handoff.to, briefing: handoff.briefing },
             },
             tool_calls: [
