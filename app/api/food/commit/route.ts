@@ -1,7 +1,7 @@
 // app/api/food/commit/route.ts
 //
 // POST { entry_id } → flip status to 'committed', reaggregate daily_logs
-// for the entry's date, invalidate /log via revalidatePath.
+// for the entry's date, invalidate /meal via revalidatePath.
 
 import { NextResponse } from "next/server";
 import { z } from "zod";

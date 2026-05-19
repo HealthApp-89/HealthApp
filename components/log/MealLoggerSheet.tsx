@@ -32,8 +32,10 @@ export function MealLoggerSheet({
 
   const onCommitted = async () => {
     // Invalidate by query-key prefix without needing userId — single-user app,
-    // matches all food-entries / daily-logs / today-targets queries regardless
-    // of userId arg.
+    // matches all food-entries and daily-logs queries regardless of userId arg.
+    // today-targets predicate is forward-compatible: Task 7 will add a
+    // useTodayTargets hook; until then this predicate matches nothing
+    // (harmless) but ensures Task 7 doesn't have to come back here.
     await queryClient.invalidateQueries({
       predicate: (q) => q.queryKey[0] === "food-entries",
     });

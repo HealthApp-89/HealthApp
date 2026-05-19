@@ -79,7 +79,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
 
   const date = utcDate(existing.eaten_at);
   await reaggregateDay(supabase, user.id, date);
-  revalidatePath("/log");
+  revalidatePath("/meal");
   return NextResponse.json({ ok: true });
 }
 
@@ -106,6 +106,6 @@ export async function DELETE(req: Request, ctx: { params: Promise<{ id: string }
 
   const date = utcDate(existing.eaten_at);
   await reaggregateDay(supabase, user.id, date);
-  revalidatePath("/log");
+  revalidatePath("/meal");
   return NextResponse.json({ ok: true });
 }
