@@ -60,7 +60,7 @@ import {
   type ToolResult,
   type ToolSchema,
 } from "@/lib/coach/tools";
-import { DELEGATE_TOOL_NAME } from "@/lib/coach/delegate-tool";
+import { HANDOFF_TOOL_NAME } from "@/lib/coach/handoff-tool";
 import { speakerSystemPrompt } from "@/lib/coach/system-prompts";
 import { SPEAKERS, type ChatMode, type Speaker, type ToolCallLog } from "@/lib/data/types";
 import type { ContentBlock, RichMessage } from "@/lib/chat/types";
@@ -89,11 +89,12 @@ export type ChatStreamYield =
   | { type: "tool_call_done"; id: string; ok: boolean; ms: number }
   | { type: "done" }
   | { type: "error"; message: string }
-  /** Peter called delegate_to_specialist as his first move. The orchestrator
-   *  has aborted Peter's stream and yields this so the route can persist a
-   *  hidden system_routing audit row, swap the assistant stub's speaker, and
-   *  spawn a fresh specialist stream. Specialists never yield this — the
-   *  delegate_to_specialist tool is excluded from CARTER/NORA/REMI_TOOLS. */
+  /** Any coach called HANDOFF_TOOL. The orchestrator has aborted the current
+   *  stream and yields this so the route can persist a hidden system_routing
+   *  audit row, swap the assistant stub's speaker, and spawn a fresh stream
+   *  with the receiving coach. Mode gating (intake) and depth gating
+   *  (handoffDepth >= 1) ensure HANDOFF_TOOL is not in the model's tool set
+   *  when handoffs are not allowed. */
   | { type: "handoff"; from: Speaker; to: Speaker; briefing: string | null };
 
 /** Cumulative Anthropic API token usage across all rounds of a chat turn.
@@ -139,11 +140,12 @@ export type RunChatStreamOpts = {
   /** Chat mode — controls which tools are exposed to the model.
    *  Default mode hides propose_ and commit_ tools to prevent accidental plan writes. */
   mode?: ChatMode;
-  /** Which coach voice is producing this turn. Default 'peter' (Head Coach,
-   *  has access to delegate_to_specialist). Specialists ('carter' | 'nora' |
-   *  'remi') get a restricted tool subset via toolsForSpeaker() and a column-
-   *  filtered query_daily_logs via colsForSpeaker(). The route spawns a
-   *  fresh stream with speaker=event.to after seeing a 'handoff' yield. */
+  /** Which coach voice is producing this turn. Default 'peter' (Head Coach).
+   *  All four coaches share handoff_to; specialists ('carter' | 'nora' |
+   *  'remi') get a restricted lane-specific tool subset via toolsForSpeaker()
+   *  and a column-filtered query_daily_logs via colsForSpeaker(). The route
+   *  spawns a fresh stream with speaker=event.to after seeing a 'handoff'
+   *  yield. */
   speaker?: Speaker;
   /** Athlete-profile draft document id; required for intake-mode tools
    *  (apply_*, set_*, propose_plan, commit_plan). Caller sets this when
@@ -152,6 +154,11 @@ export type RunChatStreamOpts = {
   /** Mutable totals; the loop adds each round's finalMsg.usage. Read by the
    *  route after the stream ends to log prompt-cache hit rate. */
   usageSink?: ChatUsageTotals;
+  /** Cap on mid-stream handoffs per user turn. Incremented by the route each
+   *  time it re-enters runChatStream after a 'handoff' yield. When >= 1, the
+   *  generalized handoff tool is omitted from this stream's tool list so the
+   *  current coach has to answer in text or end the turn. Default 0. */
+  handoffDepth?: number;
 };
 
 export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<ChatStreamYield> {
@@ -196,11 +203,20 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
   //     GLP-1 and mobility tools are also hidden.
   //   intake — onboarding wizard chat: 2 read tools (daily_logs + workouts)
   //     + 13 Phase 2 intake tools + set_glp1_status. Weekly-planning tools
-  //     and the active-doc GLP-1 tools are hidden. delegate_to_specialist is
-  //     ALWAYS hidden in intake (specialists dormant during onboarding).
+  //     and the active-doc GLP-1 tools are hidden. handoff_to is ALWAYS hidden
+  //     in intake (single-voice wizard; specialists dormant during onboarding).
   //   default — read tools + set_glp1_taper_started + mark_glp1_discontinued
-  //     plus regenerate_morning_brief. delegate_to_specialist visible for Peter.
+  //     plus regenerate_morning_brief. handoff_to visible at depth=0.
+  const handoffDepth = opts.handoffDepth ?? 0;
   const modeAllowsTool = (name: string): boolean => {
+    // Generalized handoff is depth-capped and mode-gated. Hidden in intake
+    // (single-voice wizard) and on any non-first round (handoffDepth >= 1)
+    // so the receiving coach has to answer or end the turn — no ping-pong.
+    if (name === HANDOFF_TOOL_NAME) {
+      if (opts.mode === "intake") return false;
+      if (handoffDepth >= 1) return false;
+      return true;
+    }
     if (opts.mode === "plan_week" || opts.mode === "setup_block") {
       return (
         !name.startsWith("apply_") &&
@@ -210,8 +226,7 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
         name !== "mark_glp1_discontinued" &&
         name !== "mark_mobility_done" &&
         name !== "unmark_mobility_done" &&
-        name !== "regenerate_morning_brief" &&
-        name !== DELEGATE_TOOL_NAME
+        name !== "regenerate_morning_brief"
       );
     }
     if (opts.mode === "intake") {
@@ -319,38 +334,40 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
       return;
     }
 
-    // ── Delegate-to-specialist intercept ────────────────────────────────────
-    // Peter's only valid first move when the question is in-domain for a
-    // specialist. We INTERCEPT here rather than execute: no tool_result is
+    // ── Handoff intercept ──────────────────────────────────────────────────
+    // Any coach can call HANDOFF_TOOL to punt the rest of the turn to a
+    // different speaker. We INTERCEPT rather than execute: no tool_result is
     // fed back, the current stream is abandoned, and the caller (the route)
-    // spawns a fresh specialist stream after seeing the 'handoff' yield.
+    // spawns a fresh stream after seeing the 'handoff' yield.
     //
-    // Why first-move only?  Pre-delegation tokens would be discarded by the
-    // route (the user sees only the specialist's reply), so a mid-turn
-    // delegate is wasted work — but we still honor it if Peter emits one,
-    // by short-circuiting the rest of the round.
+    // Pre-stream routing in lib/coach/router.ts handles the common case; this
+    // intercept is the mid-answer escape hatch when the current coach realizes
+    // mid-draft that the question belongs in a different lane.
     //
-    // The intercept is GLOBAL to the speaker: even though DELEGATE_TOOL is
-    // only present in PETER_TOOLS, a specialist accidentally calling it
-    // (defensive: should never happen) should be rejected by the route, not
-    // chain-routed to another specialist. The route's handoff loop logs +
-    // ignores handoff events from non-Peter streams.
-    const delegateBlock = toolUseBlocks.find((b) => b.name === DELEGATE_TOOL_NAME);
-    if (delegateBlock) {
-      const input = (delegateBlock.input ?? {}) as { specialist?: string; briefing?: string };
-      const target = typeof input.specialist === "string" ? input.specialist : "";
-      if (!SPEAKERS.includes(target as Speaker) || target === "peter") {
-        yield { type: "error", message: `invalid_specialist: ${target}` };
+    // The orchestrator caps chain depth at 1 via opts.handoffDepth — by the
+    // time HANDOFF_TOOL is filtered out (see modeAllowsTool), the model can no
+    // longer call it.
+    const handoffBlock = toolUseBlocks.find((b) => b.name === HANDOFF_TOOL_NAME);
+    if (handoffBlock) {
+      const input = (handoffBlock.input ?? {}) as { target?: string; briefing?: string };
+      const target = typeof input.target === "string" ? input.target : "";
+      if (!SPEAKERS.includes(target as Speaker)) {
+        yield { type: "error", message: `invalid_handoff_target: ${target}` };
+        return;
+      }
+      if (target === speaker) {
+        yield { type: "error", message: `invalid_handoff_target: self` };
         return;
       }
       yield {
         type: "handoff",
         from: speaker,
         to: target as Speaker,
-        briefing: typeof input.briefing === "string" && input.briefing.length > 0 ? input.briefing : null,
+        briefing:
+          typeof input.briefing === "string" && input.briefing.length > 0
+            ? input.briefing
+            : null,
       };
-      // Generator ends here. The route persists the system_routing audit row
-      // and spawns a fresh runChatStream(...) with speaker=target.
       return;
     }
 

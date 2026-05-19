@@ -31,12 +31,11 @@ export type ServerStreamEvent =
   /** Morning brief: emitted once after deterministic card assembly, before
    *  advice prose streams via "delta" events. */
   | { event: "brief_card"; data: { card: import("@/lib/data/types").MorningBriefCard } }
-  /** Peter delegated to a specialist (delegate_to_specialist tool fired).
-   *  Emitted between Peter's stream ending and the specialist's stream
-   *  starting; the client uses this to swap the in-flight speaker chip and
-   *  render a HandoffLine divider. The specialist's briefing prose surfaces
-   *  inline here, but is dropped from persisted history (replays pass
-   *  briefing=null). */
+  /** A coach called handoff_to mid-answer. Emitted between the current
+   *  speaker's stream ending and the receiving coach's stream starting; the
+   *  client uses this to swap the in-flight speaker chip and render a
+   *  HandoffLine divider. Briefing prose surfaces inline here, but is
+   *  dropped from persisted history (replays pass briefing=null). */
   | { event: "handoff"; data: { from: Speaker; to: Speaker; briefing: string | null } };
 
 export function formatSseEvent(e: ServerStreamEvent): string {

@@ -4,6 +4,8 @@
 import { useRef, useState } from "react";
 import { COLOR, RADIUS, SHADOW } from "@/lib/ui/theme";
 import { transcodeToJpeg } from "./heicTranscode";
+import { ChatCoachPicker } from "./ChatCoachPicker";
+import type { Speaker } from "@/lib/data/types";
 
 type Pending = {
   clientId: string;
@@ -22,6 +24,9 @@ export function ChatComposer({
   onBlur,
   streaming,
   onStop,
+  lockedSpeaker,
+  onLockChange,
+  showPicker,
 }: {
   disabled?: boolean;
   onSend: (content: string, imageIds: string[]) => void;
@@ -34,6 +39,14 @@ export function ChatComposer({
   streaming?: boolean;
   /** Fires when the user taps the Stop button mid-stream. */
   onStop?: () => void;
+  /** Currently locked coach (null = Auto). Persisted in the parent so it
+   *  survives composer re-mounts; cleared by the parent after a successful
+   *  send. */
+  lockedSpeaker?: Speaker | null;
+  /** Parent setter for the lock. */
+  onLockChange?: (next: Speaker | null) => void;
+  /** Show the coach picker row. False in intake / setup_block modes. */
+  showPicker?: boolean;
 }) {
   const [text, setText] = useState("");
   const [pending, setPending] = useState<Pending[]>([]);
@@ -114,6 +127,14 @@ export function ChatComposer({
         gap: 8,
       }}
     >
+      {showPicker && onLockChange && (
+        <ChatCoachPicker
+          locked={lockedSpeaker ?? null}
+          onChange={onLockChange}
+          disabled={disabled || streaming}
+        />
+      )}
+
       {pending.length > 0 && (
         <div
           style={{
@@ -264,7 +285,12 @@ export function ChatComposer({
               send();
             }
           }}
-          placeholder={placeholder ?? "Message your coach…"}
+          placeholder={
+            placeholder ??
+            (lockedSpeaker
+              ? `Message ${lockedSpeaker.charAt(0).toUpperCase()}${lockedSpeaker.slice(1)}…`
+              : "Message your coach…")
+          }
           rows={1}
           style={{
             flex: 1,

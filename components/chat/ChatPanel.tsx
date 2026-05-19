@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ChatMessage } from "@/lib/chat/types";
-import type { ChatMode, MorningBriefCard, MorningUI } from "@/lib/data/types";
+import type { ChatMode, MorningBriefCard, MorningUI, Speaker } from "@/lib/data/types";
 import { ChatThread } from "./ChatThread";
 import { ChatComposer } from "./ChatComposer";
 import { ModeBanner } from "./ModeBanner";
@@ -251,6 +251,9 @@ export default function ChatPanel({
   // is empty and not focused.
   const [composerText, setComposerText] = useState("");
   const [composerFocused, setComposerFocused] = useState(false);
+  // Composer coach-picker lock. null = Auto (router decides). Cleared
+  // after each successful send via the finally block in send().
+  const [lockedSpeaker, setLockedSpeaker] = useState<Speaker | null>(null);
   const [state, dispatch] = useReducer(reducer, {
     loaded: false,
     messages: [],
@@ -414,7 +417,13 @@ export default function ChatPanel({
       try {
         for await (const ev of postSse(
           "/api/chat/messages",
-          { content, image_ids: imageIds, mode, doc: draftDocId },
+          {
+            content,
+            image_ids: imageIds,
+            mode,
+            doc: draftDocId,
+            speaker_override: lockedSpeaker ?? undefined,
+          },
           { signal: ac.signal },
         )) {
           if (ev.type === "delta") {
@@ -538,10 +547,13 @@ export default function ChatPanel({
       } finally {
         abortRef.current = null;
         dispatch({ type: "set_pending_send", value: false });
+        // Auto-clear the picker lock after each send so subsequent messages
+        // default to auto-routing again.
+        setLockedSpeaker(null);
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [mode, draftDocId],
+    [mode, draftDocId, lockedSpeaker],
   );
 
   const onRetry = useCallback(
@@ -1153,6 +1165,9 @@ export default function ChatPanel({
                 onBlur={() => setComposerFocused(false)}
                 streaming={state.inFlightAssistantId !== null}
                 onStop={handleStop}
+                lockedSpeaker={lockedSpeaker}
+                onLockChange={setLockedSpeaker}
+                showPicker={currentMode === "coach" && mode !== "intake" && mode !== "setup_block"}
               />
             </>
           );
@@ -1324,6 +1339,9 @@ export default function ChatPanel({
             placeholder={currentMode === "coach" ? composerPlaceholder : undefined}
             streaming={state.inFlightAssistantId !== null}
             onStop={() => abortRef.current?.abort()}
+            lockedSpeaker={lockedSpeaker}
+            onLockChange={setLockedSpeaker}
+            showPicker={currentMode === "coach" && mode !== "intake" && mode !== "setup_block"}
           />
         );
       })()}

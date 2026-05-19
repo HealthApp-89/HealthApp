@@ -3021,12 +3021,13 @@ export const PROPOSE_NUTRITION_ADJUSTMENT_TOOL = {
 };
 
 // ── Per-speaker tool partitions ──────────────────────────────────────────
-// Peter has access to every tool plus DELEGATE_TOOL. Specialists get a
-// narrower set scoped to their lane. The orchestrator picks the right list
-// based on which speaker is running. Specialist DAILY_LOGS_TOOL access is
-// further column-restricted at execute time via colsForSpeaker(speaker).
+// Peter has every tool. Carter/Nora/Remi each get a narrower lane-specific
+// subset (column-restricted at execute time via colsForSpeaker(speaker)).
+// HANDOFF_TOOL is appended to every speaker's list so any coach can punt a
+// turn to another. Mode gating in chat-stream.ts hides HANDOFF_TOOL during
+// intake mode (single-voice wizard).
 
-import { DELEGATE_TOOL } from "./delegate-tool";
+import { HANDOFF_TOOL } from "./handoff-tool";
 
 // Structural type wide enough to accept every tool literal in this file
 // without forcing each tool's input_schema to share the same property set.
@@ -3073,7 +3074,7 @@ export const PETER_TOOLS: readonly ToolSchema[] = [
   COMMIT_WEEKLY_PLAN_TOOL,
   REGENERATE_WEEKLY_REVIEW_TOOL,
   PROPOSE_NUTRITION_ADJUSTMENT_TOOL,
-  DELEGATE_TOOL, // Peter-only — always last
+  HANDOFF_TOOL, // generalized handoff — any speaker, any target except self
 ];
 
 // Carter: strength/training. Reads workouts + recovery-relevant daily_logs
@@ -3089,6 +3090,7 @@ export const CARTER_TOOLS: readonly ToolSchema[] = [
   COMMIT_WEEK_PLAN_TOOL,
   MARK_MOBILITY_DONE_TOOL,
   UNMARK_MOBILITY_DONE_TOOL,
+  HANDOFF_TOOL,
 ];
 
 // Nora: nutrition. Reads food log + nutrition/body-comp daily_logs columns;
@@ -3104,6 +3106,7 @@ export const NORA_TOOLS: readonly ToolSchema[] = [
   SET_GLP1_STATUS_TOOL,
   SET_GLP1_TAPER_STARTED_TOOL,
   MARK_GLP1_DISCONTINUED_TOOL,
+  HANDOFF_TOOL,
 ];
 
 // Remi: recovery/sleep/illness. Reads recovery-relevant daily_logs columns;
@@ -3113,6 +3116,7 @@ export const REMI_TOOLS: readonly ToolSchema[] = [
   DAILY_LOGS_TOOL,
   MARK_MOBILITY_DONE_TOOL,
   UNMARK_MOBILITY_DONE_TOOL,
+  HANDOFF_TOOL,
 ];
 
 export function toolsForSpeaker(speaker: Speaker): readonly ToolSchema[] {
