@@ -1,10 +1,13 @@
 #!/usr/bin/env node
 // scripts/audit-speaker-routing.mjs
 //
-// Read-only audit: for the last N chat messages, report the speaker
-// distribution and flag obvious mis-routings via keyword heuristics
-// (Carter answering nutrition questions, Nora answering training, etc.).
-// Useful for tuning Peter's routing prompt.
+// Read-only audit of the chat routing layer.
+//
+//   Section 1 — visible-message speaker distribution (Carter/Nora/Remi/Peter)
+//                 and a keyword-cue heuristic flagging plausibly mis-routed turns.
+//   Section 2 — system_routing audit rows: method distribution
+//                 (manual / mention / keyword / haiku / fallback / handoff),
+//                 per-speaker method breakdown, classifier-vs-manual disagreements.
 //
 // Run via:
 //   AUDIT_USER_ID=<your-uuid> \
@@ -26,24 +29,25 @@ const userId = process.env.AUDIT_USER_ID;
 if (!userId) { console.error("Set AUDIT_USER_ID env var"); process.exit(1); }
 
 const supabase = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
-
 const N = 100;
-const { data: messages, error } = await supabase
+
+// ── Section 1: visible-message speaker distribution + mismatch heuristic ──
+const { data: visible, error: vErr } = await supabase
   .from("chat_messages")
   .select("created_at, role, speaker, kind, content")
   .eq("user_id", userId)
+  .neq("kind", "system_routing")
   .order("created_at", { ascending: false })
   .limit(N);
-if (error) throw error;
+if (vErr) throw vErr;
 
-console.log(`→ last ${messages.length} messages`);
-const dist = messages.reduce((acc, m) => {
+console.log(`→ last ${visible.length} visible messages`);
+const dist = visible.reduce((acc, m) => {
   acc[m.speaker] = (acc[m.speaker] ?? 0) + 1;
   return acc;
 }, {});
 console.log("  speaker distribution:", dist);
 
-// Keyword heuristics — flag messages where the speaker doesn't match obvious cues.
 const cues = {
   carter: /\b(rpe|reps|sets|lift|squat|bench|deadlift|hypertrophy|deload|mesocycle)\b/i,
   nora:   /\b(macro|protein|kcal|calorie|fiber|carbs?|fat|meal|food|portion|hydra)/i,
@@ -51,12 +55,11 @@ const cues = {
 };
 
 let mismatches = 0;
-for (const m of messages) {
-  if (m.role !== "assistant" || m.kind === "system_routing") continue;
-  if (m.speaker === "peter") continue; // peter is allowed everywhere
-  // Find the user message before this one for context (rough heuristic: previous row).
-  const idx = messages.indexOf(m);
-  const prevUser = messages.slice(idx + 1).find((x) => x.role === "user");
+for (const m of visible) {
+  if (m.role !== "assistant") continue;
+  if (m.speaker === "peter") continue;
+  const idx = visible.indexOf(m);
+  const prevUser = visible.slice(idx + 1).find((x) => x.role === "user");
   if (!prevUser) continue;
   const cue = cues[m.speaker];
   if (!cue.test(prevUser.content) && !cue.test(m.content)) {
@@ -64,5 +67,48 @@ for (const m of messages) {
     console.warn(`[MISMATCH] ${m.speaker} answered: "${prevUser.content.slice(0, 80)}"`);
   }
 }
+console.log(`\n${mismatches} potential mis-routings out of ${visible.length} visible messages`);
 
-console.log(`\n${mismatches} potential mis-routings out of ${messages.length} messages`);
+// ── Section 2: routing audit rows ─────────────────────────────────────────
+const { data: audits, error: aErr } = await supabase
+  .from("chat_messages")
+  .select("created_at, speaker, content, ui")
+  .eq("user_id", userId)
+  .eq("kind", "system_routing")
+  .order("created_at", { ascending: false })
+  .limit(N);
+if (aErr) throw aErr;
+
+console.log(`\n→ last ${audits.length} routing audit rows`);
+const methodCounts = {};
+const perSpeakerMethod = { peter: {}, carter: {}, nora: {}, remi: {} };
+let disagreements = 0;
+
+for (const r of audits) {
+  const ui = r.ui ?? {};
+  const method = ui.method ?? "unknown";
+  methodCounts[method] = (methodCounts[method] ?? 0) + 1;
+  const sp = ui.decided_speaker ?? r.speaker ?? "unknown";
+  if (perSpeakerMethod[sp]) {
+    perSpeakerMethod[sp][method] = (perSpeakerMethod[sp][method] ?? 0) + 1;
+  }
+  // Disagreement: classifier wanted X, user manually picked Y (look at the
+  // user_message_id paired routing rows — both would exist in this audit
+  // window if both fired in close succession).
+  if (method === "manual" && ui.override_source === "picker") {
+    // Look for a sibling automatic decision for the same user_message_id —
+    // there shouldn't be one (manual short-circuits classifyTurn), so this
+    // is informational only.
+    const sibling = audits.find(
+      (x) => x !== r && (x.ui?.user_message_id ?? null) === (ui.user_message_id ?? null) && x.ui?.method !== "manual",
+    );
+    if (sibling) disagreements++;
+  }
+}
+
+console.log("  method distribution:", methodCounts);
+console.log("  per-speaker method breakdown:");
+for (const sp of ["peter", "carter", "nora", "remi"]) {
+  console.log(`    ${sp.padEnd(8)} →`, perSpeakerMethod[sp]);
+}
+console.log(`\n${disagreements} classifier-vs-manual disagreements (manual override on a message the classifier had a confident opinion about)`);
