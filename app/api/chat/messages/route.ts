@@ -664,11 +664,13 @@ export async function POST(req: Request) {
 
           // 2) Emit handoff SSE event so the client can render the chip swap
           //    and reset its accumulated-text buffer before the specialist
-          //    starts streaming. Not part of ServerStreamEvent yet — emit
-          //    the raw SSE frame directly.
+          //    starts streaming.
           controller.enqueue(
             encoder.encode(
-              `event: handoff\ndata: ${JSON.stringify({ from: "peter", to: handoff.to, briefing: handoff.briefing })}\n\n`,
+              formatSseEvent({
+                event: "handoff",
+                data: { from: "peter", to: handoff.to, briefing: handoff.briefing },
+              }),
             ),
           );
 

@@ -485,6 +485,23 @@ export default function ChatPanel({
                 }
               })();
             }
+          } else if (ev.type === "handoff") {
+            // Peter delegated to a specialist. The server resets its own
+            // accumulated buffer to "" so only the specialist's reply is
+            // persisted; mirror that here: swap the in-flight stub's speaker
+            // and blank its content. ChatThread will then render a
+            // HandoffLine between Peter's prior turn (if any) and the
+            // freshly-swapped stub, and the SpeakerChip flips to the
+            // specialist's name as deltas resume. Briefing prose is
+            // displayed only live — replayed history (which doesn't carry
+            // this event) renders HandoffLine with briefing=null.
+            if (assistantStubAdded && assistantId) {
+              dispatch({
+                type: "patch_message",
+                id: assistantId,
+                patch: { speaker: ev.to, content: "" },
+              });
+            }
           } else if (ev.type === "error") {
             // Two cases: 409 in-flight (no stub created), or mid-stream error.
             if (ev.message === "in_flight_stream") {

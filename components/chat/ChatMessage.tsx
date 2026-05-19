@@ -6,11 +6,13 @@ import type { ChatMessage as ChatMessageType } from "@/lib/chat/types";
 import { COLOR, SHADOW } from "@/lib/ui/theme";
 import { renderMarkdownSubset } from "./markdown";
 import { CoachAvatar } from "@/components/coach/CoachAvatar";
+import { SpeakerChip } from "./SpeakerChip";
+import { isCoachSpeaker } from "@/lib/coach/speakers";
 import { WeekPlanProposalCard, type WeekProposal } from "./WeekPlanProposalCard";
 import { BlockProposalCard, type BlockProposal } from "./BlockProposalCard";
 import { PlanProposalCard } from "./PlanProposalCard";
 import { NutritionTargetsProposalCard, type NutritionTargetsProposal } from "./NutritionTargetsProposalCard";
-import type { PlanPayload } from "@/lib/data/types";
+import type { PlanPayload, Speaker } from "@/lib/data/types";
 
 export function ChatMessage({
   message,
@@ -105,6 +107,15 @@ export function ChatMessage({
           {isFirstInGroup && <CoachAvatar size={26} />}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
+          {/* Speaker chip — identifies which coach (Peter/Carter/Nora/Remi)
+              owns this turn. Only rendered as the first bubble in a group
+              of same-speaker turns; consecutive turns from the same coach
+              skip the chip to match the avatar's grouping cadence. */}
+          {isFirstInGroup && isCoachSpeaker(message.speaker) && (
+            <div style={{ marginBottom: 4 }}>
+              <SpeakerChip speaker={message.speaker as Speaker} />
+            </div>
+          )}
           <div
             style={{
               background: COLOR.surface,

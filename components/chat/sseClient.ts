@@ -85,6 +85,13 @@ export async function* postSse(
             ok: data.ok as boolean,
             ms: data.ms as number,
           };
+        } else if (eventName === "handoff") {
+          yield {
+            type: "handoff",
+            from: data.from as import("@/lib/data/types").Speaker,
+            to: data.to as import("@/lib/data/types").Speaker,
+            briefing: (data.briefing ?? null) as string | null,
+          };
         }
       } catch {
         // Malformed; skip.
