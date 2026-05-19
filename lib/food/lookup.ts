@@ -5,7 +5,8 @@
 // Lookup chain:
 //   1. food_db_cache trigram match on name (similarity ≥ TRGM_THRESHOLD)
 //   2. USDA FoodData Central /foods/search (writes back to cache on success)
-//   3. Haiku 4.5 estimates per_100g macros (NOT cached — only verified DB
+//   3. OpenFoodFacts text search (writes back to cache on success)
+//   4. Haiku 4.5 estimates per_100g macros (NOT cached — only verified DB
 //      sources go to cache)
 //
 // Returns a fully-populated FoodItem with macros scaled to qty_g.
@@ -141,6 +142,104 @@ async function lookupUsda(name: string): Promise<{ row: FoodDbCacheRow; score: n
   return { row: inserted as FoodDbCacheRow, score: best.score };
 }
 
+const OFF_SEARCH_URL = "https://world.openfoodfacts.org/cgi/search.pl";
+
+type OffSearchProduct = {
+  product_name?: string;
+  product_name_en?: string;
+  brands?: string;
+  nutriments?: {
+    "energy-kcal_100g"?: number;
+    energy_100g?: number;
+    proteins_100g?: number;
+    carbohydrates_100g?: number;
+    fat_100g?: number;
+    fiber_100g?: number;
+  };
+  code?: string;
+  image_thumb_url?: string;
+};
+
+type OffSearchResponse = {
+  products?: OffSearchProduct[];
+};
+
+/** OpenFoodFacts text search. Used as a 2nd-tier lookup between USDA and the
+ *  LLM estimate in resolveItemMacros, and also called by /api/food/search.
+ *  Returns the chosen cached row + score, or null on miss / no-score. */
+export async function lookupOpenFoodFacts(name: string): Promise<{ row: FoodDbCacheRow; score: number } | null> {
+  const url = `${OFF_SEARCH_URL}?search_terms=${encodeURIComponent(name)}&json=1&page_size=5&fields=product_name,product_name_en,brands,nutriments,code,image_thumb_url`;
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      headers: { "User-Agent": "ApexHealthOS/1.0 (single-user app)" },
+      signal: AbortSignal.timeout(5000),
+    });
+  } catch (err) {
+    console.warn(`[food-lookup] OFF fetch failed for "${name}"`, err);
+    return null;
+  }
+  if (!res.ok) {
+    console.warn(`[food-lookup] OFF ${res.status} for "${name}"`);
+    return null;
+  }
+  const data = (await res.json()) as OffSearchResponse;
+  const products = data.products ?? [];
+  if (products.length === 0) return null;
+
+  // Build candidate list with display names. Skip products without names or macros.
+  const candidates = products
+    .map((p) => {
+      const displayName = p.product_name_en ?? p.product_name;
+      if (!displayName) return null;
+      const n = p.nutriments;
+      const kcal = typeof n?.["energy-kcal_100g"] === "number"
+        ? n["energy-kcal_100g"]
+        : typeof n?.energy_100g === "number"
+        ? n.energy_100g / 4.184
+        : null;
+      if (kcal === null) return null;  // No macros → skip
+      return {
+        name: p.brands ? `${displayName} (${p.brands})` : displayName,
+        product: p,
+        per_100g: {
+          kcal,
+          protein_g: n?.proteins_100g ?? 0,
+          carbs_g: n?.carbohydrates_100g ?? 0,
+          fat_g: n?.fat_100g ?? 0,
+          fiber_g: n?.fiber_100g ?? 0,
+        },
+      };
+    })
+    .filter((c): c is NonNullable<typeof c> => c !== null);
+  if (candidates.length === 0) return null;
+
+  const best = pickBestCandidate(name, candidates, 0.5);
+  if (!best) {
+    console.info(`[food-lookup] OFF top-${candidates.length} all below threshold for "${name}"`);
+    return null;
+  }
+
+  const supabase = createSupabaseServiceRoleClient();
+  const { data: inserted, error } = await supabase
+    .from("food_db_cache")
+    .insert({
+      source: "openfoodfacts",
+      upc: null,  // Text-search hits aren't keyed by UPC
+      name: best.candidate.name,
+      per_100g: best.candidate.per_100g,
+      serving_size_g: null,
+      raw_payload: best.candidate.product,
+    })
+    .select("*")
+    .single();
+  if (error) {
+    console.error("[food-lookup] OFF cache insert failed", error);
+    return null;
+  }
+  return { row: inserted as FoodDbCacheRow, score: best.score };
+}
+
 async function llmEstimate(name: string): Promise<FoodMacros> {
   const prompt = `You are a nutrition reference. Return per-100g macros for the food described below as STRICT JSON, no commentary.
 
@@ -188,7 +287,22 @@ export async function resolveItemMacros(name: string, qty_g: number): Promise<Fo
       match_score: usda.score,
     };
   }
-  // 3. LLM fallback — wrap so route handlers get a typed error instead of an
+  // 3. OpenFoodFacts with scoring
+  const off = await lookupOpenFoodFacts(name);
+  if (off) {
+    const macros = macrosForQty(off.row.per_100g, qty_g);
+    return {
+      name: off.row.name,
+      qty_g,
+      ...macros,
+      per_100g: off.row.per_100g,
+      source: "db",
+      db_ref: { source: "openfoodfacts", canonical_id: off.row.canonical_id },
+      confidence: off.score >= 0.7 ? "high" : "medium",
+      match_score: off.score,
+    };
+  }
+  // 4. LLM fallback — wrap so route handlers get a typed error instead of an
   //    uncaught Anthropic-API or JSON-parse exception bubbling up as a 500.
   let per_100g: FoodMacros;
   try {
