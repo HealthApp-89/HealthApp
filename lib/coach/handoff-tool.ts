@@ -42,7 +42,3 @@ Cannot hand off to yourself. Call this as your FIRST move; tokens emitted before
     },
   },
 };
-
-/** @deprecated Use HANDOFF_TOOL_NAME. Kept for chat-stream.ts during the
- *  rename rollout — removed in Task 3. */
-export const DELEGATE_TOOL_NAME = HANDOFF_TOOL_NAME;
