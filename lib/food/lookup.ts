@@ -14,6 +14,7 @@ import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { callClaude, parseClaudeJson } from "@/lib/anthropic/client";
 import { SHORT_FORM_MODEL } from "@/lib/anthropic/models";
 import { macrosForQty, type FoodItem, type FoodMacros, type FoodDbCacheRow } from "@/lib/food/types";
+import { pickBestCandidate } from "@/lib/food/scoring";
 
 /** Minimum trigram similarity for a cache match to count. Tune during use. */
 const TRGM_THRESHOLD = 0.6;
@@ -85,17 +86,15 @@ async function lookupCacheByName(name: string): Promise<FoodDbCacheRow | null> {
   return row && row.canonical_id ? row : null;
 }
 
-async function lookupUsda(name: string): Promise<FoodDbCacheRow | null> {
+async function lookupUsda(name: string): Promise<{ row: FoodDbCacheRow; score: number } | null> {
   const apiKey = process.env.USDA_FDC_API_KEY;
   if (!apiKey) {
     console.warn("[food-lookup] USDA_FDC_API_KEY not set — skipping USDA");
     return null;
   }
-  const url = `${USDA_SEARCH_URL}?api_key=${encodeURIComponent(apiKey)}&query=${encodeURIComponent(name)}&pageSize=1&dataType=Foundation,SR%20Legacy`;
+  const url = `${USDA_SEARCH_URL}?api_key=${encodeURIComponent(apiKey)}&query=${encodeURIComponent(name)}&pageSize=5&dataType=Foundation,SR%20Legacy`;
   let res: Response;
   try {
-    // 5s timeout — Vercel functions have a 10s budget; we must fail fast and
-    // fall through to the LLM rather than wedge the whole request.
     res = await fetch(url, { signal: AbortSignal.timeout(5000) });
   } catch (err) {
     console.warn(`[food-lookup] USDA fetch failed for query "${name}"`, err);
@@ -106,11 +105,21 @@ async function lookupUsda(name: string): Promise<FoodDbCacheRow | null> {
     return null;
   }
   const data = (await res.json()) as { foods?: UsdaFood[] };
-  const top = data.foods?.[0];
-  if (!top) return null;
+  const foods = data.foods ?? [];
+  if (foods.length === 0) return null;
 
+  // Score each candidate by token overlap with the query.
+  const best = pickBestCandidate(
+    name,
+    foods.map((f) => ({ name: f.description, food: f })),
+    0.5,
+  );
+  if (!best) {
+    console.info(`[food-lookup] USDA top-${foods.length} all below threshold for "${name}"`);
+    return null;
+  }
+  const top = best.candidate.food;
   const per_100g = extractUsdaMacros(top);
-  // USDA Foundation/SR Legacy values are per 100g for energy/macros.
 
   const supabase = createSupabaseServiceRoleClient();
   const { data: inserted, error } = await supabase
@@ -129,7 +138,7 @@ async function lookupUsda(name: string): Promise<FoodDbCacheRow | null> {
     console.error("[food-lookup] cache insert failed", error);
     return null;
   }
-  return inserted as FoodDbCacheRow;
+  return { row: inserted as FoodDbCacheRow, score: best.score };
 }
 
 async function llmEstimate(name: string): Promise<FoodMacros> {
@@ -161,22 +170,22 @@ export async function resolveItemMacros(name: string, qty_g: number): Promise<Fo
       source: "db",
       db_ref: { source: cached.source, canonical_id: cached.canonical_id },
       confidence: "high",
-      match_score: null,
+      match_score: 1.0,
     };
   }
-  // 2. USDA
+  // 2. USDA with scoring
   const usda = await lookupUsda(name);
   if (usda) {
-    const macros = macrosForQty(usda.per_100g, qty_g);
+    const macros = macrosForQty(usda.row.per_100g, qty_g);
     return {
-      name: usda.name,
+      name: usda.row.name,
       qty_g,
       ...macros,
-      per_100g: usda.per_100g,
+      per_100g: usda.row.per_100g,
       source: "db",
-      db_ref: { source: "usda", canonical_id: usda.canonical_id },
-      confidence: "high",
-      match_score: null,
+      db_ref: { source: "usda", canonical_id: usda.row.canonical_id },
+      confidence: usda.score >= 0.7 ? "high" : "medium",
+      match_score: usda.score,
     };
   }
   // 3. LLM fallback — wrap so route handlers get a typed error instead of an
