@@ -24,37 +24,6 @@
 import Anthropic, { APIUserAbortError } from "@anthropic-ai/sdk";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
-  DAILY_LOGS_TOOL,
-  WORKOUTS_TOOL,
-  FOOD_LOG_TOOL,
-  TRAINING_PLAN_TOOL,
-  AUTOREGULATION_TOOL,
-  ADHERENCE_TOOL,
-  PROPOSE_BLOCK_TOOL,
-  COMMIT_BLOCK_TOOL,
-  PROPOSE_WEEK_PLAN_TOOL,
-  COMMIT_WEEK_PLAN_TOOL,
-  PROPOSE_NUTRITION_TARGETS_TOOL,
-  COMMIT_NUTRITION_TARGETS_TOOL,
-  APPLY_GOAL_TARGET_TOOL,
-  APPLY_BEDTIME_CORRECTION_TOOL,
-  APPLY_MACROS_CORRECTION_TOOL,
-  APPLY_PROTEIN_CORRECTION_TOOL,
-  SET_SANITY_OVERRIDE_TOOL,
-  SET_GOAL_NARRATIVE_CHAT_TOOL,
-  SET_DIRECTNESS_TOOL,
-  SET_CADENCE_TOOL,
-  SET_CHRONOTYPE_TOOL,
-  SET_UNPROMPTED_ACTIONS_TOOL,
-  SET_FREE_FORM_CONSTRAINTS_TOOL,
-  PROPOSE_PLAN_TOOL,
-  COMMIT_PLAN_TOOL,
-  SET_GLP1_STATUS_TOOL,
-  SET_GLP1_TAPER_STARTED_TOOL,
-  MARK_GLP1_DISCONTINUED_TOOL,
-  MARK_MOBILITY_DONE_TOOL,
-  UNMARK_MOBILITY_DONE_TOOL,
-  REGENERATE_MORNING_BRIEF_TOOL,
   executeQueryDailyLogs,
   executeQueryWorkouts,
   executeQueryFoodLog,
@@ -86,9 +55,14 @@ import {
   executeMarkMobilityDone,
   executeUnmarkMobilityDone,
   executeRegenerateMorningBrief,
+  toolsForSpeaker,
+  colsForSpeaker,
   type ToolResult,
+  type ToolSchema,
 } from "@/lib/coach/tools";
-import type { ChatMode, ToolCallLog } from "@/lib/data/types";
+import { DELEGATE_TOOL_NAME } from "@/lib/coach/delegate-tool";
+import { speakerSystemPrompt } from "@/lib/coach/system-prompts";
+import { SPEAKERS, type ChatMode, type Speaker, type ToolCallLog } from "@/lib/data/types";
 import type { ContentBlock, RichMessage } from "@/lib/chat/types";
 
 import { CHAT_MODEL as MODEL } from "@/lib/anthropic/models";
@@ -114,7 +88,13 @@ export type ChatStreamYield =
   | { type: "tool_call_start"; id: string; name: string; input: Record<string, unknown> }
   | { type: "tool_call_done"; id: string; ok: boolean; ms: number }
   | { type: "done" }
-  | { type: "error"; message: string };
+  | { type: "error"; message: string }
+  /** Peter called delegate_to_specialist as his first move. The orchestrator
+   *  has aborted Peter's stream and yields this so the route can persist a
+   *  hidden system_routing audit row, swap the assistant stub's speaker, and
+   *  spawn a fresh specialist stream. Specialists never yield this — the
+   *  delegate_to_specialist tool is excluded from CARTER/NORA/REMI_TOOLS. */
+  | { type: "handoff"; from: Speaker; to: Speaker; briefing: string | null };
 
 /** Cumulative Anthropic API token usage across all rounds of a chat turn.
  *  Read by the route's finally block for structured logging — lets us track
@@ -159,6 +139,12 @@ export type RunChatStreamOpts = {
   /** Chat mode — controls which tools are exposed to the model.
    *  Default mode hides propose_ and commit_ tools to prevent accidental plan writes. */
   mode?: ChatMode;
+  /** Which coach voice is producing this turn. Default 'peter' (Head Coach,
+   *  has access to delegate_to_specialist). Specialists ('carter' | 'nora' |
+   *  'remi') get a restricted tool subset via toolsForSpeaker() and a column-
+   *  filtered query_daily_logs via colsForSpeaker(). The route spawns a
+   *  fresh stream with speaker=event.to after seeing a 'handoff' yield. */
+  speaker?: Speaker;
   /** Athlete-profile draft document id; required for intake-mode tools
    *  (apply_*, set_*, propose_plan, commit_plan). Caller sets this when
    *  serving an /onboarding chat turn. Null/undefined in default/planning modes. */
@@ -175,11 +161,22 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
     return;
   }
 
+  const speaker: Speaker = opts.speaker ?? "peter";
+
   const client = new Anthropic({ apiKey });
   // The SDK accepts a system prompt as a string OR typed blocks. We use the
   // typed-block form so we can attach cache_control for the prompt-cache.
+  //
+  // System-prompt composition:
+  //   * Caller-provided `opts.systemPrompt` already contains SCHEMA_EXPLAINER
+  //     + the user's PETER override / mode addenda (assembled by the route
+  //     via buildSystemPrompt). It assumes Peter is talking.
+  //   * For specialist turns (carter/nora/remi), discard the Peter-targeted
+  //     prompt and use the specialist's base prompt instead. The schema
+  //     explainer and snapshot prefix (positions 0 of `messages`) still apply.
+  const systemText = speaker === "peter" ? opts.systemPrompt : speakerSystemPrompt(speaker);
   const system = [
-    { type: "text" as const, text: opts.systemPrompt, cache_control: { type: "ephemeral" as const, ttl: "1h" as const } },
+    { type: "text" as const, text: systemText, cache_control: { type: "ephemeral" as const, ttl: "1h" as const } },
   ];
 
   let invocations = 0;
@@ -188,93 +185,57 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
   // user-message follow-ups.
   const messages: RichMessage[] = opts.messages.slice();
 
-  const allTools = [
-    DAILY_LOGS_TOOL,
-    WORKOUTS_TOOL,
-    FOOD_LOG_TOOL,
-    TRAINING_PLAN_TOOL,
-    AUTOREGULATION_TOOL,
-    ADHERENCE_TOOL,
-    PROPOSE_BLOCK_TOOL,
-    COMMIT_BLOCK_TOOL,
-    PROPOSE_WEEK_PLAN_TOOL,
-    COMMIT_WEEK_PLAN_TOOL,
-    PROPOSE_NUTRITION_TARGETS_TOOL,
-    COMMIT_NUTRITION_TARGETS_TOOL,
-    APPLY_GOAL_TARGET_TOOL,
-    APPLY_BEDTIME_CORRECTION_TOOL,
-    APPLY_MACROS_CORRECTION_TOOL,
-    APPLY_PROTEIN_CORRECTION_TOOL,
-    SET_SANITY_OVERRIDE_TOOL,
-    SET_GOAL_NARRATIVE_CHAT_TOOL,
-    SET_DIRECTNESS_TOOL,
-    SET_CADENCE_TOOL,
-    SET_CHRONOTYPE_TOOL,
-    SET_UNPROMPTED_ACTIONS_TOOL,
-    SET_FREE_FORM_CONSTRAINTS_TOOL,
-    PROPOSE_PLAN_TOOL,
-    COMMIT_PLAN_TOOL,
-    SET_GLP1_STATUS_TOOL,
-    SET_GLP1_TAPER_STARTED_TOOL,
-    MARK_GLP1_DISCONTINUED_TOOL,
-    MARK_MOBILITY_DONE_TOOL,
-    UNMARK_MOBILITY_DONE_TOOL,
-    REGENERATE_MORNING_BRIEF_TOOL,
-  ];
-
-  // Mode-scoped tool partitioning:
+  // Speaker-aware tool surface. Each specialist exposes a restricted subset
+  // (see lib/coach/tools.ts: PETER_TOOLS/CARTER_TOOLS/NORA_TOOLS/REMI_TOOLS).
+  // Mode partitioning is then applied on top of the speaker's base subset.
+  //
+  // Mode rules:
   //   plan_week / setup_block — weekly-planning tools (propose_block,
   //     commit_block, propose_week_plan, commit_week_plan) plus reads; intake
   //     tools (apply_*, set_*, propose_plan, commit_plan) are hidden.
-  //     GLP-1 and mobility tools are also hidden (mark_glp1_discontinued,
-  //     mark_mobility_done, unmark_mobility_done don't start with "set_"
-  //     so must be excluded explicitly).
+  //     GLP-1 and mobility tools are also hidden.
   //   intake — onboarding wizard chat: 2 read tools (daily_logs + workouts)
   //     + 13 Phase 2 intake tools + set_glp1_status. Weekly-planning tools
-  //     and the active-doc GLP-1 tools are hidden.
+  //     and the active-doc GLP-1 tools are hidden. delegate_to_specialist is
+  //     ALWAYS hidden in intake (specialists dormant during onboarding).
   //   default — read tools + set_glp1_taper_started + mark_glp1_discontinued
-  //     (milestone tools that mutate the active plan during normal coach
-  //     chat). All other propose_/commit_/apply_/set_ are still hidden.
-  let toolsForMode: typeof allTools;
-  if (opts.mode === "plan_week" || opts.mode === "setup_block") {
-    toolsForMode = allTools.filter(
-      (t) =>
-        !t.name.startsWith("apply_") &&
-        !t.name.startsWith("set_") &&
-        t.name !== "propose_plan" &&
-        t.name !== "commit_plan" &&
-        t.name !== "mark_glp1_discontinued" &&
-        t.name !== "mark_mobility_done" &&
-        t.name !== "unmark_mobility_done" &&
-        t.name !== "regenerate_morning_brief",
-    );
-  } else if (opts.mode === "intake") {
-    toolsForMode = allTools.filter(
-      (t) =>
-        t.name === "query_daily_logs" ||
-        t.name === "query_workouts" ||
-        t.name.startsWith("apply_") ||
-        (t.name.startsWith("set_") && t.name !== "set_glp1_taper_started") ||
-        t.name === "propose_plan" ||
-        t.name === "commit_plan",
-    );
-  } else {
-    // default mode — coach lane normal chat. Surfaces the milestone-style
-    // active-plan mutators (set_glp1_taper_started, mark_glp1_discontinued)
-    // plus regenerate_morning_brief for the user-challenges-brief flow.
-    // Exception: nutrition_targets propose/commit are allowed here so the
-    // coach can recommend kcal/macros without entering plan_week or intake.
-    const defaultModeAllowed = (name: string): boolean => {
-      if (name === "propose_nutrition_targets") return true;
-      if (name === "commit_nutrition_targets") return true;
-      if (name.startsWith("propose_")) return false;
-      if (name.startsWith("commit_")) return false;
-      if (name.startsWith("apply_")) return false;
-      if (name.startsWith("set_") && name !== "set_glp1_taper_started") return false;
-      return true;
-    };
-    toolsForMode = allTools.filter((t) => defaultModeAllowed(t.name));
-  }
+  //     plus regenerate_morning_brief. delegate_to_specialist visible for Peter.
+  const modeAllowsTool = (name: string): boolean => {
+    if (opts.mode === "plan_week" || opts.mode === "setup_block") {
+      return (
+        !name.startsWith("apply_") &&
+        !name.startsWith("set_") &&
+        name !== "propose_plan" &&
+        name !== "commit_plan" &&
+        name !== "mark_glp1_discontinued" &&
+        name !== "mark_mobility_done" &&
+        name !== "unmark_mobility_done" &&
+        name !== "regenerate_morning_brief" &&
+        name !== DELEGATE_TOOL_NAME
+      );
+    }
+    if (opts.mode === "intake") {
+      return (
+        name === "query_daily_logs" ||
+        name === "query_workouts" ||
+        name.startsWith("apply_") ||
+        (name.startsWith("set_") && name !== "set_glp1_taper_started") ||
+        name === "propose_plan" ||
+        name === "commit_plan"
+      );
+    }
+    // default mode
+    if (name === "propose_nutrition_targets") return true;
+    if (name === "commit_nutrition_targets") return true;
+    if (name.startsWith("propose_")) return false;
+    if (name.startsWith("commit_")) return false;
+    if (name.startsWith("apply_")) return false;
+    if (name.startsWith("set_") && name !== "set_glp1_taper_started") return false;
+    return true;
+  };
+
+  const speakerTools = toolsForSpeaker(speaker);
+  const toolsForMode: ToolSchema[] = speakerTools.filter((t) => modeAllowsTool(t.name)).slice();
 
   while (true) {
     const forceText = invocations >= MAX_TOOL_INVOCATIONS;
@@ -283,7 +244,7 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
         model: MODEL,
         max_tokens: MAX_TOKENS,
         system,
-        tools: toolsForMode,
+        tools: toolsForMode as unknown as Anthropic.Messages.Tool[],
         // disable_parallel_tool_use lives INSIDE tool_choice (Auto/Any/Tool
         // variants only — ToolChoiceNone has no tools to parallelize).
         tool_choice: forceText
@@ -358,6 +319,41 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
       return;
     }
 
+    // ── Delegate-to-specialist intercept ────────────────────────────────────
+    // Peter's only valid first move when the question is in-domain for a
+    // specialist. We INTERCEPT here rather than execute: no tool_result is
+    // fed back, the current stream is abandoned, and the caller (the route)
+    // spawns a fresh specialist stream after seeing the 'handoff' yield.
+    //
+    // Why first-move only?  Pre-delegation tokens would be discarded by the
+    // route (the user sees only the specialist's reply), so a mid-turn
+    // delegate is wasted work — but we still honor it if Peter emits one,
+    // by short-circuiting the rest of the round.
+    //
+    // The intercept is GLOBAL to the speaker: even though DELEGATE_TOOL is
+    // only present in PETER_TOOLS, a specialist accidentally calling it
+    // (defensive: should never happen) should be rejected by the route, not
+    // chain-routed to another specialist. The route's handoff loop logs +
+    // ignores handoff events from non-Peter streams.
+    const delegateBlock = toolUseBlocks.find((b) => b.name === DELEGATE_TOOL_NAME);
+    if (delegateBlock) {
+      const input = (delegateBlock.input ?? {}) as { specialist?: string; briefing?: string };
+      const target = typeof input.specialist === "string" ? input.specialist : "";
+      if (!SPEAKERS.includes(target as Speaker) || target === "peter") {
+        yield { type: "error", message: `invalid_specialist: ${target}` };
+        return;
+      }
+      yield {
+        type: "handoff",
+        from: speaker,
+        to: target as Speaker,
+        briefing: typeof input.briefing === "string" && input.briefing.length > 0 ? input.briefing : null,
+      };
+      // Generator ends here. The route persists the system_routing audit row
+      // and spawns a fresh runChatStream(...) with speaker=target.
+      return;
+    }
+
     // Append the assistant message verbatim (it has both text and tool_use
     // blocks) — required so subsequent rounds reference the right tool_use_id.
     messages.push({
@@ -381,10 +377,15 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
       let result: ToolResult<unknown>;
       try {
         if (block.name === "query_daily_logs") {
+          // Per-specialist column cluster gating. Peter sees PETER_COLS (all
+          // ALLOWED_COLUMNS); specialists see their domain subset. Requested
+          // columns outside the cluster surface as a structured error inside
+          // executeQueryDailyLogs.
           result = await executeQueryDailyLogs({
             supabase: opts.sr,
             userId: opts.userId,
             input: block.input,
+            allowedColumns: colsForSpeaker(speaker),
           });
         } else if (block.name === "query_workouts") {
           result = await executeQueryWorkouts({
