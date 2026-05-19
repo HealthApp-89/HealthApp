@@ -238,6 +238,13 @@ export type IntensityModifier = Partial<Record<PrimaryLift, number>>;
 export type ResearchPhase = "accumulate" | "deload";
 export type ProposedBy = "coach" | "user";
 
+/** Per-weekday reorder of the static SESSION_PLANS exercise list. Keys are
+ *  full weekday names ("Monday", not "Mon") to match weekdayInUserTz() and
+ *  the AI bot's session_plan output. Each value is the complete reordered
+ *  PlannedExercise[] for that day. Permutation-only: same name set as the
+ *  static plan, different order. NULL means no overrides for any day. */
+export type ExerciseOverrides = Record<string, import("@/lib/coach/sessionPlans").PlannedExercise[]>;
+
 export type TrainingWeek = {
   id: string;
   user_id: string;
@@ -251,6 +258,9 @@ export type TrainingWeek = {
    *  identity-restore swap returns session_plan to the original state.
    *  Adherence reads `coalesce(original_session_plan, session_plan)`. */
   original_session_plan: SessionPlan | null;
+  /** Per-day reordered exercise lists. NULL means no overrides set for any day;
+   *  resolver falls through to SESSION_PLANS[session_plan[weekday]]. */
+  exercise_overrides: ExerciseOverrides | null;
   weekly_focus: string | null;
   intensity_modifier: IntensityModifier;
   rir_target: number | null;
