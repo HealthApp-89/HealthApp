@@ -97,6 +97,7 @@ export async function POST(req: Request) {
       source: fav.source as "db" | "llm",
       db_ref: fav.db_ref as FoodItem["db_ref"],
       confidence: "high",
+      match_score: null,
     }];
   } else if (body.source_kind === "catalog") {
     if (!body.source_id) return NextResponse.json({ error: "source_id_required" }, { status: 400 });
@@ -119,6 +120,7 @@ export async function POST(req: Request) {
         canonical_id: cache.canonical_id,
       },
       confidence: "high",
+      match_score: null,
     }];
   } else if (body.source_kind === "recent" || body.source_kind === "frequent") {
     if (!body.item) return NextResponse.json({ error: "item_required" }, { status: 400 });

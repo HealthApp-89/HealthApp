@@ -1,6 +1,7 @@
 "use client";
 
 import { COLOR } from "@/lib/ui/theme";
+import { SpeakerChip } from "@/components/chat/SpeakerChip";
 import type { MorningBriefTonight } from "@/lib/data/types";
 
 export function BriefTonight({ tonight }: { tonight: MorningBriefTonight }) {
@@ -22,8 +23,11 @@ export function BriefTonight({ tonight }: { tonight: MorningBriefTonight }) {
       <div style={{ fontSize: 11, color: COLOR.textMuted, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" }}>
         Tonight
       </div>
-      <div style={{ fontSize: 13, color: COLOR.textMid }}>
-        {tonight.bedtime_target} → {wakeTarget} ({tonight.sleep_target_hours}h target)
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <div style={{ fontSize: 13, color: COLOR.textMid }}>
+          {tonight.bedtime_target} → {wakeTarget} ({tonight.sleep_target_hours}h target)
+        </div>
+        <SpeakerChip speaker="remi" size="sm" />
       </div>
     </div>
   );

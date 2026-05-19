@@ -19,7 +19,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { signApprovalToken, verifyApprovalToken, payloadHash, ApprovalTokenError, approvalTokenUserMessage } from "@/lib/coach/approval-token";
-import type { IntakePayload, PlanPayload, TrainingBlock, TrainingWeek } from "@/lib/data/types";
+import type { IntakePayload, PlanPayload, Speaker, TrainingBlock, TrainingWeek } from "@/lib/data/types";
 import type { MealSlot } from "@/lib/food/types";
 import { buildPlanPayload } from "@/lib/coach/plan-builder";
 import { renderProfileMarkdown } from "@/lib/coach/profile-renderer";
@@ -51,6 +51,39 @@ export const ALLOWED_COLUMNS = [
   "notes",
 ] as const;
 export type AllowedColumn = (typeof ALLOWED_COLUMNS)[number];
+
+// ── Per-specialist column clusters for query_daily_logs ──────────────────
+// Each specialist sees only the columns relevant to their domain. Peter sees
+// all columns (the full ALLOWED_COLUMNS). The orchestrator passes the right
+// cluster to executeQueryDailyLogs based on the active speaker.
+
+export const PETER_COLS = ALLOWED_COLUMNS;
+
+export const CARTER_COLS = [
+  "recovery", "strain",
+  "sleep_hours", "sleep_score",
+] as const satisfies readonly AllowedColumn[];
+
+export const NORA_COLS = [
+  "calories_eaten", "protein_g", "carbs_g", "fat_g", "fiber_g",
+  "weight_kg", "body_fat_pct", "fat_free_mass_kg",
+] as const satisfies readonly AllowedColumn[];
+
+export const REMI_COLS = [
+  "hrv", "resting_hr", "recovery",
+  "sleep_hours", "sleep_score", "deep_sleep_hours", "rem_sleep_hours",
+  "spo2", "skin_temp_c", "respiratory_rate",
+  "strain",
+] as const satisfies readonly AllowedColumn[];
+
+export function colsForSpeaker(speaker: Speaker): readonly AllowedColumn[] {
+  switch (speaker) {
+    case "peter":  return PETER_COLS;
+    case "carter": return CARTER_COLS;
+    case "nora":   return NORA_COLS;
+    case "remi":   return REMI_COLS;
+  }
+}
 
 const ALLOWED_AGGREGATES = ["raw", "avg", "sum", "min", "max"] as const;
 type AggregateMode = (typeof ALLOWED_AGGREGATES)[number];
@@ -222,9 +255,34 @@ export async function executeQueryDailyLogs(opts: {
   supabase: SupabaseClient;
   userId: string;
   input: unknown;
+  allowedColumns?: readonly AllowedColumn[];
 }): Promise<ToolResult<DailyLogsRawData | DailyLogsAggData>> {
   const t0 = Date.now();
   const i = (opts.input ?? {}) as Record<string, unknown>;
+
+  // When allowedColumns is provided, intersect requested columns with the
+  // specialist's cluster. Any requested column outside the cluster becomes
+  // a structured error the model can read. If no columns were requested,
+  // default to the specialist's full cluster (not the full ALLOWED_COLUMNS).
+  if (opts.allowedColumns) {
+    const allowed = new Set<string>(opts.allowedColumns);
+    if (Array.isArray(i.columns) && i.columns.every((c) => typeof c === "string")) {
+      const denied = (i.columns as string[]).filter((c) => !allowed.has(c));
+      if (denied.length > 0) {
+        return {
+          ok: false,
+          error: {
+            error: "columns_not_in_specialty",
+            hint: `These columns are outside this specialist's lane: ${denied.join(", ")}. Defer to Peter for cross-domain context.`,
+          },
+          meta: { ms: Date.now() - t0, range_days: 0 },
+        };
+      }
+    } else if (i.columns === undefined) {
+      // No columns specified → default to the specialist's full cluster.
+      i.columns = [...opts.allowedColumns];
+    }
+  }
 
   // --- Validation (security invariants 3, 4) ---
   if (!isYmd(i.start_date) || !isYmd(i.end_date)) {
@@ -2961,3 +3019,107 @@ export const PROPOSE_NUTRITION_ADJUSTMENT_TOOL = {
     },
   },
 };
+
+// ── Per-speaker tool partitions ──────────────────────────────────────────
+// Peter has access to every tool plus DELEGATE_TOOL. Specialists get a
+// narrower set scoped to their lane. The orchestrator picks the right list
+// based on which speaker is running. Specialist DAILY_LOGS_TOOL access is
+// further column-restricted at execute time via colsForSpeaker(speaker).
+
+import { DELEGATE_TOOL } from "./delegate-tool";
+
+// Structural type wide enough to accept every tool literal in this file
+// without forcing each tool's input_schema to share the same property set.
+// Anthropic's tool schema is `{ name; description; input_schema }` where
+// input_schema is an arbitrary JSON Schema object.
+export type ToolSchema = {
+  readonly name: string;
+  readonly description: string;
+  readonly input_schema: { readonly type: "object" } & Record<string, unknown>;
+};
+
+export const PETER_TOOLS: readonly ToolSchema[] = [
+  DAILY_LOGS_TOOL,
+  WORKOUTS_TOOL,
+  FOOD_LOG_TOOL,
+  TRAINING_PLAN_TOOL,
+  AUTOREGULATION_TOOL,
+  ADHERENCE_TOOL,
+  PROPOSE_BLOCK_TOOL,
+  COMMIT_BLOCK_TOOL,
+  PROPOSE_WEEK_PLAN_TOOL,
+  COMMIT_WEEK_PLAN_TOOL,
+  PROPOSE_NUTRITION_TARGETS_TOOL,
+  COMMIT_NUTRITION_TARGETS_TOOL,
+  APPLY_GOAL_TARGET_TOOL,
+  APPLY_BEDTIME_CORRECTION_TOOL,
+  APPLY_MACROS_CORRECTION_TOOL,
+  APPLY_PROTEIN_CORRECTION_TOOL,
+  SET_SANITY_OVERRIDE_TOOL,
+  SET_GOAL_NARRATIVE_CHAT_TOOL,
+  SET_DIRECTNESS_TOOL,
+  SET_CADENCE_TOOL,
+  SET_CHRONOTYPE_TOOL,
+  SET_UNPROMPTED_ACTIONS_TOOL,
+  SET_FREE_FORM_CONSTRAINTS_TOOL,
+  PROPOSE_PLAN_TOOL,
+  COMMIT_PLAN_TOOL,
+  SET_GLP1_STATUS_TOOL,
+  SET_GLP1_TAPER_STARTED_TOOL,
+  MARK_GLP1_DISCONTINUED_TOOL,
+  REGENERATE_MORNING_BRIEF_TOOL,
+  MARK_MOBILITY_DONE_TOOL,
+  UNMARK_MOBILITY_DONE_TOOL,
+  COMMIT_WEEKLY_PLAN_TOOL,
+  REGENERATE_WEEKLY_REVIEW_TOOL,
+  PROPOSE_NUTRITION_ADJUSTMENT_TOOL,
+  DELEGATE_TOOL, // Peter-only — always last
+];
+
+// Carter: strength/training. Reads workouts + recovery-relevant daily_logs
+// columns + training plan; commits within-week plans and marks mobility.
+// No food log, no GLP-1, no block-planning (that's Peter's strategic lane).
+export const CARTER_TOOLS: readonly ToolSchema[] = [
+  WORKOUTS_TOOL,
+  DAILY_LOGS_TOOL,
+  TRAINING_PLAN_TOOL,
+  AUTOREGULATION_TOOL,
+  ADHERENCE_TOOL,
+  PROPOSE_WEEK_PLAN_TOOL,
+  COMMIT_WEEK_PLAN_TOOL,
+  MARK_MOBILITY_DONE_TOOL,
+  UNMARK_MOBILITY_DONE_TOOL,
+];
+
+// Nora: nutrition. Reads food log + nutrition/body-comp daily_logs columns;
+// manages GLP-1 milestones and nutrition target proposals. No workouts, no
+// week-planning.
+export const NORA_TOOLS: readonly ToolSchema[] = [
+  FOOD_LOG_TOOL,
+  DAILY_LOGS_TOOL,
+  PROPOSE_NUTRITION_TARGETS_TOOL,
+  COMMIT_NUTRITION_TARGETS_TOOL,
+  APPLY_MACROS_CORRECTION_TOOL,
+  APPLY_PROTEIN_CORRECTION_TOOL,
+  SET_GLP1_STATUS_TOOL,
+  SET_GLP1_TAPER_STARTED_TOOL,
+  MARK_GLP1_DISCONTINUED_TOOL,
+];
+
+// Remi: recovery/sleep/illness. Reads recovery-relevant daily_logs columns;
+// marks mobility (recovery prescription). No food log, no workouts, no
+// planning.
+export const REMI_TOOLS: readonly ToolSchema[] = [
+  DAILY_LOGS_TOOL,
+  MARK_MOBILITY_DONE_TOOL,
+  UNMARK_MOBILITY_DONE_TOOL,
+];
+
+export function toolsForSpeaker(speaker: Speaker): readonly ToolSchema[] {
+  switch (speaker) {
+    case "peter":  return PETER_TOOLS;
+    case "carter": return CARTER_TOOLS;
+    case "nora":   return NORA_TOOLS;
+    case "remi":   return REMI_TOOLS;
+  }
+}

@@ -62,6 +62,7 @@ export async function POST(req: Request) {
           source: "llm" as const,
           db_ref: null,
           confidence: "low" as const,
+          match_score: null,
         };
       }
     }),

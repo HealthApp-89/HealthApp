@@ -42,6 +42,7 @@ export async function POST(req: Request) {
     source: "db",
     db_ref: { source: "openfoodfacts", canonical_id: product.canonical_id },
     confidence: "high",
+    match_score: 1.0,
   };
 
   const { data: inserted, error } = await supabase

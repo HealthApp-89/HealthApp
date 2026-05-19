@@ -10,6 +10,8 @@
 // Each event MUST end with a blank line (\n\n) — that's the frame boundary
 // the client's line-buffer parser splits on.
 
+import type { Speaker } from "@/lib/data/types";
+
 export type ServerStreamEvent =
   | { event: "delta"; data: { text: string } }
   | {
@@ -28,7 +30,14 @@ export type ServerStreamEvent =
   | { event: "tool_call_done"; data: { id: string; ok: boolean; ms: number } }
   /** Morning brief: emitted once after deterministic card assembly, before
    *  advice prose streams via "delta" events. */
-  | { event: "brief_card"; data: { card: import("@/lib/data/types").MorningBriefCard } };
+  | { event: "brief_card"; data: { card: import("@/lib/data/types").MorningBriefCard } }
+  /** Peter delegated to a specialist (delegate_to_specialist tool fired).
+   *  Emitted between Peter's stream ending and the specialist's stream
+   *  starting; the client uses this to swap the in-flight speaker chip and
+   *  render a HandoffLine divider. The specialist's briefing prose surfaces
+   *  inline here, but is dropped from persisted history (replays pass
+   *  briefing=null). */
+  | { event: "handoff"; data: { from: Speaker; to: Speaker; briefing: string | null } };
 
 export function formatSseEvent(e: ServerStreamEvent): string {
   return `event: ${e.event}\ndata: ${JSON.stringify(e.data)}\n\n`;

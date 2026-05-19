@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Card, SectionLabel } from "@/components/ui/Card";
+import { SpeakerChip } from "@/components/chat/SpeakerChip";
 import { COLOR } from "@/lib/ui/theme";
 import { fmtNum } from "@/lib/ui/score";
 import type { CoachTrendsPayload, TrendWindow } from "@/lib/data/types";
@@ -22,7 +23,10 @@ export function PerformanceSection({
 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      <SectionSubHeader label="Strength" />
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+        <SectionSubHeader label="Strength" />
+        <SpeakerChip speaker="carter" size="sm" />
+      </div>
       {strength.per_lift.map((p) => <LiftCard key={p.lift} per={p} />)}
 
       <SectionSubHeader label="Recovery" />

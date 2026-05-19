@@ -32,13 +32,29 @@ export type FoodItem = {
     canonical_id: string;
   } | null;
   confidence: "high" | "medium" | "low" | null;
+  /** Token-overlap score against the resolution query (0..1), or 1.0 for
+   *  user-picked items, or null for LLM estimates and pre-existing rows.
+   *  Drives the confidence chip in <DraftReview/>. */
+  match_score: number | null;
 };
 
 export type FoodLogEntryKind = "text" | "barcode" | "photo" | "voice";
 export type FoodLogEntryStatus = "draft" | "committed" | "rejected";
 
+/** Result row from /api/food/search. Not yet persisted — canonical_id is
+ *  null for fresh OFF/USDA hits until the user picks one (caching at pick
+ *  time keeps the cache from accumulating rows the user never used). */
+export type SearchCandidate = {
+  name: string;
+  per_100g: FoodMacros;
+  source: "db" | "off" | "usda";
+  canonical_id: string | null;
+  image_url: string | null;
+};
+
 export type FoodLogEntryRawInput =
   | { kind: "text"; text: string }
+  | { kind: "text"; source: "search"; items: SearchCandidate[]; qty_g: number[] }
   | { kind: "barcode"; upc: string; qty_g: number }
   | { kind: "photo"; photo_path: string }
   | { kind: "voice"; audio_path: string; transcript: string };

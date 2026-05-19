@@ -163,6 +163,7 @@ function reducer(state: State, action: Action): State {
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
             images: [],
+            speaker: "peter" as const,
             kind: "coach" as const,
             ui: null,
             tool_calls: null,
@@ -397,6 +398,7 @@ export default function ChatPanel({
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         images: [], // optimistic — we don't have signed URLs for the new uploads here
+        speaker: "user" as const,
         kind: "coach" as const,
         ui: null,
         tool_calls: null,
@@ -482,6 +484,23 @@ export default function ChatPanel({
                   // Best-effort.
                 }
               })();
+            }
+          } else if (ev.type === "handoff") {
+            // Peter delegated to a specialist. The server resets its own
+            // accumulated buffer to "" so only the specialist's reply is
+            // persisted; mirror that here: swap the in-flight stub's speaker
+            // and blank its content. ChatThread will then render a
+            // HandoffLine between Peter's prior turn (if any) and the
+            // freshly-swapped stub, and the SpeakerChip flips to the
+            // specialist's name as deltas resume. Briefing prose is
+            // displayed only live — replayed history (which doesn't carry
+            // this event) renders HandoffLine with briefing=null.
+            if (assistantStubAdded && assistantId) {
+              dispatch({
+                type: "patch_message",
+                id: assistantId,
+                patch: { speaker: ev.to, content: "" },
+              });
             }
           } else if (ev.type === "error") {
             // Two cases: 409 in-flight (no stub created), or mid-stream error.
@@ -647,6 +666,7 @@ export default function ChatPanel({
                   status: "streaming",
                   error: null,
                   model: null,
+                  speaker: "peter" as const,
                   kind: "morning_brief",
                   ui: { ...card, advice_md: "" },
                   created_at: new Date().toISOString(),
@@ -702,6 +722,7 @@ export default function ChatPanel({
           status: "done",
           error: null,
           model: null,
+          speaker: "user" as const,
           kind: "morning_intake",
           ui: null,
           created_at: new Date().toISOString(),

@@ -43,8 +43,11 @@ export type ChatMessage = {
   created_at: string;
   updated_at: string;
   images: ChatMessageImage[];
+  /** Coach persona delivering this message. Default 'peter' for assistant turns;
+   *  'user' for user-authored messages. */
+  speaker: import("@/lib/data/types").ChatSpeaker;
   /** Default 'coach'. ChatPanel filters its render by this. */
-  kind: "coach" | "morning_intake" | "morning_brief" | "weekly_review" | "proactive_nudge";
+  kind: "coach" | "morning_intake" | "morning_brief" | "weekly_review" | "proactive_nudge" | "system_routing";
   /** Chips / rendering hints for morning_intake turns; structured card UI
    *  for morning_brief / weekly_review / proactive_nudge turns. */
   ui: MorningUI | MorningBriefCard | WeeklyReviewCardUI | ProactiveNudgeCard | null;
@@ -70,4 +73,13 @@ export type ChatStreamEvent =
   | { type: "tool_call_done"; id: string; ok: boolean; ms: number }
   /** Morning brief: deterministic card payload arrives first (advice_md=''),
    *  then "delta" events fill in the advice prose progressively. */
-  | { type: "brief_card"; card: import("@/lib/data/types").MorningBriefCard };
+  | { type: "brief_card"; card: import("@/lib/data/types").MorningBriefCard }
+  /** Peter delegated to a specialist mid-turn. Triggers a speaker chip swap
+   *  on the in-flight assistant stub and a HandoffLine divider in the
+   *  thread. Briefing is the prose Peter passed; null in replayed history. */
+  | {
+      type: "handoff";
+      from: import("@/lib/data/types").Speaker;
+      to: import("@/lib/data/types").Speaker;
+      briefing: string | null;
+    };

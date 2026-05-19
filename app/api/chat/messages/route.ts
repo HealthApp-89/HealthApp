@@ -14,7 +14,7 @@ import { type RichMessage, type ContentBlock } from "@/lib/anthropic/client";
 import { runChatStream, emptyUsageTotals } from "@/lib/coach/chat-stream";
 import { CHAT_MODEL } from "@/lib/anthropic/models";
 import { findFabricatedNumbers } from "@/lib/coach/fabrication-check";
-import type { ToolCallLog, MorningUI, WeeklyReviewCardUI } from "@/lib/data/types";
+import type { ToolCallLog, MorningUI, WeeklyReviewCardUI, Speaker } from "@/lib/data/types";
 import { buildSnapshot, buildEphemeralHeader } from "@/lib/coach/snapshot";
 import { todayInUserTz } from "@/lib/time";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -114,6 +114,7 @@ export async function GET(req: Request) {
     created_at: r.created_at,
     updated_at: r.updated_at,
     images: imagesByMsg.get(r.id) ?? [],
+    speaker: (r as { speaker?: import("@/lib/data/types").ChatSpeaker }).speaker ?? ("peter" as const),
     kind: (r.kind as "coach" | "morning_intake" | "morning_brief" | "weekly_review") ?? "coach",
     ui: (r.ui as MorningUI | WeeklyReviewCardUI | null) ?? null,
     tool_calls: (r as { tool_calls?: import("@/lib/data/types").ToolCallLog[] | null }).tool_calls ?? null,
@@ -363,6 +364,7 @@ export async function POST(req: Request) {
         .eq("user_id", user.id)
         .neq("status", "streaming")
         .neq("id", rpcTyped.user_message_id)
+        .neq("kind", "system_routing")
         .order("created_at", { ascending: false })
         .limit(ROLLING_WINDOW),
       sr.from("daily_logs")
@@ -556,53 +558,162 @@ export async function POST(req: Request) {
 
       const toolCallSink: ToolCallLog[] = [];
       const usageSink = emptyUsageTotals();
+      // Speaker for the active turn. Starts as Peter (Head Coach); flips to
+      // the specialist after a 'handoff' yield from runChatStream. The final
+      // persisted speaker on the assistant stub is whichever stream produced
+      // the visible text.
+      let activeSpeaker: Speaker = "peter";
       try {
-        for await (const ev of runChatStream({
-          userId: user.id,
-          systemPrompt: finalSystemPrompt,
-          messages,
-          signal: req.signal,
-          sr,
-          toolCallSink,
-          usageSink,
-          assistantMessageId: assistantId,
-          mode: effectiveMode,
-          draftDocId,
-        })) {
-          if (req.signal.aborted) {
-            aborted = true;
-            errored = "aborted";
-            break;
+        // Drain one runChatStream pass. Returns the handoff details if Peter
+        // delegated; otherwise the stream ran to completion (or errored) and
+        // returns null.
+        // Pin to local — TS loses control-flow narrowing through async closures.
+        const userId = user.id;
+        async function drainStream(
+          streamSpeaker: Speaker,
+          streamMessages: RichMessage[],
+        ): Promise<{ to: Speaker; briefing: string | null } | null> {
+          for await (const ev of runChatStream({
+            userId,
+            systemPrompt: finalSystemPrompt,
+            messages: streamMessages,
+            signal: req.signal,
+            sr,
+            toolCallSink,
+            usageSink,
+            assistantMessageId: assistantId,
+            mode: effectiveMode,
+            draftDocId,
+            speaker: streamSpeaker,
+          })) {
+            if (req.signal.aborted) {
+              aborted = true;
+              errored = "aborted";
+              return null;
+            }
+            if (ev.type === "delta") {
+              accumulated += ev.text;
+              controller.enqueue(
+                encoder.encode(formatSseEvent({ event: "delta", data: { text: ev.text } })),
+              );
+            } else if (ev.type === "tool_call_start") {
+              controller.enqueue(
+                encoder.encode(
+                  formatSseEvent({
+                    event: "tool_call_start",
+                    data: { id: ev.id, name: ev.name, input: ev.input },
+                  }),
+                ),
+              );
+            } else if (ev.type === "tool_call_done") {
+              controller.enqueue(
+                encoder.encode(
+                  formatSseEvent({
+                    event: "tool_call_done",
+                    data: { id: ev.id, ok: ev.ok, ms: ev.ms },
+                  }),
+                ),
+              );
+            } else if (ev.type === "handoff") {
+              // Specialists never delegate (DELEGATE_TOOL is Peter-only).
+              // Defensive: if a non-Peter stream emits handoff, drop it.
+              if (streamSpeaker !== "peter") {
+                console.warn("[chat-stream] specialist attempted delegation", {
+                  from: ev.from,
+                  to: ev.to,
+                });
+                continue;
+              }
+              return { to: ev.to, briefing: ev.briefing };
+            } else if (ev.type === "error") {
+              errored = ev.message;
+              return null;
+            } else if (ev.type === "done") {
+              // handled below
+            }
           }
-          if (ev.type === "delta") {
-            accumulated += ev.text;
-            controller.enqueue(
-              encoder.encode(formatSseEvent({ event: "delta", data: { text: ev.text } })),
-            );
-          } else if (ev.type === "tool_call_start") {
-            controller.enqueue(
-              encoder.encode(
-                formatSseEvent({
-                  event: "tool_call_start",
-                  data: { id: ev.id, name: ev.name, input: ev.input },
-                }),
-              ),
-            );
-          } else if (ev.type === "tool_call_done") {
-            controller.enqueue(
-              encoder.encode(
-                formatSseEvent({
-                  event: "tool_call_done",
-                  data: { id: ev.id, ok: ev.ok, ms: ev.ms },
-                }),
-              ),
-            );
-          } else if (ev.type === "error") {
-            errored = ev.message;
-            break;
-          } else if (ev.type === "done") {
-            // handled below
+          return null;
+        }
+
+        const handoff = await drainStream(activeSpeaker, messages);
+        if (handoff && !errored && !aborted) {
+          // 1) Persist hidden audit row tracking the routing decision.
+          //    kind='system_routing' is filtered out by the visible-history
+          //    partial index (see migration 0024). speaker stays 'peter' —
+          //    this row records who DID the delegating.
+          await sr.from("chat_messages").insert({
+            user_id: userId,
+            role: "assistant",
+            speaker: "peter",
+            kind: "system_routing",
+            status: "done",
+            model: MODEL,
+            content: `[delegated to ${handoff.to}]`,
+            tool_calls: [
+              {
+                name: "delegate_to_specialist",
+                input: { specialist: handoff.to, briefing: handoff.briefing },
+                ms: 0,
+                result_rows: 0,
+                range_days: 0,
+                truncated: false,
+                error: null,
+              },
+            ],
+          });
+
+          // 2) Emit handoff SSE event so the client can render the chip swap
+          //    and reset its accumulated-text buffer before the specialist
+          //    starts streaming.
+          controller.enqueue(
+            encoder.encode(
+              formatSseEvent({
+                event: "handoff",
+                data: { from: "peter", to: handoff.to, briefing: handoff.briefing },
+              }),
+            ),
+          );
+
+          // 3) Re-stamp the assistant stub's speaker so the final visible
+          //    message is correctly attributed.
+          activeSpeaker = handoff.to;
+          await sr
+            .from("chat_messages")
+            .update({ speaker: activeSpeaker, updated_at: new Date().toISOString() })
+            .eq("id", assistantId);
+
+          // 4) Build the specialist's message array: same snapshot prefix +
+          //    window, but rewrite the LAST user turn to prepend Peter's
+          //    briefing note. The original turn already has the ephemeral
+          //    header as block 0; we keep it as block 0 so the NOW
+          //    timestamp stays first.
+          const specialistMessages: RichMessage[] = messages.slice();
+          if (handoff.briefing && specialistMessages.length > 0) {
+            const lastIdx = specialistMessages.length - 1;
+            const last = specialistMessages[lastIdx];
+            if (last.role === "user") {
+              const briefingBlock: ContentBlock = {
+                type: "text",
+                text: `[Routed by Peter — briefing: ${handoff.briefing}]`,
+              };
+              const existing: ContentBlock[] = Array.isArray(last.content)
+                ? last.content
+                : [{ type: "text", text: last.content }];
+              const withBriefing: ContentBlock[] =
+                existing.length > 0
+                  ? [existing[0], briefingBlock, ...existing.slice(1)]
+                  : [briefingBlock];
+              specialistMessages[lastIdx] = { role: "user", content: withBriefing };
+            }
           }
+
+          // 5) Reset accumulated text — only the specialist's reply is the
+          //    visible message.
+          accumulated = "";
+
+          // 6) Spawn the specialist stream. Any 'handoff' it yields is
+          //    dropped by drainStream's defensive branch above.
+          await drainStream(activeSpeaker, specialistMessages);
         }
       } catch (e) {
         errored = (e as Error).message;
@@ -611,6 +722,8 @@ export async function POST(req: Request) {
 
         // Persist the final state of the assistant stub. tool_calls is set
         // even on error/abort paths so we keep the diagnostic record.
+        // speaker reflects whichever coach produced the final visible text —
+        // 'peter' for direct answers, or the specialist after a handoff.
         const finalStatus = errored ? "error" : "done";
         await sr
           .from("chat_messages")
@@ -618,6 +731,7 @@ export async function POST(req: Request) {
             content: accumulated,
             status: finalStatus,
             error: errored,
+            speaker: activeSpeaker,
             tool_calls: toolCallSink.length > 0 ? toolCallSink : null,
             updated_at: new Date().toISOString(),
           })

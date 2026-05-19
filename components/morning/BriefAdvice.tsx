@@ -1,6 +1,7 @@
 "use client";
 
 import { COLOR } from "@/lib/ui/theme";
+import { SpeakerChip } from "@/components/chat/SpeakerChip";
 
 /** Renders the AI-generated advice prose. The output is constrained to
  *  bold/italic markdown by the prompt — we render it as plain text with
@@ -23,14 +24,24 @@ export function BriefAdvice({ md }: { md: string }) {
     >
       <div
         style={{
-          fontSize: 11,
-          color: COLOR.accentDeep,
-          fontWeight: 700,
-          letterSpacing: "0.06em",
-          textTransform: "uppercase",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 8,
         }}
       >
-        Coach
+        <div
+          style={{
+            fontSize: 11,
+            color: COLOR.accentDeep,
+            fontWeight: 700,
+            letterSpacing: "0.06em",
+            textTransform: "uppercase",
+          }}
+        >
+          Coach
+        </div>
+        <SpeakerChip speaker="peter" size="sm" />
       </div>
       {empty ? (
         <div

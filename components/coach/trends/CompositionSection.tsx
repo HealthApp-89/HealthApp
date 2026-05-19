@@ -1,6 +1,7 @@
 "use client";
 
 import { Card, SectionLabel } from "@/components/ui/Card";
+import { SpeakerChip } from "@/components/chat/SpeakerChip";
 import { COLOR } from "@/lib/ui/theme";
 import { fmtNum } from "@/lib/ui/score";
 import type { CoachTrendsPayload } from "@/lib/data/types";
@@ -17,7 +18,10 @@ export function CompositionSection({
   const inBandColor = body.weight.in_band === true ? "#16a34a" : body.weight.in_band === false ? "#dc2626" : COLOR.textMuted;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      <SectionSubHeader label="Body composition" />
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+        <SectionSubHeader label="Body composition" />
+        <SpeakerChip speaker="nora" size="sm" />
+      </div>
       <Card>
         <SectionLabel>WEIGHT</SectionLabel>
         <div style={{ fontSize: 14, fontWeight: 700, color: COLOR.textStrong, marginTop: 4 }}>
