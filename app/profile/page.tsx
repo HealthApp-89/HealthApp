@@ -10,7 +10,9 @@ import { fetchIngestTokenServer } from "@/lib/query/fetchers/ingestToken";
 import { fetchDailyLogsServer } from "@/lib/query/fetchers/dailyLogs";
 import { fetchActiveProfileServer, fetchProfileHistoryServer, fetchDraftProfileServer } from "@/lib/query/fetchers/athleteProfile";
 import { fetchLabAcknowledgmentsServer } from "@/lib/query/fetchers/labAcknowledgments";
+import { fetchTodayTargetsServer } from "@/lib/query/fetchers/todayTargets";
 import { ProfileClient } from "@/components/profile/ProfileClient";
+import { todayInUserTz } from "@/lib/time";
 
 export const revalidate = 60;
 
@@ -28,6 +30,7 @@ export default async function ProfilePage() {
   if (!user) redirect("/login");
 
   const today = new Date().toISOString().slice(0, 10);
+  const todayUserTz = todayInUserTz();
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 
   const queryClient = makeServerQueryClient();
@@ -72,6 +75,13 @@ export default async function ProfilePage() {
       queryKey: queryKeys.labAcks.one(user.id),
       queryFn: () => fetchLabAcknowledgmentsServer(supabase, user.id),
     }),
+    // NutritionTargetsSection's "Source: ..." labels need the resolved
+    // targets on first paint; prefetch keyed by user-tz today so the
+    // useTodayTargets hook hits the dehydrated cache.
+    queryClient.prefetchQuery({
+      queryKey: queryKeys.todayTargets.byDate(user.id, todayUserTz),
+      queryFn: () => fetchTodayTargetsServer(supabase, user.id),
+    }),
   ]);
 
   return (
@@ -81,6 +91,7 @@ export default async function ProfilePage() {
         userEmail={user.email ?? null}
         baselineFrom={BASELINE_FROM}
         baselineTo={today}
+        today={todayUserTz}
         appUrl={appUrl}
       />
     </HydrationBoundary>
