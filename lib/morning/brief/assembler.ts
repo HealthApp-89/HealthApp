@@ -24,7 +24,9 @@ import type {
   WeeklyReviewRow,
   ThisWeekPlanBlock,
 } from "@/lib/data/types";
-import { SESSION_PLANS, type PlannedExercise } from "@/lib/coach/sessionPlans";
+import { SESSION_PLANS, type PlannedExercise, getEffectiveSessionPlan } from "@/lib/coach/sessionPlans";
+import { annotateSession } from "@/lib/coach/session-structure";
+import type { ExerciseOverrides } from "@/lib/data/types";
 import { roundToValidWeight, minNonZeroIncrement } from "@/lib/coach/weight-rounding";
 import type { TodayTargets } from "@/lib/morning/brief/get-today-targets";
 import { composeYesterdayVsPlan, type YesterdayWorkoutForBlock } from "@/lib/morning/brief/yesterday-vs-plan";
@@ -265,6 +267,20 @@ function composeSession(
       ...(volume_gaps !== undefined ? { volume_gaps } : {}),
     };
   }
+  const overrides =
+    (inputs.thisWeekPrescription?.trainingWeek?.exercise_overrides as
+      | ExerciseOverrides
+      | null
+      | undefined) ?? null;
+  const weekday = weekdayFromDate(inputs.today);
+  const effectivePlan = getEffectiveSessionPlan(
+    inputs.sessionType,
+    weekday,
+    overrides,
+  );
+  const structure =
+    effectivePlan.length === 0 ? null : annotateSession(effectivePlan);
+
   return {
     type: inputs.sessionType,
     start_time: inputs.sessionStartTime ?? "13:00", // default 1pm per spec
@@ -272,7 +288,9 @@ function composeSession(
       inputs.sessionType,
       inputs.intensityModifier,
       inputs.primaryLift,
+      effectivePlan,
     ),
+    structure,
     ...(volume_gaps !== undefined ? { volume_gaps } : {}),
   };
 }
@@ -316,8 +334,9 @@ function composeExercises(
   sessionType: string,
   modifier: IntensityModifier,
   primaryLift: PrimaryLift | null,
+  planOverride?: PlannedExercise[],
 ): MorningBriefExercise[] {
-  const plan: PlannedExercise[] = SESSION_PLANS[sessionType] ?? [];
+  const plan: PlannedExercise[] = planOverride ?? SESSION_PLANS[sessionType] ?? [];
   return plan
     .filter((p) => !p.warmup)
     .map((p): MorningBriefExercise => {

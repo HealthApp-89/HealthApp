@@ -1,6 +1,7 @@
 import type { DailyLog } from "@/lib/data/types";
 import type { ImpactSegment } from "./impact";
 import { SESSION_PLANS, getTodaySession, type PlannedExercise } from "./sessionPlans";
+import { annotateSession } from "@/lib/coach/session-structure";
 
 const HRV_BASELINE_DEFAULT = 33;
 
@@ -77,6 +78,8 @@ export type DailyPlan = {
     adjusted?: boolean;
     isPRAttempt?: boolean;
   })[];
+  /** Deterministic intra-session coaching. Null on REST or empty plans. */
+  structure: import("@/lib/coach/session-structure").SessionStructure | null;
 };
 
 export function computeDailyReadiness(
@@ -200,13 +203,15 @@ export function buildDailyPlan(
   override?: {
     sessionType?: string | null;
     intensityMultiplier?: number | null;
+    effectiveExercises?: import("@/lib/coach/sessionPlans").PlannedExercise[];
   },
 ): DailyPlan {
   const readiness = computeDailyReadiness(log, feel, hrvBaseline);
   const mode = getIntensityMode(readiness, feel);
   const sessionType = override?.sessionType ?? getTodaySession();
   const effectiveMult = override?.intensityMultiplier ?? mode.multiplier;
-  const exercises = (SESSION_PLANS[sessionType] ?? []).map((ex) => {
+  const basePlan = override?.effectiveExercises ?? SESSION_PLANS[sessionType] ?? [];
+  const exercises = basePlan.map((ex) => {
     if (!ex.baseKg) {
       return { ...ex, target: ex.reps ?? "—", adjusted: false };
     }
@@ -227,5 +232,9 @@ export function buildDailyPlan(
       isPRAttempt,
     };
   });
-  return { readiness, mode, sessionType, exercises };
+  const structure =
+    sessionType === "REST" || basePlan.length === 0
+      ? null
+      : annotateSession(basePlan);
+  return { readiness, mode, sessionType, exercises, structure };
 }

@@ -75,7 +75,29 @@ there was nothing to remove.
 Only call these tools on explicit completion / retraction signals — not
 on hypothetical phrasing ("I'm about to do mobility", "thinking of doing
 mobility tonight"). A future-tense or conditional statement is NOT a
-completion signal.`;
+completion signal.
+
+## Session structure
+
+When the user asks about rest periods, exercise ordering, or fatigue
+management for today's session, reference the values in the morning
+brief's session block — each exercise carries fatigue_tier, rest_seconds,
+rpe_target, and possibly a cue. Cite those values verbatim; do not
+estimate.
+
+Ordering rules in effect:
+  1. Heavy compound (tier 1) → secondary compound (tier 2) → isolation
+     (tier 3) → bodyweight finisher (tier 4). Warm-up bodyweight ramps
+     (tier 0) at the start.
+  2. Bodyweight to-failure movements (push-ups, dips) never end a session
+     for a pre-fatigued primary muscle. Push-ups belong at warm-up or on
+     a different muscle group, not as the finisher after triceps work.
+  3. The BIG_FOUR lifts (Squat, Deadlift, Decline Bench, OHP) lead their
+     movement-pattern bucket.
+
+If the brief shows an ordering warning and the user asks about it, point
+them to the "Apply reorder" button — that is the action surface. Don't
+suggest running the swap tool for an intra-session reorder.`;
 
 export const SCHEMA_EXPLAINER = `# Reference: how the data you receive is shaped
 

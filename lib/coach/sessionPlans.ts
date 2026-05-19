@@ -28,9 +28,9 @@ export const SESSION_PLANS: Record<string, PlannedExercise[]> = {
   Chest: [
     { name: "Push Up", warmup: true, reps: "12×3" },
     { name: "Decline Bench Press (Barbell)", baseKg: 60, baseReps: 8, sets: 3, key: "decline_bench", increment: { step: 2.5 } },
+    { name: "Overhead Press (Barbell)", baseKg: 30, baseReps: 7, sets: 3, key: "ohp", increment: { step: 5 } },
     { name: "Incline Bench Press (Dumbbell)", baseKg: 32, baseReps: 11, sets: 3, key: "incline_db", increment: { step: 2 } },
     { name: "Chest Fly", baseKg: 22, baseReps: 15, sets: 3, key: "chest_fly", increment: { step: 5, intermediate: 2.3 } },
-    { name: "Overhead Press (Barbell)", baseKg: 30, baseReps: 7, sets: 3, key: "ohp", note: "Do BEFORE Incline DB", increment: { step: 5 } },
     { name: "Lateral Raise (Dumbbell)", baseKg: 12, baseReps: 12, sets: 4, key: "lateral_raise", note: "Jump from 8kg — next DB is 12kg", increment: { step: 2 } },
     { name: "Triceps Pushdown (Cable)", baseKg: 23, baseReps: 15, sets: 3, key: "triceps", increment: { step: 2.5 } },
   ],
@@ -75,4 +75,21 @@ export const WEEKLY_SESSIONS: Record<string, string> = {
 
 export function getTodaySession(): string {
   return WEEKLY_SESSIONS[weekdayInUserTz()] ?? "REST";
+}
+
+import type { ExerciseOverrides } from "@/lib/data/types";
+
+/** Resolve the effective exercise list for a given session type + weekday,
+ *  preferring an `exercise_overrides` entry when present. Override keys are
+ *  full weekday names ("Monday", not "Mon"). When no override exists for
+ *  `weekday`, returns the static `SESSION_PLANS[sessionType]` (or [] if the
+ *  type is unknown / "REST"). */
+export function getEffectiveSessionPlan(
+  sessionType: string,
+  weekday: string,
+  overrides: ExerciseOverrides | null | undefined,
+): PlannedExercise[] {
+  const override = overrides?.[weekday];
+  if (override && override.length > 0) return override;
+  return SESSION_PLANS[sessionType] ?? [];
 }

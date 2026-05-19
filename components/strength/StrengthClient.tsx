@@ -18,6 +18,8 @@ import { RefreshButton } from "@/components/coach/RefreshButton";
 import { TodayPlanCard } from "@/components/strength/TodayPlanCard";
 import { buildPRs, buildExerciseTrend } from "@/lib/data/workouts";
 import { buildDailyPlan } from "@/lib/coach/readiness";
+import { getEffectiveSessionPlan } from "@/lib/coach/sessionPlans";
+import type { ExerciseOverrides } from "@/lib/data/types";
 import { useFullWorkouts } from "@/lib/query/hooks/useFullWorkouts";
 import { useStrengthInsights } from "@/lib/query/hooks/useStrengthInsights";
 import { useDailyLogs } from "@/lib/query/hooks/useDailyLogs";
@@ -120,9 +122,18 @@ export function StrengthClient({
     committedWeek?.intensity_modifier
       ? Object.values(committedWeek.intensity_modifier)[0] ?? null
       : null;
+  const exerciseOverrides =
+    (committedWeek?.exercise_overrides as ExerciseOverrides | null | undefined) ?? null;
+  const fullWeekday = weekdayInUserTz();
+  const effectivePlan = committedSessionType
+    ? getEffectiveSessionPlan(committedSessionType, fullWeekday, exerciseOverrides)
+    : null;
   const dailyPlan = buildDailyPlan(todayLog, feel, hrvBaseline, {
     sessionType: committedSessionType,
     intensityMultiplier: firstIntensityValue,
+    ...(effectivePlan && effectivePlan.length > 0
+      ? { effectiveExercises: effectivePlan }
+      : {}),
   });
 
   return (
@@ -172,6 +183,8 @@ export function StrengthClient({
             committedFromPlan={committedSessionType !== null}
             rirTarget={committedRirTarget}
             researchPhase={committedPhase}
+            weekStart={currentWeekStart}
+            weekday={fullWeekday}
           />
         ) : activeView === "by_muscle" ? (
           <ByMuscleView userId={userId} todayIso={todayIso} />
