@@ -774,6 +774,13 @@ export type MorningBriefCard = {
       target: number;
       label: "below_mev" | "near_mrv";
     }>;
+    /** Deterministic intra-session coaching: per-exercise tier/rest/RPE,
+     *  ordering warnings, and a suggested reorder when violations exist.
+     *  Computed by lib/coach/session-structure/annotateSession() from the
+     *  effective plan (training_weeks.exercise_overrides → SESSION_PLANS).
+     *  Optional for backwards compatibility with briefs written before the
+     *  feature shipped. */
+    structure?: import("@/lib/coach/session-structure").SessionStructure | null;
   };
   /** Present when GLP-1 mode is active and today is a training day.
    *  Rendered above the Macros section. null/undefined otherwise. */
