@@ -2,12 +2,16 @@
 import { useState } from "react";
 import type { FoodLogEntry, MealSlot } from "@/lib/food/types";
 import { fmtNum } from "@/lib/ui/score";
+import { useFoodItemFavorites } from "@/lib/query/hooks/useFoodItemFavorites";
+import { useQueryClient } from "@tanstack/react-query";
 
 export function MealLoggerTypeTab({
+  userId,
   mealSlot,
   eatenAt,
   onCommitted,
 }: {
+  userId: string;
   mealSlot: MealSlot;
   eatenAt: string;
   onCommitted: () => void;
@@ -16,6 +20,11 @@ export function MealLoggerTypeTab({
   const [draft, setDraft] = useState<Pick<FoodLogEntry, "id" | "items" | "totals" | "is_estimated"> | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { data: itemFavorites = [] } = useFoodItemFavorites(userId);
+  const qc = useQueryClient();
+
+  const isItemFavorite = (name: string) =>
+    itemFavorites.some((f) => f.name.toLowerCase() === name.toLowerCase());
 
   const parse = async () => {
     setBusy(true);
@@ -75,9 +84,45 @@ export function MealLoggerTypeTab({
             <li key={idx} className="p-3 text-sm">
               <div className="flex items-baseline justify-between">
                 <span className="font-medium">{it.name}</span>
-                {it.source === "llm" && (
-                  <span className="text-xs text-amber-400">estimated</span>
-                )}
+                <div className="flex items-baseline gap-2">
+                  {it.source === "llm" && (
+                    <span className="text-xs text-amber-400">estimated</span>
+                  )}
+                  <button
+                    type="button"
+                    aria-label={isItemFavorite(it.name) ? "Unfavorite item" : "Favorite item"}
+                    onClick={async () => {
+                      const starred = isItemFavorite(it.name);
+                      try {
+                        if (starred) {
+                          const fav = itemFavorites.find((f) => f.name.toLowerCase() === it.name.toLowerCase());
+                          if (!fav) return;
+                          await fetch(`/api/food/item-favorites/${fav.id}`, { method: "DELETE" });
+                        } else {
+                          await fetch("/api/food/item-favorites", {
+                            method: "POST",
+                            headers: { "content-type": "application/json" },
+                            body: JSON.stringify({
+                              name: it.name,
+                              qty_g: it.qty_g,
+                              per_100g: it.per_100g,
+                              source: it.source,
+                              db_ref: it.db_ref ?? null,
+                              default_meal_slot: mealSlot,
+                            }),
+                          });
+                        }
+                        await qc.invalidateQueries({ predicate: (q) => q.queryKey[0] === "food-item-favorites" });
+                        await qc.invalidateQueries({ predicate: (q) => q.queryKey[0] === "food-library" });
+                      } catch (e) {
+                        console.error("Failed to toggle favorite:", e);
+                      }
+                    }}
+                    className="text-lg"
+                  >
+                    {isItemFavorite(it.name) ? "★" : "☆"}
+                  </button>
+                </div>
               </div>
               <div className="text-xs text-zinc-400">
                 {fmtNum(it.qty_g)} g · {fmtNum(it.kcal)} kcal · {fmtNum(it.protein_g)} P · {fmtNum(it.carbs_g)} C · {fmtNum(it.fat_g)} F
