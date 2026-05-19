@@ -1,12 +1,11 @@
 // components/dashboard/TodayClient.tsx
 "use client";
 
-import { Suspense, type ReactNode } from "react";
-import { Activity, Heart, Moon, Zap, Scale, Percent } from "lucide-react";
+import { Suspense, useMemo, type ReactNode } from "react";
 import { WeekStrip } from "@/components/layout/WeekStrip";
 import { TodayHeroHybrid, type HeroMetricCell } from "@/components/dashboard/TodayHeroHybrid";
 import { RecentLiftsCard, type RecentSession } from "@/components/dashboard/RecentLiftsCard";
-import { MetricCard } from "@/components/charts/MetricCard";
+import { MetricCard, type MetricDatum } from "@/components/charts/MetricCard";
 import { ImpactDonut } from "@/components/dashboard/ImpactDonut";
 import { InstallHint } from "@/components/layout/InstallHint";
 import { COLOR, METRIC_COLOR } from "@/lib/ui/theme";
@@ -150,6 +149,34 @@ export function TodayClient({
   const sleepDelta  = selectedLog?.sleep_hours != null && sleepAvg != null ? selectedLog.sleep_hours - sleepAvg : null;
   const strainDelta = selectedLog?.strain != null && strainAvg != null ? selectedLog.strain - strainAvg : null;
 
+  // 7-day sparkline series for the metric cards. last7Rows is newest-first; sort
+  // ascending so the chart reads left-to-right oldest-to-newest.
+  const last7Asc = useMemo(
+    () => [...last7Rows].sort((a, b) => a.date.localeCompare(b.date)),
+    [last7Rows],
+  );
+  const hrvSeries:    MetricDatum[] = last7Asc.map((r) => ({ date: r.date, value: r.hrv }));
+  const rhrSeries:    MetricDatum[] = last7Asc.map((r) => ({ date: r.date, value: r.resting_hr }));
+  const sleepSeries:  MetricDatum[] = last7Asc.map((r) => ({ date: r.date, value: r.sleep_hours }));
+  const strainSeries: MetricDatum[] = last7Asc.map((r) => ({ date: r.date, value: r.strain }));
+  const weightPoint:  MetricDatum[] =
+    selectedLog?.weight_kg != null
+      ? [{ date: selectedDate, value: selectedLog.weight_kg }]
+      : [];
+  const bodyFatPoint: MetricDatum[] =
+    selectedLog?.body_fat_pct != null
+      ? [{ date: selectedDate, value: selectedLog.body_fat_pct }]
+      : [];
+
+  // "+3 ms vs 7d avg" — sign + unit + reference. Sign drives no extra color
+  // on MetricCard (the subtitle is uniform muted); meaning lives in the prose.
+  function deltaSubtitle(delta: number | null, unit: string): string | undefined {
+    if (delta == null) return undefined;
+    const sign = delta > 0 ? "+" : delta < 0 ? "−" : "";
+    const abs  = Math.abs(delta);
+    return `${sign}${fmtNum(abs)}${unit ? ` ${unit}` : ""} vs 7d avg`;
+  }
+
   // Hybrid hero inputs — derived from already-computed state above. No refetch.
   const heroBand = readinessBandFromScore(score);
   const heroNarrative = buildNarrativeSentence({
@@ -259,16 +286,61 @@ export function TodayClient({
         />
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
-          <MetricCard color={METRIC_COLOR.hrv}        icon={<Activity size={16} />} label="HRV"        value={selectedLog?.hrv ?? null}        unit="ms"  delta={hrvDelta}    deltaUnit="ms" />
-          <MetricCard color={METRIC_COLOR.resting_hr} icon={<Heart size={16} />} label="Resting HR" value={selectedLog?.resting_hr ?? null} unit="bpm" delta={rhrDelta}    deltaUnit="bpm" inverted />
-          <MetricCard color={METRIC_COLOR.sleep_hours} icon={<Moon size={16} />} label="Sleep"     value={selectedLog?.sleep_hours ?? null} unit="h"  delta={sleepDelta}  deltaUnit="h" />
-          <MetricCard color={METRIC_COLOR.strain}     icon={<Zap size={16} />} label="Strain"    value={selectedLog?.strain ?? null}                delta={strainDelta} />
+          <MetricCard
+            title="HRV"
+            value={selectedLog?.hrv ?? null}
+            unit="ms"
+            subtitle={deltaSubtitle(hrvDelta, "ms")}
+            data={hrvSeries}
+            color={METRIC_COLOR.hrv}
+            type="area"
+          />
+          <MetricCard
+            title="Resting HR"
+            value={selectedLog?.resting_hr ?? null}
+            unit="bpm"
+            subtitle={deltaSubtitle(rhrDelta, "bpm")}
+            data={rhrSeries}
+            color={METRIC_COLOR.resting_hr}
+            type="area"
+          />
+          <MetricCard
+            title="Sleep"
+            value={selectedLog?.sleep_hours ?? null}
+            unit="h"
+            subtitle={deltaSubtitle(sleepDelta, "h")}
+            data={sleepSeries}
+            color={METRIC_COLOR.sleep_hours}
+            type="area"
+          />
+          <MetricCard
+            title="Strain"
+            value={selectedLog?.strain ?? null}
+            subtitle={deltaSubtitle(strainDelta, "")}
+            data={strainSeries}
+            color={METRIC_COLOR.strain}
+            type="area"
+          />
         </div>
 
         {(selectedLog?.weight_kg != null || selectedLog?.body_fat_pct != null) && (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
-            <MetricCard color={METRIC_COLOR.weight_kg}    icon={<Scale size={16} />} label="Weight"   value={selectedLog?.weight_kg ?? null}    unit="kg" />
-            <MetricCard color={METRIC_COLOR.body_fat_pct} icon={<Percent size={16} />} label="Body Fat" value={selectedLog?.body_fat_pct ?? null} unit="%" />
+            <MetricCard
+              title="Weight"
+              value={selectedLog?.weight_kg ?? null}
+              unit="kg"
+              data={weightPoint}
+              color={METRIC_COLOR.weight_kg}
+              type="area"
+            />
+            <MetricCard
+              title="Body Fat"
+              value={selectedLog?.body_fat_pct ?? null}
+              unit="%"
+              data={bodyFatPoint}
+              color={METRIC_COLOR.body_fat_pct}
+              type="area"
+            />
           </div>
         )}
 
