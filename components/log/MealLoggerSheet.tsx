@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { MealLoggerTypeTab } from "./MealLoggerTypeTab";
+import { MealLoggerSearchTab } from "./MealLoggerSearchTab";
 import { MealLoggerScanTab } from "./MealLoggerScanTab";
 import { MealLoggerLibraryTab } from "./MealLoggerLibraryTab";
 import { MealLoggerComingSoonTab } from "./MealLoggerComingSoonTab";
@@ -10,7 +11,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import type { MealSlot } from "@/lib/food/types";
 import { deriveMealSlot, mealSlotLabel } from "@/lib/food/meal-slot";
 
-type Tab = "type" | "scan" | "library" | "photo" | "voice";
+type Tab = "type" | "search" | "scan" | "library" | "photo" | "voice";
 
 export function MealLoggerSheet({
   open,
@@ -59,7 +60,7 @@ export function MealLoggerSheet({
     <>
     <BottomSheet open={open} onClose={onClose} title={title}>
       <div className="flex gap-1 border-b border-zinc-800 px-3 pt-2">
-        {(["type", "scan", "library", "photo", "voice"] as const).map((t) => (
+        {(["type", "search", "scan", "library", "photo", "voice"] as const).map((t) => (
           <button
             key={t}
             type="button"
@@ -75,6 +76,14 @@ export function MealLoggerSheet({
       <div className="p-4">
         {tab === "type" && (
           <MealLoggerTypeTab
+            userId={userId}
+            mealSlot={mealSlot}
+            eatenAt={eatenAt}
+            onCommitted={onCommitted}
+          />
+        )}
+        {tab === "search" && (
+          <MealLoggerSearchTab
             userId={userId}
             mealSlot={mealSlot}
             eatenAt={eatenAt}

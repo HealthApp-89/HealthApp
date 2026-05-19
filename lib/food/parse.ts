@@ -27,7 +27,9 @@ const SYSTEM = `You convert free-text food descriptions into a structured list o
 
 Rules:
 - Output STRICT JSON matching {"items": [{"name": string, "qty_g": number}]}. No commentary.
-- Convert household units to grams using common references:
+- EXPLICIT QUANTITY OVERRIDES DEFAULTS. When the user specifies a quantity in grams (e.g. "45g", "200 g") or ounces (e.g. "3 oz"), use that exact value. Convert oz → g by × 28.35. The household-unit table below applies ONLY when no explicit g/oz quantity is given.
+- PRESERVE MODIFIERS. Words that describe the food — "low fat", "grilled", "whole wheat", "fried", "raw", brand names like "Balade" — must appear in the name field. Do not drop them.
+- Convert household units to grams using common references (apply ONLY when no explicit g/oz):
     1 cup cooked rice ≈ 158g
     1 cup raw oats ≈ 80g
     1 slice bread ≈ 30g
@@ -35,10 +37,22 @@ Rules:
     1 medium apple ≈ 180g
     1 large egg ≈ 50g
     1 chicken breast (medium) ≈ 170g
-- If the user gave a quantity directly in grams or oz, use it (oz → g × 28.35).
-- If quantity is ambiguous, pick a reasonable single-serving default and proceed (don't ask, don't refuse).
+- If quantity is ambiguous AND no explicit g/oz, pick a reasonable single-serving default and proceed (don't ask, don't refuse).
 - name should be canonical-ish: "chicken breast grilled" not "I ate chicken".
-- Max 15 items per call.`;
+- Max 15 items per call.
+
+Examples:
+- Input: "2 fried eggs with 1 tablespoon olive oil, 50g of low fat Balade grilled halloumi, 45g of wholewheat toast"
+  Output: {"items": [
+    {"name": "egg fried", "qty_g": 100},
+    {"name": "olive oil", "qty_g": 14},
+    {"name": "halloumi grilled low fat Balade", "qty_g": 50},
+    {"name": "wholewheat toast", "qty_g": 45}
+  ]}
+- Input: "1 slice of bread"
+  Output: {"items": [{"name": "bread", "qty_g": 30}]}
+- Input: "200g chicken breast and 1 cup rice"
+  Output: {"items": [{"name": "chicken breast", "qty_g": 200}, {"name": "rice cooked", "qty_g": 158}]}`;
 
 /** Extract a list of items from free-text food input. */
 export async function extractItems(text: string): Promise<ExtractedItem[]> {

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { extractBearer, resolveIngestToken } from "@/lib/ingest/auth";
+import { foodLogOwnsDailyLogs } from "@/lib/food/ownership";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -116,7 +117,10 @@ export async function POST(request: Request) {
     "fiber_g",
   ]);
   const datesWithInAppFoodLog = new Set<string>();
-  if (sourceParam === "yazio" && Array.isArray(body.days) && body.days.length > 0) {
+  // Kill switch: when in-app food logging does NOT own daily_logs (testing
+  // mode), let Yazio write nutrition unconditionally — skip the precedence
+  // lookup entirely so no date is treated as "in-app owned".
+  if (sourceParam === "yazio" && foodLogOwnsDailyLogs() && Array.isArray(body.days) && body.days.length > 0) {
     const candidateDates = Array.from(
       new Set(
         body.days

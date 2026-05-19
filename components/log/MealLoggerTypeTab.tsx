@@ -1,9 +1,7 @@
 "use client";
 import { useState } from "react";
 import type { FoodLogEntry, MealSlot } from "@/lib/food/types";
-import { fmtNum } from "@/lib/ui/score";
-import { useFoodItemFavorites } from "@/lib/query/hooks/useFoodItemFavorites";
-import { useQueryClient } from "@tanstack/react-query";
+import { DraftReview } from "./DraftReview";
 
 export function MealLoggerTypeTab({
   userId,
@@ -20,11 +18,6 @@ export function MealLoggerTypeTab({
   const [draft, setDraft] = useState<Pick<FoodLogEntry, "id" | "items" | "totals" | "is_estimated"> | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { data: itemFavorites = [] } = useFoodItemFavorites(userId);
-  const qc = useQueryClient();
-
-  const isItemFavorite = (name: string) =>
-    itemFavorites.some((f) => f.name.toLowerCase() === name.toLowerCase());
 
   const parse = async () => {
     setBusy(true);
@@ -78,71 +71,16 @@ export function MealLoggerTypeTab({
 
   if (draft) {
     return (
-      <div className="space-y-3">
-        <ul className="divide-y divide-zinc-800 rounded-md border border-zinc-800">
-          {draft.items.map((it, idx) => (
-            <li key={idx} className="p-3 text-sm">
-              <div className="flex items-baseline justify-between">
-                <span className="font-medium">{it.name}</span>
-                <div className="flex items-baseline gap-2">
-                  {it.source === "llm" && (
-                    <span className="text-xs text-amber-400">estimated</span>
-                  )}
-                  <button
-                    type="button"
-                    aria-label={isItemFavorite(it.name) ? "Unfavorite item" : "Favorite item"}
-                    onClick={async () => {
-                      const starred = isItemFavorite(it.name);
-                      try {
-                        if (starred) {
-                          const fav = itemFavorites.find((f) => f.name.toLowerCase() === it.name.toLowerCase());
-                          if (!fav) return;
-                          await fetch(`/api/food/item-favorites/${fav.id}`, { method: "DELETE" });
-                        } else {
-                          await fetch("/api/food/item-favorites", {
-                            method: "POST",
-                            headers: { "content-type": "application/json" },
-                            body: JSON.stringify({
-                              name: it.name,
-                              qty_g: it.qty_g,
-                              per_100g: it.per_100g,
-                              source: it.source,
-                              db_ref: it.db_ref ?? null,
-                              default_meal_slot: mealSlot,
-                            }),
-                          });
-                        }
-                        await qc.invalidateQueries({ predicate: (q) => q.queryKey[0] === "food-item-favorites" });
-                        await qc.invalidateQueries({ predicate: (q) => q.queryKey[0] === "food-library" });
-                      } catch (e) {
-                        console.error("Failed to toggle favorite:", e);
-                      }
-                    }}
-                    className="text-lg"
-                  >
-                    {isItemFavorite(it.name) ? "★" : "☆"}
-                  </button>
-                </div>
-              </div>
-              <div className="text-xs text-zinc-400">
-                {fmtNum(it.qty_g)} g · {fmtNum(it.kcal)} kcal · {fmtNum(it.protein_g)} P · {fmtNum(it.carbs_g)} C · {fmtNum(it.fat_g)} F
-              </div>
-            </li>
-          ))}
-        </ul>
-        <div className="text-sm">
-          Total: <strong>{fmtNum(draft.totals.kcal)} kcal</strong> · {fmtNum(draft.totals.protein_g)} P · {fmtNum(draft.totals.carbs_g)} C · {fmtNum(draft.totals.fat_g)} F
-        </div>
-        {error && <p className="text-xs text-red-400">{error}</p>}
-        <div className="flex gap-2">
-          <button type="button" onClick={discard} disabled={busy} className="flex-1 rounded-md border border-zinc-700 py-2 text-sm">
-            Discard
-          </button>
-          <button type="button" onClick={commit} disabled={busy} className="flex-1 rounded-md bg-zinc-100 py-2 text-sm text-zinc-900">
-            {busy ? "..." : "Commit"}
-          </button>
-        </div>
-      </div>
+      <DraftReview
+        entry={draft}
+        userId={userId}
+        mealSlot={mealSlot}
+        onChange={setDraft}
+        busy={busy}
+        error={error}
+        onCommit={commit}
+        onDiscard={discard}
+      />
     );
   }
 
