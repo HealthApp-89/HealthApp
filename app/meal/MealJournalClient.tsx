@@ -6,6 +6,7 @@ import { useFoodEntries } from "@/lib/query/hooks/useFoodEntries";
 import { useTodayTargets } from "@/lib/query/hooks/useTodayTargets";
 import { MealLoggerSheet } from "@/components/log/MealLoggerSheet";
 import { FoodEntryEditSheet } from "@/components/log/FoodEntryEditSheet";
+import { HistoryPickerSheet } from "@/components/log/HistoryPickerSheet";
 import { MealJournalDay } from "@/components/meal/MealJournalDay";
 import { MealSlotCard } from "@/components/meal/MealSlotCard";
 import { MealSlotEmptyCard } from "@/components/meal/MealSlotEmptyCard";
@@ -26,6 +27,7 @@ export function MealJournalClient({
   const { data: targets } = useTodayTargets(userId, date);
   const [loggerOpen, setLoggerOpen] = useState<MealSlot | null>(null);
   const [editing, setEditing] = useState<FoodLogEntry | null>(null);
+  const [historyPickerOpen, setHistoryPickerOpen] = useState<MealSlot | null>(null);
 
   const shift = (deltaDays: number) => {
     const d = new Date(`${date}T00:00:00Z`);
@@ -72,7 +74,9 @@ export function MealJournalClient({
               key={slot}
               slot={slot}
               targetKcal={slotTarget}
+              date={date}
               onLog={() => setLoggerOpen(slot)}
+              onPickFromHistory={() => setHistoryPickerOpen(slot)}
             />
           );
         }
@@ -95,6 +99,16 @@ export function MealJournalClient({
           userId={userId}
           initialMealSlot={loggerOpen}
           initialEatenAt={initialEatenAtForLogger()}
+        />
+      )}
+      {historyPickerOpen && (
+        <HistoryPickerSheet
+          open={true}
+          onClose={() => setHistoryPickerOpen(null)}
+          userId={userId}
+          initialDestinationSlot={historyPickerOpen}
+          initialEatenAt={initialEatenAtForLogger()}
+          onCommitted={() => setHistoryPickerOpen(null)}
         />
       )}
       {editing && (
