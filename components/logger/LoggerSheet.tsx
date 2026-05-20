@@ -118,6 +118,7 @@ export function LoggerSheet(props: Props) {
         weekdayLong: props.weekdayLong,
         weekOverrides: props.weekOverrides ?? null,
       });
+      if (cancelled) return;
       const fresh = makeDraftFromPlan({
         userId: props.userId,
         sessionType: props.sessionType,
