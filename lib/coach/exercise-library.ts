@@ -64,6 +64,11 @@ export type LibraryExercise = {
   jointStress: readonly JointStress[];
   loadability: Loadability;
   role: ExerciseRole;
+  /** Valid plate-loading increments in kg, mirroring `PlannedExercise` in
+   *  sessionPlans.ts. `step` = base increment (e.g., 2.5 for a barbell with
+   *  1.25 plates). `intermediate` = optional pin between steps (e.g., 5 with
+   *  a 2.3 micro-pin → valid weights: 0, 2.3, 5, 7.3, 10, 12.3, ...). Absent
+   *  means no rounding needed (bodyweight / duration exercises). */
   increment?: { step: number; intermediate?: number };
   notes?: string;
 };
@@ -982,7 +987,8 @@ export const EXERCISE_LIBRARY: readonly LibraryExercise[] = [
 export function resolveExercise(idOrName: string): LibraryExercise | null {
   const needle = idOrName.trim().toLowerCase();
   for (const ex of EXERCISE_LIBRARY) {
-    if (ex.id.toLowerCase() === needle) return ex;
+    // ids are slugs (lowercase + underscores by contract); no lowercase here.
+    if (ex.id === needle) return ex;
     if (ex.name.toLowerCase() === needle) return ex;
   }
   return null;
