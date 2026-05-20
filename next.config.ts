@@ -18,20 +18,29 @@ const nextConfig: NextConfig = {
     },
   },
 
-  // 308 redirects for legacy URLs. /strength and /health were collapsed to
-  // /metrics sub-pills in Slice 7, but the coach mini-apps restructure (PRs
-  // 2-3) brought /strength and /health back as their own routes — those
-  // redirects were removed when the new routes shipped to avoid bouncing
-  // the new pages back into the old /metrics shell. /diet was never
-  // collapsed so it needs no entry here.
+  // 308 redirects for legacy URLs from previous restructures. The coach
+  // mini-apps restructure (PRs 2-6) moved /strength, /diet, /health onto
+  // their own routes and collapsed /coach/* + /meal into /metrics + /diet.
+  // Page-level redirects in app/metrics/page.tsx + app/diet/page.tsx +
+  // app/health/page.tsx handle ?sub= query-string variants; this block
+  // handles bare-URL bookmarks and PWA-cached deep-links.
   async redirects() {
     return [
-      { source: "/trends",          destination: "/metrics?sub=trends",   permanent: true },
-      { source: "/trends/:path*",   destination: "/metrics?sub=trends",   permanent: true },
-      { source: "/log",             destination: "/metrics?sub=log",      permanent: true },
-      // Reserved for Slice 8 (coach trend rename).
-      { source: "/coach/trends",        destination: "/coach/progress",       permanent: true },
-      { source: "/coach/trends/:path*", destination: "/coach/progress",       permanent: true },
+      // Slice 7 legacy (trends / log catch-alls)
+      { source: "/trends",          destination: "/metrics", permanent: true },
+      { source: "/trends/:path*",   destination: "/metrics", permanent: true },
+      { source: "/log",             destination: "/health?tab=log", permanent: true },
+      // PR 4 — /meal page file deleted in PR 6
+      { source: "/meal",            destination: "/diet?tab=log", permanent: true },
+      { source: "/meal/:path*",     destination: "/diet?tab=log", permanent: true },
+      // PR 6 — collapse the entire /coach/* legacy surface into /metrics
+      { source: "/coach",                   destination: "/metrics",                 permanent: true },
+      { source: "/coach/progress",          destination: "/metrics",                 permanent: true },
+      { source: "/coach/progress/:path*",   destination: "/metrics",                 permanent: true },
+      { source: "/coach/trends",            destination: "/metrics",                 permanent: true },
+      { source: "/coach/trends/:path*",     destination: "/metrics",                 permanent: true },
+      { source: "/coach/reviews",           destination: "/metrics/reviews",         permanent: true },
+      { source: "/coach/weeks/:week_start", destination: "/metrics/weeks/:week_start", permanent: true },
     ];
   },
 };
