@@ -154,6 +154,73 @@ export const FOOD_LOG_TOOL = {
   },
 };
 
+/** Read-only browse of the strength exercise library. Used by Carter (and
+ *  Peter for cross-domain framing) to answer "what alternatives exist for X?"
+ *  or "show me low-stress chest exercises". Does not modify the plan; swap
+ *  proposals still go through propose_week_plan / commit_week_plan. */
+export const QUERY_EXERCISE_LIBRARY_TOOL = {
+  name: "query_exercise_library",
+  description:
+    "Browse the strength exercise library. Returns up to 20 exercises matching the filters. Use when the athlete asks about alternatives, equipment substitutions, or wants to know what fits a pattern. All filters optional — calling with no filters returns the first 20 library entries. Read-only.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      pattern: {
+        type: "string",
+        enum: ["push", "pull", "squat", "hinge", "single-leg", "core", "accessory"],
+      },
+      primary_muscle: {
+        type: "string",
+        enum: ["Chest", "Lats", "Traps", "RearDelts", "Quads", "Hams", "Glutes", "Biceps", "Triceps", "Calves"],
+      },
+      equipment: {
+        type: "array",
+        items: {
+          type: "string",
+          enum: ["barbell", "dumbbell", "machine", "cable", "bodyweight", "kettlebell", "smith"],
+        },
+        description: "Match exercises that use ANY of the listed equipment.",
+      },
+      role: { type: "string", enum: ["main", "accessory"] },
+      exclude_joint: {
+        type: "string",
+        enum: ["shoulder", "lumbar", "knee", "elbow", "wrist", "hip"],
+        description: "Exclude exercises that load this joint.",
+      },
+    },
+  },
+};
+
+/** Read-only ranked-substitutes lookup. Carter uses this when the athlete
+ *  needs a swap candidate — for pain, equipment unavailability, or planned
+ *  rotation. Hard filters: same pattern + same primary muscle as target.
+ *  Soft score: role match, stability/ROM preference, equipment overlap. */
+export const GET_SUBSTITUTES_TOOL = {
+  name: "get_substitutes",
+  description:
+    "Get ranked substitute exercises for a target. Substitutes share the target's movement pattern and primary muscle. Use when the athlete needs a swap for pain (set exclude_joint), equipment (set prefer_stability), or rotation. Returns 1-8 substitutes (default 3). Read-only — does not commit a swap; actual plan changes still go through propose_week_plan / commit_week_plan.",
+  input_schema: {
+    type: "object" as const,
+    required: ["exercise_id_or_name"],
+    properties: {
+      exercise_id_or_name: {
+        type: "string",
+        description: "Library id (e.g., 'decline_bench') or display name (e.g., 'Decline Bench Press (Barbell)'). Case-insensitive.",
+      },
+      count: { type: "integer", default: 3, minimum: 1, maximum: 8 },
+      exclude_joint: {
+        type: "string",
+        enum: ["shoulder", "lumbar", "knee", "elbow", "wrist", "hip"],
+      },
+      prefer_stability: { type: "string", enum: ["high", "medium", "low"] },
+      prefer_rom_bias: {
+        type: "string",
+        enum: ["lengthened", "midrange", "shortened", "neutral"],
+      },
+    },
+  },
+};
+
 /** Unified tool for reading the athlete's training plan structure — both
  *  block-level mesocycles and the committed weekly plans within them. Picks
  *  one of two scopes:
