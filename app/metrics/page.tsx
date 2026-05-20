@@ -48,6 +48,13 @@ export default async function MetricsPage({ searchParams }: SP) {
     redirect("/diet?tab=coach");
   }
 
+  // Daily log (recovery + checkin editor) moved to the Health page's Log
+  // sub-tab. Preserve ?date= for deep-links to a specific day's log.
+  if (sub === "log") {
+    const dateQs = sp.date ? `&date=${encodeURIComponent(sp.date)}` : "";
+    redirect(`/health?tab=log${dateQs}`);
+  }
+
   return (
     <Suspense fallback={<div style={{ padding: 16 }}>Loading…</div>}>
       {sub === "strength" && (

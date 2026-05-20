@@ -1,8 +1,14 @@
-"use client";
-
-import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { redirect } from "next/navigation";
+import { HydrationBoundary, dehydrate } from "@tanstack/react-query";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { makeServerQueryClient } from "@/lib/query/queryClient";
+import { queryKeys } from "@/lib/query/keys";
+import { fetchDailyLogsServer } from "@/lib/query/fetchers/dailyLogs";
+import { fetchCheckinServer } from "@/lib/query/fetchers/checkin";
 import { SubPillNav } from "@/components/layout/SubPillNav";
+import { HealthCoachClient } from "@/components/health/HealthCoachClient";
+import { HealthLogClient } from "@/components/health/HealthLogClient";
+import { todayInUserTz } from "@/lib/time";
 import { COLOR } from "@/lib/ui/theme";
 
 const SUB_TABS = [
@@ -10,93 +16,91 @@ const SUB_TABS = [
   { key: "log", label: "Log" },
 ];
 
-export default function HealthPage() {
-  const params = useSearchParams();
-  const tab = params.get("tab") === "log" ? "log" : "coach";
+export default async function HealthPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string; date?: string }>;
+}) {
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const { tab: tabParam, date: dateParam } = await searchParams;
+  const tab = tabParam === "log" ? "log" : "coach";
+
+  const today = todayInUserTz();
+
+  const yesterday = new Date(`${today}T00:00:00Z`);
+  yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+  const yIso = yesterday.toISOString().slice(0, 10);
+
+  const sevenDaysAgo = new Date(`${today}T00:00:00Z`);
+  sevenDaysAgo.setUTCDate(sevenDaysAgo.getUTCDate() - 7);
+  const sevenIso = sevenDaysAgo.toISOString().slice(0, 10);
+
+  // HRV baseline — single profile read; passed as prop to HealthCoachClient.
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("whoop_baselines")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  type WB = { hrv_mean?: number | null } & Record<string, unknown>;
+  const baselines = (profile?.whoop_baselines as WB | null) ?? null;
+  const hrvBaseline =
+    typeof baselines?.hrv_mean === "number" ? baselines.hrv_mean : null;
+
+  const queryClient = makeServerQueryClient();
+  const logDate = dateParam ?? today;
+
+  await Promise.all([
+    // Coach-tab data: today, yesterday, 7d window, and today's checkin.
+    queryClient.prefetchQuery({
+      queryKey: queryKeys.dailyLogs.range(user.id, today, today),
+      queryFn: () => fetchDailyLogsServer(supabase, user.id, today, today),
+    }),
+    queryClient.prefetchQuery({
+      queryKey: queryKeys.dailyLogs.range(user.id, yIso, yIso),
+      queryFn: () => fetchDailyLogsServer(supabase, user.id, yIso, yIso),
+    }),
+    queryClient.prefetchQuery({
+      queryKey: queryKeys.dailyLogs.range(user.id, sevenIso, yIso),
+      queryFn: () => fetchDailyLogsServer(supabase, user.id, sevenIso, yIso),
+    }),
+    queryClient.prefetchQuery({
+      queryKey: queryKeys.checkin.one(user.id, today),
+      queryFn: () => fetchCheckinServer(supabase, user.id, today),
+    }),
+    // Log-tab data: selected date may differ from today.
+    queryClient.prefetchQuery({
+      queryKey: queryKeys.dailyLogs.range(user.id, logDate, logDate),
+      queryFn: () => fetchDailyLogsServer(supabase, user.id, logDate, logDate),
+    }),
+    queryClient.prefetchQuery({
+      queryKey: queryKeys.checkin.one(user.id, logDate),
+      queryFn: () => fetchCheckinServer(supabase, user.id, logDate),
+    }),
+  ]);
 
   return (
-    <div style={{ minHeight: "100dvh", paddingBottom: 100 }}>
-      <header style={{ padding: "16px 16px 4px 16px" }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>Health</h1>
-        <p style={{ fontSize: 12, color: COLOR.textMuted, margin: "2px 0 0 0" }}>
-          Remi
-        </p>
-      </header>
-      <SubPillNav pills={SUB_TABS} paramName="tab" defaultKey="coach" />
-      {tab === "coach" ? <CoachPlaceholder /> : <LogPlaceholder />}
-    </div>
-  );
-}
-
-function CoachPlaceholder() {
-  return (
-    <div style={{ padding: "24px 16px", textAlign: "center" }}>
-      <p style={{ fontSize: 14, color: COLOR.textMuted, margin: "0 0 16px 0" }}>
-        Remi and today&apos;s recovery land here in PR 5.
-      </p>
-      <p style={{ fontSize: 13, color: COLOR.textMid, margin: "0 0 8px 0" }}>
-        In the meantime:
-      </p>
-      <div style={{ display: "flex", flexDirection: "column", gap: 8, maxWidth: 320, margin: "0 auto" }}>
-        <Link
-          href="/metrics"
-          style={{
-            display: "block",
-            padding: "12px 16px",
-            background: COLOR.surface,
-            border: `1px solid ${COLOR.divider}`,
-            borderRadius: 10,
-            textDecoration: "none",
-            color: COLOR.textStrong,
-            fontSize: 13,
-            fontWeight: 600,
-          }}
-        >
-          View HRV, sleep, recovery →
-        </Link>
-        <Link
-          href="/coach"
-          style={{
-            display: "block",
-            padding: "12px 16px",
-            background: COLOR.surface,
-            border: `1px solid ${COLOR.divider}`,
-            borderRadius: 10,
-            textDecoration: "none",
-            color: COLOR.textStrong,
-            fontSize: 13,
-            fontWeight: 600,
-          }}
-        >
-          Chat with the coach team →
-        </Link>
+    <HydrationBoundary state={dehydrate(queryClient)}>
+      <div style={{ minHeight: "100dvh", paddingBottom: 100 }}>
+        <header style={{ padding: "16px 16px 4px 16px" }}>
+          <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>Health</h1>
+          <p
+            style={{ fontSize: 12, color: COLOR.textMuted, margin: "2px 0 0 0" }}
+          >
+            Remi
+          </p>
+        </header>
+        <SubPillNav pills={SUB_TABS} paramName="tab" defaultKey="coach" />
+        {tab === "coach" ? (
+          <HealthCoachClient userId={user.id} hrvBaseline={hrvBaseline} />
+        ) : (
+          <HealthLogClient userId={user.id} initialDate={dateParam} />
+        )}
       </div>
-    </div>
-  );
-}
-
-function LogPlaceholder() {
-  return (
-    <div style={{ padding: "24px 16px", textAlign: "center" }}>
-      <p style={{ fontSize: 14, color: COLOR.textMuted, margin: "0 0 16px 0" }}>
-        Morning intake + symptom log move here in PR 5.
-      </p>
-      <Link
-        href="/metrics?sub=log"
-        style={{
-          display: "inline-block",
-          padding: "12px 16px",
-          background: COLOR.surface,
-          border: `1px solid ${COLOR.divider}`,
-          borderRadius: 10,
-          textDecoration: "none",
-          color: COLOR.textStrong,
-          fontSize: 13,
-          fontWeight: 600,
-        }}
-      >
-        Open morning intake →
-      </Link>
-    </div>
+    </HydrationBoundary>
   );
 }

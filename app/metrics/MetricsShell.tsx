@@ -20,11 +20,11 @@ export function MetricsShell({ userId, children }: { userId: string; children: R
     <div style={{ paddingBottom: 92 }}>
       <SubPillNav
         pills={[
-          // Strength and Body redirect from the page level (PRs 3 and 4) —
-          // omitted here so they're not visible as tappable options that
-          // immediately bounce. PR 6 dismantles the rest of this shell.
+          // Strength + Body + Log all redirect from the page level (PRs 3,
+          // 4, 5) — omitted here so they're not visible as tappable options
+          // that immediately bounce. Trends is the only sub-pill that still
+          // renders here. PR 6 dismantles the rest of this shell.
           { key: "trends", label: "Trends" },
-          { key: "log", label: "Log" },
         ]}
         defaultKey="trends"
       />
