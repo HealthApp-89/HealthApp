@@ -52,7 +52,9 @@ export function SetRow({
         </button>
       </td>
       <td className="py-1 text-[10.5px] text-zinc-600">
-        {prev.data ? `${fmtNum(prev.data.kg ?? 0) || "BW"} × ${prev.data.reps ?? "—"}` : "—"}
+        {prev.data
+          ? `${prev.data.kg === null ? "BW" : fmtNum(prev.data.kg)} × ${prev.data.reps ?? "—"}`
+          : "—"}
       </td>
       <td className="py-1">
         <input
