@@ -53,10 +53,15 @@ export function HealthCoachClient({ userId, hrvBaseline }: Props) {
   const sleepScore = yRow?.sleep_score ?? null;
   const strain = yRow?.strain ?? null;
 
-  // HRV 7-day average (over the past week excluding today)
-  const hrv7d = avg(
-    weekLogs?.map((r) => r.hrv).filter((v): v is number => v != null) ?? [],
-  );
+  // HRV 7-day series (chronological, oldest first), used for the sparkline
+  // and the 7d-avg subtitle. Filter out null rows; if the user has gaps, the
+  // sparkline just shows fewer points.
+  const hrvSeries: { date: string; hrv: number }[] = (weekLogs ?? [])
+    .slice()
+    .filter((r): r is typeof r & { hrv: number } => r.hrv != null)
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .map((r) => ({ date: r.date, hrv: r.hrv }));
+  const hrv7d = avg(hrvSeries.map((p) => p.hrv));
   const hrvDelta =
     hrv != null && hrvBaseline != null ? Math.round(hrv - hrvBaseline) : null;
 
@@ -136,16 +141,17 @@ export function HealthCoachClient({ userId, hrvBaseline }: Props) {
           />
         </div>
 
-        {/* HRV trend line */}
-        <div
-          style={{ fontSize: 12, color: COLOR.textMid, padding: "2px 0" }}
-        >
-          HRV {hrv != null ? `${Math.round(hrv)} ms` : "—"}
-          {hrv7d != null ? ` · 7d avg ${Math.round(hrv7d)}` : ""}
-          {hrvBaseline != null ? ` · baseline ${Math.round(hrvBaseline)} ms` : ""}
-          {hrvDelta != null
-            ? ` · ${hrvDelta >= 0 ? "↑" : "↓"}${Math.abs(hrvDelta)} vs baseline`
-            : ""}
+        {/* HRV trend: sparkline + text subtitle */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <HrvSparkline series={hrvSeries} baseline={hrvBaseline} todayHrv={hrv} />
+          <div style={{ fontSize: 12, color: COLOR.textMid }}>
+            HRV {hrv != null ? `${Math.round(hrv)} ms` : "—"}
+            {hrv7d != null ? ` · 7d avg ${Math.round(hrv7d)}` : ""}
+            {hrvBaseline != null ? ` · baseline ${Math.round(hrvBaseline)} ms` : ""}
+            {hrvDelta != null
+              ? ` · ${hrvDelta >= 0 ? "↑" : "↓"}${Math.abs(hrvDelta)} vs baseline`
+              : ""}
+          </div>
         </div>
 
         {/* Morning feel */}
@@ -282,5 +288,102 @@ function MorningFeelRow({ checkin }: { checkin: Checkin | null }) {
     >
       {parts.join(" · ")}
     </div>
+  );
+}
+
+/**
+ * Tiny inline SVG sparkline for the 7-day HRV trend.
+ *
+ * - Polyline drawn through HRV points, oldest → newest left→right.
+ * - Dashed horizontal reference line at the user's baseline (when known).
+ * - Last point gets a filled dot.
+ * - Color reflects the latest point vs baseline: success when ≥ baseline,
+ *   warning when below by ≤10%, danger when further below.
+ *
+ * No chart library — recharts would add bundle weight + render overhead
+ * disproportionate to ~7 points in a 24px-tall strip.
+ */
+function HrvSparkline({
+  series,
+  baseline,
+  todayHrv,
+}: {
+  series: { date: string; hrv: number }[];
+  baseline: number | null;
+  todayHrv: number | null;
+}) {
+  // At least 2 points needed for a line; render nothing otherwise.
+  if (series.length < 2) {
+    return <div style={{ height: 24 }} />;
+  }
+
+  const W = 280;
+  const H = 24;
+  const PAD = 2;
+
+  // Y-axis range includes the baseline so the dashed line is visible.
+  const values = series.map((p) => p.hrv);
+  const candidates = [...values, ...(baseline != null ? [baseline] : []), ...(todayHrv != null ? [todayHrv] : [])];
+  const min = Math.min(...candidates);
+  const max = Math.max(...candidates);
+  const span = max - min || 1;
+
+  const xFor = (i: number) =>
+    PAD + (i / (series.length - 1)) * (W - 2 * PAD);
+  const yFor = (v: number) =>
+    PAD + (1 - (v - min) / span) * (H - 2 * PAD);
+
+  const points = series
+    .map((p, i) => `${xFor(i)},${yFor(p.hrv)}`)
+    .join(" ");
+
+  const last = series[series.length - 1];
+  const baselineY = baseline != null ? yFor(baseline) : null;
+
+  // Latest point tone vs baseline. Dots/lines color follow.
+  const lineColor =
+    baseline == null || todayHrv == null
+      ? COLOR.accent
+      : todayHrv >= baseline
+      ? COLOR.success
+      : todayHrv >= baseline * 0.9
+      ? COLOR.warning
+      : COLOR.danger;
+
+  return (
+    <svg
+      viewBox={`0 0 ${W} ${H}`}
+      preserveAspectRatio="none"
+      width="100%"
+      height={H}
+      aria-label="HRV 7-day trend"
+      role="img"
+    >
+      {baselineY != null && (
+        <line
+          x1={0}
+          x2={W}
+          y1={baselineY}
+          y2={baselineY}
+          stroke={COLOR.textFaint}
+          strokeWidth={1}
+          strokeDasharray="3 3"
+        />
+      )}
+      <polyline
+        fill="none"
+        stroke={lineColor}
+        strokeWidth={1.5}
+        strokeLinejoin="round"
+        strokeLinecap="round"
+        points={points}
+      />
+      <circle
+        cx={xFor(series.length - 1)}
+        cy={yFor(last.hrv)}
+        r={2.5}
+        fill={lineColor}
+      />
+    </svg>
   );
 }
