@@ -14,6 +14,7 @@ import { fetchIntakeStateServer } from "@/lib/query/fetchers/intakeState";
 import { TodayClient } from "@/components/dashboard/TodayClient";
 import { WeeklyRollups } from "@/components/dashboard/WeeklyRollups";
 import { BodyTile } from "@/components/dashboard/BodyTile";
+import { MorningIntakeHost } from "@/components/morning/MorningIntakeHost";
 import { todayInUserTz } from "@/lib/time";
 import type { Profile } from "@/lib/query/fetchers/profile";
 import type { DailyLog } from "@/lib/data/types";
@@ -119,6 +120,7 @@ export default async function Home(props: { searchParams: Promise<{ date?: strin
         weeklyRollups={weeklyRollups}
         bodyTile={bodyTile}
       />
+      <MorningIntakeHost userId={user.id} />
     </HydrationBoundary>
   );
 }
