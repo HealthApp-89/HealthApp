@@ -2,7 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
-import { Dumbbell, Ruler, ClipboardList, Utensils, X } from "lucide-react";
+import { ClipboardList, Dumbbell, Ruler, Utensils, X } from "lucide-react";
 import { COLOR, RADIUS } from "@/lib/ui/theme";
 
 type Props = {
@@ -19,11 +19,11 @@ type Props = {
 
 /**
  * Bottom sheet launched by the sticky "+ Log entry" button on /metrics.
- * Three entry points: daily metrics (all daily_logs fields), lift workout,
- * and body measurement. The `?log=…` marker on the lift + body links is a
- * hint that sub-pill pages can react to and auto-open the relevant form;
- * wiring that auto-open is a follow-up. Daily metrics lands on the Log
- * sub-pill which is already a fully-functional editor.
+ * Four entry points: meal (sibling sheet), daily metrics (all daily_logs
+ * fields), lift workout, body measurement. The `?log=…` marker on the lift
+ * + body links is a hint that sub-pill pages can react to and auto-open the
+ * relevant form. Daily metrics lands on the Log sub-pill which is a
+ * fully-functional editor.
  */
 export function LogEntrySheet({ open, onClose, onMealClick }: Props) {
   if (!open) return null;

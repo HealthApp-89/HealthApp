@@ -9,7 +9,7 @@ import { COLOR } from "@/lib/ui/theme";
 
 /**
  * Client shell wrapping /metrics children. Owns:
- *   - Sub-pill nav (Strength / Body / Trends), routes via ?sub=…
+ *   - Sub-pill nav (Strength / Body / Trends / Log), routes via ?sub=…
  *   - Sticky "+ Log entry" button that opens LogEntrySheet
  *   - Bottom padding so content isn't covered by the sticky button
  */
@@ -23,6 +23,7 @@ export function MetricsShell({ userId, children }: { userId: string; children: R
           { key: "strength", label: "Strength" },
           { key: "body", label: "Body" },
           { key: "trends", label: "Trends" },
+          { key: "log", label: "Log" },
         ]}
         defaultKey="strength"
       />
