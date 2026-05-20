@@ -6,6 +6,7 @@ import { useCheckin } from "@/lib/query/hooks/useCheckin";
 import { todayInUserTz } from "@/lib/time";
 import { COLOR } from "@/lib/ui/theme";
 import type { Checkin } from "@/lib/query/fetchers/checkin";
+import { openMorningIntake } from "@/components/morning/MorningIntakeHost";
 
 type Props = {
   userId: string;
@@ -217,11 +218,27 @@ function MorningFeelRow({ checkin }: { checkin: Checkin | null }) {
     checkin.intake_state === "awaiting_whoop"
   ) {
     return (
-      <div
-        style={{ fontSize: 12, color: COLOR.textMuted, fontStyle: "italic" }}
+      <button
+        type="button"
+        onClick={openMorningIntake}
+        style={{
+          display: "block",
+          width: "100%",
+          textAlign: "left",
+          background: COLOR.surfaceAlt,
+          border: `1px solid ${COLOR.divider}`,
+          borderRadius: 6,
+          padding: "10px 12px",
+          fontSize: 12,
+          color: COLOR.textMid,
+          cursor: "pointer",
+        }}
       >
-        Morning intake not yet completed today.
-      </div>
+        <span style={{ fontWeight: 600, color: COLOR.textStrong }}>
+          Start morning intake →
+        </span>
+        <span style={{ marginLeft: 6 }}>not yet completed today</span>
+      </button>
     );
   }
 
