@@ -1,11 +1,13 @@
 "use client";
 
+import { useState } from "react";
 import { COLOR } from "@/lib/ui/theme";
 import { BIG_FOUR_SET } from "@/lib/coach/big-four";
 import { JargonPill } from "@/components/coach/JargonPill";
-import type { MorningBriefCard, MorningBriefExercise } from "@/lib/data/types";
+import type { MorningBriefCard, MorningBriefExercise, ExerciseOverrides } from "@/lib/data/types";
 import type { SessionStructure } from "@/lib/coach/session-structure";
 import { SessionStructureBanner } from "@/components/strength/SessionStructureBanner";
+import { LoggerSheet } from "@/components/logger/LoggerSheet";
 
 function fmtRestRange(r: { min: number; max: number }): string {
   if (r.min >= 60 && r.max >= 90 && r.min % 60 === 0 && r.max % 60 === 0) {
@@ -29,6 +31,8 @@ export function BriefSessionList({
   thisWeekPlan,
   weekStart,
   weekday,
+  userId,
+  weekOverrides,
 }: {
   session: MorningBriefCard["session"];
   isSwapped: boolean;
@@ -36,8 +40,12 @@ export function BriefSessionList({
   thisWeekPlan?: MorningBriefCard["this_week_plan"];
   weekStart: string;
   weekday: string;
+  userId: string;
+  weekOverrides: ExerciseOverrides | null;
 }) {
   const { exercises, volume_gaps } = session;
+  const [loggerOpen, setLoggerOpen] = useState(false);
+  const loggerSessionType = liveType ?? session.type;
 
   if (exercises.length === 0) {
     return (
@@ -192,6 +200,32 @@ export function BriefSessionList({
           </a>{" "}
           for the new session.
         </p>
+      )}
+      <button
+        onClick={() => setLoggerOpen(true)}
+        style={{
+          marginTop: 8,
+          background: "transparent",
+          border: "none",
+          color: "#60a5fa",
+          fontSize: 12,
+          textDecoration: "underline",
+          textUnderlineOffset: 2,
+          cursor: "pointer",
+          padding: 0,
+        }}
+      >
+        Log this session
+      </button>
+      {loggerOpen && (
+        <LoggerSheet
+          userId={userId}
+          sessionType={loggerSessionType}
+          date={new Date().toISOString().slice(0, 10)}
+          weekdayLong={weekday}
+          weekOverrides={weekOverrides}
+          onClose={() => setLoggerOpen(false)}
+        />
       )}
     </div>
   );

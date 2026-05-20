@@ -120,6 +120,8 @@ export function MorningBriefCard({
               thisWeekPlan={card.this_week_plan}
               weekStart={weekStart}
               weekday={fullWeekday}
+              userId={userId}
+              weekOverrides={(liveWeek?.exercise_overrides as import("@/lib/data/types").ExerciseOverrides | null | undefined) ?? null}
             />
             {card.variant === "kickoff" && card.this_week_plan && (
               <BriefThisWeekPlan plan={card.this_week_plan} />
