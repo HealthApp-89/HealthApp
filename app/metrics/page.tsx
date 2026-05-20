@@ -38,6 +38,12 @@ export default async function MetricsPage({ searchParams }: SP) {
     redirect("/strength?tab=coach");
   }
 
+  // Body composition lives on the Diet page now (Nora narrates weight + BF%
+  // as nutrition outcomes). No drilldown to preserve.
+  if (sub === "body") {
+    redirect("/diet?tab=coach");
+  }
+
   return (
     <Suspense fallback={<div style={{ padding: 16 }}>Loading…</div>}>
       {sub === "strength" && (
