@@ -11,6 +11,7 @@ import { fetchLatestWeightServer } from "@/lib/query/fetchers/latestWeight";
 import { fetchLast7Server } from "@/lib/query/fetchers/last7";
 import { fetchWorkoutsRangeServer } from "@/lib/query/fetchers/workouts";
 import { fetchIntakeStateServer } from "@/lib/query/fetchers/intakeState";
+import { fetchTodayBriefServer } from "@/lib/query/fetchers/todayBrief";
 import { TodayClient } from "@/components/dashboard/TodayClient";
 import { WeeklyRollups } from "@/components/dashboard/WeeklyRollups";
 import { BodyTile } from "@/components/dashboard/BodyTile";
@@ -77,6 +78,10 @@ export default async function Home(props: { searchParams: Promise<{ date?: strin
           queryClient.prefetchQuery({
             queryKey: queryKeys.intakeState.one(user.id, selectedDate),
             queryFn: () => fetchIntakeStateServer(supabase, user.id, selectedDate),
+          }),
+          queryClient.prefetchQuery({
+            queryKey: queryKeys.morningBrief.today(user.id, selectedDate),
+            queryFn: () => fetchTodayBriefServer(supabase, user.id, selectedDate),
           }),
         ]
       : []),

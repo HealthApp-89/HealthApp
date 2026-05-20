@@ -4,6 +4,7 @@
 import { Suspense, useMemo, type ReactNode } from "react";
 import { WeekStrip } from "@/components/layout/WeekStrip";
 import { TodayHeroHybrid, type HeroMetricCell } from "@/components/dashboard/TodayHeroHybrid";
+import { TodayMorningBriefSlot } from "@/components/dashboard/TodayMorningBriefSlot";
 import { RecentLiftsCard, type RecentSession } from "@/components/dashboard/RecentLiftsCard";
 import { MetricCard, type MetricDatum } from "@/components/charts/MetricCard";
 import { ImpactDonut } from "@/components/dashboard/ImpactDonut";
@@ -277,12 +278,12 @@ export function TodayClient({
       <WeekStrip selected={selectedDate} today={today} />
 
       <div style={{ display: "flex", flexDirection: "column", gap: "10px", padding: "0 8px" }}>
+        {isToday && <TodayMorningBriefSlot userId={userId} />}
         <TodayHeroHybrid
           narrative={heroNarrative}
           score={score ?? null}
           band={heroBand}
           metrics={heroMetrics}
-          briefHref={isToday ? "/coach" : undefined}
         />
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
