@@ -95,6 +95,8 @@ When adding a new metric, decide the owner first, then ensure no other sync path
 
 App Router pages under [app/](app/): `/` (dashboard), `/meal`, `/metrics`, `/strength`, `/trends`, `/coach`, `/profile`, `/login`, `/privacy`. Server-side data fetching with `Promise.all` and `Suspense` for streaming heavier queries (see [app/page.tsx](app/page.tsx) for the pattern — fast queries gate first paint, weekly rollups stream).
 
+`/metrics` has four sub-pills (`?sub=strength|body|trends|log`). **The `log` sub-pill is permanent and must not be removed**: it is the only manual entry/view surface for `daily_logs` fields (HRV, sleep, steps, body comp) + the structured morning-feel `checkins` row. Load-bearing files: [app/metrics/_sub/LogSubPill.tsx](app/metrics/_sub/LogSubPill.tsx), [components/log/LogClient.tsx](components/log/LogClient.tsx), [components/log/LogForm.tsx](components/log/LogForm.tsx), [lib/log/actions.ts](lib/log/actions.ts). It was deleted twice as collateral when the food piece moved to `/meal` (2026-05-19); the third loss is the one we are preventing here.
+
 API routes under [app/api/](app/api/): `whoop/{auth,callback,sync,backfill}`, `withings/{auth,callback,sync,backfill,disconnect}`, `ingest/{health,strong,token}`, `insights`, `recommendations`, `auth/signout`. Sync routes call `revalidatePath()` so 60s ISR on `/` invalidates immediately.
 
 ### Client cache (TanStack Query) — read this before adding interactive queries
