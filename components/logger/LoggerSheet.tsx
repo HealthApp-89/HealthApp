@@ -233,7 +233,7 @@ export function LoggerSheet(props: Props) {
     }
 
     await clearDraft(draft.user_id, draft.session_type);
-    qc.invalidateQueries({ queryKey: ["workouts"] });
+    qc.invalidateQueries({ queryKey: queryKeys.workouts.all(draft.user_id) });
     router.refresh();
     props.onClose();
   }
@@ -241,7 +241,18 @@ export function LoggerSheet(props: Props) {
   async function saveAsDefault() {
     if (!draft) return;
     setSavingTemplate(true);
-    const exercises = draft.exercises.map((e) => ({ ...e.prescribed, name: e.name, sets: e.sets.length }));
+    const exercises = draft.exercises.map((e) => {
+      const lastCommittedWorking = [...e.sets]
+        .reverse()
+        .find((s) => s.committed_at && !s.warmup && s.kg !== null);
+      const baseKg = lastCommittedWorking?.kg ?? e.prescribed.baseKg;
+      return {
+        ...e.prescribed,
+        name: e.name,
+        sets: e.sets.length,
+        baseKg,
+      };
+    });
     const res = await fetch(`/api/logger/templates/${encodeURIComponent(draft.session_type)}`, {
       method: "PUT",
       headers: { "content-type": "application/json" },
