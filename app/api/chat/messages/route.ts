@@ -25,6 +25,7 @@ import type { ChatMode, DailyLog } from "@/lib/data/types";
 import { formatSseEvent } from "@/lib/chat/sse";
 import { computeActiveTriggers } from "@/lib/coach/voice/triggers";
 import { getTodayTargets } from "@/lib/morning/brief/get-today-targets";
+import { buildPeterContextBlock } from "@/lib/coach/peter-context";
 
 export const dynamic = "force-dynamic";
 
@@ -655,6 +656,14 @@ export async function POST(req: Request) {
       // Speaker for the active turn — always the pre-stream router's choice
       // now that mid-stream handoff is removed.
       const activeSpeaker: Speaker = initialSpeaker;
+      // Build the specialist-activity context block for Peter turns. Non-blocking
+      // on failure — a DB error here should never prevent the chat from streaming.
+      const peterContext = initialSpeaker === "peter"
+        ? await buildPeterContextBlock(sr, user.id).catch((err) => {
+            console.warn("[chat] buildPeterContextBlock failed", err);
+            return null;
+          })
+        : null;
       try {
         // Drain one runChatStream pass, piping all SSE events to the client.
         // Pin to local — TS loses control-flow narrowing through async closures.
@@ -675,6 +684,7 @@ export async function POST(req: Request) {
             mode: effectiveMode,
             draftDocId,
             speaker: streamSpeaker,
+            peterContext,
           })) {
             if (req.signal.aborted) {
               aborted = true;
