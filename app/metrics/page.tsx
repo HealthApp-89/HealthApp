@@ -27,15 +27,25 @@ const VALID_SUBS = ["strength", "body", "trends", "log"] as const;
 
 export default async function MetricsPage({ searchParams }: SP) {
   const sp = (await searchParams) ?? {};
-  const sub = sp.sub ?? "strength";
+  // Default to "trends" — the only sub-pill that still renders here after
+  // PRs 3 and 4 moved strength + body to their own pages. Default to a
+  // sub that redirects away (strength, body) would make the Metrics tab
+  // immediately bounce, leaving no chance to tap a different sub-pill.
+  const sub = sp.sub ?? "trends";
   if (!VALID_SUBS.includes(sub as (typeof VALID_SUBS)[number])) {
-    redirect("/metrics?sub=strength");
+    redirect("/metrics?sub=trends");
   }
 
   // Redirect bare /metrics?sub=strength to the new home. Preserve drilldown
   // URLs (?ex=...) at the old surface until PR 6 dismantles it.
   if (sub === "strength" && !sp.ex) {
     redirect("/strength?tab=coach");
+  }
+
+  // Body composition lives on the Diet page now (Nora narrates weight + BF%
+  // as nutrition outcomes). No drilldown to preserve.
+  if (sub === "body") {
+    redirect("/diet?tab=coach");
   }
 
   return (
