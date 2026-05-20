@@ -93,7 +93,7 @@ begin
     'logger',
     now()
   )
-  on conflict (user_id, external_id) do update
+  on conflict (user_id, external_id) where external_id is not null do update
     set type = excluded.type,
         duration_min = excluded.duration_min
   returning id into new_workout_id;
