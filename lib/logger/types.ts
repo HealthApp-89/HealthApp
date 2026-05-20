@@ -1,0 +1,62 @@
+import type { PlannedExercise } from "@/lib/coach/sessionPlans";
+
+/**
+ * In-flight set during a logger session, before commit.
+ * `committed_at` is set when the user taps ✓; null while pending.
+ */
+export type ExerciseSetDraft = {
+  set_index: number;
+  kg: number | null;
+  reps: number | null;
+  warmup: boolean;
+  failure: boolean;
+  committed_at: string | null; // ISO timestamp on ✓
+};
+
+/**
+ * In-flight exercise in a logger session. `sets` may include uncommitted rows.
+ */
+export type ExerciseDraft = {
+  name: string;
+  position: number;
+  /** Snapshot of the prescribed plan for this exercise (for "did it diverge?" check). */
+  prescribed: PlannedExercise;
+  sets: ExerciseSetDraft[];
+};
+
+export type LoggerDraft = {
+  user_id: string;
+  session_type: string;
+  date: string;           // YYYY-MM-DD
+  started_at: string;     // ISO timestamp on first ✓ commit
+  updated_at: string;     // ISO timestamp on every change
+  exercises: ExerciseDraft[];
+  /** Resolved-plan exercise list at sheet open, for divergence detection. */
+  resolved_plan: PlannedExercise[];
+  /** Client-generated UUID; reused across commit retries for idempotency. */
+  external_id: string;
+};
+
+/**
+ * Wire shape sent to /api/logger/session.
+ */
+export type CommitSessionPayload = {
+  user_id: string;
+  external_id: string;
+  date: string;
+  type: string;
+  duration_min: number | null;
+  exercises: {
+    name: string;
+    position: number;
+    sets: {
+      set_index: number;
+      kg: number | null;
+      reps: number | null;
+      duration_seconds: number | null;
+      warmup: boolean;
+      failure: boolean;
+      rest_seconds_actual: number | null;
+    }[];
+  }[];
+};

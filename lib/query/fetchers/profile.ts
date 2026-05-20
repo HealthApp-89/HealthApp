@@ -2,7 +2,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
-const COLS = "name, age, height_cm, goal, system_prompt, whoop_baselines, disable_yazio_ingest";
+const COLS = "name, age, height_cm, goal, system_prompt, whoop_baselines, disable_yazio_ingest, disable_strong_ingest";
 
 export type Profile = {
   name: string | null;
@@ -12,6 +12,7 @@ export type Profile = {
   system_prompt: string | null;
   whoop_baselines: Record<string, unknown> | null;
   disable_yazio_ingest: boolean;
+  disable_strong_ingest: boolean;
 };
 
 export async function fetchProfileServer(

@@ -63,6 +63,10 @@ export type Profile = {
    *  per-date precedence check that always skips nutrition columns when a
    *  committed food_log_entries row exists for that date. */
   disable_yazio_ingest: boolean;
+  /** Per-user opt-out for the legacy Strong CSV ingest path. When true,
+   *  /api/ingest/strong returns 403. Default false. Mirror of
+   *  disable_yazio_ingest. */
+  disable_strong_ingest: boolean;
 };
 
 export type WhoopTokensRow = {
@@ -258,6 +262,19 @@ export type ProposedBy = "coach" | "user";
  *  PlannedExercise[] for that day. Permutation-only: same name set as the
  *  static plan, different order. NULL means no overrides for any day. */
 export type ExerciseOverrides = Record<string, import("@/lib/coach/sessionPlans").PlannedExercise[]>;
+
+/**
+ * Per-user persistent "save deviations as my default" layer for the in-app
+ * workout logger. Sits between training_weeks.exercise_overrides
+ * (per-week, permutation-only) and SESSION_PLANS (code default) in the
+ * resolution chain. See migration 0026 and lib/logger/resolve-plan.ts.
+ */
+export type UserSessionTemplate = {
+  user_id: string;
+  session_type: string;
+  exercises: import("@/lib/coach/sessionPlans").PlannedExercise[];
+  updated_at: string;
+};
 
 export type TrainingWeek = {
   id: string;

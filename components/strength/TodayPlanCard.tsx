@@ -1,8 +1,13 @@
+"use client";
+
+import { useState } from "react";
 import { Dumbbell } from "lucide-react";
 import type { DailyPlan } from "@/lib/coach/readiness";
+import type { ExerciseOverrides } from "@/lib/data/types";
 import { Card } from "@/components/ui/Card";
 import { RADIUS, modeColorLight } from "@/lib/ui/theme";
 import { SessionStructureBanner } from "@/components/strength/SessionStructureBanner";
+import { LoggerSheet } from "@/components/logger/LoggerSheet";
 
 function fmtRestRange(r: { min: number; max: number }): string {
   if (r.min >= 60 && r.max >= 90 && r.min % 60 === 0 && r.max % 60 === 0) {
@@ -18,12 +23,16 @@ type Props = {
   researchPhase?: "accumulate" | "deload" | null;
   weekStart: string;
   weekday: string;
+  userId: string;
+  weekOverrides: ExerciseOverrides | null;
 };
 
 /** Light-theme session plan card for the strength page.
  *  Shows session type, mode intensity, description, and full exercise list. */
-export function TodayPlanCard({ plan, committedFromPlan, rirTarget, researchPhase, weekStart, weekday }: Props) {
+export function TodayPlanCard({ plan, committedFromPlan, rirTarget, researchPhase, weekStart, weekday, userId, weekOverrides }: Props) {
   const accent = modeColorLight(plan.mode.color);
+  const [loggerOpen, setLoggerOpen] = useState(false);
+  const canStartSession = plan.sessionType !== "REST" && plan.sessionType !== "Mobility";
 
   // Pill text: prefer committed plan info if present.
   const pillText = committedFromPlan
@@ -35,6 +44,7 @@ export function TodayPlanCard({ plan, committedFromPlan, rirTarget, researchPhas
   const pillIsLink = !committedFromPlan;
 
   return (
+    <>
     <Card
       background={accent}
       shadow={`0 12px 24px -8px ${accent}55`}
@@ -159,6 +169,37 @@ export function TodayPlanCard({ plan, committedFromPlan, rirTarget, researchPhas
           })}
         </div>
       )}
+
+      {canStartSession && (
+        <button
+          onClick={() => setLoggerOpen(true)}
+          style={{
+            width: "100%",
+            marginTop: 12,
+            padding: "10px 14px",
+            borderRadius: 10,
+            border: "none",
+            background: "#fff",
+            color: "#0a0a0a",
+            fontSize: 13,
+            fontWeight: 600,
+            cursor: "pointer",
+          }}
+        >
+          Start session
+        </button>
+      )}
     </Card>
+    {loggerOpen && (
+      <LoggerSheet
+        userId={userId}
+        sessionType={plan.sessionType}
+        date={new Date().toISOString().slice(0, 10)}
+        weekdayLong={weekday}
+        weekOverrides={weekOverrides}
+        onClose={() => setLoggerOpen(false)}
+      />
+    )}
+    </>
   );
 }
