@@ -35,6 +35,11 @@ import { todayInUserTz } from "@/lib/time";
  *   - plateau checkers emit `plateau:<lift>` → prefix "plateau" → Carter
  *   - off-pace checker emits literal "off_pace_weight" → Nora
  *   - HRV checker emits literal "hrv_below_baseline" → Remi
+ *
+ *  Registration rule for flat-key checkers (no colon): the map key must be
+ *  the FULL trigger string, not a semantic prefix. `split(":")[0]` returns
+ *  the whole key when there's no colon, so a prefix-only entry like
+ *  `off_pace` would never match the literal `off_pace_weight`.
  */
 const TRIGGER_OWNER: Record<string, Speaker> = {
   plateau: "carter",
