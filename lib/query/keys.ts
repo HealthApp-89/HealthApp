@@ -46,6 +46,15 @@ export const queryKeys = {
     range: (userId: string, from: string, to: string) =>
       ["workouts", userId, "range", from, to] as const,
   },
+  userSessionTemplates: {
+    all: (userId: string) => ["user-session-templates", userId] as const,
+    one: (userId: string, sessionType: string) =>
+      ["user-session-templates", userId, sessionType] as const,
+  },
+  previousSet: {
+    one: (userId: string, exerciseName: string, setIndex: number) =>
+      ["previous-set", userId, exerciseName.trim().toLowerCase(), setIndex] as const,
+  },
   tokens: {
     whoop: (userId: string) => ["tokens", userId, "whoop"] as const,
     withings: (userId: string) => ["tokens", userId, "withings"] as const,
