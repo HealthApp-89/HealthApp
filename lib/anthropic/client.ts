@@ -64,8 +64,9 @@ export function parseClaudeJson<T>(raw: string): T {
 }
 
 // ── Streaming + multimodal ────────────────────────────────────────────────────
-// Used by the chat surface. Separate from `callClaude` so the JSON-shaped
-// insights paths stay simple.
+// Used by the morning-brief advice helper (`lib/morning/brief/advice-prompt.ts`)
+// for single-call Anthropic streaming. Separate from `callClaude` so the
+// JSON-shaped insights paths stay simple. Does not produce handoff events.
 //
 // CacheControl / ContentBlock / RichMessage live in `lib/chat/types.ts` —
 // the canonical home shared with `lib/coach/chat-stream.ts`. Re-exported
@@ -73,13 +74,11 @@ export function parseClaudeJson<T>(raw: string): T {
 
 export type { CacheControl, ContentBlock, RichMessage } from "@/lib/chat/types";
 import type { CacheControl, RichMessage } from "@/lib/chat/types";
-import type { Speaker } from "@/lib/data/types";
 
 export type StreamEvent =
   | { type: "delta"; text: string }
   | { type: "done" }
-  | { type: "error"; message: string }
-  | { type: "handoff"; from: Speaker; to: Speaker; briefing: string | null };
+  | { type: "error"; message: string };
 
 export type StreamOptions = {
   model?: string;

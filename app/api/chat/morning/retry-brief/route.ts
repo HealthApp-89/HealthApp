@@ -60,6 +60,8 @@ export async function POST() {
     .insert({
       user_id: user.id,
       role: "assistant",
+      speaker: "peter",
+      thread: "peter",
       kind: "morning_brief",
       content: contentSummary,
       ui: card,

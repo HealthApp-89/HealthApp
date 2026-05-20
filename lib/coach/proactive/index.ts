@@ -18,12 +18,45 @@ import type {
   CoachTrendsPayload,
   ProactiveEvent,
   ProactiveNudgeCard,
+  Speaker,
 } from "@/lib/data/types";
 import { checkPlateau } from "./check-plateau";
 import { checkOffPace } from "./check-off-pace";
 import { checkHrv } from "./check-hrv";
 import { renderCard } from "./render-card";
 import { todayInUserTz } from "@/lib/time";
+
+/** Maps a proactive trigger to the coach whose thread the card lives in.
+ *  Plateau (strength stagnation) → Carter; off-pace (weight trend drift)
+ *  → Nora; HRV (recovery flag) → Remi. New trigger kinds added later must
+ *  appear here with an explicit owner — there is no fallback by design.
+ *
+ *  Key shapes (as of 2026-05-20):
+ *   - plateau checkers emit `plateau:<lift>` → prefix "plateau" → Carter
+ *   - off-pace checker emits literal "off_pace_weight" → Nora
+ *   - HRV checker emits literal "hrv_below_baseline" → Remi
+ *
+ *  Registration rule for flat-key checkers (no colon): the map key must be
+ *  the FULL trigger string, not a semantic prefix. `split(":")[0]` returns
+ *  the whole key when there's no colon, so a prefix-only entry like
+ *  `off_pace` would never match the literal `off_pace_weight`.
+ */
+const TRIGGER_OWNER: Record<string, Speaker> = {
+  plateau: "carter",
+  off_pace_weight: "nora",
+  hrv_below_baseline: "remi",
+};
+
+function ownerForTrigger(triggerKey: string): Speaker {
+  // Plateau keys are colon-namespaced (e.g. "plateau:bench"); all others are
+  // flat snake_case. Check colon-prefix first, then fall back to full-key.
+  const colonPrefix = triggerKey.split(":")[0];
+  const owner = TRIGGER_OWNER[colonPrefix] ?? TRIGGER_OWNER[triggerKey];
+  if (!owner) {
+    throw new Error(`proactive: no owning coach for trigger '${triggerKey}'`);
+  }
+  return owner;
+}
 
 const DEDUP_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -84,11 +117,14 @@ export async function runProactiveChecks(args: {
       continue;
     }
 
+    const owner = ownerForTrigger(event.trigger_key);
     const { data: inserted, error: insertErr } = await supabase
       .from("chat_messages")
       .insert({
         user_id: userId,
         role: "assistant",
+        speaker: owner,
+        thread: owner,
         kind: "proactive_nudge",
         content: card.headline,
         ui: card,

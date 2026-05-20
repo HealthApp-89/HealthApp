@@ -3023,11 +3023,10 @@ export const PROPOSE_NUTRITION_ADJUSTMENT_TOOL = {
 // ── Per-speaker tool partitions ──────────────────────────────────────────
 // Peter has every tool. Carter/Nora/Remi each get a narrower lane-specific
 // subset (column-restricted at execute time via colsForSpeaker(speaker)).
-// HANDOFF_TOOL is appended to every speaker's list so any coach can punt a
-// turn to another. Mode gating in chat-stream.ts hides HANDOFF_TOOL during
-// intake mode (single-voice wizard).
-
-import { HANDOFF_TOOL } from "./handoff-tool";
+// The legacy handoff_to tool (sub-project #2 "multi-coach team") was removed
+// when the coach mini-apps restructure (sub-project #3) moved each specialist
+// onto its own page — users now pick a coach by tab, so mid-stream handoff is
+// dead UX. See docs/superpowers/specs/2026-05-20-coach-mini-apps-restructure-design.md.
 
 // Structural type wide enough to accept every tool literal in this file
 // without forcing each tool's input_schema to share the same property set.
@@ -3074,7 +3073,6 @@ export const PETER_TOOLS: readonly ToolSchema[] = [
   COMMIT_WEEKLY_PLAN_TOOL,
   REGENERATE_WEEKLY_REVIEW_TOOL,
   PROPOSE_NUTRITION_ADJUSTMENT_TOOL,
-  HANDOFF_TOOL, // generalized handoff — any speaker, any target except self
 ];
 
 // Carter: strength/training. Reads workouts + recovery-relevant daily_logs
@@ -3090,7 +3088,6 @@ export const CARTER_TOOLS: readonly ToolSchema[] = [
   COMMIT_WEEK_PLAN_TOOL,
   MARK_MOBILITY_DONE_TOOL,
   UNMARK_MOBILITY_DONE_TOOL,
-  HANDOFF_TOOL,
 ];
 
 // Nora: nutrition. Reads food log + nutrition/body-comp daily_logs columns;
@@ -3106,7 +3103,6 @@ export const NORA_TOOLS: readonly ToolSchema[] = [
   SET_GLP1_STATUS_TOOL,
   SET_GLP1_TAPER_STARTED_TOOL,
   MARK_GLP1_DISCONTINUED_TOOL,
-  HANDOFF_TOOL,
 ];
 
 // Remi: recovery/sleep/illness. Reads recovery-relevant daily_logs columns;
@@ -3116,7 +3112,6 @@ export const REMI_TOOLS: readonly ToolSchema[] = [
   DAILY_LOGS_TOOL,
   MARK_MOBILITY_DONE_TOOL,
   UNMARK_MOBILITY_DONE_TOOL,
-  HANDOFF_TOOL,
 ];
 
 export function toolsForSpeaker(speaker: Speaker): readonly ToolSchema[] {

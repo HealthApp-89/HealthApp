@@ -60,9 +60,8 @@ import {
   type ToolResult,
   type ToolSchema,
 } from "@/lib/coach/tools";
-import { HANDOFF_TOOL_NAME } from "@/lib/coach/handoff-tool";
 import { speakerSystemPrompt } from "@/lib/coach/system-prompts";
-import { SPEAKERS, type ChatMode, type Speaker, type ToolCallLog } from "@/lib/data/types";
+import { type ChatMode, type Speaker, type ToolCallLog } from "@/lib/data/types";
 import type { ContentBlock, RichMessage } from "@/lib/chat/types";
 
 import { CHAT_MODEL as MODEL } from "@/lib/anthropic/models";
@@ -88,14 +87,7 @@ export type ChatStreamYield =
   | { type: "tool_call_start"; id: string; name: string; input: Record<string, unknown> }
   | { type: "tool_call_done"; id: string; ok: boolean; ms: number }
   | { type: "done" }
-  | { type: "error"; message: string }
-  /** Any coach called HANDOFF_TOOL. The orchestrator has aborted the current
-   *  stream and yields this so the route can persist a hidden system_routing
-   *  audit row, swap the assistant stub's speaker, and spawn a fresh stream
-   *  with the receiving coach. Mode gating (intake) and depth gating
-   *  (handoffDepth >= 1) ensure HANDOFF_TOOL is not in the model's tool set
-   *  when handoffs are not allowed. */
-  | { type: "handoff"; from: Speaker; to: Speaker; briefing: string | null };
+  | { type: "error"; message: string };
 
 /** Cumulative Anthropic API token usage across all rounds of a chat turn.
  *  Read by the route's finally block for structured logging — lets us track
@@ -141,12 +133,17 @@ export type RunChatStreamOpts = {
    *  Default mode hides propose_ and commit_ tools to prevent accidental plan writes. */
   mode?: ChatMode;
   /** Which coach voice is producing this turn. Default 'peter' (Head Coach).
-   *  All four coaches share handoff_to; specialists ('carter' | 'nora' |
-   *  'remi') get a restricted lane-specific tool subset via toolsForSpeaker()
-   *  and a column-filtered query_daily_logs via colsForSpeaker(). The route
-   *  spawns a fresh stream with speaker=event.to after seeing a 'handoff'
-   *  yield. */
+   *  Specialists ('carter' | 'nora' | 'remi') get a restricted lane-specific
+   *  tool subset via toolsForSpeaker() and a column-filtered query_daily_logs
+   *  via colsForSpeaker(). */
   speaker?: Speaker;
+  /** Conversation thread this turn belongs to. One of 'peter' | 'carter' |
+   *  'nora' | 'remi'. Defaults to opts.speaker (assistant turns are always
+   *  in their own speaker's thread). Reserved for PR 6 when the chat surface
+   *  no longer routes — the page passes the thread directly and chat-stream
+   *  fixes the speaker to it. In PR 1 this is informational; the route still
+   *  derives speaker from the router and passes thread = speaker. */
+  thread?: "peter" | "carter" | "nora" | "remi";
   /** Athlete-profile draft document id; required for intake-mode tools
    *  (apply_*, set_*, propose_plan, commit_plan). Caller sets this when
    *  serving an /onboarding chat turn. Null/undefined in default/planning modes. */
@@ -154,11 +151,6 @@ export type RunChatStreamOpts = {
   /** Mutable totals; the loop adds each round's finalMsg.usage. Read by the
    *  route after the stream ends to log prompt-cache hit rate. */
   usageSink?: ChatUsageTotals;
-  /** Cap on mid-stream handoffs per user turn. Incremented by the route each
-   *  time it re-enters runChatStream after a 'handoff' yield. When >= 1, the
-   *  generalized handoff tool is omitted from this stream's tool list so the
-   *  current coach has to answer in text or end the turn. Default 0. */
-  handoffDepth?: number;
 };
 
 export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<ChatStreamYield> {
@@ -169,6 +161,12 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
   }
 
   const speaker: Speaker = opts.speaker ?? "peter";
+
+  // Resolve thread for symmetry with PR 6. In PR 1 it equals speaker; the
+  // route does not yet pass thread explicitly, but the helper supports it
+  // so subsequent PRs can wire it without touching this file's signature.
+  const _thread: Speaker = opts.thread ?? speaker;
+  void _thread;
 
   const client = new Anthropic({ apiKey });
   // The SDK accepts a system prompt as a string OR typed blocks. We use the
@@ -203,20 +201,10 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
   //     GLP-1 and mobility tools are also hidden.
   //   intake — onboarding wizard chat: 2 read tools (daily_logs + workouts)
   //     + 13 Phase 2 intake tools + set_glp1_status. Weekly-planning tools
-  //     and the active-doc GLP-1 tools are hidden. handoff_to is ALWAYS hidden
-  //     in intake (single-voice wizard; specialists dormant during onboarding).
+  //     and the active-doc GLP-1 tools are hidden.
   //   default — read tools + set_glp1_taper_started + mark_glp1_discontinued
-  //     plus regenerate_morning_brief. handoff_to visible at depth=0.
-  const handoffDepth = opts.handoffDepth ?? 0;
+  //     plus regenerate_morning_brief.
   const modeAllowsTool = (name: string): boolean => {
-    // Generalized handoff is depth-capped and mode-gated. Hidden in intake
-    // (single-voice wizard) and on any non-first round (handoffDepth >= 1)
-    // so the receiving coach has to answer or end the turn — no ping-pong.
-    if (name === HANDOFF_TOOL_NAME) {
-      if (opts.mode === "intake") return false;
-      if (handoffDepth >= 1) return false;
-      return true;
-    }
     if (opts.mode === "plan_week" || opts.mode === "setup_block") {
       return (
         !name.startsWith("apply_") &&
@@ -331,43 +319,6 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
     // No tool calls → we're done.
     if (toolUseBlocks.length === 0 || forceText) {
       yield { type: "done" };
-      return;
-    }
-
-    // ── Handoff intercept ──────────────────────────────────────────────────
-    // Any coach can call HANDOFF_TOOL to punt the rest of the turn to a
-    // different speaker. We INTERCEPT rather than execute: no tool_result is
-    // fed back, the current stream is abandoned, and the caller (the route)
-    // spawns a fresh stream after seeing the 'handoff' yield.
-    //
-    // Pre-stream routing in lib/coach/router.ts handles the common case; this
-    // intercept is the mid-answer escape hatch when the current coach realizes
-    // mid-draft that the question belongs in a different lane.
-    //
-    // The orchestrator caps chain depth at 1 via opts.handoffDepth — by the
-    // time HANDOFF_TOOL is filtered out (see modeAllowsTool), the model can no
-    // longer call it.
-    const handoffBlock = toolUseBlocks.find((b) => b.name === HANDOFF_TOOL_NAME);
-    if (handoffBlock) {
-      const input = (handoffBlock.input ?? {}) as { target?: string; briefing?: string };
-      const target = typeof input.target === "string" ? input.target : "";
-      if (!SPEAKERS.includes(target as Speaker)) {
-        yield { type: "error", message: `invalid_handoff_target: ${target}` };
-        return;
-      }
-      if (target === speaker) {
-        yield { type: "error", message: `invalid_handoff_target: self` };
-        return;
-      }
-      yield {
-        type: "handoff",
-        from: speaker,
-        to: target as Speaker,
-        briefing:
-          typeof input.briefing === "string" && input.briefing.length > 0
-            ? input.briefing
-            : null,
-      };
       return;
     }
 
