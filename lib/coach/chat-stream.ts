@@ -146,6 +146,11 @@ export type RunChatStreamOpts = {
    *  fixes the speaker to it. In PR 1 this is informational; the route still
    *  derives speaker from the router and passes thread = speaker. */
   thread?: "peter" | "carter" | "nora" | "remi";
+  /** Pre-built "Recent specialist activity" block from buildPeterContextBlock().
+   *  Appended after the base system prompt for Peter turns only. Null/undefined
+   *  skips the block (specialist turns, empty specialist threads, or callers
+   *  that haven't opted in yet). */
+  peterContext?: string | null;
   /** Athlete-profile draft document id; required for intake-mode tools
    *  (apply_*, set_*, propose_plan, commit_plan). Caller sets this when
    *  serving an /onboarding chat turn. Null/undefined in default/planning modes. */
@@ -181,7 +186,10 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
   //   * For specialist turns (carter/nora/remi), discard the Peter-targeted
   //     prompt and use the specialist's base prompt instead. The schema
   //     explainer and snapshot prefix (positions 0 of `messages`) still apply.
-  const systemText = speaker === "peter" ? opts.systemPrompt : speakerSystemPrompt(speaker);
+  const baseSystemText = speaker === "peter" ? opts.systemPrompt : speakerSystemPrompt(speaker);
+  const systemText = opts.peterContext
+    ? `${baseSystemText}\n\n${opts.peterContext}`
+    : baseSystemText;
   const system = [
     { type: "text" as const, text: systemText, cache_control: { type: "ephemeral" as const, ttl: "1h" as const } },
   ];

@@ -1,74 +1,68 @@
-import { Suspense } from "react";
 import { redirect } from "next/navigation";
-import { StrengthSubPill } from "./_sub/StrengthSubPill";
-import { BodySubPill } from "./_sub/BodySubPill";
-import { TrendsSubPill } from "./_sub/TrendsSubPill";
-import { LogSubPill } from "./_sub/LogSubPill";
+import { HydrationBoundary, dehydrate } from "@tanstack/react-query";
+import { createSupabaseServerClient, createSupabaseServiceRoleClient } from "@/lib/supabase/server";
+import { makeServerQueryClient } from "@/lib/query/queryClient";
+import { queryKeys } from "@/lib/query/keys";
+import { fetchCoachTrendsServer } from "@/lib/query/fetchers/coachTrends";
+import { MetricsClient } from "@/components/metrics/MetricsClient";
+import { COLOR } from "@/lib/ui/theme";
+import { todayInUserTz } from "@/lib/time";
 
-// Sub-pill content varies per request and embeds dynamic Supabase data
-// — disable static optimisation so each sub-pill always renders fresh.
 export const dynamic = "force-dynamic";
 
 type SP = {
   searchParams?: Promise<{
     sub?: string;
-    // Forwarded to sub-pills:
+    section?: string;
     ex?: string;
-    view?: string;
     date?: string;
-    period?: string;
-    start?: string;
-    end?: string;
-    log?: string;
   }>;
 };
 
-const VALID_SUBS = ["strength", "body", "trends", "log"] as const;
-
 export default async function MetricsPage({ searchParams }: SP) {
   const sp = (await searchParams) ?? {};
-  // Default to "trends" — the only sub-pill that still renders here after
-  // PRs 3 and 4 moved strength + body to their own pages. Default to a
-  // sub that redirects away (strength, body) would make the Metrics tab
-  // immediately bounce, leaving no chance to tap a different sub-pill.
-  const sub = sp.sub ?? "trends";
-  if (!VALID_SUBS.includes(sub as (typeof VALID_SUBS)[number])) {
-    redirect("/metrics?sub=trends");
-  }
 
-  // Redirect bare /metrics?sub=strength to the new home. Preserve drilldown
-  // URLs (?ex=...) at the old surface until PR 6 dismantles it.
-  if (sub === "strength" && !sp.ex) {
+  // Defense-in-depth redirects for stale URLs (bookmarks pointing at the
+  // old sub-pill surface from PRs 3-5). Each strength/body/log subview
+  // has its own home now.
+  if (sp.sub === "strength" && !sp.ex) {
     redirect("/strength?tab=coach");
   }
-
-  // Body composition lives on the Diet page now (Nora narrates weight + BF%
-  // as nutrition outcomes). No drilldown to preserve.
-  if (sub === "body") {
+  if (sp.sub === "body") {
     redirect("/diet?tab=coach");
   }
-
-  // Daily log (recovery + checkin editor) moved to the Health page's Log
-  // sub-tab. Preserve ?date= for deep-links to a specific day's log.
-  if (sub === "log") {
+  if (sp.sub === "log") {
     const dateQs = sp.date ? `&date=${encodeURIComponent(sp.date)}` : "";
     redirect(`/health?tab=log${dateQs}`);
   }
 
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  // Trends fetch uses service-role per the existing /coach/progress pattern.
+  const serviceSupabase = createSupabaseServiceRoleClient();
+  const today = todayInUserTz();
+  const queryClient = makeServerQueryClient();
+
+  await queryClient.prefetchQuery({
+    queryKey: queryKeys.coachTrends.one(user.id),
+    queryFn: () => fetchCoachTrendsServer(serviceSupabase, user.id, today),
+  });
+
   return (
-    <Suspense fallback={<div style={{ padding: 16 }}>Loading…</div>}>
-      {sub === "strength" && (
-        <StrengthSubPill params={{ ex: sp.ex, view: sp.view, date: sp.date }} />
-      )}
-      {sub === "body" && (
-        <BodySubPill params={{ view: sp.view, log: sp.log }} />
-      )}
-      {sub === "trends" && (
-        <TrendsSubPill
-          params={{ period: sp.period, start: sp.start, end: sp.end }}
-        />
-      )}
-      {sub === "log" && <LogSubPill date={sp.date} />}
-    </Suspense>
+    <HydrationBoundary state={dehydrate(queryClient)}>
+      <div style={{ minHeight: "100dvh", paddingBottom: 100 }}>
+        <header style={{ padding: "16px 16px 4px 16px" }}>
+          <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>Metrics</h1>
+          <p style={{ fontSize: 12, color: COLOR.textMuted, margin: "2px 0 0 0" }}>
+            Peter · Head Coach
+          </p>
+        </header>
+        <MetricsClient userId={user.id} />
+      </div>
+    </HydrationBoundary>
   );
 }
