@@ -12,7 +12,6 @@ import {
 import type { ChatMessage, ChatMessageImage, ChatRole, ChatStatus } from "@/lib/chat/types";
 import { type RichMessage, type ContentBlock } from "@/lib/anthropic/client";
 import { runChatStream, emptyUsageTotals } from "@/lib/coach/chat-stream";
-import { classifyTurn, type RouterDecision } from "@/lib/coach/router";
 import { SPEAKERS } from "@/lib/data/types";
 import { CHAT_MODEL } from "@/lib/anthropic/models";
 import { findFabricatedNumbers } from "@/lib/coach/fabrication-check";
@@ -171,8 +170,9 @@ type SendBody = {
   image_ids?: string[];
   mode?: string;
   doc?: string;
-  /** Composer picker forces a specific coach. One of peter|carter|nora|remi.
-   *  Bypasses keyword + Haiku in classifyTurn(). Ignored in intake mode. */
+  /** Picks a specific coach for the response. One of peter|carter|nora|remi.
+   *  Set by ChatPanel's `thread` prop (per-coach pages) — the user is on
+   *  Carter's page, so Carter answers. Ignored in intake mode (single-voice). */
   speaker_override?: string;
 };
 
@@ -326,31 +326,16 @@ export async function POST(req: Request) {
     ? (overrideRaw as Speaker)
     : null;
 
-  let routerDecision: RouterDecision;
-  if (effectiveMode === "intake") {
-    routerDecision = { speaker: "peter", method: "manual", confidence: 1 };
-  } else {
-    // classifyTurn() catches all internal errors and returns a fallback
-    // decision, but we wrap it defensively: any unexpected throw here would
-    // skip the assistant-stub error-state update below, leaving the row
-    // stranded in status='streaming' and blocking the
-    // chat_messages_one_streaming_per_user unique constraint.
-    try {
-      routerDecision = await classifyTurn({
-        text: content,
-        mode: effectiveMode,
-        override: overrideSpeaker,
-        abortSignal: req.signal,
-      });
-    } catch (routeErr) {
-      console.error("[chat] classifyTurn threw — falling back to peter", routeErr);
-      routerDecision = { speaker: "peter", method: "fallback", confidence: 0.5 };
-    }
-  }
-  const initialSpeaker: Speaker = routerDecision.speaker;
+  // Every active chat surface (Strength/Diet/Health/Metrics) passes
+  // speaker_override = the page's thread (set by ChatPanel's `thread` prop).
+  // Intake mode is single-voice (Peter). With the legacy /coach surface
+  // gone, classifyTurn is no longer needed — the speaker is just the
+  // override or 'peter' as fallback. system_routing audit rows are no
+  // longer written; the historical ones in the DB stay as is.
+  const initialSpeaker: Speaker = overrideSpeaker ?? "peter";
 
   // Stamp both rows (user + assistant) with the resolved thread lane so
-  // per-thread history filters in PRs 2-6 work from day one.
+  // per-thread history filters work from day one.
   await sr
     .from("chat_messages")
     .update({ thread: initialSpeaker, updated_at: new Date().toISOString() })
@@ -366,27 +351,6 @@ export async function POST(req: Request) {
       updated_at: new Date().toISOString(),
     })
     .eq("id", rpcTyped.assistant_message_id);
-
-  // Write the routing audit row. Filtered out of visible history by the
-  // chat_messages_visible_idx partial index (kind='system_routing').
-  await sr.from("chat_messages").insert({
-    user_id: user.id,
-    role: "assistant",
-    speaker: initialSpeaker,
-    thread: initialSpeaker,
-    kind: "system_routing",
-    status: "done",
-    model: MODEL,
-    content: `[routed via ${routerDecision.method} → ${initialSpeaker}]`,
-    ui: {
-      user_message_id: rpcTyped.user_message_id,
-      decided_speaker: initialSpeaker,
-      method: routerDecision.method,
-      confidence: routerDecision.confidence,
-      matched_terms: routerDecision.matched_terms ?? null,
-      override_source: overrideSpeaker ? "picker" : routerDecision.method === "mention" ? "mention" : null,
-    },
-  });
 
   // Three independent reads in parallel: user's editable system prompt,
   // the cached 14-day snapshot prefix, and the rolling chat-history window.
@@ -599,13 +563,12 @@ export async function POST(req: Request) {
         if (url) newTurnBlocks.push({ type: "image", source: { type: "url", url } });
       }
     }
-    // When the user prefixed @Name to address a specific coach, the router
-    // returned the stripped text for the model. The DB row keeps the original
-    // (audit honesty); the model sees only the substantive ask.
-    const llmText =
-      routerDecision.method === "mention" && typeof routerDecision.stripped_text === "string"
-        ? routerDecision.stripped_text
-        : content;
+    // The @-mention preprocessing that classifyTurn used to do (strip `@Carter`
+    // from the user's text before showing it to the model) is gone with the
+    // router. The DB row and the model now see identical content. If users
+    // start prefixing @-mentions and want them stripped, that's a small
+    // helper for a future PR.
+    const llmText = content;
     if (llmText) newTurnBlocks.push({ type: "text", text: llmText });
     // Ephemeral header is the FIRST text block of the new user turn (preceding
     // the actual content). Stays out of the cached snapshot prefix and adjacent

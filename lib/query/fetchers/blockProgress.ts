@@ -4,9 +4,7 @@
 // truth for: current week of block, RIR target, e1RM rolling means,
 // body-comp-aware relative metrics, adherence aggregates, on-pace boolean.
 //
-// Used by:
-//   - /api/coach/block-progress (GET) for the browser fetcher path
-//   - directly by app/coach/page.tsx Server Component for prefetch
+// Used by /api/coach/block-progress (GET) for the browser fetcher path.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { epley, topSet, type SetRow } from "@/lib/coach/derived";
