@@ -580,6 +580,19 @@ export const EXERCISE_LIBRARY: readonly LibraryExercise[] = [
     loadability: "coarse",
     role: "accessory",
   },
+  {
+    id: "cable_shrug",
+    name: "Shrug (Cable)",
+    pattern: "pull",
+    primaryMuscle: "Traps",
+    equipment: ["cable"],
+    stability: "low",
+    romBias: "shortened",
+    skill: "low",
+    jointStress: ["shoulder"],
+    loadability: "fine",
+    role: "accessory",
+  },
 
   // ── PULL — Biceps ──────────────────────────────────────────────────────────
   {
@@ -901,6 +914,50 @@ export const EXERCISE_LIBRARY: readonly LibraryExercise[] = [
     role: "accessory",
     increment: { step: 5, intermediate: 2 },
     notes: "Athlete's current Legs day hip work.",
+  },
+
+  // ── ACCESSORY — Glutes (additional coverage) ───────────────────────────────
+  {
+    id: "cable_kickback",
+    name: "Glute Kickback (Cable)",
+    pattern: "accessory",
+    primaryMuscle: "Glutes",
+    secondaryMuscles: ["Hams"],
+    equipment: ["cable"],
+    stability: "low",
+    romBias: "shortened",
+    skill: "low",
+    jointStress: ["hip"],
+    loadability: "fine",
+    role: "accessory",
+  },
+  {
+    id: "standing_hip_abduction",
+    name: "Standing Hip Abduction (Cable)",
+    pattern: "accessory",
+    primaryMuscle: "Glutes",
+    equipment: ["cable"],
+    stability: "low",
+    romBias: "shortened",
+    skill: "low",
+    jointStress: ["hip"],
+    loadability: "fine",
+    role: "accessory",
+  },
+
+  // ── ACCESSORY — Calves (additional coverage) ───────────────────────────────
+  {
+    id: "leg_press_calf_raise",
+    name: "Calf Press on Leg Press (Machine)",
+    pattern: "accessory",
+    primaryMuscle: "Calves",
+    equipment: ["machine"],
+    stability: "low",
+    romBias: "lengthened",
+    skill: "low",
+    jointStress: [],
+    loadability: "moderate",
+    role: "accessory",
   },
 ];
 
