@@ -43,6 +43,10 @@ export const queryKeys = {
   intakeState: {
     one: (userId: string, day: string) => ["intake-state", userId, day] as const,
   },
+  symptomLog: {
+    list: (userId: string, limit: number) =>
+      ["symptom-log", userId, limit] as const,
+  },
   workouts: {
     all: (userId: string) => ["workouts", userId] as const,
     range: (userId: string, from: string, to: string) =>
