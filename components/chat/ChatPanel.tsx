@@ -164,6 +164,7 @@ function reducer(state: State, action: Action): State {
             updated_at: new Date().toISOString(),
             images: [],
             speaker: "peter" as const,
+            thread: "peter" as const,
             kind: "coach" as const,
             ui: null,
             tool_calls: null,
@@ -228,6 +229,7 @@ export default function ChatPanel({
   initialModeContext,
   draftDocId,
   embedded = false,
+  thread,
 }: {
   onClose?: () => void;
   /** Initial conversation lane; tab clicks at runtime override this. */
@@ -243,6 +245,14 @@ export default function ChatPanel({
    *  Used by /coach page to host chat as a primary surface. The FAB-summoned
    *  overlay path leaves this unset and gets the legacy overlay UI. */
   embedded?: boolean;
+  /** When set, scopes this chat surface to a single coach's thread.
+   *  - History GET appends `&thread=${thread}` so only this coach's turns +
+   *    user replies on this thread render.
+   *  - Composer's speaker_override defaults to `thread`, pinning Carter /
+   *    Nora / Remi / Peter as the responder regardless of the router.
+   *  - Picker UI is hidden — the page IS the coach's page.
+   *  When omitted (legacy /coach surface), behavior is unchanged. */
+  thread?: Speaker;
 }) {
   const [mode, setMode] = useState<ChatMode>(initialMode);
   const [composerHint, setComposerHint] = useState<string | undefined>(undefined);
@@ -293,11 +303,12 @@ export default function ChatPanel({
   const startFiredRef = useRef(false);
   const intakeStartFiredRef = useRef(false);
 
-  // Load history on mount or when currentMode changes.
+  // Load history on mount or when currentMode / thread changes.
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const res = await fetch(`/api/chat/messages?limit=50&kind=${currentMode}`);
+      const threadQs = thread ? `&thread=${thread}` : "";
+      const res = await fetch(`/api/chat/messages?limit=50&kind=${currentMode}${threadQs}`);
       const json = (await res.json()) as { ok: boolean; messages?: ChatMessage[] };
       if (cancelled) return;
       if (json.ok && json.messages) {
@@ -341,7 +352,7 @@ export default function ChatPanel({
     // `today` and `mode` intentionally not in deps — today is a render-time
     // string and mode changes shouldn't re-fetch history.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentMode]);
+  }, [currentMode, thread]);
 
   // iOS PWA keyboard handling: subscribe to visualViewport.resize and
   // translate the panel up by the keyboard's intrusion.
@@ -402,6 +413,7 @@ export default function ChatPanel({
         updated_at: new Date().toISOString(),
         images: [], // optimistic — we don't have signed URLs for the new uploads here
         speaker: "user" as const,
+        thread: thread ?? "peter",
         kind: "coach" as const,
         ui: null,
         tool_calls: null,
@@ -415,6 +427,7 @@ export default function ChatPanel({
       let assistantId: string | null = null;
       let currentId: string | null = null;
       try {
+        const resolvedOverride = lockedSpeaker ?? thread;
         for await (const ev of postSse(
           "/api/chat/messages",
           {
@@ -422,7 +435,7 @@ export default function ChatPanel({
             image_ids: imageIds,
             mode,
             doc: draftDocId,
-            speaker_override: lockedSpeaker ?? undefined,
+            ...(resolvedOverride && { speaker_override: resolvedOverride }),
           },
           { signal: ac.signal },
         )) {
@@ -553,7 +566,7 @@ export default function ChatPanel({
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [mode, draftDocId, lockedSpeaker],
+    [mode, draftDocId, lockedSpeaker, thread],
   );
 
   const onRetry = useCallback(
@@ -679,6 +692,7 @@ export default function ChatPanel({
                   error: null,
                   model: null,
                   speaker: "peter" as const,
+                  thread: thread ?? "peter",
                   kind: "morning_brief",
                   ui: { ...card, advice_md: "" },
                   created_at: new Date().toISOString(),
@@ -735,6 +749,7 @@ export default function ChatPanel({
           error: null,
           model: null,
           speaker: "user" as const,
+          thread: thread ?? "peter",
           kind: "morning_intake",
           ui: null,
           created_at: new Date().toISOString(),
@@ -1167,7 +1182,7 @@ export default function ChatPanel({
                 onStop={handleStop}
                 lockedSpeaker={lockedSpeaker}
                 onLockChange={setLockedSpeaker}
-                showPicker={currentMode === "coach" && mode !== "intake" && mode !== "setup_block"}
+                showPicker={!thread && currentMode === "coach" && mode !== "intake" && mode !== "setup_block"}
               />
             </>
           );
@@ -1341,7 +1356,7 @@ export default function ChatPanel({
             onStop={() => abortRef.current?.abort()}
             lockedSpeaker={lockedSpeaker}
             onLockChange={setLockedSpeaker}
-            showPicker={currentMode === "coach" && mode !== "intake" && mode !== "setup_block"}
+            showPicker={!thread && currentMode === "coach" && mode !== "intake" && mode !== "setup_block"}
           />
         );
       })()}

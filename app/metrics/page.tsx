@@ -32,6 +32,12 @@ export default async function MetricsPage({ searchParams }: SP) {
     redirect("/metrics?sub=strength");
   }
 
+  // Redirect bare /metrics?sub=strength to the new home. Preserve drilldown
+  // URLs (?ex=...) at the old surface until PR 6 dismantles it.
+  if (sub === "strength" && !sp.ex) {
+    redirect("/strength?tab=coach");
+  }
+
   return (
     <Suspense fallback={<div style={{ padding: 16 }}>Loading…</div>}>
       {sub === "strength" && (

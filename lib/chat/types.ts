@@ -46,6 +46,9 @@ export type ChatMessage = {
   /** Coach persona delivering this message. Default 'peter' for assistant turns;
    *  'user' for user-authored messages. */
   speaker: import("@/lib/data/types").ChatSpeaker;
+  /** Thread lane this message belongs to. One of peter|carter|nora|remi.
+   *  Matches chat_messages.thread; used for per-coach chat surfaces. */
+  thread: import("@/lib/data/types").Speaker;
   /** Default 'coach'. ChatPanel filters its render by this. */
   kind: "coach" | "morning_intake" | "morning_brief" | "weekly_review" | "proactive_nudge" | "system_routing";
   /** Chips / rendering hints for morning_intake turns; structured card UI
