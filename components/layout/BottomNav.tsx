@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { useState, useTransition, type ComponentType, type MouseEvent } from "react";
-import { Home, BarChart3, MessageCircle, User, UtensilsCrossed, type LucideProps } from "lucide-react";
+import { Home, BarChart3, User, UtensilsCrossed, Dumbbell, HeartPulse, type LucideProps } from "lucide-react";
 import { COLOR, RADIUS, SHADOW } from "@/lib/ui/theme";
 
 type Tab = {
@@ -14,11 +14,12 @@ type Tab = {
 };
 
 const TABS: Tab[] = [
-  { href: "/",        label: "Today",   Icon: Home,          match: (p) => p === "/" },
-  { href: "/metrics", label: "Metrics", Icon: BarChart3,     match: (p) => p.startsWith("/metrics") },
-  { href: "/meal",    label: "Meal",    Icon: UtensilsCrossed, match: (p) => p.startsWith("/meal") },
-  { href: "/coach",   label: "Coach",   Icon: MessageCircle, match: (p) => p.startsWith("/coach") },
-  { href: "/profile", label: "Profile", Icon: User,          match: (p) => p.startsWith("/profile") },
+  { href: "/",         label: "Today",    Icon: Home,            match: (p) => p === "/" },
+  { href: "/strength", label: "Strength", Icon: Dumbbell,        match: (p) => p.startsWith("/strength") },
+  { href: "/diet",     label: "Diet",     Icon: UtensilsCrossed, match: (p) => p.startsWith("/diet") },
+  { href: "/health",   label: "Health",   Icon: HeartPulse,      match: (p) => p.startsWith("/health") },
+  { href: "/metrics",  label: "Metrics",  Icon: BarChart3,       match: (p) => p.startsWith("/metrics") },
+  { href: "/profile",  label: "Profile",  Icon: User,            match: (p) => p.startsWith("/profile") },
 ];
 
 /**
