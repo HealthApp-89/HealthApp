@@ -353,7 +353,7 @@ Confirm → upsert into `user_session_templates(user_id, 'Chest', exercises, now
 ## Files to create / modify
 
 **New**:
-- `supabase/migrations/0025_workout_logger.sql` — `user_session_templates` table + RLS + `exercise_sets.rest_seconds_actual` + `profiles.disable_strong_ingest` + `commit_logger_session` function
+- `supabase/migrations/0026_workout_logger.sql` — `user_session_templates` table + RLS + `exercise_sets.rest_seconds_actual` + `profiles.disable_strong_ingest` + `commit_logger_session` function
 - `lib/logger/types.ts` — `ExerciseSetDraft`, `LoggerDraft`, `CommitSessionPayload`
 - `lib/logger/resolve-plan.ts` — extends existing resolver with `user_session_templates` step
 - `lib/logger/parse-voice.ts` — regex parser
@@ -386,7 +386,7 @@ Confirm → upsert into `user_session_templates(user_id, 'Chest', exercises, now
 - [lib/coach/sessionPlans.ts](../../lib/coach/sessionPlans.ts) — `getEffectiveSessionPlan` calls the new resolver
 - [lib/query/keys.ts](../../lib/query/keys.ts) — keys for userSessionTemplates, previousSet
 - [lib/data/types.ts](../../lib/data/types.ts) — `UserSessionTemplate`, `ExerciseSetDraft`, extend `ExerciseSetRow` with `rest_seconds_actual`
-- [CLAUDE.md](../../CLAUDE.md) — document the new migration 0025 and the logger architecture (new section under "Architecture")
+- [CLAUDE.md](../../CLAUDE.md) — document the new migration 0026 and the logger architecture (new section under "Architecture")
 
 ## Acceptance checklist
 
