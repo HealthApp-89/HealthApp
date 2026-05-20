@@ -10,7 +10,7 @@ const cases = [
   ["sixty 8", null], // word-form: regex skips, LLM handles
   ["bodyweight 12 reps", { kg: null, reps: 12 }],
   ["8 reps at 60", { kg: 60, reps: 8 }],
-  ["135 lbs 5 reps", { kg: 61.5, reps: 5 }],
+  ["135 lbs 5 reps", { kg: 61, reps: 5 }],
   ["100 kilos 6", { kg: 100, reps: 6 }],
   ["nothing here", null],
 ];

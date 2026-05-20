@@ -10,7 +10,7 @@ export type ParsedSet = { kg: number | null; reps: number };
  *   "bodyweight 12 reps"    → { kg: null, reps: 12 }
  *   "8 reps at 60"          → { kg: 60, reps: 8 }
  *   "sixty kilos eight reps" → null (word-form numbers handled by LLM)
- *   "135 lbs 5 reps"        → { kg: 61.5, reps: 5 } (rounded to nearest 0.5)
+ *   "135 lbs 5 reps"        → { kg: 61, reps: 5 } (rounded to nearest 0.5)
  */
 export function parseVoiceSet(transcript: string): ParsedSet | null {
   // 1. Normalize.
@@ -26,10 +26,7 @@ export function parseVoiceSet(transcript: string): ParsedSet | null {
   // Strip leading filler.
   t = t.replace(/^(uh|um|okay|ok|so|like)\s+/g, "");
 
-  // Round UP to nearest 0.5 kg — matches how lifters round to the next
-  // available plate increment when converting from lbs. E.g. 135 lbs =
-  // 61.23 kg → 61.5 kg, 225 lbs = 102.06 kg → 102.5 kg.
-  const lbsToKg = (lbs: number) => Math.ceil(lbs * 0.453592 * 2) / 2;
+  const lbsToKg = (lbs: number) => Math.round(lbs * 0.453592 * 2) / 2;
 
   // Pattern A: "<weight> kg <reps> reps?"
   // Pattern A-lbs: "<weight> lbs <reps> reps?"
