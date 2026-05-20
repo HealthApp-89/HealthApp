@@ -70,3 +70,21 @@ export async function setDisableYazioIngest(next: boolean) {
   revalidatePath("/profile");
   revalidatePath("/");
 }
+
+/** Single-field toggle for the Strong CSV opt-out. Same shape as
+ *  setDisableYazioIngest. When true, /api/ingest/strong returns 403. */
+export async function setDisableStrongIngest(next: boolean) {
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const { error } = await supabase
+    .from("profiles")
+    .update({ disable_strong_ingest: next, updated_at: new Date().toISOString() })
+    .eq("user_id", user.id);
+  if (error) throw error;
+  revalidatePath("/profile");
+  revalidatePath("/");
+}

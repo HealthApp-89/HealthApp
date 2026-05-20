@@ -103,6 +103,23 @@ export async function POST(request: Request) {
   }
   if (!userId) return NextResponse.json({ ok: false, reason: "unauthorized" }, { status: 401 });
 
+  // Strong ingest opt-out (mirror of disable_yazio_ingest).
+  {
+    const sr = createSupabaseServiceRoleClient();
+    const { data: profile } = await sr
+      .from("profiles")
+      .select("disable_strong_ingest")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (profile?.disable_strong_ingest) {
+      console.info(`[ingest/strong] user ${userId} opted out — rejecting upload`);
+      return NextResponse.json(
+        { ok: false, error: "Strong CSV ingest is disabled for this user. Use the in-app logger." },
+        { status: 403 },
+      );
+    }
+  }
+
   const ct = request.headers.get("content-type") ?? "";
   let csv: string;
   if (ct.includes("text/csv") || ct.includes("text/plain")) {

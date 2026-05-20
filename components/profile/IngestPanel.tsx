@@ -7,7 +7,7 @@ import { Card, SectionLabel } from "@/components/ui/Card";
 import { COLOR, RADIUS } from "@/lib/ui/theme";
 import { queryKeys } from "@/lib/query/keys";
 import { useProfile } from "@/lib/query/hooks/useProfile";
-import { setDisableYazioIngest } from "@/app/profile/actions";
+import { setDisableYazioIngest, setDisableStrongIngest } from "@/app/profile/actions";
 
 type Props = {
   userId: string;
@@ -32,6 +32,8 @@ export function IngestPanel({
   const [error, setError] = useState<string | null>(null);
   const [yazioToggleError, setYazioToggleError] = useState<string | null>(null);
   const [yazioTogglePending, startYazioToggle] = useTransition();
+  const [strongToggleError, setStrongToggleError] = useState<string | null>(null);
+  const [strongTogglePending, startStrongToggle] = useTransition();
   const fileRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -40,6 +42,7 @@ export function IngestPanel({
   // this query so the UI reflects the new state without a hard refresh.
   const { data: profile } = useProfile(userId);
   const yazioDisabled = profile?.disable_yazio_ingest ?? false;
+  const strongDisabled = profile?.disable_strong_ingest ?? false;
 
   function rotate() {
     setError(null);
@@ -386,6 +389,84 @@ export function IngestPanel({
           }}
         >
           ✗ {yazioToggleError}
+        </div>
+      )}
+
+      <div
+        style={{
+          fontSize: "11px",
+          textTransform: "uppercase",
+          letterSpacing: "0.04em",
+          color: COLOR.textMuted,
+          marginTop: "16px",
+          marginBottom: "6px",
+          fontWeight: 600,
+        }}
+      >
+        Strong CSV precedence
+      </div>
+      <label
+        style={{
+          display: "flex",
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+          gap: "12px",
+          padding: "10px 12px",
+          background: COLOR.surfaceAlt,
+          border: `1px solid ${COLOR.divider}`,
+          borderRadius: RADIUS.input,
+          cursor: strongTogglePending ? "wait" : "pointer",
+          opacity: strongTogglePending ? 0.6 : 1,
+        }}
+      >
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: "13px", color: COLOR.textStrong, fontWeight: 600 }}>
+            Stop importing Strong CSV
+          </div>
+          <div
+            style={{
+              fontSize: "11px",
+              color: COLOR.textMuted,
+              lineHeight: 1.4,
+              marginTop: "3px",
+            }}
+          >
+            I&apos;m logging lifts in-app now. Reject all incoming Strong CSV
+            uploads with a 403. (Historical re-imports require flipping this
+            off temporarily.)
+          </div>
+        </div>
+        <input
+          type="checkbox"
+          checked={strongDisabled}
+          disabled={strongTogglePending}
+          onChange={(e) => {
+            const next = e.target.checked;
+            setStrongToggleError(null);
+            startStrongToggle(async () => {
+              try {
+                await setDisableStrongIngest(next);
+                await queryClient.invalidateQueries({
+                  queryKey: queryKeys.profile.one(userId),
+                });
+              } catch (err) {
+                setStrongToggleError((err as Error).message);
+              }
+            });
+          }}
+          style={{ width: "18px", height: "18px", flexShrink: 0, marginTop: "2px" }}
+        />
+      </label>
+      {strongToggleError && (
+        <div
+          style={{
+            fontSize: "11px",
+            fontFamily: "monospace",
+            marginTop: "6px",
+            color: COLOR.danger,
+          }}
+        >
+          ✗ {strongToggleError}
         </div>
       )}
     </Card>
