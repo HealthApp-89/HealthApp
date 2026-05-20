@@ -632,21 +632,17 @@ export async function POST(req: Request) {
 
       const toolCallSink: ToolCallLog[] = [];
       const usageSink = emptyUsageTotals();
-      // Speaker for the active turn. Initial speaker comes from the pre-
-      // stream router; flips to the handoff target if a mid-stream
-      // handoff_to fires (capped at depth 1).
-      let activeSpeaker: Speaker = initialSpeaker;
+      // Speaker for the active turn — always the pre-stream router's choice
+      // now that mid-stream handoff is removed.
+      const activeSpeaker: Speaker = initialSpeaker;
       try {
-        // Drain one runChatStream pass. Returns the handoff details if Peter
-        // delegated; otherwise the stream ran to completion (or errored) and
-        // returns null.
+        // Drain one runChatStream pass, piping all SSE events to the client.
         // Pin to local — TS loses control-flow narrowing through async closures.
         const userId = user.id;
         async function drainStream(
           streamSpeaker: Speaker,
           streamMessages: RichMessage[],
-          handoffDepth: number,
-        ): Promise<{ to: Speaker; briefing: string | null } | null> {
+        ): Promise<void> {
           for await (const ev of runChatStream({
             userId,
             systemPrompt: finalSystemPrompt,
@@ -659,12 +655,11 @@ export async function POST(req: Request) {
             mode: effectiveMode,
             draftDocId,
             speaker: streamSpeaker,
-            handoffDepth,
           })) {
             if (req.signal.aborted) {
               aborted = true;
               errored = "aborted";
-              return null;
+              return;
             }
             if (ev.type === "delta") {
               accumulated += ev.text;
@@ -689,108 +684,16 @@ export async function POST(req: Request) {
                   }),
                 ),
               );
-            } else if (ev.type === "handoff") {
-              return { to: ev.to, briefing: ev.briefing };
             } else if (ev.type === "error") {
               errored = ev.message;
-              return null;
+              return;
             } else if (ev.type === "done") {
               // handled below
             }
           }
-          return null;
         }
 
-        const handoff = await drainStream(activeSpeaker, messages, 0);
-        if (handoff && !errored && !aborted) {
-          // 1) Persist hidden audit row tracking the mid-stream handoff.
-          await sr.from("chat_messages").insert({
-            user_id: userId,
-            role: "assistant",
-            speaker: activeSpeaker,
-            kind: "system_routing",
-            status: "done",
-            model: MODEL,
-            content: `[handoff ${activeSpeaker} → ${handoff.to}]`,
-            ui: {
-              user_message_id: rpcTyped.user_message_id,
-              decided_speaker: handoff.to,
-              // Carry forward the ORIGINAL routing method so audit histograms
-              // still attribute the decision to its origin classifier (per
-              // spec §5). The handoff sub-object captures the second hop.
-              method: routerDecision.method,
-              confidence: routerDecision.confidence,
-              handoff: { from: activeSpeaker, to: handoff.to, briefing: handoff.briefing },
-            },
-            tool_calls: [
-              {
-                name: "handoff_to",
-                input: { target: handoff.to, briefing: handoff.briefing },
-                ms: 0,
-                result_rows: 0,
-                range_days: 0,
-                truncated: false,
-                error: null,
-              },
-            ],
-          });
-
-          // 2) Emit handoff SSE event so the client can render the chip swap
-          //    and reset its accumulated-text buffer.
-          controller.enqueue(
-            encoder.encode(
-              formatSseEvent({
-                event: "handoff",
-                data: { from: activeSpeaker, to: handoff.to, briefing: handoff.briefing },
-              }),
-            ),
-          );
-
-          // 3) Re-stamp the assistant stub so the final visible message is
-          //    correctly attributed to the receiving coach.
-          const fromSpeaker = activeSpeaker;
-          activeSpeaker = handoff.to;
-          await sr
-            .from("chat_messages")
-            .update({ speaker: activeSpeaker, updated_at: new Date().toISOString() })
-            .eq("id", assistantId);
-
-          // 4) Build the receiving coach's message array. Insert the briefing
-          //    AFTER block 0 so the ephemeral NOW-timestamp block stays first.
-          const specialistMessages: RichMessage[] = messages.slice();
-          if (handoff.briefing && specialistMessages.length > 0) {
-            const lastIdx = specialistMessages.length - 1;
-            const last = specialistMessages[lastIdx];
-            if (last.role === "user") {
-              const briefingBlock: ContentBlock = {
-                type: "text",
-                text: `[Routed from ${fromSpeaker} — briefing: ${handoff.briefing}]`,
-              };
-              const existing: ContentBlock[] = Array.isArray(last.content)
-                ? (last.content as ContentBlock[])
-                : [{ type: "text", text: String(last.content) }];
-              const withBriefing: ContentBlock[] =
-                existing.length > 0
-                  ? [existing[0], briefingBlock, ...existing.slice(1)]
-                  : [briefingBlock];
-              specialistMessages[lastIdx] = { role: "user", content: withBriefing };
-            }
-          }
-
-          // 5) Reset accumulated text — only the receiving coach's reply
-          //    becomes the visible assistant message.
-          accumulated = "";
-
-          // 6) Re-enter drainStream with handoffDepth=1. The chat-stream
-          //    tool filter removes HANDOFF_TOOL on this round, so the
-          //    receiving coach must answer or end the turn — no ping-pong.
-          const secondHandoff = await drainStream(activeSpeaker, specialistMessages, 1);
-          if (secondHandoff) {
-            // The tool was filtered out at depth>=1, so the model can't
-            // call it. Defensive: log and ignore.
-            console.warn("[chat-stream] handoff at depth>=1 was emitted unexpectedly", secondHandoff);
-          }
-        }
+        await drainStream(activeSpeaker, messages);
       } catch (e) {
         errored = (e as Error).message;
       } finally {
