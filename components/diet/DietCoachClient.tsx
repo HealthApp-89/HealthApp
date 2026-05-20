@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import ChatPanel from "@/components/chat/ChatPanel";
 import { BodyCompCard } from "@/components/health/BodyCompCard";
+import { useMarkThreadSeen } from "@/lib/chat/use-mark-thread-seen";
 import { MealSlotCard } from "@/components/meal/MealSlotCard";
 import { MealSlotEmptyCard } from "@/components/meal/MealSlotEmptyCard";
 import { Glp1StatusPill } from "@/components/diet/Glp1StatusPill";
@@ -23,6 +24,7 @@ import type { FoodLogEntry, MealSlot } from "@/lib/food/types";
 type Props = { userId: string };
 
 export function DietCoachClient({ userId }: Props) {
+  useMarkThreadSeen("nora");
   const router = useRouter();
   const today = todayInUserTz();
 

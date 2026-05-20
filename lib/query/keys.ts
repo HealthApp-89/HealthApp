@@ -47,6 +47,9 @@ export const queryKeys = {
     list: (userId: string, limit: number) =>
       ["symptom-log", userId, limit] as const,
   },
+  unreadCounts: {
+    all: () => ["unread-counts"] as const,
+  },
   workouts: {
     all: (userId: string) => ["workouts", userId] as const,
     range: (userId: string, from: string, to: string) =>

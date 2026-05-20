@@ -1,6 +1,7 @@
 "use client";
 
 import ChatPanel from "@/components/chat/ChatPanel";
+import { useMarkThreadSeen } from "@/lib/chat/use-mark-thread-seen";
 import { useDailyLogs } from "@/lib/query/hooks/useDailyLogs";
 import { useCheckin } from "@/lib/query/hooks/useCheckin";
 import { todayInUserTz } from "@/lib/time";
@@ -16,6 +17,7 @@ type Props = {
 };
 
 export function HealthCoachClient({ userId, hrvBaseline }: Props) {
+  useMarkThreadSeen("remi");
   const today = todayInUserTz();
 
   const yesterday = new Date(`${today}T00:00:00Z`);

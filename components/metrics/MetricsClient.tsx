@@ -2,12 +2,14 @@
 
 import ChatPanel from "@/components/chat/ChatPanel";
 import { CoachTrendsView } from "@/components/coach/trends/CoachTrendsView";
+import { useMarkThreadSeen } from "@/lib/chat/use-mark-thread-seen";
 
 type Props = {
   userId: string;
 };
 
 export function MetricsClient({ userId }: Props) {
+  useMarkThreadSeen("peter");
   return (
     <div style={{ display: "flex", flexDirection: "column", minHeight: "calc(100dvh - 88px)" }}>
       {/* Data block — top: coach trends (section pills + headline cards) */}
