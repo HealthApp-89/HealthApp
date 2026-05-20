@@ -340,11 +340,22 @@ export async function POST(req: Request) {
   }
   const initialSpeaker: Speaker = routerDecision.speaker;
 
+  // Stamp both rows (user + assistant) with the resolved thread lane so
+  // per-thread history filters in PRs 2-6 work from day one.
+  await sr
+    .from("chat_messages")
+    .update({ thread: initialSpeaker, updated_at: new Date().toISOString() })
+    .in("id", [rpcTyped.user_message_id, rpcTyped.assistant_message_id]);
+
   // Stamp the assistant stub with the chosen speaker so the SSE chip swap
   // matches and the final persisted row carries the correct attribution.
   await sr
     .from("chat_messages")
-    .update({ speaker: initialSpeaker, updated_at: new Date().toISOString() })
+    .update({
+      speaker: initialSpeaker,
+      thread: initialSpeaker,
+      updated_at: new Date().toISOString(),
+    })
     .eq("id", rpcTyped.assistant_message_id);
 
   // Write the routing audit row. Filtered out of visible history by the
@@ -353,6 +364,7 @@ export async function POST(req: Request) {
     user_id: user.id,
     role: "assistant",
     speaker: initialSpeaker,
+    thread: initialSpeaker,
     kind: "system_routing",
     status: "done",
     model: MODEL,
@@ -701,8 +713,8 @@ export async function POST(req: Request) {
 
         // Persist the final state of the assistant stub. tool_calls is set
         // even on error/abort paths so we keep the diagnostic record.
-        // speaker reflects whichever coach produced the final visible text —
-        // 'peter' for direct answers, or the specialist after a handoff.
+        // speaker reflects the pre-stream router's chosen coach — always
+        // initialSpeaker now that mid-stream handoff is removed.
         const finalStatus = errored ? "error" : "done";
         await sr
           .from("chat_messages")
@@ -711,6 +723,7 @@ export async function POST(req: Request) {
             status: finalStatus,
             error: errored,
             speaker: activeSpeaker,
+            thread: activeSpeaker,
             tool_calls: toolCallSink.length > 0 ? toolCallSink : null,
             updated_at: new Date().toISOString(),
           })
