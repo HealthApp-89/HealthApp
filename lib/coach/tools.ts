@@ -3321,6 +3321,8 @@ export const PETER_TOOLS: readonly ToolSchema[] = [
   DAILY_LOGS_TOOL,
   WORKOUTS_TOOL,
   FOOD_LOG_TOOL,
+  QUERY_EXERCISE_LIBRARY_TOOL,
+  GET_SUBSTITUTES_TOOL,
   TRAINING_PLAN_TOOL,
   AUTOREGULATION_TOOL,
   ADHERENCE_TOOL,
@@ -3359,6 +3361,8 @@ export const PETER_TOOLS: readonly ToolSchema[] = [
 // No food log, no GLP-1, no block-planning (that's Peter's strategic lane).
 export const CARTER_TOOLS: readonly ToolSchema[] = [
   WORKOUTS_TOOL,
+  QUERY_EXERCISE_LIBRARY_TOOL,
+  GET_SUBSTITUTES_TOOL,
   DAILY_LOGS_TOOL,
   TRAINING_PLAN_TOOL,
   AUTOREGULATION_TOOL,
