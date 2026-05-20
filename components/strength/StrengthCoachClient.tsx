@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import ChatPanel from "@/components/chat/ChatPanel";
+import { useMarkThreadSeen } from "@/lib/chat/use-mark-thread-seen";
 import { TodayPlanCard } from "@/components/strength/TodayPlanCard";
 import { DaySwapSheet } from "@/components/strength/DaySwapSheet";
 import { useProfile } from "@/lib/query/hooks/useProfile";
@@ -36,6 +37,7 @@ const E1RM_LABELS: Array<{ key: "squat" | "bench" | "deadlift" | "ohp"; label: s
 type Props = { userId: string };
 
 export function StrengthCoachClient({ userId }: Props) {
+  useMarkThreadSeen("carter");
   const [swapOpen, setSwapOpen] = useState(false);
 
   const todayIso = todayInUserTz();

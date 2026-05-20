@@ -5,20 +5,25 @@ import { useRouter, usePathname } from "next/navigation";
 import { useState, useTransition, type ComponentType, type MouseEvent } from "react";
 import { Home, BarChart3, User, UtensilsCrossed, Dumbbell, HeartPulse, type LucideProps } from "lucide-react";
 import { COLOR, RADIUS, SHADOW } from "@/lib/ui/theme";
+import { useUnreadCounts } from "@/lib/query/hooks/useUnreadCounts";
+import type { Speaker } from "@/lib/data/types";
 
 type Tab = {
   href: string;
   label: string;
   Icon: ComponentType<LucideProps>;
   match: (p: string) => boolean;
+  /** Coach thread this tab hosts. When non-null, the tab shows an
+   *  unread dot when that thread has unread assistant messages. */
+  thread?: Speaker;
 };
 
 const TABS: Tab[] = [
   { href: "/",         label: "Today",    Icon: Home,            match: (p) => p === "/" },
-  { href: "/strength", label: "Strength", Icon: Dumbbell,        match: (p) => p.startsWith("/strength") },
-  { href: "/diet",     label: "Diet",     Icon: UtensilsCrossed, match: (p) => p.startsWith("/diet") },
-  { href: "/health",   label: "Health",   Icon: HeartPulse,      match: (p) => p.startsWith("/health") },
-  { href: "/metrics",  label: "Metrics",  Icon: BarChart3,       match: (p) => p.startsWith("/metrics") },
+  { href: "/strength", label: "Strength", Icon: Dumbbell,        match: (p) => p.startsWith("/strength"), thread: "carter" },
+  { href: "/diet",     label: "Diet",     Icon: UtensilsCrossed, match: (p) => p.startsWith("/diet"),     thread: "nora" },
+  { href: "/health",   label: "Health",   Icon: HeartPulse,      match: (p) => p.startsWith("/health"),   thread: "remi" },
+  { href: "/metrics",  label: "Metrics",  Icon: BarChart3,       match: (p) => p.startsWith("/metrics"),  thread: "peter" },
   { href: "/profile",  label: "Profile",  Icon: User,            match: (p) => p.startsWith("/profile") },
 ];
 
@@ -43,6 +48,8 @@ export function BottomNav() {
   // `pathname` reflects the new URL and we can drop pendingHref — but we
   // keep it for one extra tick to avoid a flicker if React batches awkwardly.
   const optimisticPath = isPending && pendingHref ? pendingHref : pathname;
+
+  const { data: unread } = useUnreadCounts();
 
   function handleNavigate(e: MouseEvent<HTMLAnchorElement>, href: string) {
     // Respect modifier-clicks / middle-clicks so "open in new tab" still works.
@@ -81,6 +88,7 @@ export function BottomNav() {
           tab={t}
           active={t.match(optimisticPath)}
           onNavigate={handleNavigate}
+          hasUnread={t.thread != null && (unread?.[t.thread] ?? 0) > 0}
         />
       ))}
     </nav>
@@ -91,10 +99,12 @@ function TabButton({
   tab,
   active,
   onNavigate,
+  hasUnread,
 }: {
   tab: Tab;
   active: boolean;
   onNavigate: (e: MouseEvent<HTMLAnchorElement>, href: string) => void;
+  hasUnread: boolean;
 }) {
   return (
     <Link
@@ -112,6 +122,7 @@ function TabButton({
     >
       <span
         style={{
+          position: "relative",
           width: "32px",
           height: "32px",
           borderRadius: RADIUS.cardSmall,
@@ -126,6 +137,21 @@ function TabButton({
         }}
       >
         <tab.Icon size={20} strokeWidth={1.75} aria-hidden="true" />
+        {hasUnread && !active && (
+          <span
+            aria-label="unread"
+            style={{
+              position: "absolute",
+              top: 4,
+              right: 4,
+              width: 7,
+              height: 7,
+              borderRadius: "50%",
+              background: COLOR.accent,
+              border: `1.5px solid ${COLOR.surface}`,
+            }}
+          />
+        )}
       </span>
       <span
         style={{
