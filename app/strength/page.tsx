@@ -1,8 +1,8 @@
-"use client";
-
-import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { redirect } from "next/navigation";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SubPillNav } from "@/components/layout/SubPillNav";
+import { StrengthCoachClient } from "@/components/strength/StrengthCoachClient";
+import { StrengthLogClient } from "@/components/strength/StrengthLogClient";
 import { COLOR } from "@/lib/ui/theme";
 
 const SUB_TABS = [
@@ -10,9 +10,19 @@ const SUB_TABS = [
   { key: "log", label: "Log" },
 ];
 
-export default function StrengthPage() {
-  const params = useSearchParams();
-  const tab = params.get("tab") === "log" ? "log" : "coach";
+export default async function StrengthPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string }>;
+}) {
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const { tab: tabParam } = await searchParams;
+  const tab = tabParam === "log" ? "log" : "coach";
 
   return (
     <div style={{ minHeight: "100dvh", paddingBottom: 100 }}>
@@ -23,83 +33,11 @@ export default function StrengthPage() {
         </p>
       </header>
       <SubPillNav pills={SUB_TABS} paramName="tab" defaultKey="coach" />
-      {tab === "coach" ? <CoachPlaceholder /> : <LogPlaceholder />}
-    </div>
-  );
-}
-
-function CoachPlaceholder() {
-  return (
-    <div style={{ padding: "24px 16px", textAlign: "center" }}>
-      <p style={{ fontSize: 14, color: COLOR.textMuted, margin: "0 0 16px 0" }}>
-        Carter and today&apos;s session land here in PR 3.
-      </p>
-      <p style={{ fontSize: 13, color: COLOR.textMid, margin: "0 0 8px 0" }}>
-        In the meantime:
-      </p>
-      <div style={{ display: "flex", flexDirection: "column", gap: 8, maxWidth: 320, margin: "0 auto" }}>
-        <Link
-          href="/metrics?sub=strength"
-          style={{
-            display: "block",
-            padding: "12px 16px",
-            background: COLOR.surface,
-            border: `1px solid ${COLOR.divider}`,
-            borderRadius: 10,
-            textDecoration: "none",
-            color: COLOR.textStrong,
-            fontSize: 13,
-            fontWeight: 600,
-          }}
-        >
-          View today&apos;s session →
-        </Link>
-        <Link
-          href="/coach"
-          style={{
-            display: "block",
-            padding: "12px 16px",
-            background: COLOR.surface,
-            border: `1px solid ${COLOR.divider}`,
-            borderRadius: 10,
-            textDecoration: "none",
-            color: COLOR.textStrong,
-            fontSize: 13,
-            fontWeight: 600,
-          }}
-        >
-          Chat with the coach team →
-        </Link>
-      </div>
-    </div>
-  );
-}
-
-function LogPlaceholder() {
-  return (
-    <div style={{ padding: "24px 16px", textAlign: "center" }}>
-      <p style={{ fontSize: 14, color: COLOR.textMuted, margin: "0 0 16px 0" }}>
-        Workout history lands here in PR 3 (read-only). Manual entry comes later.
-      </p>
-      <p style={{ fontSize: 13, color: COLOR.textMid, margin: "0 0 8px 0" }}>
-        For now: Strong CSV import is unchanged. See past workouts at
-      </p>
-      <Link
-        href="/metrics?sub=strength"
-        style={{
-          display: "inline-block",
-          padding: "12px 16px",
-          background: COLOR.surface,
-          border: `1px solid ${COLOR.divider}`,
-          borderRadius: 10,
-          textDecoration: "none",
-          color: COLOR.textStrong,
-          fontSize: 13,
-          fontWeight: 600,
-        }}
-      >
-        Strength tab on Metrics →
-      </Link>
+      {tab === "coach" ? (
+        <StrengthCoachClient userId={user.id} />
+      ) : (
+        <StrengthLogClient userId={user.id} />
+      )}
     </div>
   );
 }
