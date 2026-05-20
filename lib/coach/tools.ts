@@ -38,6 +38,16 @@ import type { PrimaryLift } from "@/lib/data/types";
 import { todayInUserTz } from "@/lib/time";
 import { computeAdherence } from "@/lib/coach/adherence";
 import { getAutoregulationSignals } from "@/lib/coach/autoregulation";
+import {
+  EXERCISE_LIBRARY,
+  findSubstitutes,
+  resolveExercise,
+  type LibraryExercise,
+  type Equipment,
+  type JointStress,
+  type StabilityTier,
+  type ROMBias,
+} from "@/lib/coach/exercise-library";
 
 // ── Allowlist (cross-checked against lib/data/types.ts:DailyLog + schema.sql) ─
 export const ALLOWED_COLUMNS = [
@@ -150,6 +160,73 @@ export const FOOD_LOG_TOOL = {
       end_date: { type: "string", format: "date" },
       item_filter: { type: "string", description: "Case-insensitive substring match on item name." },
       meal_slot: { type: "string", enum: ["breakfast", "lunch", "dinner", "snack"] },
+    },
+  },
+};
+
+/** Read-only browse of the strength exercise library. Used by Carter (and
+ *  Peter for cross-domain framing) to answer "what alternatives exist for X?"
+ *  or "show me low-stress chest exercises". Does not modify the plan; swap
+ *  proposals still go through propose_week_plan / commit_week_plan. */
+export const QUERY_EXERCISE_LIBRARY_TOOL = {
+  name: "query_exercise_library",
+  description:
+    "Browse the strength exercise library. Returns up to 20 exercises matching the filters. Use when the athlete asks about alternatives, equipment substitutions, or wants to know what fits a pattern. All filters optional — calling with no filters returns the first 20 library entries. Read-only.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      pattern: {
+        type: "string",
+        enum: ["push", "pull", "squat", "hinge", "single-leg", "core", "accessory"],
+      },
+      primary_muscle: {
+        type: "string",
+        enum: ["Chest", "Lats", "Traps", "RearDelts", "Quads", "Hams", "Glutes", "Biceps", "Triceps", "Calves"],
+      },
+      equipment: {
+        type: "array",
+        items: {
+          type: "string",
+          enum: ["barbell", "dumbbell", "machine", "cable", "bodyweight", "kettlebell", "smith"],
+        },
+        description: "Match exercises that use ANY of the listed equipment.",
+      },
+      role: { type: "string", enum: ["main", "accessory"] },
+      exclude_joint: {
+        type: "string",
+        enum: ["shoulder", "lumbar", "knee", "elbow", "wrist", "hip"],
+        description: "Exclude exercises that load this joint.",
+      },
+    },
+  },
+};
+
+/** Read-only ranked-substitutes lookup. Carter uses this when the athlete
+ *  needs a swap candidate — for pain, equipment unavailability, or planned
+ *  rotation. Hard filters: same pattern + same primary muscle as target.
+ *  Soft score: role match, stability/ROM preference, equipment overlap. */
+export const GET_SUBSTITUTES_TOOL = {
+  name: "get_substitutes",
+  description:
+    "Get ranked substitute exercises for a target. Substitutes share the target's movement pattern and primary muscle. Use when the athlete needs a swap for pain (set exclude_joint), equipment (set prefer_stability), or rotation. Returns 1-8 substitutes (default 3). Read-only — does not commit a swap; actual plan changes still go through propose_week_plan / commit_week_plan.",
+  input_schema: {
+    type: "object" as const,
+    required: ["exercise_id_or_name"],
+    properties: {
+      exercise_id_or_name: {
+        type: "string",
+        description: "Library id (e.g., 'decline_bench') or display name (e.g., 'Decline Bench Press (Barbell)'). Case-insensitive.",
+      },
+      count: { type: "integer", default: 3, minimum: 1, maximum: 8 },
+      exclude_joint: {
+        type: "string",
+        enum: ["shoulder", "lumbar", "knee", "elbow", "wrist", "hip"],
+      },
+      prefer_stability: { type: "string", enum: ["high", "medium", "low"] },
+      prefer_rom_bias: {
+        type: "string",
+        enum: ["lengthened", "midrange", "shortened", "neutral"],
+      },
     },
   },
 };
@@ -807,6 +884,208 @@ export async function executeQueryFoodLog(opts: {
     ok: true,
     data: { rows },
     meta: { ms: Date.now() - t0, result_rows: rows.length, range_days, truncated: false },
+  };
+}
+
+// ── query_exercise_library executor ──────────────────────────────────────────
+
+type ExerciseLibraryToolData = { exercises: LibraryExercise[] };
+
+const VALID_PATTERNS = new Set(["push", "pull", "squat", "hinge", "single-leg", "core", "accessory"]);
+const VALID_MUSCLES = new Set(["Chest", "Lats", "Traps", "RearDelts", "Quads", "Hams", "Glutes", "Biceps", "Triceps", "Calves"]);
+const VALID_EQUIPMENT = new Set(["barbell", "dumbbell", "machine", "cable", "bodyweight", "kettlebell", "smith"]);
+const VALID_JOINTS = new Set(["shoulder", "lumbar", "knee", "elbow", "wrist", "hip"]);
+const VALID_ROLES = new Set(["main", "accessory"]);
+
+const LIBRARY_RESULT_CAP = 20;
+
+export async function executeQueryExerciseLibrary(opts: {
+  supabase: SupabaseClient;  // unused; kept for dispatcher uniformity
+  userId: string;            // unused; library is global
+  input: unknown;
+}): Promise<ToolResult<ExerciseLibraryToolData>> {
+  const t0 = Date.now();
+  const i = (opts.input ?? {}) as Record<string, unknown>;
+
+  // Validate optional filters.
+  const pattern = i.pattern;
+  if (pattern !== undefined && (typeof pattern !== "string" || !VALID_PATTERNS.has(pattern))) {
+    return {
+      ok: false,
+      error: { error: `invalid pattern: ${String(pattern)}` },
+      meta: { ms: Date.now() - t0, range_days: 0 },
+    };
+  }
+  const primaryMuscle = i.primary_muscle;
+  if (primaryMuscle !== undefined && (typeof primaryMuscle !== "string" || !VALID_MUSCLES.has(primaryMuscle))) {
+    return {
+      ok: false,
+      error: { error: `invalid primary_muscle: ${String(primaryMuscle)}` },
+      meta: { ms: Date.now() - t0, range_days: 0 },
+    };
+  }
+  const equipmentRaw = i.equipment;
+  let equipmentFilter: Equipment[] | null = null;
+  if (equipmentRaw !== undefined) {
+    if (!Array.isArray(equipmentRaw) || equipmentRaw.some((e) => typeof e !== "string" || !VALID_EQUIPMENT.has(e))) {
+      return {
+        ok: false,
+        error: { error: "equipment must be an array of valid equipment strings" },
+        meta: { ms: Date.now() - t0, range_days: 0 },
+      };
+    }
+    equipmentFilter = equipmentRaw as Equipment[];
+  }
+  const role = i.role;
+  if (role !== undefined && (typeof role !== "string" || !VALID_ROLES.has(role))) {
+    return {
+      ok: false,
+      error: { error: `invalid role: ${String(role)}` },
+      meta: { ms: Date.now() - t0, range_days: 0 },
+    };
+  }
+  const excludeJoint = i.exclude_joint;
+  if (excludeJoint !== undefined && (typeof excludeJoint !== "string" || !VALID_JOINTS.has(excludeJoint))) {
+    return {
+      ok: false,
+      error: { error: `invalid exclude_joint: ${String(excludeJoint)}` },
+      meta: { ms: Date.now() - t0, range_days: 0 },
+    };
+  }
+
+  // Filter in memory.
+  let results: LibraryExercise[] = EXERCISE_LIBRARY.slice();
+  if (pattern) results = results.filter((ex) => ex.pattern === pattern);
+  if (primaryMuscle) results = results.filter((ex) => ex.primaryMuscle === primaryMuscle);
+  if (equipmentFilter) {
+    results = results.filter((ex) => ex.equipment.some((e) => equipmentFilter!.includes(e)));
+  }
+  if (role) results = results.filter((ex) => ex.role === role);
+  if (excludeJoint) {
+    results = results.filter((ex) => !ex.jointStress.includes(excludeJoint as JointStress));
+  }
+
+  const truncated = results.length > LIBRARY_RESULT_CAP;
+  const capped = results.slice(0, LIBRARY_RESULT_CAP);
+
+  return {
+    ok: true,
+    data: { exercises: capped },
+    meta: {
+      ms: Date.now() - t0,
+      result_rows: capped.length,
+      range_days: 0,
+      truncated,
+    },
+  };
+}
+
+// ── get_substitutes executor ─────────────────────────────────────────────────
+
+type SubstitutesToolData = {
+  target: LibraryExercise;
+  substitutes: LibraryExercise[];
+};
+
+const VALID_STABILITY = new Set(["high", "medium", "low"]);
+const VALID_ROM_BIAS = new Set(["lengthened", "midrange", "shortened", "neutral"]);
+
+export async function executeGetSubstitutes(opts: {
+  supabase: SupabaseClient;  // unused
+  userId: string;            // unused
+  input: unknown;
+}): Promise<ToolResult<SubstitutesToolData>> {
+  const t0 = Date.now();
+  const i = (opts.input ?? {}) as Record<string, unknown>;
+
+  // Required: exercise_id_or_name.
+  const idOrName = i.exercise_id_or_name;
+  if (typeof idOrName !== "string" || idOrName.trim() === "") {
+    return {
+      ok: false,
+      error: { error: "exercise_id_or_name is required (library id or display name)" },
+      meta: { ms: Date.now() - t0, range_days: 0 },
+    };
+  }
+  const target = resolveExercise(idOrName);
+  if (!target) {
+    return {
+      ok: false,
+      error: {
+        error: `Exercise not found: ${idOrName}. Try query_exercise_library to browse.`,
+      },
+      meta: { ms: Date.now() - t0, range_days: 0 },
+    };
+  }
+
+  // Optional: count.
+  let count = 3;
+  if (i.count !== undefined) {
+    if (typeof i.count !== "number" || !Number.isInteger(i.count) || i.count < 1 || i.count > 8) {
+      return {
+        ok: false,
+        error: { error: "count must be an integer between 1 and 8" },
+        meta: { ms: Date.now() - t0, range_days: 0 },
+      };
+    }
+    count = i.count;
+  }
+
+  // Optional: exclude_joint.
+  let excludeJoint: JointStress | undefined;
+  if (i.exclude_joint !== undefined) {
+    if (typeof i.exclude_joint !== "string" || !VALID_JOINTS.has(i.exclude_joint)) {
+      return {
+        ok: false,
+        error: { error: `invalid exclude_joint: ${String(i.exclude_joint)}` },
+        meta: { ms: Date.now() - t0, range_days: 0 },
+      };
+    }
+    excludeJoint = i.exclude_joint as JointStress;
+  }
+
+  // Optional: prefer_stability.
+  let preferStability: StabilityTier | undefined;
+  if (i.prefer_stability !== undefined) {
+    if (typeof i.prefer_stability !== "string" || !VALID_STABILITY.has(i.prefer_stability)) {
+      return {
+        ok: false,
+        error: { error: `invalid prefer_stability: ${String(i.prefer_stability)}` },
+        meta: { ms: Date.now() - t0, range_days: 0 },
+      };
+    }
+    preferStability = i.prefer_stability as StabilityTier;
+  }
+
+  // Optional: prefer_rom_bias.
+  let preferRomBias: ROMBias | undefined;
+  if (i.prefer_rom_bias !== undefined) {
+    if (typeof i.prefer_rom_bias !== "string" || !VALID_ROM_BIAS.has(i.prefer_rom_bias)) {
+      return {
+        ok: false,
+        error: { error: `invalid prefer_rom_bias: ${String(i.prefer_rom_bias)}` },
+        meta: { ms: Date.now() - t0, range_days: 0 },
+      };
+    }
+    preferRomBias = i.prefer_rom_bias as ROMBias;
+  }
+
+  const substitutes = findSubstitutes(target, EXERCISE_LIBRARY, {
+    count,
+    excludeJoint,
+    preferStability,
+    preferRomBias,
+  });
+
+  return {
+    ok: true,
+    data: { target, substitutes },
+    meta: {
+      ms: Date.now() - t0,
+      result_rows: substitutes.length,
+      range_days: 0,
+      truncated: false,
+    },
   };
 }
 
@@ -3042,6 +3321,8 @@ export const PETER_TOOLS: readonly ToolSchema[] = [
   DAILY_LOGS_TOOL,
   WORKOUTS_TOOL,
   FOOD_LOG_TOOL,
+  QUERY_EXERCISE_LIBRARY_TOOL,
+  GET_SUBSTITUTES_TOOL,
   TRAINING_PLAN_TOOL,
   AUTOREGULATION_TOOL,
   ADHERENCE_TOOL,
@@ -3080,6 +3361,8 @@ export const PETER_TOOLS: readonly ToolSchema[] = [
 // No food log, no GLP-1, no block-planning (that's Peter's strategic lane).
 export const CARTER_TOOLS: readonly ToolSchema[] = [
   WORKOUTS_TOOL,
+  QUERY_EXERCISE_LIBRARY_TOOL,
+  GET_SUBSTITUTES_TOOL,
   DAILY_LOGS_TOOL,
   TRAINING_PLAN_TOOL,
   AUTOREGULATION_TOOL,

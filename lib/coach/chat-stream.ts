@@ -27,6 +27,8 @@ import {
   executeQueryDailyLogs,
   executeQueryWorkouts,
   executeQueryFoodLog,
+  executeQueryExerciseLibrary,
+  executeGetSubstitutes,
   executeQueryTrainingPlan,
   executeGetAutoregulationSignals,
   executeComputeAdherence,
@@ -363,6 +365,18 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
           });
         } else if (block.name === "query_food_log") {
           result = await executeQueryFoodLog({
+            supabase: opts.sr,
+            userId: opts.userId,
+            input: block.input,
+          });
+        } else if (block.name === "query_exercise_library") {
+          result = await executeQueryExerciseLibrary({
+            supabase: opts.sr,
+            userId: opts.userId,
+            input: block.input,
+          });
+        } else if (block.name === "get_substitutes") {
+          result = await executeGetSubstitutes({
             supabase: opts.sr,
             userId: opts.userId,
             input: block.input,
