@@ -18,17 +18,16 @@ const nextConfig: NextConfig = {
     },
   },
 
-  // 308 redirects for the routes consolidated under /metrics in Slice 7.
-  // Old URLs collapse to the matching sub-pill so deep-links, PWA shortcuts,
-  // and stale bookmarks land on the right surface.
+  // 308 redirects for legacy URLs. /strength and /health were collapsed to
+  // /metrics sub-pills in Slice 7, but the coach mini-apps restructure (PRs
+  // 2-3) brought /strength and /health back as their own routes — those
+  // redirects were removed when the new routes shipped to avoid bouncing
+  // the new pages back into the old /metrics shell. /diet was never
+  // collapsed so it needs no entry here.
   async redirects() {
     return [
       { source: "/trends",          destination: "/metrics?sub=trends",   permanent: true },
       { source: "/trends/:path*",   destination: "/metrics?sub=trends",   permanent: true },
-      { source: "/strength",        destination: "/metrics?sub=strength", permanent: true },
-      { source: "/strength/:path*", destination: "/metrics?sub=strength", permanent: true },
-      { source: "/health",          destination: "/metrics?sub=body",     permanent: true },
-      { source: "/health/:path*",   destination: "/metrics?sub=body",     permanent: true },
       { source: "/log",             destination: "/metrics?sub=log",      permanent: true },
       // Reserved for Slice 8 (coach trend rename).
       { source: "/coach/trends",        destination: "/coach/progress",       permanent: true },
