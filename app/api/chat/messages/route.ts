@@ -55,13 +55,20 @@ export async function GET(req: Request) {
   const limitRaw = parseInt(url.searchParams.get("limit") ?? "", 10);
   const limit = Math.min(MAX_LIMIT, Number.isFinite(limitRaw) && limitRaw > 0 ? limitRaw : DEFAULT_LIMIT);
 
+  const threadRaw = url.searchParams.get("thread");
+  const VALID_THREADS = ["peter", "carter", "nora", "remi"] as const;
+  const thread = VALID_THREADS.includes(threadRaw as typeof VALID_THREADS[number])
+    ? (threadRaw as typeof VALID_THREADS[number])
+    : null;
+
   let q = supabase
     .from("chat_messages")
-    .select("id, role, content, status, error, model, kind, ui, tool_calls, mode, created_at, updated_at")
+    .select("id, role, content, status, error, model, speaker, thread, kind, ui, tool_calls, mode, created_at, updated_at")
     .eq("user_id", user.id)
     .in("kind", kinds)
     .order("created_at", { ascending: false })
     .limit(limit);
+  if (thread) q = q.eq("thread", thread);
   if (before) q = q.lt("created_at", before);
 
   const { data: rows, error } = await q;
@@ -117,6 +124,7 @@ export async function GET(req: Request) {
     updated_at: r.updated_at,
     images: imagesByMsg.get(r.id) ?? [],
     speaker: (r as { speaker?: import("@/lib/data/types").ChatSpeaker }).speaker ?? ("peter" as const),
+    thread: ((r as { thread?: import("@/lib/data/types").Speaker }).thread ?? "peter") as import("@/lib/data/types").Speaker,
     kind: (r.kind as "coach" | "morning_intake" | "morning_brief" | "weekly_review") ?? "coach",
     ui: (r.ui as MorningUI | WeeklyReviewCardUI | null) ?? null,
     tool_calls: (r as { tool_calls?: import("@/lib/data/types").ToolCallLog[] | null }).tool_calls ?? null,
