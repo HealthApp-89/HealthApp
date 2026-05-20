@@ -49,8 +49,23 @@ export function VoiceMicButton({ onParsed, onUnparsed, disabled }: Props) {
     rec.onresult = (e) => {
       const transcript = e.results[0]?.[0]?.transcript ?? "";
       const parsed = parseVoiceSet(transcript);
-      if (parsed) onParsed(parsed);
-      else onUnparsed(transcript);
+      if (parsed) { onParsed(parsed); return; }
+      // Regex missed — try the Haiku 4.5 fallback before surfacing the banner.
+      void (async () => {
+        try {
+          const res = await fetch("/api/logger/parse-voice", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ transcript }),
+          });
+          if (!res.ok) { onUnparsed(transcript); return; }
+          const j = (await res.json()) as { parsed: { kg: number | null; reps: number } | null };
+          if (j.parsed) onParsed(j.parsed);
+          else onUnparsed(transcript);
+        } catch {
+          onUnparsed(transcript);
+        }
+      })();
     };
     rec.onend = () => setActive(false);
     rec.onerror = () => setActive(false);

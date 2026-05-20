@@ -17,7 +17,7 @@ export function usePreviousSet(args: {
   enabled?: boolean;
 }) {
   return useQuery({
-    queryKey: queryKeys.previousSet.one(args.userId, args.exerciseName, args.setIndex),
+    queryKey: queryKeys.previousSet.one(args.userId, args.exerciseName, args.setIndex, args.excludeWorkoutExternalId),
     queryFn: () =>
       fetchPreviousSetBrowser({
         userId: args.userId,

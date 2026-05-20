@@ -2,7 +2,6 @@
 
 import { useEffect } from "react";
 import { useRestCountdown, fireRestDoneCue } from "@/lib/logger/rest-timer";
-import { fmtNum } from "@/lib/ui/score";
 
 type Props = {
   duration_seconds: number;
@@ -27,10 +26,13 @@ export function RestBar({ duration_seconds, started_at, onDone, onSkip }: Props)
   const mins = Math.floor(remaining_seconds / 60);
   const secs = remaining_seconds % 60;
   const label = `${mins}:${secs.toString().padStart(2, "0")}`;
+  const prescribedMins = Math.floor(duration_seconds / 60);
+  const prescribedSecs = duration_seconds % 60;
+  const prescribedLabel = `${prescribedMins}:${prescribedSecs.toString().padStart(2, "0")}`;
 
   return (
     <div className="flex items-center gap-2 py-1 px-1 text-blue-400 text-[10px]">
-      <span className="font-medium font-mono">{fmtNum(duration_seconds / 60)}:00</span>
+      <span className="font-medium font-mono">{prescribedLabel}</span>
       <button
         type="button"
         onClick={onSkip}

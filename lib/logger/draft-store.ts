@@ -32,6 +32,14 @@ export async function saveDraft(draft: LoggerDraft): Promise<void> {
   await db.put(STORE, draft, key(draft.user_id, draft.session_type));
 }
 
+/**
+ * Note on the draft's `date` field across midnight: if a user starts a session
+ * on Monday at 11pm, abandons mid-session, and resumes Tuesday morning before
+ * the 12h TTL expires, the commit will write `workouts.date = Monday` (the
+ * draft's stored date wins over the caller's "today"). This is the intended
+ * behavior — they're finishing Monday's session. To start a fresh Tuesday
+ * session, the user discards via the resume prompt.
+ */
 export async function loadDraft(
   userId: string,
   sessionType: string,

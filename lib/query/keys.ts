@@ -52,8 +52,8 @@ export const queryKeys = {
       ["user-session-templates", userId, sessionType] as const,
   },
   previousSet: {
-    one: (userId: string, exerciseName: string, setIndex: number) =>
-      ["previous-set", userId, exerciseName.trim().toLowerCase(), setIndex] as const,
+    one: (userId: string, exerciseName: string, setIndex: number, excludeId: string | null) =>
+      ["previous-set", userId, exerciseName.trim().toLowerCase(), setIndex, excludeId ?? "none"] as const,
   },
   tokens: {
     whoop: (userId: string) => ["tokens", userId, "whoop"] as const,
