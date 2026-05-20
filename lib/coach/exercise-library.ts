@@ -1,7 +1,7 @@
 // lib/coach/exercise-library.ts
 //
 // Strength exercise catalog for Coach Carter. Sub-project 1 of 2: ships the
-// data shape, ~57 seed entries, and a pure `findSubstitutes` scoring function.
+// data shape, 62 seed entries, and a pure `findSubstitutes` scoring function.
 // Sub-project 2 will add swap-write tools and a stall detector that consume
 // this library.
 //
@@ -174,11 +174,11 @@ export const EXERCISE_LIBRARY: readonly LibraryExercise[] = [
     role: "accessory",
   },
   {
-    id: "chest_fly",
-    name: "Chest Fly",
+    id: "chest_fly_cable",
+    name: "Chest Fly (Cable)",
     pattern: "push",
     primaryMuscle: "Chest",
-    equipment: ["cable", "dumbbell"],
+    equipment: ["cable"],
     stability: "low",
     romBias: "lengthened",
     skill: "low",
@@ -186,7 +186,20 @@ export const EXERCISE_LIBRARY: readonly LibraryExercise[] = [
     loadability: "fine",
     role: "accessory",
     increment: { step: 5, intermediate: 2.3 },
-    notes: "Athlete's current Chest day isolation. Cable or DB acceptable.",
+    notes: "Athlete's current Chest day isolation (cable stack with 2.3kg micro-pin).",
+  },
+  {
+    id: "chest_fly_db",
+    name: "Chest Fly (Dumbbell)",
+    pattern: "push",
+    primaryMuscle: "Chest",
+    equipment: ["dumbbell"],
+    stability: "medium",
+    romBias: "lengthened",
+    skill: "low",
+    jointStress: ["shoulder"],
+    loadability: "coarse",
+    role: "accessory",
   },
   {
     id: "pec_deck",
@@ -195,7 +208,7 @@ export const EXERCISE_LIBRARY: readonly LibraryExercise[] = [
     primaryMuscle: "Chest",
     equipment: ["machine"],
     stability: "low",
-    romBias: "shortened",
+    romBias: "lengthened",
     skill: "low",
     jointStress: ["shoulder"],
     loadability: "fine",
@@ -868,7 +881,7 @@ export const EXERCISE_LIBRARY: readonly LibraryExercise[] = [
     jointStress: ["lumbar", "hip"],
     loadability: "coarse",
     role: "accessory",
-    notes: "Athlete's current Back day posterior-chain finisher.",
+    notes: "Athlete's current Back day posterior-chain finisher. Primary mover is actually erector spinae — 'Hams' is the closest TargetedMuscleGroup proxy (no LowerBack/Erectors entry in the taxonomy).",
   },
 
   // ── ACCESSORY — Calves / Hip abduction ─────────────────────────────────────
