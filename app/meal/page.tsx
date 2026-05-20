@@ -6,7 +6,7 @@ import { queryKeys } from "@/lib/query/keys";
 import { fetchFoodEntriesServer } from "@/lib/query/fetchers/foodEntries";
 import { fetchTodayTargetsServer } from "@/lib/query/fetchers/todayTargets";
 import { todayInUserTz } from "@/lib/time";
-import { MealJournalClient } from "./MealJournalClient";
+import { MealJournalClient } from "@/components/meal/MealJournalClient";
 
 export const dynamic = "force-dynamic";
 
