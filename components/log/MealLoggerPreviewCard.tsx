@@ -24,13 +24,23 @@ export function MealLoggerPreviewCard({ entry, onCommitted, onCancelled, onEdit 
   const confirm = async () => {
     setBusy("confirm");
     setError(null);
-    const res = await fetch("/api/food/commit", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ entry_id: entry.id }),
-    });
+    let res: Response;
+    try {
+      res = await fetch("/api/food/commit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ entry_id: entry.id }),
+      });
+    } catch (e) {
+      console.error("[meal-log] /api/food/commit fetch threw", e);
+      setError(`Network error: ${(e as Error).message}`);
+      setBusy(null);
+      return;
+    }
     if (!res.ok) {
-      setError("Couldn't commit — try again.");
+      const body = await res.text().catch(() => "");
+      console.error("[meal-log] /api/food/commit non-OK", res.status, body);
+      setError(`Couldn't commit (HTTP ${res.status}): ${body.slice(0, 200) || "no body"}`);
       setBusy(null);
       return;
     }
@@ -40,9 +50,19 @@ export function MealLoggerPreviewCard({ entry, onCommitted, onCancelled, onEdit 
   const cancel = async () => {
     setBusy("cancel");
     setError(null);
-    const res = await fetch(`/api/food/entries/${entry.id}`, { method: "DELETE" });
+    let res: Response;
+    try {
+      res = await fetch(`/api/food/entries/${entry.id}`, { method: "DELETE" });
+    } catch (e) {
+      console.error("[meal-log] cancel fetch threw", e);
+      setError(`Network error: ${(e as Error).message}`);
+      setBusy(null);
+      return;
+    }
     if (!res.ok) {
-      setError("Couldn't cancel — try again.");
+      const body = await res.text().catch(() => "");
+      console.error("[meal-log] cancel non-OK", res.status, body);
+      setError(`Couldn't cancel (HTTP ${res.status}): ${body.slice(0, 200) || "no body"}`);
       setBusy(null);
       return;
     }
