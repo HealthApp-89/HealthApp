@@ -1,0 +1,113 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="_shared.css">
+<style>
+  body { padding: 40px; display: flex; justify-content: center; }
+  .timeline {
+    display: flex; flex-direction: column;
+    border-left: 2px dashed var(--divider);
+    margin-left: 6px;
+    padding-left: 14px;
+  }
+  .step {
+    position: relative;
+    padding: 8px 0;
+  }
+  .step::before {
+    content: ""; position: absolute;
+    left: -22px; top: 14px;
+    width: 12px; height: 12px; border-radius: 999px;
+    background: var(--accent); border: 3px solid var(--surface);
+    box-shadow: 0 0 0 2px var(--accent-soft);
+  }
+  .step .name { font-size: 13px; font-weight: 700; }
+  .step .sub  { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+  .week-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+  .wcell {
+    background: var(--surface-alt); border-radius: var(--r-card-sm);
+    padding: 10px 6px; text-align: center;
+    font-size: 10px; color: var(--muted); font-weight: 600;
+  }
+  .wcell .l { font-size: 11px; font-weight: 800; color: var(--strong); }
+  .wcell.push  { background: #f9731622; color: #9a3412; }
+  .wcell.pull  { background: #4f5dff22; color: #1e3a8c; }
+  .wcell.lower { background: #14b87022; color: #047857; }
+  .wcell.full  { background: #06b6d422; color: #155e75; }
+  .wcell.rest  { background: var(--surface-alt); color: var(--faint); }
+  .wcell .l.dimmed { color: inherit; }
+
+  .block-pill {
+    display: flex; align-items: center; gap: 8px;
+    background: linear-gradient(135deg, var(--accent-soft) 0%, #fff 100%);
+    border: 1px solid var(--accent); border-radius: var(--r-pill);
+    padding: 10px 14px;
+  }
+  .block-pill .n { font-size: 11px; color: var(--mid); font-weight: 600; }
+  .block-pill .v { font-size: 14px; font-weight: 800; color: var(--strong); }
+  .progress {
+    height: 8px; background: var(--surface-alt); border-radius: 999px; overflow: hidden;
+    margin-top: 8px;
+  }
+  .progress > span { display: block; height: 100%; background: var(--accent); width: 40%; border-radius: 999px; }
+</style></head>
+<body>
+  <div class="phone">
+    <div class="phone-status">
+      <span>20:14</span><span class="right">●●● ▼ 64%</span>
+    </div>
+    <div class="top-nav">
+      <div>
+        <div class="title">Plan next week</div>
+        <div class="date">Sunday, May 17</div>
+      </div>
+      <span class="pill pill-accent">Block 3 / 5</span>
+    </div>
+
+    <div class="page">
+      <!-- Block progress -->
+      <div class="card">
+        <div class="label">Mesocycle goal</div>
+        <div class="h-title mt-6">+5 kg squat 1RM · hold 80 kg LBM</div>
+        <div class="progress"><span></span></div>
+        <div class="row-between mt-6">
+          <span class="small">Week 2 of 5</span>
+          <span class="small tnum">+2.1 kg · LBM 79.8</span>
+        </div>
+      </div>
+
+      <!-- Last week recap (Sunday ritual) -->
+      <div class="card">
+        <div class="label">Last week</div>
+        <div class="mt-8" style="display:flex; flex-direction:column; gap:6px;">
+          <div class="row-between"><span class="body">As planned</span><span class="pill pill-success tnum">4 / 5</span></div>
+          <div class="row-between"><span class="body">Swapped</span><span class="pill pill-warning tnum">1</span></div>
+          <div class="row-between"><span class="body">Missed</span><span class="pill tnum">0</span></div>
+          <div class="row-between"><span class="body">Strength / LBM</span><span class="pill pill-accent tnum">+1.4%</span></div>
+        </div>
+      </div>
+
+      <!-- Proposed week -->
+      <div class="card">
+        <div class="row-between">
+          <div class="label">Proposed week</div>
+          <span class="small">Coach v1</span>
+        </div>
+        <div class="week-grid mt-8">
+          <div class="wcell lower"><div class="l">Mon</div>Lower</div>
+          <div class="wcell pull"><div class="l">Tue</div>Pull</div>
+          <div class="wcell push"><div class="l">Wed</div>Push</div>
+          <div class="wcell rest"><div class="l">Thu</div>Rest</div>
+          <div class="wcell lower"><div class="l">Fri</div>Lower</div>
+          <div class="wcell pull"><div class="l">Sat</div>Pull</div>
+          <div class="wcell full"><div class="l">Sun</div>Full</div>
+        </div>
+        <div class="small mt-8">Two lower days because soreness recovered fast last week and squat volume is the bottleneck for the block goal.</div>
+      </div>
+
+      <!-- Commit -->
+      <div class="row gap-8">
+        <button style="flex:1; padding:14px; border-radius:var(--r-pill); background:var(--surface); border:1px solid var(--divider); color:var(--mid); font-weight:700; font-size:13px;">Tweak</button>
+        <button style="flex:2; padding:14px; border-radius:var(--r-pill); background:var(--accent); color:#fff; font-weight:700; font-size:13px; border:0;">Commit week</button>
+      </div>
+    </div>
+  </div>
+</body></html>

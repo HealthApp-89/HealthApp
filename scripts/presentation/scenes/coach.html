@@ -1,0 +1,94 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="_shared.css">
+<style>
+  body { padding: 40px; display: flex; justify-content: center; }
+  .msg {
+    max-width: 80%;
+    padding: 10px 14px; border-radius: 18px;
+    font-size: 13px; line-height: 1.45;
+  }
+  .msg-bot {
+    background: var(--surface); color: var(--strong);
+    border: 1px solid var(--divider);
+    border-top-left-radius: 6px;
+    align-self: flex-start;
+  }
+  .msg-user {
+    background: var(--accent); color: #fff;
+    border-top-right-radius: 6px;
+    align-self: flex-end;
+  }
+  .chat { display: flex; flex-direction: column; gap: 10px; padding: 16px; }
+  .ts { font-size: 10px; color: var(--faint); padding: 0 4px; }
+  .composer {
+    margin: 12px 16px 0;
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 14px; background: var(--surface);
+    border: 1px solid var(--divider); border-radius: var(--r-pill);
+  }
+  .composer .ph { color: var(--muted); font-size: 13px; flex: 1; }
+  .composer .send {
+    width: 32px; height: 32px; border-radius: 999px;
+    background: var(--accent); color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700;
+  }
+  .swap-card {
+    background: var(--warning-soft);
+    border: 1px solid var(--warning);
+    border-radius: var(--r-card-sm);
+    padding: 12px;
+    align-self: flex-start; max-width: 90%;
+  }
+  .swap-card .h { font-size: 12px; font-weight: 700; color: #92400e; }
+  .swap-card .b { font-size: 12px; color: var(--mid); margin-top: 4px; }
+  .swap-actions { display: flex; gap: 6px; margin-top: 10px; }
+  .swap-actions .btn {
+    flex: 1; padding: 8px; border-radius: var(--r-pill);
+    text-align: center; font-size: 11px; font-weight: 700;
+    background: var(--surface); border: 1px solid var(--divider); color: var(--mid);
+  }
+  .swap-actions .btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+</style></head>
+<body>
+  <div class="phone">
+    <div class="phone-status">
+      <span>11:02</span><span class="right">●●● ▼ 87%</span>
+    </div>
+    <div class="top-nav">
+      <div>
+        <div class="title">Coach</div>
+        <div class="date">Live — Block 3, week 2</div>
+      </div>
+      <span class="pill pill-accent">Sonnet 4.6</span>
+    </div>
+
+    <div class="chat">
+      <div class="ts">10:58</div>
+      <div class="msg msg-user">Knee feels off today — would you swap squat day to later this week?</div>
+
+      <div class="msg msg-bot">
+        Yeah, let's not push it. Your week has Thursday pull + Sunday full body. I'd move today's lower to Sunday and pull the Sunday session to today — keeps the 48h gap to your next leg day.
+      </div>
+
+      <div class="swap-card">
+        <div class="h">Proposed swap</div>
+        <div class="b">Wed <b>Lower → Pull</b> &nbsp;·&nbsp; Sun <b>Full → Lower</b></div>
+        <div class="swap-actions">
+          <div class="btn">Decline</div>
+          <div class="btn primary">Commit</div>
+        </div>
+      </div>
+
+      <div class="msg msg-user">Done. Also — can I drop calories 100 more this week?</div>
+
+      <div class="msg msg-bot">
+        You're 4 days into the cut block, weight trending −0.3 kg/wk, protein hits 95% — those are healthy signals. Holding calories steady this week. We'll reassess Sunday from the body-comp scan.
+      </div>
+    </div>
+
+    <div class="composer">
+      <span class="ph">Ask anything…</span>
+      <div class="send">→</div>
+    </div>
+  </div>
+</body></html>

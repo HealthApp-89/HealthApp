@@ -1,0 +1,105 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="_shared.css">
+<style>
+  body { padding: 40px; display: flex; justify-content: center; }
+  .integration {
+    display: flex; align-items: center; gap: 12px;
+    padding: 14px;
+    background: var(--surface); border: 1px solid var(--divider);
+    border-radius: var(--r-card-sm);
+  }
+  .logo {
+    width: 40px; height: 40px; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-weight: 800; font-size: 14px; letter-spacing: -0.02em;
+    flex-shrink: 0;
+  }
+  .logo.whoop    { background: #14b870; }
+  .logo.withings { background: #00afff; }
+  .logo.apple    { background: #0f1430; }
+  .logo.strong   { background: #ef4444; }
+  .logo.yazio    { background: #f97316; }
+  .meta .name { font-size: 14px; font-weight: 700; }
+  .meta .status { font-size: 11px; color: var(--muted); font-weight: 500; margin-top: 2px; }
+  .meta .status.connected { color: var(--success); }
+  .meta .status.pending   { color: var(--warning); }
+  .btn-sm {
+    margin-left: auto;
+    padding: 8px 12px; border-radius: var(--r-pill);
+    font-size: 11px; font-weight: 700;
+    background: var(--surface-alt); color: var(--mid); border: 1px solid var(--divider);
+  }
+  .btn-sm.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+</style></head>
+<body>
+  <div class="phone">
+    <div class="phone-status">
+      <span>9:41</span><span class="right">●●● ▼ 100%</span>
+    </div>
+    <div class="top-nav">
+      <div>
+        <div class="title">Profile</div>
+        <div class="date">Connect your data sources</div>
+      </div>
+      <span class="pill pill-success">5 / 5 ready</span>
+    </div>
+
+    <div class="page">
+      <div class="label">Data sources</div>
+
+      <div class="integration">
+        <div class="logo whoop">W</div>
+        <div class="meta">
+          <div class="name">WHOOP</div>
+          <div class="status connected">● Connected — last sync 7m ago</div>
+        </div>
+        <div class="btn-sm">Manage</div>
+      </div>
+
+      <div class="integration">
+        <div class="logo withings">Wi</div>
+        <div class="meta">
+          <div class="name">Withings</div>
+          <div class="status connected">● Connected — 6 metrics</div>
+        </div>
+        <div class="btn-sm">Manage</div>
+      </div>
+
+      <div class="integration">
+        <div class="logo apple">A</div>
+        <div class="meta">
+          <div class="name">Apple Health (Garmin)</div>
+          <div class="status connected">● Token active — 24 days streak</div>
+        </div>
+        <div class="btn-sm">Token</div>
+      </div>
+
+      <div class="integration">
+        <div class="logo strong">S</div>
+        <div class="meta">
+          <div class="name">Strong</div>
+          <div class="status connected">● Webhook live — 138 sessions</div>
+        </div>
+        <div class="btn-sm">Manage</div>
+      </div>
+
+      <div class="integration">
+        <div class="logo yazio">Y</div>
+        <div class="meta">
+          <div class="name">Yazio</div>
+          <div class="status connected">● Webhook live — 4,210 meals</div>
+        </div>
+        <div class="btn-sm">Manage</div>
+      </div>
+
+      <div class="card mt-4" style="background: linear-gradient(135deg, var(--accent-soft) 0%, #fff 100%); border-color: var(--accent);">
+        <div class="row-between">
+          <div>
+            <div class="h-mid">Generate your plan</div>
+            <div class="body mt-2">Profile complete — start the 5-beat coach intake.</div>
+          </div>
+          <div class="btn-sm primary">Start</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body></html>

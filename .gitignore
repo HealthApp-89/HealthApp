@@ -49,3 +49,13 @@ supabase/.temp/
 
 # superpowers brainstorm session files
 .superpowers/
+
+# UX walkthrough deck — generated build artifacts (source under scripts/presentation/)
+docs/Apex-Health-OS-*.docx
+docs/Apex-Health-OS-*.pptx
+scripts/presentation/shots/
+scripts/presentation/shots-real/
+
+# one-off dev fixup scripts (committed scripts/ utilities follow the audit-*/import-* pattern)
+scripts/insert-measurement-*.mjs
+scripts/reset-today-intake.mjs

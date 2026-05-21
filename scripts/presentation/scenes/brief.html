@@ -1,0 +1,176 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="_shared.css">
+<style>
+  body { padding: 40px; display: flex; justify-content: center; }
+  .recap-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;
+  }
+  .recap-cell {
+    background: var(--surface-alt);
+    border-radius: var(--r-card-sm);
+    padding: 10px 8px;
+    text-align: center;
+  }
+  .recap-cell .v { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--strong); }
+  .recap-cell .l { font-size: 9px; color: var(--muted); font-weight: 600; margin-top: 3px; letter-spacing: 0.04em; text-transform: uppercase; }
+  .recap-cell .hit { color: var(--success); }
+  .recap-cell .miss { color: var(--danger); }
+
+  .ring-block { display: flex; align-items: center; gap: 14px; }
+  .ring {
+    width: 86px; height: 86px; border-radius: 50%;
+    background: conic-gradient(var(--success) 0deg 248deg, var(--surface-alt) 248deg 360deg);
+    display: flex; align-items: center; justify-content: center;
+    position: relative; flex-shrink: 0;
+  }
+  .ring::before {
+    content: ""; position: absolute; inset: 9px;
+    background: var(--surface); border-radius: 50%;
+  }
+  .ring .v { position: relative; font-size: 24px; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--strong); }
+  .driver { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+  .driver .dot { width: 6px; height: 6px; border-radius: 999px; }
+
+  .session-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 0; border-top: 1px dashed var(--divider);
+    font-size: 13px;
+  }
+  .session-row:first-child { border-top: 0; }
+  .session-row .name { font-weight: 600; color: var(--strong); }
+  .session-row .meta { color: var(--muted); font-size: 11px; }
+
+  .macros-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;
+  }
+  .macro {
+    background: var(--surface-alt);
+    border-radius: var(--r-card-sm);
+    padding: 12px 8px; text-align: center;
+  }
+  .macro .v { font-size: 16px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .macro .l { font-size: 9px; color: var(--muted); font-weight: 600; margin-top: 4px; text-transform: uppercase; letter-spacing: 0.04em; }
+  .macro.kcal .v { color: var(--accent); }
+  .macro.p .v    { color: var(--success); }
+  .macro.c .v    { color: #ca8a04; }
+  .macro.f .v    { color: #ea580c; }
+
+  .advice {
+    background: linear-gradient(135deg, var(--accent-soft) 0%, #fff 100%);
+    border: 1px solid var(--accent);
+    border-radius: var(--r-card-sm);
+    padding: 14px;
+  }
+  .advice .body { color: var(--strong); font-weight: 500; }
+
+  .tonight {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px;
+    background: var(--surface-alt);
+    border-radius: var(--r-card-sm);
+  }
+  .moon {
+    width: 38px; height: 38px; border-radius: 12px;
+    background: linear-gradient(135deg, #2e3a8c 0%, #4f5dff 100%);
+    color: #fff; font-size: 18px;
+    display: flex; align-items: center; justify-content: center;
+  }
+</style></head>
+<body>
+  <div class="phone">
+    <div class="phone-status">
+      <span>6:48</span><span class="right">●●● ▼ 91%</span>
+    </div>
+    <div class="top-nav">
+      <div>
+        <div class="title">Morning brief</div>
+        <div class="date">Wednesday, May 13</div>
+      </div>
+      <span class="pill pill-success">Ready</span>
+    </div>
+
+    <div class="page">
+      <!-- Yesterday recap -->
+      <div class="card-hero card">
+        <div class="label">Yesterday</div>
+        <div class="recap-grid mt-8">
+          <div class="recap-cell"><div class="v">7.4</div><div class="l">Sleep h</div></div>
+          <div class="recap-cell"><div class="v">12.8</div><div class="l">Strain</div></div>
+          <div class="recap-cell"><div class="v">11.2k</div><div class="l">Steps</div></div>
+          <div class="recap-cell"><div class="v hit">✓</div><div class="l">Protein 168g</div></div>
+        </div>
+      </div>
+
+      <!-- Readiness -->
+      <div class="card-hero card">
+        <div class="label">Today's readiness</div>
+        <div class="ring-block mt-8">
+          <div class="ring"><span class="v">69</span></div>
+          <div style="display:flex; flex-direction:column; gap:6px;">
+            <span class="pill pill-warning">Moderate</span>
+            <div class="driver"><span class="dot" style="background: var(--success);"></span><span style="color: var(--success); font-weight:600;">+ HRV recovered</span></div>
+            <div class="driver"><span class="dot" style="background: var(--success);"></span><span style="color: var(--success); font-weight:600;">+ Solid sleep</span></div>
+            <div class="driver"><span class="dot" style="background: var(--danger);"></span><span style="color: var(--danger); font-weight:600;">− Quad soreness</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Session -->
+      <div class="card">
+        <div class="row-between">
+          <div class="label">Today's session</div>
+          <span class="pill pill-accent">Upper push · 60 min</span>
+        </div>
+        <div class="mt-8">
+          <div class="session-row">
+            <div><div class="name">Bench press</div><div class="meta">4 × 6 @ 95 kg · RPE 8</div></div>
+            <span class="small">Big lift</span>
+          </div>
+          <div class="session-row">
+            <div><div class="name">Incline DB press</div><div class="meta">3 × 10 @ 28 kg · RPE 8</div></div>
+            <span class="small">Volume</span>
+          </div>
+          <div class="session-row">
+            <div><div class="name">Overhead press</div><div class="meta">3 × 8 @ 50 kg · RPE 7</div></div>
+            <span class="small">Strength</span>
+          </div>
+          <div class="session-row">
+            <div><div class="name">Cable lateral raise</div><div class="meta">3 × 15 · RPE 9</div></div>
+            <span class="small">Iso</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Macros -->
+      <div class="card">
+        <div class="row-between">
+          <div class="label">Macros target</div>
+          <span class="small">Plan: lean recomp</span>
+        </div>
+        <div class="macros-grid mt-8">
+          <div class="macro kcal"><div class="v">2,540</div><div class="l">kcal</div></div>
+          <div class="macro p"><div class="v">175</div><div class="l">Protein</div></div>
+          <div class="macro c"><div class="v">280</div><div class="l">Carbs</div></div>
+          <div class="macro f"><div class="v">75</div><div class="l">Fat</div></div>
+        </div>
+      </div>
+
+      <!-- Advice -->
+      <div class="advice">
+        <div class="label">Coach</div>
+        <div class="body mt-6">
+          Quads are still loaded from Monday — today's an upper-body day so that lines up. Keep tempo controlled on bench, RPE 8 is the cap. Protein floor is 175g; you missed by ~12g yesterday, front-load it at breakfast.
+        </div>
+      </div>
+
+      <!-- Tonight -->
+      <div class="tonight">
+        <div class="moon">☾</div>
+        <div class="grow">
+          <div class="h-mid">Tonight</div>
+          <div class="small">Lights out by 10:45pm — 8h target.</div>
+        </div>
+        <span class="pill pill-strong tnum">22:45</span>
+      </div>
+    </div>
+  </div>
+</body></html>

@@ -1,0 +1,82 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="_shared.css">
+<style>
+  body { padding: 40px; display: flex; justify-content: center; }
+  .progress {
+    height: 4px; background: var(--surface-alt); border-radius: 999px; overflow: hidden;
+    margin: 14px 16px 4px;
+  }
+  .progress > span { display: block; height: 100%; width: 66%; background: var(--accent); border-radius: 999px; }
+  .step-label { font-size: 11px; color: var(--muted); padding: 0 16px 8px; font-weight: 500; }
+  .input {
+    background: var(--surface-alt); border: 1px solid var(--divider);
+    border-radius: var(--r-pill); padding: 12px 14px;
+    font-size: 14px; color: var(--strong);
+  }
+  .chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip {
+    padding: 8px 12px; border-radius: var(--r-pill);
+    border: 1px solid var(--divider); background: var(--surface);
+    font-size: 13px; color: var(--mid); font-weight: 500;
+  }
+  .chip.on { background: var(--accent-soft); color: var(--accent-deep); border-color: var(--accent); }
+  .textarea {
+    background: var(--surface-alt); border: 1px solid var(--divider);
+    border-radius: var(--r-card-sm); padding: 12px 14px;
+    font-size: 13px; color: var(--strong); min-height: 90px; line-height: 1.5;
+  }
+  .nav-btn {
+    flex: 1; padding: 14px; border-radius: var(--r-pill);
+    background: var(--accent); color: #fff; font-weight: 700; font-size: 14px;
+    text-align: center; border: 0;
+  }
+  .nav-btn.ghost { background: var(--surface); color: var(--mid); border: 1px solid var(--divider); }
+</style></head>
+<body>
+  <div class="phone">
+    <div class="phone-status">
+      <span>9:41</span><span class="right">●●● ▼ 100%</span>
+    </div>
+    <div class="top-nav">
+      <div>
+        <div class="title">Welcome</div>
+        <div class="date">Building your athlete profile</div>
+      </div>
+      <span class="pill pill-accent">Step 6 of 7</span>
+    </div>
+    <div class="progress"><span></span></div>
+    <div class="step-label">Goals</div>
+
+    <div class="page">
+      <div class="card">
+        <div class="label">Primary goal</div>
+        <div class="chip-row mt-8">
+          <span class="chip">Lose fat</span>
+          <span class="chip on">Build muscle</span>
+          <span class="chip">Get stronger</span>
+          <span class="chip">Improve health</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="label">Target by end of mesocycle</div>
+        <div class="row gap-8 mt-8">
+          <div class="input grow tnum">+5 kg squat 1RM</div>
+        </div>
+        <div class="row gap-8 mt-6">
+          <div class="input grow tnum">Hold 80 kg LBM</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="label">Why this matters to you</div>
+        <div class="textarea mt-8">Want to feel athletic again at 36 — keep playing tennis competitively, set an example for the kids, look strong in a t-shirt without thinking about it.</div>
+        <div class="small mt-6">The “why” gets surfaced when motivation dips.</div>
+      </div>
+
+      <div class="row gap-8 mt-4">
+        <button class="nav-btn ghost">Back</button>
+        <button class="nav-btn">Continue</button>
+      </div>
+    </div>
+  </div>
+</body></html>

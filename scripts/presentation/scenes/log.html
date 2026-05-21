@@ -1,0 +1,127 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="_shared.css">
+<style>
+  body { padding: 40px; display: flex; justify-content: center; }
+  .bar-wrap {
+    height: 10px; background: var(--surface-alt); border-radius: 999px; overflow: hidden;
+  }
+  .bar { height: 100%; border-radius: 999px; }
+  .stat-row { display: flex; align-items: center; justify-content: space-between; font-size: 12px; }
+  .stat-row .l { color: var(--muted); font-weight: 600; }
+  .stat-row .v { color: var(--strong); font-weight: 700; font-variant-numeric: tabular-nums; }
+
+  .meal {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px; background: var(--surface-alt); border-radius: var(--r-card-sm);
+  }
+  .meal-icon {
+    width: 36px; height: 36px; border-radius: 10px;
+    background: var(--accent-soft); color: var(--accent-deep);
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700;
+  }
+  .meal .grow .name { font-size: 13px; font-weight: 600; }
+  .meal .grow .sub  { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .meal .kcal {
+    text-align: right;
+  }
+  .meal .kcal .v { font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .meal .kcal .l { font-size: 10px; color: var(--muted); }
+</style></head>
+<body>
+  <div class="phone">
+    <div class="phone-status">
+      <span>13:08</span><span class="right">●●● ▼ 84%</span>
+    </div>
+    <div class="top-nav">
+      <div>
+        <div class="title">Log</div>
+        <div class="date">Wed, May 13 — auto-syncing</div>
+      </div>
+      <span class="pill pill-accent">Yazio · live</span>
+    </div>
+
+    <div class="page">
+      <!-- Macros progress -->
+      <div class="card-hero card">
+        <div class="row-between">
+          <div class="label">Today's macros</div>
+          <span class="small">Target — lean recomp</span>
+        </div>
+        <div class="mt-12" style="display:flex; flex-direction:column; gap:10px;">
+          <div>
+            <div class="stat-row"><span class="l">Calories</span><span class="v">1,420 / 2,540 kcal</span></div>
+            <div class="bar-wrap mt-4"><div class="bar" style="width:56%; background: var(--accent);"></div></div>
+          </div>
+          <div>
+            <div class="stat-row"><span class="l">Protein</span><span class="v">108 / 175 g</span></div>
+            <div class="bar-wrap mt-4"><div class="bar" style="width:62%; background: var(--success);"></div></div>
+          </div>
+          <div>
+            <div class="stat-row"><span class="l">Carbs</span><span class="v">154 / 280 g</span></div>
+            <div class="bar-wrap mt-4"><div class="bar" style="width:55%; background:#ca8a04;"></div></div>
+          </div>
+          <div>
+            <div class="stat-row"><span class="l">Fat</span><span class="v">42 / 75 g</span></div>
+            <div class="bar-wrap mt-4"><div class="bar" style="width:56%; background:#ea580c;"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Meals -->
+      <div class="card">
+        <div class="row-between">
+          <div class="label">Logged today</div>
+          <span class="small">via Yazio</span>
+        </div>
+        <div class="mt-8" style="display:flex; flex-direction:column; gap:8px;">
+          <div class="meal">
+            <div class="meal-icon">🥣</div>
+            <div class="grow">
+              <div class="name">Greek yogurt + berries + oats</div>
+              <div class="sub">Breakfast · 06:55</div>
+            </div>
+            <div class="kcal"><div class="v">420</div><div class="l">kcal</div></div>
+          </div>
+          <div class="meal">
+            <div class="meal-icon">🍳</div>
+            <div class="grow">
+              <div class="name">Whey + banana</div>
+              <div class="sub">Snack · 09:20</div>
+            </div>
+            <div class="kcal"><div class="v">240</div><div class="l">kcal</div></div>
+          </div>
+          <div class="meal">
+            <div class="meal-icon">🍱</div>
+            <div class="grow">
+              <div class="name">Chicken bowl, rice, kimchi</div>
+              <div class="sub">Lunch · 12:45</div>
+            </div>
+            <div class="kcal"><div class="v">760</div><div class="l">kcal</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Activity feed (Garmin) -->
+      <div class="card">
+        <div class="row-between">
+          <div class="label">Activity (Apple Health · Garmin)</div>
+          <span class="pill pill-success">streaming</span>
+        </div>
+        <div class="row gap-12 mt-8">
+          <div class="grow">
+            <div class="small">Steps</div>
+            <div class="h-title tnum mt-2">8,247</div>
+          </div>
+          <div class="grow">
+            <div class="small">Active kcal</div>
+            <div class="h-title tnum mt-2">412</div>
+          </div>
+          <div class="grow">
+            <div class="small">Distance</div>
+            <div class="h-title tnum mt-2">5.8 km</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body></html>
