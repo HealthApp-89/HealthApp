@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { COLOR } from "@/lib/ui/theme";
 import { useTrainingWeek } from "@/lib/query/hooks/useTrainingWeek";
 import {
@@ -57,9 +57,86 @@ export function BriefCoachSuggestion({
 
   const { data: trainingWeek } = useTrainingWeek(userId, weekStart);
   const mutation = useSwapTrainingDay(userId, weekStart);
+  const [reduceDismissed, setReduceDismissed] = useState(false);
 
   if (!suggestion) return null;
-  if (!trainingWeek) return null; // assembler should have gated; defense in depth
+  // Swap kinds need a training_weeks row to mutate; reduce_intensity is
+  // informational and renders without one.
+  if (suggestion.kind === "swap_to_mobility" && !trainingWeek) return null;
+
+  if (suggestion.kind === "reduce_intensity") {
+    if (reduceDismissed) {
+      return (
+        <div
+          style={{
+            marginTop: "12px",
+            padding: "12px 14px",
+            background: COLOR.successSoft,
+            color: COLOR.success,
+            borderRadius: "10px",
+            fontSize: "13px",
+            lineHeight: 1.5,
+          }}
+        >
+          ✓ Got it — dropping top sets to RPE 7 today.
+        </div>
+      );
+    }
+    return (
+      <div
+        style={{
+          marginTop: "12px",
+          padding: "14px 16px",
+          background: COLOR.warningSoft,
+          borderRadius: "10px",
+        }}
+      >
+        <div
+          style={{
+            fontSize: "11px",
+            fontWeight: 700,
+            color: COLOR.warning,
+            letterSpacing: "0.05em",
+            textTransform: "uppercase",
+            marginBottom: "4px",
+          }}
+        >
+          Carter recommends
+        </div>
+        <p
+          style={{
+            fontSize: "14px",
+            color: COLOR.textStrong,
+            marginBottom: "12px",
+            lineHeight: 1.4,
+          }}
+        >
+          {suggestion.detail ?? "Heavy fatigue + low recovery"} — drop top sets to RPE 7 today.
+        </p>
+        <button
+          type="button"
+          onClick={() => setReduceDismissed(true)}
+          style={{
+            width: "100%",
+            padding: "10px 14px",
+            background: COLOR.warning,
+            color: "#000",
+            border: "none",
+            borderRadius: "8px",
+            fontSize: "13px",
+            fontWeight: 600,
+            cursor: "pointer",
+          }}
+        >
+          Got it
+        </button>
+      </div>
+    );
+  }
+
+  // From here on, `suggestion.kind === "swap_to_mobility"`. `trainingWeek`
+  // is also guaranteed non-null (see early return above).
+  if (!trainingWeek) return null;
 
   // Derive "acknowledged" state: the live training_weeks plan no longer matches
   // the brief's frozen session.type. The brief jsonb is NOT rewritten on swap.
@@ -115,7 +192,9 @@ export function BriefCoachSuggestion({
           marginBottom: "4px",
         }}
       >
-        Coach suggestion
+        {suggestion.rationale === "low_readiness"
+          ? "Coach suggestion"
+          : "Carter recommends"}
       </div>
       <p
         style={{
@@ -125,7 +204,9 @@ export function BriefCoachSuggestion({
           lineHeight: 1.4,
         }}
       >
-        Your readiness is low — swap to Mobility today?
+        {suggestion.rationale === "low_readiness"
+          ? "Your readiness is low — swap to Mobility today?"
+          : `${suggestion.detail ?? "Sharp soreness reported"} — swap to Mobility today?`}
       </p>
       <div style={{ display: "flex", gap: "8px" }}>
         <button

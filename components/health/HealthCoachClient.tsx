@@ -7,7 +7,7 @@ import { useCheckin } from "@/lib/query/hooks/useCheckin";
 import { todayInUserTz } from "@/lib/time";
 import { COLOR } from "@/lib/ui/theme";
 import type { Checkin } from "@/lib/query/fetchers/checkin";
-import { openMorningIntake } from "@/components/morning/MorningIntakeHost";
+import { MorningIntakeHost, openMorningIntake } from "@/components/morning/MorningIntakeHost";
 
 type Props = {
   userId: string;
@@ -75,6 +75,7 @@ export function HealthCoachClient({ userId, hrvBaseline }: Props) {
         minHeight: "calc(100dvh - 88px)",
       }}
     >
+      <MorningIntakeHost userId={userId} />
       {/* ── Summary cluster ── */}
       <div
         style={{

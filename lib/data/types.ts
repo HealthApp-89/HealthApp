@@ -871,6 +871,10 @@ export type AdviceFlags = {
    *  explain WHY (signals fired), not re-decide WHETHER to swap, and should
    *  drop workout-anchored eating timing. */
   coach_swap_suggested: boolean;
+  /** True when MorningBriefCard.coach_suggestion?.kind === 'reduce_intensity'.
+   *  Lets Peter's prose acknowledge Carter's reduce-intensity recommendation
+   *  the same way coach_swap_suggested gates the swap-mention path. */
+  coach_reduce_intensity_suggested: boolean;
   /** True when the active committed weekly review's payload.header.block_phase_now
    *  differs from the previous committed review's. Drives the kickoff explainer
    *  rule. False when no prior review exists (treat first-ever week as a transition). */
@@ -921,7 +925,8 @@ export type SwapConflictResponse = {
 // ── Morning brief coach_suggestion (consumed by Schedule flexibility) ────────
 
 export type MorningBriefCoachSuggestion =
-  | { kind: "swap_to_mobility"; rationale: "low_readiness" }
+  | { kind: "swap_to_mobility"; rationale: "low_readiness" | "high_soreness"; detail?: string }
+  | { kind: "reduce_intensity"; rationale: "recovery_crash"; detail?: string }
   | null;
 
 // ── GLP-1-aware nutrition helper types ──────────────────────────────────────
