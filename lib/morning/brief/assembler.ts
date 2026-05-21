@@ -25,6 +25,7 @@ import type {
   ThisWeekPlanBlock,
 } from "@/lib/data/types";
 import { SESSION_PLANS, type PlannedExercise, getEffectiveSessionPlan } from "@/lib/coach/sessionPlans";
+import { muscleOverlap } from "@/lib/morning/brief/session-muscles";
 import { annotateSession } from "@/lib/coach/session-structure";
 import type { ExerciseOverrides } from "@/lib/data/types";
 import { roundToValidWeight, minNonZeroIncrement } from "@/lib/coach/weight-rounding";
@@ -114,11 +115,17 @@ export function assembleBriefExceptAdvice(
     hydration: composeHydration(inputs),
     macros: composeMacros(inputs),
     tonight: composeTonight(inputs),
-    coach_suggestion: pickCoachSuggestion(
-      readiness.band,
-      inputs.sessionType,
-      inputs.hasTrainingWeek,
-    ),
+    coach_suggestion: pickCoachSuggestion({
+      band: readiness.band,
+      sessionType: inputs.sessionType,
+      hasTrainingWeek: inputs.hasTrainingWeek,
+      intake: {
+        soreness_areas: inputs.todayCheckin?.soreness_areas ?? null,
+        soreness_severity: inputs.todayCheckin?.soreness_severity ?? null,
+        fatigue: inputs.todayCheckin?.fatigue ?? null,
+      },
+      recovery: inputs.todayLog?.recovery ?? null,
+    }),
     this_week_plan: thisWeekPlan,
     yesterday_vs_plan: yesterdayVsPlan,
   };
@@ -167,22 +174,57 @@ function composeReadiness(inputs: BriefInputs): MorningBriefReadiness {
 }
 
 /** Deterministic trigger for the morning brief's coach_suggestion chip.
- *  Fires only when:
- *  - A training_weeks row exists for today (so the swap POST can target it).
- *  - Readiness band is 'low'.
- *  - Today's session is not already REST or Mobility.
- *  All other cases return null and no chip renders.
+ *  Returns null when:
+ *  - No training_weeks row for today (the swap POST would 404).
+ *  - Today's session is REST / Mobility / Sick (already a recovery day).
+ *  - No rule fires.
  */
-export function pickCoachSuggestion(
-  band: "low" | "moderate" | "high",
-  sessionType: string,
-  hasTrainingWeek: boolean,
-): MorningBriefCoachSuggestion {
-  if (!hasTrainingWeek) return null;
-  if (band !== "low") return null;
-  const lower = sessionType.toLowerCase().trim();
-  if (lower === "rest" || lower === "mobility") return null;
-  return { kind: "swap_to_mobility", rationale: "low_readiness" };
+export function pickCoachSuggestion(args: {
+  band: "low" | "moderate" | "high";
+  sessionType: string;
+  hasTrainingWeek: boolean;
+  intake: {
+    soreness_areas: string[] | null;
+    soreness_severity: "mild" | "sharp" | null;
+    fatigue: "none" | "some" | "heavy" | null;
+  };
+  recovery: number | null;
+}): MorningBriefCoachSuggestion {
+  if (!args.hasTrainingWeek) return null;
+  const lower = args.sessionType.toLowerCase().trim();
+  if (lower === "rest" || lower === "mobility" || lower === "sick") return null;
+
+  // Rule 1: sharp soreness in a muscle today's session targets.
+  if (args.intake.soreness_severity === "sharp") {
+    const overlap = muscleOverlap(args.intake.soreness_areas, args.sessionType);
+    if (overlap.length > 0) {
+      return {
+        kind: "swap_to_mobility",
+        rationale: "high_soreness",
+        detail: `sharp soreness in ${overlap.join(", ")}`,
+      };
+    }
+  }
+
+  // Rule 2 (existing): low readiness band.
+  if (args.band === "low") {
+    return { kind: "swap_to_mobility", rationale: "low_readiness" };
+  }
+
+  // Rule 3: WHOOP recovery crash combined with heavy fatigue.
+  if (
+    args.recovery !== null &&
+    args.recovery < 40 &&
+    args.intake.fatigue === "heavy"
+  ) {
+    return {
+      kind: "reduce_intensity",
+      rationale: "recovery_crash",
+      detail: `recovery ${Math.round(args.recovery)} + heavy fatigue`,
+    };
+  }
+
+  return null;
 }
 
 /** Two-signal triangulation. Mirrors the convention in

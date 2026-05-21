@@ -918,7 +918,8 @@ export type SwapConflictResponse = {
 // ── Morning brief coach_suggestion (consumed by Schedule flexibility) ────────
 
 export type MorningBriefCoachSuggestion =
-  | { kind: "swap_to_mobility"; rationale: "low_readiness" }
+  | { kind: "swap_to_mobility"; rationale: "low_readiness" | "high_soreness"; detail?: string }
+  | { kind: "reduce_intensity"; rationale: "recovery_crash"; detail?: string }
   | null;
 
 // ── GLP-1-aware nutrition helper types ──────────────────────────────────────
