@@ -4,6 +4,7 @@ import { useState, useTransition, useRef } from "react";
 import { saveProfile } from "@/app/profile/actions";
 import { COLOR, RADIUS } from "@/lib/ui/theme";
 import { DEFAULT_SYSTEM_PROMPT } from "@/lib/coach/system-prompts";
+import { selectOnFocus } from "@/lib/ui/inputs";
 
 type Props = {
   initial: {
@@ -215,6 +216,7 @@ function Field({
         type={type}
         step="any"
         defaultValue={defaultValue}
+        onFocus={selectOnFocus}
         style={{
           background: COLOR.surfaceAlt,
           border: `1px solid ${COLOR.divider}`,

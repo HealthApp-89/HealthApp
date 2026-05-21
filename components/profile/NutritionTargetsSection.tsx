@@ -15,6 +15,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTodayTargets } from "@/lib/query/hooks/useTodayTargets";
+import { selectOnFocus } from "@/lib/ui/inputs";
 
 export function NutritionTargetsSection({
   userId,
@@ -122,6 +123,7 @@ export function NutritionTargetsSection({
             type="number"
             value={kcal}
             onChange={(e) => setKcal(parseInt(e.target.value, 10) || 0)}
+            onFocus={selectOnFocus}
             min={800}
             max={6000}
             className="w-32 rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-sm text-zinc-100"
@@ -228,6 +230,7 @@ function PctInput({
         type="number"
         value={value}
         onChange={(e) => onChange(parseInt(e.target.value, 10) || 0)}
+        onFocus={selectOnFocus}
         min={0}
         max={100}
         className="mt-1 w-full rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-zinc-100"

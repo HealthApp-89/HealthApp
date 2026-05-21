@@ -6,6 +6,7 @@ import { saveDailyLog } from "@/lib/log/actions";
 import type { DailyLog } from "@/lib/data/types";
 import { Card, SectionLabel } from "@/components/ui/Card";
 import { COLOR, SHADOW } from "@/lib/ui/theme";
+import { selectOnFocus } from "@/lib/ui/inputs";
 
 const SECTIONS: { title: string; color: string; fields: { k: keyof DailyLog; l: string; u: string }[] }[] = [
   {
@@ -706,6 +707,7 @@ function NumField({
         step="any"
         defaultValue={defaultValue}
         placeholder="—"
+        onFocus={selectOnFocus}
         style={{
           background: COLOR.surfaceAlt,
           border: "none",

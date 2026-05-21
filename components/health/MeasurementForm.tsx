@@ -6,6 +6,7 @@ import { COLOR, RADIUS, SHADOW } from "@/lib/ui/theme";
 import { fmtNum } from "@/lib/ui/score";
 import { todayInUserTz } from "@/lib/time";
 import { queryKeys } from "@/lib/query/keys";
+import { selectOnFocus } from "@/lib/ui/inputs";
 import {
   BODY_MEASUREMENT_FIELDS,
   type BodyMeasurement,
@@ -368,6 +369,7 @@ export function MeasurementForm({
                         values: { ...s.values, [key]: e.target.value },
                       }))
                     }
+                    onFocus={selectOnFocus}
                     style={{
                       width: "70px",
                       textAlign: "right",

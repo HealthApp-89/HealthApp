@@ -5,6 +5,7 @@ import type { ExerciseSetDraft } from "@/lib/logger/types";
 import { usePreviousSet } from "@/lib/query/hooks/usePreviousSet";
 import { VoiceMicButton } from "@/components/logger/VoiceMicButton";
 import { fmtNum } from "@/lib/ui/score";
+import { selectOnFocus } from "@/lib/ui/inputs";
 
 type Props = {
   userId: string;
@@ -61,6 +62,7 @@ export function SetRow({
           inputMode="decimal"
           value={draftKg}
           onChange={(e) => { setDraftKg(e.target.value); }}
+          onFocus={selectOnFocus}
           onBlur={() => {
             const n = draftKg === "" ? null : parseFloat(draftKg);
             onChange({ kg: Number.isFinite(n as number) ? (n as number) : null });
@@ -76,6 +78,7 @@ export function SetRow({
           inputMode="numeric"
           value={draftReps}
           onChange={(e) => { setDraftReps(e.target.value); }}
+          onFocus={selectOnFocus}
           onBlur={() => {
             const n = draftReps === "" ? null : parseInt(draftReps, 10);
             onChange({ reps: Number.isFinite(n as number) ? (n as number) : null });
