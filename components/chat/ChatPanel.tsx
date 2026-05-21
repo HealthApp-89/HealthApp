@@ -128,7 +128,7 @@ type Action =
   | { type: "loaded"; messages: ChatMessage[] }
   | { type: "prepend"; messages: ChatMessage[]; hasMore: boolean }
   | { type: "append_user"; message: ChatMessage }
-  | { type: "append_assistant_stub"; id: string }
+  | { type: "append_assistant_stub"; id: string; speaker?: Speaker }
   | { type: "append_delta"; id: string; text: string }
   | { type: "finalize_assistant"; id: string; status: "done" | "error"; error?: string; partial?: boolean }
   | { type: "replace_id"; tempId: string; serverId: string }
@@ -147,7 +147,13 @@ function reducer(state: State, action: Action): State {
       return { ...state, messages: [...action.messages, ...state.messages], hasMoreOlder: action.hasMore };
     case "append_user":
       return { ...state, messages: [...state.messages, action.message] };
-    case "append_assistant_stub":
+    case "append_assistant_stub": {
+      // Default to peter so morning-intake / retry paths (which don't pass a
+      // speaker) stay attributed to the Head Coach. Per-coach surfaces
+      // (Strength/Diet/Health) pass speaker so the SpeakerChip on the
+      // streaming stub matches the coach the server will stamp the DB row
+      // with — otherwise the chip reads PETER until a page refetch.
+      const stubSpeaker: Speaker = action.speaker ?? "peter";
       return {
         ...state,
         inFlightAssistantId: action.id,
@@ -163,14 +169,15 @@ function reducer(state: State, action: Action): State {
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
             images: [],
-            speaker: "peter" as const,
-            thread: "peter" as const,
+            speaker: stubSpeaker,
+            thread: stubSpeaker,
             kind: "coach" as const,
             ui: null,
             tool_calls: null,
           },
         ],
       };
+    }
     case "append_delta":
       return {
         ...state,
@@ -445,7 +452,7 @@ export default function ChatPanel({
               // locally on first delta so streaming visualisation works.
               assistantId = `stub-${crypto.randomUUID()}`;
               currentId = assistantId;
-              dispatch({ type: "append_assistant_stub", id: assistantId });
+              dispatch({ type: "append_assistant_stub", id: assistantId, speaker: resolvedOverride ?? undefined });
               assistantStubAdded = true;
             }
             dispatch({ type: "append_delta", id: assistantId!, text: ev.text });
@@ -454,7 +461,7 @@ export default function ChatPanel({
               // No deltas (extremely short reply or aborted before first delta).
               assistantId = `stub-${crypto.randomUUID()}`;
               currentId = assistantId;
-              dispatch({ type: "append_assistant_stub", id: assistantId });
+              dispatch({ type: "append_assistant_stub", id: assistantId, speaker: resolvedOverride ?? undefined });
               assistantStubAdded = true;
             }
             // Swap to server id and finalize.
