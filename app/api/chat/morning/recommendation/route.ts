@@ -134,6 +134,8 @@ export async function POST(req: Request) {
         await sr.from("chat_messages").insert({
           user_id: user.id,
           role: "assistant",
+          speaker: "remi",
+          thread: "remi",
           kind: "morning_intake",
           content: "I had trouble generating today's brief. Tap to retry.",
           ui: {
@@ -197,6 +199,8 @@ export async function POST(req: Request) {
           await sr.from("chat_messages").insert({
             user_id: user.id,
             role: "assistant",
+            speaker: "remi",
+            thread: "remi",
             kind: "morning_intake",
             content: "I had trouble saving today's brief. Tap to retry.",
             ui: { chips: [{ label: "Try again", action: "retry_brief" }] },
