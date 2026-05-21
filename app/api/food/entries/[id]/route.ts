@@ -42,7 +42,11 @@ const ItemSchema = z.object({
 const PatchSchema = z.object({
   items: z.array(ItemSchema).min(1).optional(),
   meal_slot: z.enum(["breakfast", "lunch", "dinner", "snack"]).optional(),
-  eaten_at: z.string().datetime().optional(),
+  // Allow both `Z` and `+HH:MM` offset suffixes — Supabase returns timestamps
+  // with `+00:00` and FoodEntryEditSheet round-trips that value untouched
+  // when the user doesn't edit the Time field. Default datetime() only
+  // accepts `Z`, which silently rejected every Save.
+  eaten_at: z.string().datetime({ offset: true }).optional(),
 });
 
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {

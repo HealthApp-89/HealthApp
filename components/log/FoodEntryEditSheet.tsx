@@ -19,6 +19,13 @@ export function FoodEntryEditSheet({
   onClose: () => void;
 }) {
   const [items, setItems] = useState<FoodItem[]>(entry.items);
+  // Per-row qty input strings so the user can transiently clear a field
+  // (empty / "0" / mid-edit) without snapping back to 0. Committed numeric
+  // values still live on `items`; this just decouples the input value from
+  // the source-of-truth number.
+  const [qtyStrings, setQtyStrings] = useState<string[]>(() =>
+    entry.items.map((it) => String(it.qty_g)),
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mealSlot, setMealSlot] = useState<MealSlot>(entry.meal_slot);
@@ -29,12 +36,15 @@ export function FoodEntryEditSheet({
   const isItemFavorite = (name: string) =>
     itemFavorites.some((f) => f.name.toLowerCase() === name.toLowerCase());
 
-  const setQty = (idx: number, qty_g: number) => {
+  const setQtyString = (idx: number, raw: string) => {
+    setQtyStrings((prev) => prev.map((s, i) => (i === idx ? raw : s)));
+    const n = parseFloat(raw);
+    if (!Number.isFinite(n) || n <= 0) return; // hold last good macros until valid
     setItems((prev) =>
       prev.map((it, i) => {
         if (i !== idx) return it;
-        const macros = macrosForQty(it.per_100g, qty_g);
-        return { ...it, qty_g, ...macros };
+        const macros = macrosForQty(it.per_100g, n);
+        return { ...it, qty_g: n, ...macros };
       }),
     );
   };
@@ -51,6 +61,17 @@ export function FoodEntryEditSheet({
   };
 
   const save = async () => {
+    // Refuse if any qty input is empty / 0 / non-numeric. The server enforces
+    // the same invariant; failing fast on the client gives a clearer error
+    // than a Zod path string.
+    const badIdx = qtyStrings.findIndex((s) => {
+      const n = parseFloat(s);
+      return !Number.isFinite(n) || n <= 0;
+    });
+    if (badIdx >= 0) {
+      setError(`Set a quantity > 0 for "${items[badIdx].name}".`);
+      return;
+    }
     setError(null);
     setBusy(true);
     try {
@@ -163,8 +184,10 @@ export function FoodEntryEditSheet({
               Quantity (g)
               <input
                 type="number"
-                value={it.qty_g}
-                onChange={(e) => setQty(idx, parseFloat(e.target.value) || 0)}
+                inputMode="decimal"
+                value={qtyStrings[idx] ?? ""}
+                onChange={(e) => setQtyString(idx, e.target.value)}
+                onFocus={(e) => e.currentTarget.select()}
                 className="mt-1 w-full rounded-md border border-zinc-700 bg-zinc-900 p-2 text-sm text-zinc-100"
               />
             </label>
