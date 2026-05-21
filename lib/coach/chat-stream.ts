@@ -87,6 +87,25 @@ function shouldPersistResult(name: string): boolean {
 const MAX_TOOL_INVOCATIONS = 5;
 const MAX_TOKENS = 2000;
 
+// Anthropic-managed web search. Executed entirely on Anthropic's side: the
+// model emits server_tool_use blocks that we never have to dispatch, and the
+// web_search_tool_result blocks come back inline in the same stream. Our
+// `b.type === "tool_use"` filter below ignores both, so the loop terminates
+// naturally after the model writes its final text. Cost: ~$10 per 1k searches
+// + token cost on returned content. max_uses caps abuse per turn.
+const WEB_SEARCH_TOOL: Anthropic.Messages.WebSearchTool20260209 = {
+  type: "web_search_20260209",
+  name: "web_search",
+  max_uses: 5,
+};
+
+// Modes where coaches may search the web. Hidden in meal_log (Nora's
+// data-entry flow stays focused on resolving items) and intake (Phase 2
+// plan-builder is deterministic — no web noise during the wizard).
+function webSearchAllowedForMode(mode: ChatMode): boolean {
+  return mode === "default" || mode === "plan_week" || mode === "setup_block";
+}
+
 export type ChatStreamYield =
   | { type: "delta"; text: string }
   | { type: "tool_call_start"; id: string; name: string; input: Record<string, unknown> }
@@ -275,6 +294,11 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
 
   const speakerTools = toolsForSpeaker(speaker);
   const toolsForMode: ToolSchema[] = speakerTools.filter((t) => modeAllowsTool(t.name)).slice();
+  const mode: ChatMode = opts.mode ?? "default";
+  const tools: Anthropic.Messages.Tool[] = [
+    ...(toolsForMode as unknown as Anthropic.Messages.Tool[]),
+    ...(webSearchAllowedForMode(mode) ? [WEB_SEARCH_TOOL as unknown as Anthropic.Messages.Tool] : []),
+  ];
 
   while (true) {
     const forceText = invocations >= MAX_TOOL_INVOCATIONS;
@@ -283,7 +307,7 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
         model: MODEL,
         max_tokens: MAX_TOKENS,
         system,
-        tools: toolsForMode as unknown as Anthropic.Messages.Tool[],
+        tools,
         // disable_parallel_tool_use lives INSIDE tool_choice (Auto/Any/Tool
         // variants only — ToolChoiceNone has no tools to parallelize).
         tool_choice: forceText
