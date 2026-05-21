@@ -7,12 +7,15 @@
 //   2. food_db_cache trigram match on name (similarity ≥ TRGM_THRESHOLD)
 //   3. USDA FoodData Central /foods/search (with British→US spelling fallback;
 //      writes back to cache on success)
-//   4. Haiku 4.5 estimates per_100g macros (NOT cached — only verified DB
+//   4. OpenFoodFacts text search (branded products USDA can't cover; writes
+//      back to cache on success)
+//   5. Haiku 4.5 estimates per_100g macros (NOT cached — only verified DB
 //      sources go to cache)
 //
-// OpenFoodFacts is no longer in the text-resolve chain. It remains available
-// for `/api/food/barcode` and `lib/food/search.ts` (the SEARCH-tab fan-out)
-// via the exported lookupOpenFoodFacts helper.
+// OFF was briefly removed from the text-resolve chain (v1.2 of meal-logging);
+// restored here so Nora can resolve branded products without burning a
+// web_search call. Cache write means subsequent lookups of the same brand
+// skip OFF entirely.
 //
 // Returns a fully-populated FoodItem with macros scaled to qty_g.
 
@@ -361,7 +364,24 @@ export async function resolveItemMacros(
     };
   }
 
-  // 4. LLM fallback (unchanged) — confidence='low', is_estimated=true.
+  // 4. OpenFoodFacts — branded products USDA doesn't cover. Cache write on hit
+  //    means future lookups of the same brand short-circuit at step 2.
+  const off = await lookupOpenFoodFacts(name);
+  if (off) {
+    const macros = macrosForQty(off.row.per_100g, qty_g);
+    return {
+      name: off.row.name,
+      qty_g,
+      ...macros,
+      per_100g: off.row.per_100g,
+      source: "db",
+      db_ref: { source: "openfoodfacts", canonical_id: off.row.canonical_id },
+      confidence: off.score >= 0.7 ? "high" : "medium",
+      match_score: off.score,
+    };
+  }
+
+  // 5. LLM fallback (unchanged) — confidence='low', is_estimated=true.
   let per_100g: FoodMacros;
   try {
     per_100g = await llmEstimate(name);
