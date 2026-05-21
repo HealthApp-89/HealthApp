@@ -330,9 +330,16 @@ export function ChatMessage({
               The full proposal cards above need an approval_token; these
               fire-and-confirm tools just produce a one-line receipt so the
               athlete can see that 8× save_to_library actually ran (vs the
-              2026-05-21 silent-save loop). */}
+              2026-05-21 silent-save loop).
+              Wrapped in try/catch so a single malformed legacy row can't
+              tear down the whole chat thread render. */}
           {toolCalls.map((call, i) => {
-            const chip = renderToolReceiptChip(call);
+            let chip: React.ReactNode = null;
+            try {
+              chip = renderToolReceiptChip(call);
+            } catch {
+              chip = null;
+            }
             if (!chip) return null;
             return (
               <div key={`receipt-${i}`} style={{ marginTop: 6 }}>
