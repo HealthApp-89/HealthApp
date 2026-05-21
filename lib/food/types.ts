@@ -28,7 +28,7 @@ export type FoodItem = {
   per_100g: FoodMacros;
   source: "db" | "llm";
   db_ref: {
-    source: "usda" | "openfoodfacts" | "manual";
+    source: "usda" | "openfoodfacts" | "manual" | "user_library";
     canonical_id: string;
   } | null;
   confidence: "high" | "medium" | "low" | null;
@@ -47,7 +47,7 @@ export type FoodLogEntryStatus = "draft" | "committed" | "rejected";
 export type SearchCandidate = {
   name: string;
   per_100g: FoodMacros;
-  source: "db" | "off" | "usda";
+  source: "db" | "off" | "usda" | "user_library";
   canonical_id: string | null;
   image_url: string | null;
 };
@@ -73,6 +73,11 @@ export type FoodLogEntry = {
   status: FoodLogEntryStatus;
   created_at: string;
   updated_at: string;
+  /** Back-reference to a user_food_items recipe row, when the entry was
+   *  logged via a saved recipe. Migration 0028. NULL on every entry that
+   *  wasn't sourced from a recipe; ON DELETE SET NULL so deleting the
+   *  recipe row preserves the historical entry. */
+  recipe_id?: string | null;
 };
 
 export type FoodDbCacheRow = {
@@ -127,7 +132,7 @@ export type FoodItemFavorite = {
   qty_g: number;
   per_100g: FoodMacros;
   source: "db" | "llm";
-  db_ref: { source: "usda" | "openfoodfacts" | "manual"; canonical_id: string } | null;
+  db_ref: { source: "usda" | "openfoodfacts" | "manual" | "user_library"; canonical_id: string } | null;
   default_meal_slot: MealSlot | null;
   display_order: number;
   created_at: string;
@@ -163,4 +168,33 @@ export type FoodLibrarySections = {
 export type HistoryDay = {
   date: string;
   slots: Record<MealSlot, FoodLogEntry[]>;
+};
+
+// ── user_food_items (personal library) ────────────────────────────────────────
+
+export type UserFoodItemSource = "user_manual" | "user_label" | "user_recipe";
+
+/** Composite ingredient slot — what `composite_of[i]` looks like.
+ *  Same shape as the resolver input: a name + qty in grams. At log-expand
+ *  time each composite ingredient gets resolved through the standard chain. */
+export type UserFoodComposite = {
+  name: string;
+  qty_g: number;
+};
+
+export type UserFoodItem = {
+  id: string;
+  user_id: string;
+  name: string;
+  /** Per-100g macros for single items. NULL for recipes. */
+  per_100g: FoodMacros | null;
+  /** Ingredient list for recipes. NULL for single items. */
+  composite_of: UserFoodComposite[] | null;
+  /** Recipe-only: typical "1 serving" gram weight; UI defaults the qty input
+   *  to this when the user picks the recipe. NULL for single items. */
+  default_serving_g: number | null;
+  source: UserFoodItemSource;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
 };

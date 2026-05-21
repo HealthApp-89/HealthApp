@@ -146,4 +146,9 @@ export const queryKeys = {
     range: (userId: string, from: string, to: string) =>
       ["food-history", userId, "range", from, to] as const,
   },
+  userFoodItems: {
+    all: (userId: string) => ["user-food-items", userId] as const,
+    search: (userId: string, q: string) =>
+      ["user-food-items", userId, q] as const,
+  },
 } as const;

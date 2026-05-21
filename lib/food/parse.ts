@@ -29,6 +29,7 @@ Rules:
 - Output STRICT JSON matching {"items": [{"name": string, "qty_g": number}]}. No commentary.
 - EXPLICIT QUANTITY OVERRIDES DEFAULTS. When the user specifies a quantity in grams (e.g. "45g", "200 g") or ounces (e.g. "3 oz"), use that exact value. Convert oz → g by × 28.35. The household-unit table below applies ONLY when no explicit g/oz quantity is given.
 - PRESERVE MODIFIERS. Words that describe the food — "low fat", "grilled", "whole wheat", "fried", "raw", brand names like "Balade" — must appear in the name field. Do not drop them.
+- RECIPE NAMES PASS THROUGH. If the user references a meal name they likely have a recipe for (e.g. "my omelette", "my morning shake", "Abdel's omelette"), emit a SINGLE item with the user's exact name and qty_g: 100. The downstream resolver will match it against the user's library by name; if no library entry exists it will fall through to LLM estimate naturally.
 - Convert household units to grams using common references (apply ONLY when no explicit g/oz):
     1 cup cooked rice ≈ 158g
     1 cup raw oats ≈ 80g
@@ -52,7 +53,9 @@ Examples:
 - Input: "1 slice of bread"
   Output: {"items": [{"name": "bread", "qty_g": 30}]}
 - Input: "200g chicken breast and 1 cup rice"
-  Output: {"items": [{"name": "chicken breast", "qty_g": 200}, {"name": "rice cooked", "qty_g": 158}]}`;
+  Output: {"items": [{"name": "chicken breast", "qty_g": 200}, {"name": "rice cooked", "qty_g": 158}]}
+- Input: "my morning omelette"
+  Output: {"items": [{"name": "my morning omelette", "qty_g": 100}]}`;
 
 /** Extract a list of items from free-text food input. */
 export async function extractItems(text: string): Promise<ExtractedItem[]> {

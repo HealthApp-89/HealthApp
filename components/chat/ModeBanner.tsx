@@ -7,12 +7,14 @@ const MODE_LABEL: Record<Exclude<ChatMode, "default">, string> = {
   plan_week: "PLAN WEEK",
   setup_block: "SETUP BLOCK",
   intake: "PLAN INTAKE",
+  meal_log: "LOG MEAL",
 };
 
 const MODE_SUBLABEL: Record<Exclude<ChatMode, "default">, string> = {
   plan_week: "Coach tools narrowed to weekly planning.",
   setup_block: "Coach tools narrowed to block setup.",
   intake: "Coach tools narrowed to profile intake.",
+  meal_log: "Coach tools narrowed to meal logging.",
 };
 
 export function ModeBanner({

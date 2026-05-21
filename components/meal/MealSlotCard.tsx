@@ -58,7 +58,14 @@ export function MealSlotCard({
                 className="flex flex-1 items-start justify-between text-left"
               >
                 <div>
-                  <div className="text-sm">{e.items.map((it) => it.name).join(", ")}</div>
+                  <div className="text-sm">
+                    {e.items.map((it) => it.name).join(", ")}
+                    {e.recipe_id && (
+                      <span className="ml-2 rounded bg-zinc-800 text-zinc-400 px-1.5 py-0.5 text-[10px] uppercase tracking-wider">
+                        recipe
+                      </span>
+                    )}
+                  </div>
                   <div className="text-xs text-zinc-500">
                     {new Date(e.eaten_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                     {" · "}

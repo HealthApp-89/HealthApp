@@ -109,7 +109,7 @@ export type ChatMessageRow = {
    *  segregates the daily check-in conversation in ChatPanel; 'morning_brief'
    *  and 'weekly_review' are structured assistant-only cards; 'system_routing'
    *  for system-triggered handoffs between speakers. */
-  kind: "coach" | "morning_intake" | "morning_brief" | "weekly_review" | "proactive_nudge" | "system_routing";
+  kind: "coach" | "morning_intake" | "morning_brief" | "weekly_review" | "proactive_nudge" | "system_routing" | "meal_log";
   /** Chip definitions / rendering hints for the morning intake bot, or
    *  structured card payload for morning_brief / weekly_review / proactive_nudge. NULL on
    *  free-form coach turns. */
@@ -150,7 +150,10 @@ export type ToolCallLog = {
     | "set_glp1_status"
     | "set_glp1_taper_started"
     | "mark_glp1_discontinued"
-    | "regenerate_morning_brief";
+    | "regenerate_morning_brief"
+    | "pick_library_item"
+    | "save_to_library"
+    | "search_library";
   input: Record<string, unknown>;
   ms: number;
   result_rows: number;
@@ -305,7 +308,7 @@ export type TrainingWeek = {
 
 // ── chat mode (extends existing ChatMessageRow) ──────────────────────────────
 
-export type ChatMode = "default" | "plan_week" | "setup_block" | "intake";
+export type ChatMode = "default" | "plan_week" | "setup_block" | "intake" | "meal_log";
 
 // ── body_measurements ────────────────────────────────────────────────────────
 

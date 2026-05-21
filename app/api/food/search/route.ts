@@ -25,6 +25,6 @@ export async function GET(req: Request) {
   });
   if (!parsed.success) return NextResponse.json({ error: parsed.error.message }, { status: 400 });
 
-  const candidates = await searchFoods(parsed.data.q, parsed.data.limit);
+  const candidates = await searchFoods(parsed.data.q, user.id, parsed.data.limit);
   return NextResponse.json({ candidates });
 }
