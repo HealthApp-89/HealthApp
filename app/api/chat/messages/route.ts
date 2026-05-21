@@ -196,7 +196,10 @@ export async function POST(req: Request) {
   const imageIds = Array.isArray(body.image_ids) ? body.image_ids : [];
 
   const requestedMode: ChatMode | null =
-    body.mode === "plan_week" || body.mode === "setup_block" || body.mode === "intake"
+    body.mode === "plan_week" ||
+    body.mode === "setup_block" ||
+    body.mode === "intake" ||
+    body.mode === "meal_log"
       ? body.mode
       : null;
 
