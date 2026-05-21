@@ -11,7 +11,7 @@
 -- See CLAUDE.md "Architecture" section after this migration applies.
 
 -- ── user_session_templates ─────────────────────────────────────────────────
-create table if not exists user_session_templates (
+create table user_session_templates (
   user_id      uuid not null references auth.users on delete cascade,
   session_type text not null,
   exercises    jsonb not null,
@@ -21,16 +21,15 @@ create table if not exists user_session_templates (
 
 alter table user_session_templates enable row level security;
 
-drop policy if exists "Users manage their own session templates" on user_session_templates;
 create policy "Users manage their own session templates"
   on user_session_templates for all
   using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 -- ── exercise_sets.rest_seconds_actual ──────────────────────────────────────
-alter table exercise_sets add column if not exists rest_seconds_actual int;
+alter table exercise_sets add column rest_seconds_actual int;
 
 -- ── profiles.disable_strong_ingest ─────────────────────────────────────────
-alter table profiles add column if not exists disable_strong_ingest boolean not null default false;
+alter table profiles add column disable_strong_ingest boolean not null default false;
 
 -- ── commit_logger_session(payload jsonb) ───────────────────────────────────
 --
