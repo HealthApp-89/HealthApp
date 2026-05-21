@@ -108,7 +108,7 @@ export function SetRow({
             onChange({ kg: Number.isFinite(n as number) ? (n as number) : null });
           }}
           disabled={committed}
-          className={`bg-zinc-800 border-none rounded-md px-1.5 py-1 w-10 text-center text-[12px] font-medium font-mono tabular-nums ${
+          className={`bg-zinc-800 border-none rounded-md px-1.5 py-1 w-14 text-center font-medium font-mono tabular-nums ${
             committed ? "text-green-400 bg-green-500/10" : "text-zinc-100"
           }`}
         />
@@ -124,7 +124,7 @@ export function SetRow({
             onChange({ reps: Number.isFinite(n as number) ? (n as number) : null });
           }}
           disabled={committed}
-          className={`bg-zinc-800 border-none rounded-md px-1.5 py-1 w-10 text-center text-[12px] font-medium font-mono tabular-nums ${
+          className={`bg-zinc-800 border-none rounded-md px-1.5 py-1 w-12 text-center font-medium font-mono tabular-nums ${
             committed ? "text-green-400 bg-green-500/10" : "text-zinc-100"
           }`}
         />

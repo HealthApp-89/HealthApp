@@ -96,6 +96,21 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* iOS Safari auto-zooms on focus into any input with computed font-size < 16px.
+   Our viewport sets maximum-scale=1, but the post-blur snap-back is unreliable —
+   the page can stay zoomed until the user pinches out manually. Forcing 16px on
+   text-entry controls (touch devices only — desktop typography is unaffected)
+   prevents the focus zoom from ever triggering. !important is required because
+   Tailwind utilities like text-sm/text-xs and inline fontSize styles win on
+   specificity otherwise. */
+@media (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]):not([type="color"]):not([type="submit"]):not([type="button"]):not([type="reset"]),
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
+
 /* Hide scrollbars on horizontal-scroll utility containers (week strip,
    sub-tab pill rows). Visual cleanliness; scroll still works. */
 .scrollbar-none::-webkit-scrollbar { display: none; }
