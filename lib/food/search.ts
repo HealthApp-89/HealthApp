@@ -25,7 +25,7 @@ import type { FoodMacros, FoodDbCacheRow, SearchCandidate } from "@/lib/food/typ
 const USDA_SEARCH_URL = "https://api.nal.usda.gov/fdc/v1/foods/search";
 const OFF_SEARCH_URL = "https://world.openfoodfacts.org/cgi/search.pl";
 
-const SOURCE_RANK = { db: 0, off: 1, usda: 2 } as const;
+const SOURCE_RANK = { user_library: -1, db: 0, off: 1, usda: 2 } as const;
 
 async function searchCacheTrigram(query: string): Promise<SearchCandidate[]> {
   const supabase = createSupabaseServiceRoleClient();
