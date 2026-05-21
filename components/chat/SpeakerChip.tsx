@@ -18,6 +18,17 @@ export function SpeakerChip({
 }) {
   const display = SPEAKER_DISPLAY[speaker];
   const color = SPEAKER_COLOR[speaker];
+  // Defensive: a value outside the registry (stale chat_messages row,
+  // SSE event with a transient stub speaker, mis-cast from `unknown`)
+  // used to throw `undefined is not an object (evaluating 'o.bg')` and
+  // tear down the whole chat thread on /diet + /strength (2026-05-22).
+  // Fail soft, log so we can find the caller.
+  if (!display || !color) {
+    if (typeof window !== "undefined") {
+      console.warn("[SpeakerChip] unknown speaker:", speaker);
+    }
+    return null;
+  }
   const px =
     size === "sm" ? "px-2 py-0.5 text-[10px]" : "px-3 py-1 text-xs";
   return (
