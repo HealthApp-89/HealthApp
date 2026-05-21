@@ -153,7 +153,8 @@ export type ToolCallLog = {
     | "regenerate_morning_brief"
     | "pick_library_item"
     | "save_to_library"
-    | "search_library";
+    | "search_library"
+    | "log_meal_entry";
   input: Record<string, unknown>;
   ms: number;
   result_rows: number;

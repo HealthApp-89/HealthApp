@@ -20,7 +20,16 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { signApprovalToken, verifyApprovalToken, payloadHash, ApprovalTokenError, approvalTokenUserMessage } from "@/lib/coach/approval-token";
 import type { IntakePayload, PlanPayload, Speaker, TrainingBlock, TrainingWeek } from "@/lib/data/types";
-import type { MealSlot } from "@/lib/food/types";
+import {
+  type MealSlot,
+  type FoodItem,
+  type FoodMacros,
+  macrosForQty,
+  sumMacros,
+} from "@/lib/food/types";
+import { reaggregateDay, sumFoodEntriesForDate } from "@/lib/food/aggregate";
+import { utcDate } from "@/lib/food/date";
+import { foodLogOwnsDailyLogs } from "@/lib/food/ownership";
 import { buildPlanPayload } from "@/lib/coach/plan-builder";
 import { renderProfileMarkdown } from "@/lib/coach/profile-renderer";
 import {
@@ -3259,7 +3268,7 @@ export async function executeSaveToLibrary(opts: {
   supabase: SupabaseClient;
   userId: string;
   input: unknown;
-}): Promise<ToolResult<{ id: string }>> {
+}): Promise<ToolResult<{ id: string; name: string; kind: "item" | "recipe"; was_duplicate: boolean }>> {
   const t0 = Date.now();
   const i = (opts.input ?? {}) as Record<string, unknown>;
   const kind = i.kind === "item" || i.kind === "recipe" ? i.kind : null;
@@ -3273,6 +3282,8 @@ export async function executeSaveToLibrary(opts: {
     };
   }
 
+  // Build the insert row based on shape.
+  let row: Record<string, unknown>;
   if (kind === "item") {
     const per_100g = i.per_100g as Record<string, unknown> | undefined;
     if (!per_100g) {
@@ -3282,7 +3293,7 @@ export async function executeSaveToLibrary(opts: {
         meta: { ms: Date.now() - t0, range_days: 0 },
       };
     }
-    const row = {
+    row = {
       user_id: opts.userId,
       name,
       per_100g,
@@ -3291,66 +3302,276 @@ export async function executeSaveToLibrary(opts: {
       source,
       notes: typeof i.notes === "string" ? i.notes : null,
     };
-    const { data, error } = await opts.supabase
-      .from("user_food_items")
-      .insert(row)
-      .select("id")
-      .single();
-    if (error) {
+  } else {
+    const composite_of = i.composite_of as unknown[] | undefined;
+    const default_serving_g = i.default_serving_g as number | undefined;
+    if (!Array.isArray(composite_of) || composite_of.length === 0) {
       return {
         ok: false,
-        error: { error: error.message },
+        error: { error: "composite_of array required for kind=recipe" },
         meta: { ms: Date.now() - t0, range_days: 0 },
       };
     }
-    return {
-      ok: true,
-      data: { id: (data as { id: string }).id },
-      meta: { ms: Date.now() - t0, result_rows: 1, range_days: 0, truncated: false },
+    if (!default_serving_g || default_serving_g <= 0) {
+      return {
+        ok: false,
+        error: { error: "default_serving_g > 0 required for kind=recipe" },
+        meta: { ms: Date.now() - t0, range_days: 0 },
+      };
+    }
+    row = {
+      user_id: opts.userId,
+      name,
+      per_100g: null,
+      composite_of,
+      default_serving_g,
+      source,
+      notes: typeof i.notes === "string" ? i.notes : null,
     };
   }
 
-  // recipe
-  const composite_of = i.composite_of as unknown[] | undefined;
-  const default_serving_g = i.default_serving_g as number | undefined;
-  if (!Array.isArray(composite_of) || composite_of.length === 0) {
-    return {
-      ok: false,
-      error: { error: "composite_of array required for kind=recipe" },
-      meta: { ms: Date.now() - t0, range_days: 0 },
-    };
-  }
-  if (!default_serving_g || default_serving_g <= 0) {
-    return {
-      ok: false,
-      error: { error: "default_serving_g > 0 required for kind=recipe" },
-      meta: { ms: Date.now() - t0, range_days: 0 },
-    };
-  }
-  const row = {
-    user_id: opts.userId,
-    name,
-    per_100g: null,
-    composite_of,
-    default_serving_g,
-    source,
-    notes: typeof i.notes === "string" ? i.notes : null,
-  };
   const { data, error } = await opts.supabase
     .from("user_food_items")
     .insert(row)
     .select("id")
     .single();
-  if (error) {
+  // 23505 = unique_violation against user_food_items_user_name_unique
+  // (migration 0030). Treat as a successful no-op and return the existing
+  // row's id, so the model sees "already in library" rather than thinking
+  // the save failed and retrying. This is the database-side floor for the
+  // re-save loop diagnosed in the 2026-05-21 Nora session.
+  if (error?.code === "23505") {
+    const { data: existing, error: lookupErr } = await opts.supabase
+      .from("user_food_items")
+      .select("id")
+      .eq("user_id", opts.userId)
+      .ilike("name", name)
+      .limit(1)
+      .maybeSingle();
+    if (lookupErr || !existing) {
+      return {
+        ok: false,
+        error: { error: lookupErr?.message ?? "duplicate name but row not found" },
+        meta: { ms: Date.now() - t0, range_days: 0 },
+      };
+    }
+    return {
+      ok: true,
+      data: { id: (existing as { id: string }).id, name, kind, was_duplicate: true },
+      meta: { ms: Date.now() - t0, result_rows: 1, range_days: 0, truncated: false },
+    };
+  }
+  if (error || !data) {
     return {
       ok: false,
-      error: { error: error.message },
+      error: { error: error?.message ?? "insert returned no row" },
       meta: { ms: Date.now() - t0, range_days: 0 },
     };
   }
   return {
     ok: true,
-    data: { id: (data as { id: string }).id },
+    data: { id: (data as { id: string }).id, name, kind, was_duplicate: false },
+    meta: { ms: Date.now() - t0, result_rows: 1, range_days: 0, truncated: false },
+  };
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// log_meal_entry — Nora-only chat write-path for food_log_entries.
+//
+// Lets Nora finish the full "save items → log to slot" workflow from /coach
+// without bouncing the user into MealLoggerSheet. Writes a committed
+// food_log_entries row (status='committed' on insert) for the given meal
+// slot, then calls reaggregateDay so daily_logs.{calories_eaten, protein_g,
+// carbs_g, fat_g, fiber_g} reflect the new total.
+//
+// Item shape: name + qty_g + per_100g (the macros Nora already has from
+// resolving the item via search_library / save_to_library / her own
+// estimate). Macros at the logged qty are computed server-side via
+// macrosForQty so the totals stay consistent with the rest of the food
+// pipeline (single source of truth = macrosForQty + sumMacros).
+//
+// kind='text' on the row: the input modality WAS text (Nora interpreted a
+// user message). raw_input.text carries the original message for trace.
+// Source field on each FoodItem: 'llm' when the item didn't carry a
+// library_item_id (Nora estimated/recalled the macros) or 'db' with
+// db_ref.source='user_library' when a library row was the source — matches
+// the convention from migration 0028's resolver chain.
+// ────────────────────────────────────────────────────────────────────────────
+
+export const LOG_MEAL_ENTRY_TOOL: ToolSchema = {
+  name: "log_meal_entry",
+  description:
+    "Write a committed food_log_entries row for the given meal slot, then re-aggregate the day's daily_logs nutrition columns. Use AFTER you've resolved each item (via search_library, save_to_library, or you have explicit macros from the user). Don't call this if the user only asked you to save items to the library — saving and logging are separate actions.",
+  input_schema: {
+    type: "object" as const,
+    required: ["items", "meal_slot"],
+    properties: {
+      items: {
+        type: "array",
+        minItems: 1,
+        maxItems: 15,
+        items: {
+          type: "object",
+          required: ["name", "qty_g", "per_100g"],
+          properties: {
+            name: { type: "string", description: "Display name of the food." },
+            qty_g: { type: "number", description: "Quantity in grams." },
+            per_100g: {
+              type: "object",
+              required: ["kcal", "protein_g", "carbs_g", "fat_g"],
+              properties: {
+                kcal: { type: "number" },
+                protein_g: { type: "number" },
+                carbs_g: { type: "number" },
+                fat_g: { type: "number" },
+                fiber_g: { type: "number" },
+              },
+            },
+            library_item_id: {
+              type: "string",
+              description:
+                "Optional user_food_items.id when this item came from the personal library.",
+            },
+          },
+        },
+      },
+      meal_slot: {
+        type: "string",
+        enum: ["breakfast", "lunch", "dinner", "snack"],
+      },
+      eaten_at: {
+        type: "string",
+        description:
+          "Optional ISO-8601 timestamp the meal was eaten at. Defaults to now.",
+      },
+      raw_text: {
+        type: "string",
+        description:
+          "The original user message that prompted this log, for traceability.",
+      },
+    },
+  },
+};
+
+export async function executeLogMealEntry(opts: {
+  supabase: SupabaseClient;
+  userId: string;
+  input: unknown;
+}): Promise<
+  ToolResult<{
+    entry_id: string;
+    meal_slot: MealSlot;
+    eaten_at: string;
+    item_count: number;
+    totals: FoodMacros;
+    day_totals: FoodMacros;
+    date: string;
+  }>
+> {
+  const t0 = Date.now();
+  const i = (opts.input ?? {}) as Record<string, unknown>;
+  const meal_slot = i.meal_slot as MealSlot | undefined;
+  if (!meal_slot || !["breakfast", "lunch", "dinner", "snack"].includes(meal_slot)) {
+    return {
+      ok: false,
+      error: { error: "meal_slot must be one of breakfast|lunch|dinner|snack" },
+      meta: { ms: Date.now() - t0, range_days: 0 },
+    };
+  }
+  const itemsInput = Array.isArray(i.items) ? (i.items as Array<Record<string, unknown>>) : [];
+  if (itemsInput.length === 0 || itemsInput.length > 15) {
+    return {
+      ok: false,
+      error: { error: "items must contain 1..15 entries" },
+      meta: { ms: Date.now() - t0, range_days: 0 },
+    };
+  }
+  const eaten_at_raw = typeof i.eaten_at === "string" ? i.eaten_at : null;
+  const eaten_at =
+    eaten_at_raw && !Number.isNaN(Date.parse(eaten_at_raw))
+      ? new Date(eaten_at_raw).toISOString()
+      : new Date().toISOString();
+  const raw_text = typeof i.raw_text === "string" ? i.raw_text : "Logged via chat";
+
+  // Build FoodItem rows, validating each input.
+  const items: FoodItem[] = [];
+  for (const it of itemsInput) {
+    const name = typeof it.name === "string" ? it.name.trim() : "";
+    const qty_g = typeof it.qty_g === "number" && it.qty_g > 0 ? it.qty_g : NaN;
+    const p100 = it.per_100g as Record<string, unknown> | undefined;
+    const library_item_id = typeof it.library_item_id === "string" ? it.library_item_id : null;
+    if (!name || !Number.isFinite(qty_g) || !p100) {
+      return {
+        ok: false,
+        error: { error: `item missing name/qty_g/per_100g: ${JSON.stringify(it).slice(0, 120)}` },
+        meta: { ms: Date.now() - t0, range_days: 0 },
+      };
+    }
+    const per_100g: FoodMacros = {
+      kcal: Number(p100.kcal) || 0,
+      protein_g: Number(p100.protein_g) || 0,
+      carbs_g: Number(p100.carbs_g) || 0,
+      fat_g: Number(p100.fat_g) || 0,
+      fiber_g: Number(p100.fiber_g) || 0,
+    };
+    const m = macrosForQty(per_100g, qty_g);
+    items.push({
+      name,
+      qty_g,
+      kcal: m.kcal,
+      protein_g: m.protein_g,
+      carbs_g: m.carbs_g,
+      fat_g: m.fat_g,
+      fiber_g: m.fiber_g,
+      per_100g,
+      source: library_item_id ? "db" : "llm",
+      db_ref: library_item_id
+        ? { source: "user_library", canonical_id: library_item_id }
+        : null,
+      confidence: "high",
+      match_score: library_item_id ? 1.0 : null,
+    });
+  }
+  const totals = sumMacros(items);
+
+  const { data: inserted, error } = await opts.supabase
+    .from("food_log_entries")
+    .insert({
+      user_id: opts.userId,
+      eaten_at,
+      kind: "text",
+      meal_slot,
+      raw_input: { kind: "text", text: raw_text },
+      items,
+      totals,
+      is_estimated: items.some((it) => it.source === "llm"),
+      status: "committed",
+    })
+    .select("id, eaten_at")
+    .single();
+  if (error || !inserted) {
+    return {
+      ok: false,
+      error: { error: error?.message ?? "insert returned no row" },
+      meta: { ms: Date.now() - t0, range_days: 0 },
+    };
+  }
+  const date = utcDate((inserted as { eaten_at: string }).eaten_at);
+  const day_totals = foodLogOwnsDailyLogs()
+    ? await reaggregateDay(opts.supabase, opts.userId, date)
+    : await sumFoodEntriesForDate(opts.supabase, opts.userId, date);
+
+  return {
+    ok: true,
+    data: {
+      entry_id: (inserted as { id: string }).id,
+      meal_slot,
+      eaten_at,
+      item_count: items.length,
+      totals,
+      day_totals,
+      date,
+    },
     meta: { ms: Date.now() - t0, result_rows: 1, range_days: 0, truncated: false },
   };
 }
@@ -3728,6 +3949,7 @@ export const NORA_TOOLS: readonly ToolSchema[] = [
   SEARCH_LIBRARY_TOOL,
   PICK_LIBRARY_ITEM_TOOL,
   SAVE_TO_LIBRARY_TOOL,
+  LOG_MEAL_ENTRY_TOOL,
 ];
 
 // Remi: recovery/sleep/illness. Reads recovery-relevant daily_logs columns;

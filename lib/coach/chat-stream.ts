@@ -61,6 +61,7 @@ import {
   executeSearchLibrary,
   executePickLibraryItem,
   executeSaveToLibrary,
+  executeLogMealEntry,
   toolsForSpeaker,
   colsForSpeaker,
   type ToolResult,
@@ -81,6 +82,14 @@ const PERSIST_RESULT_TOOLS = new Set([
   "commit_plan",
   "propose_nutrition_targets",
   "commit_nutrition_targets",
+  // Library + meal-log tools persist their result so the UI can render
+  // confirmation chips ("Saved: <name>", "Logged to <slot>") under the
+  // assistant bubble. Without this the user couldn't tell that 8×
+  // save_to_library actually ran (see 2026-05-21 Nora re-save loop).
+  "save_to_library",
+  "search_library",
+  "pick_library_item",
+  "log_meal_entry",
 ]);
 function shouldPersistResult(name: string): boolean {
   return PERSIST_RESULT_TOOLS.has(name);
@@ -252,13 +261,16 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
   //     plus regenerate_morning_brief.
   const modeAllowsTool = (name: string): boolean => {
     if (opts.mode === "meal_log") {
-      // Nora-in-meal-log only ever needs the three library tools. All other
-      // tools are silenced to keep the LLM focused on data entry rather than
-      // wandering into nutrition advice (covered by NORA_MEAL_LOG_PROMPT).
+      // Nora-in-meal-log needs the three library tools plus log_meal_entry
+      // so she can finish the resolve → save → log loop in one mode without
+      // bouncing the user back out to the meal sheet. All other tools are
+      // silenced to keep the LLM focused on data entry rather than wandering
+      // into nutrition advice (covered by NORA_MEAL_LOG_PROMPT).
       return (
         name === "search_library" ||
         name === "pick_library_item" ||
-        name === "save_to_library"
+        name === "save_to_library" ||
+        name === "log_meal_entry"
       );
     }
     if (opts.mode === "plan_week" || opts.mode === "setup_block") {
@@ -541,6 +553,12 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
           });
         } else if (block.name === "save_to_library") {
           result = await executeSaveToLibrary({
+            supabase: opts.sr,
+            userId: opts.userId,
+            input: block.input,
+          });
+        } else if (block.name === "log_meal_entry") {
+          result = await executeLogMealEntry({
             supabase: opts.sr,
             userId: opts.userId,
             input: block.input,

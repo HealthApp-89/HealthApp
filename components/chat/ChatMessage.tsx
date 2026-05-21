@@ -325,10 +325,127 @@ export function ChatMessage({
             }
             return null;
           })}
+
+          {/* Inline confirmation chips for library + meal-log writes.
+              The full proposal cards above need an approval_token; these
+              fire-and-confirm tools just produce a one-line receipt so the
+              athlete can see that 8× save_to_library actually ran (vs the
+              2026-05-21 silent-save loop). */}
+          {toolCalls.map((call, i) => {
+            const chip = renderToolReceiptChip(call);
+            if (!chip) return null;
+            return (
+              <div key={`receipt-${i}`} style={{ marginTop: 6 }}>
+                {chip}
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>
   );
+}
+
+function renderToolReceiptChip(call: {
+  name: string;
+  input: Record<string, unknown>;
+  error: string | null;
+  result?: unknown;
+}): React.ReactNode {
+  const RECEIPT_TOOLS = new Set([
+    "save_to_library",
+    "log_meal_entry",
+    "search_library",
+    "pick_library_item",
+  ]);
+  if (!RECEIPT_TOOLS.has(call.name)) return null;
+
+  const styleBase = {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    padding: "4px 10px",
+    borderRadius: 999,
+    fontSize: 12,
+    lineHeight: 1.3,
+    background: COLOR.surfaceAlt,
+    color: COLOR.textMid,
+    border: `1px solid ${COLOR.divider}`,
+  } as const;
+  const errStyle = {
+    ...styleBase,
+    background: "rgba(220, 64, 64, 0.08)",
+    color: COLOR.danger,
+    borderColor: "rgba(220, 64, 64, 0.4)",
+  } as const;
+
+  if (call.error) {
+    return (
+      <span style={errStyle}>
+        ✗ {call.name.replace(/_/g, " ")}: {call.error}
+      </span>
+    );
+  }
+
+  if (call.name === "save_to_library") {
+    const r = (call.result ?? {}) as {
+      name?: string;
+      kind?: "item" | "recipe";
+      was_duplicate?: boolean;
+    };
+    const name = r.name ?? (call.input.name as string) ?? "item";
+    const label = r.was_duplicate ? "Already in library" : r.kind === "recipe" ? "Saved recipe" : "Saved";
+    return (
+      <span style={styleBase}>
+        <span aria-hidden="true">{r.was_duplicate ? "↻" : "✓"}</span>
+        <span>{label}: {name}</span>
+      </span>
+    );
+  }
+
+  if (call.name === "log_meal_entry") {
+    const r = (call.result ?? {}) as {
+      meal_slot?: "breakfast" | "lunch" | "dinner" | "snack";
+      item_count?: number;
+      totals?: { kcal?: number };
+    };
+    const slot = r.meal_slot ?? (call.input.meal_slot as string) ?? "snack";
+    const count = r.item_count ?? 0;
+    const kcal = r.totals?.kcal ? Math.round(r.totals.kcal) : null;
+    return (
+      <span style={styleBase}>
+        <span aria-hidden="true">🍽</span>
+        <span>
+          Logged to {slot}: {count} item{count === 1 ? "" : "s"}
+          {kcal !== null ? `, ${kcal} kcal` : ""}
+        </span>
+      </span>
+    );
+  }
+
+  if (call.name === "search_library") {
+    const r = (call.result ?? {}) as { items?: Array<{ name: string }> };
+    const q = (call.input.query as string) ?? "";
+    const n = r.items?.length ?? 0;
+    return (
+      <span style={styleBase}>
+        <span aria-hidden="true">🔎</span>
+        <span>
+          Searched library for &ldquo;{q}&rdquo; — {n} hit{n === 1 ? "" : "s"}
+        </span>
+      </span>
+    );
+  }
+
+  if (call.name === "pick_library_item") {
+    return (
+      <span style={styleBase}>
+        <span aria-hidden="true">↳</span>
+        <span>Swapped item with library row</span>
+      </span>
+    );
+  }
+  return null;
 }
 
 function ImageThumb({ url }: { url: string }) {
