@@ -186,6 +186,13 @@ export function ProfileClient({
         />
       </div>
 
+      <SectionLabel>Coaches</SectionLabel>
+      <div style={{ padding: "0 8px 14px" }}>
+        <Card variant="compact" style={{ padding: 0 }}>
+          <StatusRow label="View coach prompts" href="/profile/coach-prompts" />
+        </Card>
+      </div>
+
       <SectionLabel>Account</SectionLabel>
       <div style={{ padding: "0 8px 14px" }}>
         <Card variant="compact" style={{ padding: 0 }}>
