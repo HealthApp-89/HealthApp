@@ -174,6 +174,12 @@ type SendBody = {
    *  Set by ChatPanel's `thread` prop (per-coach pages) — the user is on
    *  Carter's page, so Carter answers. Ignored in intake mode (single-voice). */
   speaker_override?: string;
+  /** Side-channel context for Nora-in-meal-log. Threaded into runChatStream's
+   *  mealLogDraftContext opt so it lands in Nora's system prompt for this
+   *  turn but NEVER becomes a visible chat_messages.content. Used by
+   *  MealLoggerChatTab to tell Nora "you're working on draft entry X with
+   *  these items at these confidences" without leaking into the thread. */
+  hidden_context?: string;
 };
 
 export async function POST(req: Request) {
@@ -651,6 +657,9 @@ export async function POST(req: Request) {
             draftDocId,
             speaker: streamSpeaker,
             peterContext,
+            mealLogDraftContext: typeof body.hidden_context === "string" && body.hidden_context.length > 0
+              ? body.hidden_context
+              : null,
           })) {
             if (req.signal.aborted) {
               aborted = true;

@@ -158,6 +158,12 @@ export type RunChatStreamOpts = {
    *  (apply_*, set_*, propose_plan, commit_plan). Caller sets this when
    *  serving an /onboarding chat turn. Null/undefined in default/planning modes. */
   draftDocId?: string | null;
+  /** Per-turn side-channel context for Nora-in-meal-log. Appended to the
+   *  system prompt so Nora knows which food_log_entries draft she's working
+   *  on (id + item names + per-item confidence + qty) without it ever
+   *  appearing in the user-visible chat_messages thread. Null/empty in any
+   *  other (speaker, mode) combination. */
+  mealLogDraftContext?: string | null;
   /** Mutable totals; the loop adds each round's finalMsg.usage. Read by the
    *  route after the stream ends to log prompt-cache hit rate. */
   usageSink?: ChatUsageTotals;
@@ -192,9 +198,14 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
   const baseSystemText = speaker === "peter"
     ? opts.systemPrompt
     : speakerSystemPromptForMode(speaker, opts.mode ?? "default");
-  const systemText = opts.peterContext
-    ? `${baseSystemText}\n\n${opts.peterContext}`
-    : baseSystemText;
+  // Append per-turn extras: Peter-context block (specialist activity recap)
+  // for Peter, draft context for Nora-in-meal-log. They're mutually exclusive
+  // in practice but treated as independent appends.
+  let systemText = baseSystemText;
+  if (opts.peterContext) systemText = `${systemText}\n\n${opts.peterContext}`;
+  if (opts.mealLogDraftContext && speaker === "nora" && opts.mode === "meal_log") {
+    systemText = `${systemText}\n\n# Active draft\n${opts.mealLogDraftContext}`;
+  }
   const system = [
     { type: "text" as const, text: systemText, cache_control: { type: "ephemeral" as const, ttl: "1h" as const } },
   ];
