@@ -106,6 +106,8 @@ export function computeAdviceFlags(inputs: FlagInputs): AdviceFlags {
     poor_sleep_efficiency,
     missed_protein_yesterday,
     coach_swap_suggested: inputs.card.coach_suggestion?.kind === "swap_to_mobility",
+    coach_reduce_intensity_suggested:
+      inputs.card.coach_suggestion?.kind === "reduce_intensity",
     phase_transition_this_week:
       inputs.thisWeekCommittedReview && inputs.previousCommittedReview
         ? inputs.thisWeekCommittedReview.payload.header.block_phase_now !==
