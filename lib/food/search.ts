@@ -25,7 +25,38 @@ import type { FoodMacros, FoodDbCacheRow, SearchCandidate } from "@/lib/food/typ
 const USDA_SEARCH_URL = "https://api.nal.usda.gov/fdc/v1/foods/search";
 const OFF_SEARCH_URL = "https://world.openfoodfacts.org/cgi/search.pl";
 
-const SOURCE_RANK = { user_library: -1, db: 0, off: 1, usda: 2 } as const;
+const SOURCE_RANK = { user_library: 0, db: 1, usda: 2, off: 3 } as const;
+
+async function searchUserLibrary(query: string, userId: string): Promise<SearchCandidate[]> {
+  // Inline service-role read so searchFoods stays self-contained. Recipes
+  // (per_100g is null) get a synthetic 0-macro stub so the picker can still
+  // surface them by name; the sheet resolves recipe vs item at append time.
+  const supabase = createSupabaseServiceRoleClient();
+  const { data, error } = await supabase
+    .from("user_food_items")
+    .select("id, name, per_100g, composite_of, default_serving_g")
+    .eq("user_id", userId)
+    .ilike("name", `%${query}%`)
+    .order("updated_at", { ascending: false })
+    .limit(20);
+  if (error || !data) return [];
+  return (data as Array<{
+    id: string;
+    name: string;
+    per_100g: FoodMacros | null;
+    composite_of: unknown[] | null;
+    default_serving_g: number | null;
+  }>).map((r) => {
+    const per_100g: FoodMacros = r.per_100g ?? { kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0, fiber_g: 0 };
+    return {
+      name: r.name,
+      per_100g,
+      source: "user_library" as const,
+      canonical_id: r.id,
+      image_url: null,
+    };
+  });
+}
 
 async function searchCacheTrigram(query: string): Promise<SearchCandidate[]> {
   const supabase = createSupabaseServiceRoleClient();
@@ -141,21 +172,25 @@ async function searchUsda(query: string): Promise<SearchCandidate[]> {
   });
 }
 
-export async function searchFoods(query: string, limit = 20): Promise<SearchCandidate[]> {
+export async function searchFoods(
+  query: string,
+  userId: string,
+  limit = 20,
+): Promise<SearchCandidate[]> {
   if (query.trim().length < 2) return [];
 
-  // Always fan out to all three sources. A previous version short-circuited
-  // on a high cache score, but that meant a single bad past pick (e.g.
-  // "Oil, corn, peanut, and olive" from the broken pre-scoring USDA path)
-  // could poison every future search for "olive oil" by hiding fresh
-  // OFF/USDA candidates. Latency cost ≈ 500ms parallel; acceptable for an
-  // active-typing search.
-  const [cacheHits, offHits, usdaHits] = await Promise.all([
+  // Always fan out to all sources. A previous version short-circuited on a
+  // high cache score, but that meant a single bad past pick (e.g. "Oil, corn,
+  // peanut, and olive" from the broken pre-scoring USDA path) could poison
+  // every future search for "olive oil" by hiding fresh OFF/USDA candidates.
+  // Latency cost ≈ 500ms parallel; acceptable for an active-typing search.
+  const [libHits, cacheHits, offHits, usdaHits] = await Promise.all([
+    searchUserLibrary(query, userId),
     searchCacheTrigram(query),
     searchOpenFoodFacts(query),
     searchUsda(query),
   ]);
-  const all = [...cacheHits, ...offHits, ...usdaHits];
+  const all = [...libHits, ...cacheHits, ...offHits, ...usdaHits];
 
   // Dedupe by case-insensitive name with whitespace collapsed. Keep first
   // occurrence — array order favours db > off > usda which matches the
