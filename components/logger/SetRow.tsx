@@ -35,22 +35,58 @@ export function SetRow({
   });
 
   const committed = !!set.committed_at;
-  const setLabel = set.warmup ? "W" : String(set.set_index + 1);
+  const [badgeOpen, setBadgeOpen] = useState(false);
+  const setLabel = set.warmup ? "W" : set.failure ? "F" : String(set.set_index + 1);
   const setBadgeClass = set.warmup
     ? "bg-yellow-500/15 text-yellow-300"
-    : "bg-zinc-800 text-zinc-200";
+    : set.failure
+      ? "bg-red-500/15 text-red-400"
+      : "bg-zinc-800 text-zinc-200";
 
   return (
     <tr>
-      <td className="py-1">
+      <td className="py-1 relative">
         <button
           type="button"
-          onClick={() => onChange({ warmup: !set.warmup })}
+          onClick={() => setBadgeOpen((v) => !v)}
           className={`w-6 h-6 rounded-md text-[11px] font-semibold ${setBadgeClass}`}
-          aria-label={set.warmup ? "Mark as working set" : "Mark as warmup"}
+          aria-label="Change set type"
+          aria-haspopup="menu"
+          aria-expanded={badgeOpen}
         >
           {setLabel}
         </button>
+        {badgeOpen && (
+          <>
+            <div className="fixed inset-0 z-10" onClick={() => setBadgeOpen(false)} aria-hidden />
+            <div className="absolute left-0 top-7 z-20 bg-zinc-800 border border-zinc-700 rounded-lg p-1 flex flex-col gap-0.5 min-w-[44px]" role="menu">
+              <button
+                type="button"
+                onClick={() => { onChange({ warmup: false, failure: false }); setBadgeOpen(false); }}
+                className="w-9 h-7 rounded text-[11px] font-semibold bg-zinc-800 text-zinc-200 hover:bg-zinc-700"
+                role="menuitem"
+              >
+                {set.set_index + 1}
+              </button>
+              <button
+                type="button"
+                onClick={() => { onChange({ warmup: true, failure: false }); setBadgeOpen(false); }}
+                className="w-9 h-7 rounded text-[11px] font-semibold bg-yellow-500/15 text-yellow-300 hover:bg-yellow-500/25"
+                role="menuitem"
+              >
+                W
+              </button>
+              <button
+                type="button"
+                onClick={() => { onChange({ warmup: false, failure: true }); setBadgeOpen(false); }}
+                className="w-9 h-7 rounded text-[11px] font-semibold bg-red-500/15 text-red-400 hover:bg-red-500/25"
+                role="menuitem"
+              >
+                F
+              </button>
+            </div>
+          </>
+        )}
       </td>
       <td className="py-1 text-[10.5px] text-zinc-600">
         {prev.data
