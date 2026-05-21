@@ -12,7 +12,7 @@
 
 /** Tool-using conversational coach (live chat + morning intake LLM tail).
  *  Needs broad capability + function-calling. */
-export const CHAT_MODEL = "claude-sonnet-4-5";
+export const CHAT_MODEL = "claude-sonnet-4-6";
 
 /** High-quality narrative wrappers around deterministic skeletons:
  *  weekly review prose, plan-builder plan narrative. No tool use. */
