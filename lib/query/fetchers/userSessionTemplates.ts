@@ -9,13 +9,17 @@
 // divergence between SESSION_PLANS and the user's saved default.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import type { UserSessionTemplate } from "@/lib/data/types";
 
 const SELECT = "user_id, session_type, exercises, updated_at";
 
-async function fetchOne(
+/**
+ * Server variant takes the supabase client as an argument so this file
+ * doesn't pull `next/headers` into client bundles. Matches the canonical
+ * pattern from `dailyLogs.ts`.
+ */
+export async function fetchUserSessionTemplateServer(
   supabase: SupabaseClient,
   userId: string,
   sessionType: string,
@@ -30,18 +34,10 @@ async function fetchOne(
   return (data as UserSessionTemplate | null) ?? null;
 }
 
-export async function fetchUserSessionTemplateServer(
-  userId: string,
-  sessionType: string,
-): Promise<UserSessionTemplate | null> {
-  const supabase = await createSupabaseServerClient();
-  return fetchOne(supabase, userId, sessionType);
-}
-
 export async function fetchUserSessionTemplateBrowser(
   userId: string,
   sessionType: string,
 ): Promise<UserSessionTemplate | null> {
   const supabase = createSupabaseBrowserClient();
-  return fetchOne(supabase, userId, sessionType);
+  return fetchUserSessionTemplateServer(supabase, userId, sessionType);
 }

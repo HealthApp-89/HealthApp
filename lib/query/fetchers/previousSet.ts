@@ -6,7 +6,6 @@
 // committing sets.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 export type PreviousSet = {
@@ -27,7 +26,12 @@ export type PreviousSet = {
  * one matching exercise + matching set come back. Limit:5 caps the round
  * trip; the loop just picks the first row that materialises.
  */
-async function fetchOne(
+/**
+ * Server variant takes the supabase client as an argument so this file
+ * doesn't pull `next/headers` into client bundles. Matches the canonical
+ * pattern from `dailyLogs.ts`.
+ */
+export async function fetchPreviousSetServer(
   supabase: SupabaseClient,
   args: {
     userId: string;
@@ -81,12 +85,7 @@ async function fetchOne(
   return null;
 }
 
-export async function fetchPreviousSetServer(args: Parameters<typeof fetchOne>[1]) {
-  const supabase = await createSupabaseServerClient();
-  return fetchOne(supabase, args);
-}
-
-export async function fetchPreviousSetBrowser(args: Parameters<typeof fetchOne>[1]) {
+export async function fetchPreviousSetBrowser(args: Parameters<typeof fetchPreviousSetServer>[1]) {
   const supabase = createSupabaseBrowserClient();
-  return fetchOne(supabase, args);
+  return fetchPreviousSetServer(supabase, args);
 }
