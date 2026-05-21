@@ -10,8 +10,9 @@
 //
 // Loop invariants:
 //   * After each .stream() ends, if the final message contains tool_use
-//     blocks, we execute them serially (disable_parallel_tool_use: true keeps
-//     this deterministic), append tool_result blocks, and re-call .stream().
+//     blocks, we execute them serially in a for-loop, append tool_result
+//     blocks, and re-call .stream(). Parallel emission by the model is fine —
+//     our loop iterates them in order.
 //   * Cap at 5 individual tool invocations. On the 6th attempt, restart with
 //     tool_choice: { type: "none" } so the model HAS to write a final text.
 //   * The async generator yields delta + tool_call_start/done + done/error
@@ -308,11 +309,12 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
         max_tokens: MAX_TOKENS,
         system,
         tools,
-        // disable_parallel_tool_use lives INSIDE tool_choice (Auto/Any/Tool
-        // variants only — ToolChoiceNone has no tools to parallelize).
-        tool_choice: forceText
-          ? { type: "none" }
-          : { type: "auto", disable_parallel_tool_use: true },
+        // Why not disable_parallel_tool_use: Anthropic's server tools (web_search
+        // here) run via Programmatic Tool Calling, which the API refuses to
+        // combine with disable_parallel_tool_use=true. Our for-loop over
+        // toolUseBlocks already serializes execution, so parallel emission is
+        // safe.
+        tool_choice: forceText ? { type: "none" } : { type: "auto" },
         messages: messages as Anthropic.MessageParam[],
       },
       { signal: opts.signal },
@@ -389,8 +391,9 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
       content: finalMsg.content as unknown as ContentBlock[],
     });
 
-    // Execute each tool_use block serially. disable_parallel_tool_use is
-    // already set, so this loop sees at most one block per round in practice.
+    // Execute each tool_use block serially. The model may emit multiple
+    // blocks per round (parallel tool use is permitted) — we still dispatch
+    // them in order so downstream state writes stay predictable.
     const toolResultBlocks: Anthropic.ToolResultBlockParam[] = [];
     for (const block of toolUseBlocks) {
       invocations++;
