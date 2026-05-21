@@ -5,21 +5,30 @@
 // Persistent across sheet open/close (rows live in chat_messages with
 // kind='meal_log'). Composer holds text input + mic + barcode + send.
 //
+// Layout: chronological message feed (user / Nora text / committed chips)
+// scrolls in the upper region. The most recent pending draft, if any,
+// renders as a PINNED preview card right above the composer — so Nora's
+// clarification text always sits above-and-visible while the actionable
+// card sits at the bottom where the eye lands.
+//
 // Submit path:
 //   1. POST /api/food/parse → returns { entry, needs_clarification }
-//   2. Write a user row + a Nora "preview" row to chat_messages so the
-//      preview card renders inline.
-//   3a. needs_clarification=false → preview only; user taps Confirm.
-//   3b. needs_clarification=true  → also POST /api/chat/messages with
-//       mode='meal_log' and speaker_override='nora'. The chat-route writes
-//       its own user + assistant rows for the clarifying turn; we refetch
-//       the thread after a short delay to show Nora's question.
+//   2. Insert the user bubble.
+//   3a. needs_clarification=false → insert a Nora preview row, pinned card
+//       renders, user taps Confirm.
+//   3b. needs_clarification=true  → insert a Nora *text* bubble with a
+//       deterministic clarification (no LLM round-trip), plus the preview
+//       row. The conversation text is visible in the feed; the preview
+//       stays pinned below for action.
 //
-// The component does NOT manage draft state in React beyond the entry cache;
-// the chat_messages thread IS the state, refreshed on each interaction.
+// The pinned-bottom pattern + deterministic clarification fixes a UX bug
+// where the preview was shown inline at insert-time, hiding Nora's later
+// clarifying message above it, and where the prior /api/chat round-trip
+// leaked an internal "[meal_log] Draft entry..." briefing into the chat as
+// a visible user bubble.
 
 import { useEffect, useRef, useState } from "react";
-import type { MealSlot, FoodLogEntry } from "@/lib/food/types";
+import type { MealSlot, FoodLogEntry, FoodItem } from "@/lib/food/types";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { MealLoggerPreviewCard } from "./MealLoggerPreviewCard";
 import { MealLoggerEditor } from "./MealLoggerEditor";
@@ -31,6 +40,20 @@ type ThreadMessage = {
   ui: { mode: "preview" | "committed" | "cancelled"; entry_id?: string } | null;
   created_at: string;
 };
+
+/** Build a one-sentence clarification grounded in the parse result. Avoids
+ *  an LLM round-trip for the common "we resolved everything but a couple
+ *  items are estimates" case. Pure function — easier to tweak than a prompt. */
+function buildClarificationText(items: FoodItem[]): string {
+  const fuzzy = items.filter((it) => it.confidence !== "high");
+  if (fuzzy.length === 0) return "";
+  if (fuzzy.length === 1) {
+    const it = fuzzy[0];
+    return `Quick check on the **${it.name}** — that's an estimate (~${Math.round(it.kcal)} kcal). Tap Confirm to keep it, or Edit to adjust.`;
+  }
+  const names = fuzzy.map((it) => it.name).join(", ");
+  return `A few items are estimates: **${names}**. Tap Confirm to keep them as-is, or Edit to adjust.`;
+}
 
 type Props = {
   userId: string;
@@ -134,10 +157,7 @@ export function MealLoggerChatTab({ userId, mealSlot, eatenAt, onCommitted }: Pr
       needs_clarification: boolean;
     };
 
-    // 2. Write a user row + a Nora preview row to chat_messages. The chat-
-    //    route infra owns the heavyweight insert/stub flow; for the happy
-    //    path we sidestep it and persist directly. Mirror the columns the
-    //    /api/chat/messages route uses (role, status, speaker, kind, mode).
+    // 2. Insert the user bubble.
     const { data: userRow, error: userErr } = await supabase
       .from("chat_messages")
       .insert({
@@ -152,7 +172,55 @@ export function MealLoggerChatTab({ userId, mealSlot, eatenAt, onCommitted }: Pr
       })
       .select("id, speaker, content, ui, created_at")
       .single();
-    const { data: noraRow, error: noraErr } = await supabase
+    if (userErr) {
+      console.error("[meal-log] user insert failed", userErr);
+      setBusy(false);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `err-${Date.now()}`,
+          speaker: "nora",
+          content: `Couldn't save the message: ${userErr.message}`,
+          ui: null,
+          created_at: new Date().toISOString(),
+        },
+      ]);
+      return;
+    }
+
+    // 3. If clarification is warranted, insert a Nora *text* bubble with a
+    //    deterministic explanation. Composed locally — no LLM round-trip
+    //    needed for the common "we resolved everything but some items are
+    //    estimates" case. The pinned preview card below the feed remains
+    //    the action surface.
+    const inserts: ThreadMessage[] = [];
+    if (userRow) inserts.push(userRow as ThreadMessage);
+
+    if (parseJson.needs_clarification) {
+      const clarification = buildClarificationText(parseJson.entry.items);
+      if (clarification) {
+        const { data: noraTextRow } = await supabase
+          .from("chat_messages")
+          .insert({
+            user_id: userId,
+            role: "assistant",
+            content: clarification,
+            status: "done",
+            speaker: "nora",
+            kind: "meal_log",
+            mode: "meal_log",
+            ui: null,
+          })
+          .select("id, speaker, content, ui, created_at")
+          .single();
+        if (noraTextRow) inserts.push(noraTextRow as ThreadMessage);
+      }
+    }
+
+    // 4. Insert the preview row LAST so it sorts after the clarification
+    //    text by created_at and the pinned-preview picks it up as "newest
+    //    draft" without needing a separate code path.
+    const { data: noraPreviewRow, error: noraErr } = await supabase
       .from("chat_messages")
       .insert({
         user_id: userId,
@@ -166,76 +234,27 @@ export function MealLoggerChatTab({ userId, mealSlot, eatenAt, onCommitted }: Pr
       })
       .select("id, speaker, content, ui, created_at")
       .single();
-
-    // Surface insert failures so we don't look like a dead send button.
-    // The chat_messages constraints (chat_messages_kind_check + _mode_check)
-    // are the most likely culprits when this fires.
-    if (userErr || noraErr) {
-      console.error("[meal-log] chat_messages insert failed", { userErr, noraErr });
+    if (noraErr) {
+      console.error("[meal-log] preview insert failed", noraErr);
       setBusy(false);
       setMessages((prev) => [
         ...prev,
+        ...inserts,
         {
           id: `err-${Date.now()}`,
           speaker: "nora",
-          content: `Couldn't save the message: ${(userErr ?? noraErr)?.message ?? "unknown error"}`,
+          content: `Couldn't save the preview: ${noraErr.message}`,
           ui: null,
           created_at: new Date().toISOString(),
         },
       ]);
       return;
     }
+    if (noraPreviewRow) inserts.push(noraPreviewRow as ThreadMessage);
 
-    setMessages((prev) => [
-      ...prev,
-      ...(userRow ? [userRow as ThreadMessage] : []),
-      ...(noraRow ? [noraRow as ThreadMessage] : []),
-    ]);
+    setMessages((prev) => [...prev, ...inserts]);
     setDrafts((prev) => ({ ...prev, [parseJson.entry.id]: parseJson.entry }));
     setInput("");
-
-    // 3. If clarification needed, ping /api/chat/messages in mode=meal_log.
-    //    The chat route writes its own rows; we refetch after a beat to show
-    //    Nora's question. Streaming response is intentionally ignored — the
-    //    persisted final state is what we care about for the preview surface.
-    if (parseJson.needs_clarification) {
-      const briefing =
-        `[meal_log] Draft entry ${parseJson.entry.id} has low-confidence items: ` +
-        parseJson.entry.items
-          .map((it, i) => `[${i}] ${it.name} (${it.confidence ?? "n/a"})`)
-          .join(", ");
-      fetch("/api/chat/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          mode: "meal_log",
-          speaker_override: "nora",
-          content: briefing,
-        }),
-      }).catch(() => undefined);
-
-      setTimeout(async () => {
-        const { data } = await supabase
-          .from("chat_messages")
-          .select("id, speaker, content, ui, created_at")
-          .eq("user_id", userId)
-          .eq("kind", "meal_log")
-          .gte("created_at", new Date(Date.now() - 30_000).toISOString())
-          .order("created_at", { ascending: true });
-        if (data) {
-          setMessages((prev) => {
-            // Merge new rows in; preserve existing ones (they may carry local-only
-            // UI state like committed/cancelled stamps we wrote ahead of refetch).
-            const byId = new Map(prev.map((m) => [m.id, m]));
-            for (const r of data as ThreadMessage[]) byId.set(r.id, r);
-            return Array.from(byId.values()).sort(
-              (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
-            );
-          });
-        }
-      }, 1500);
-    }
-
     setBusy(false);
   };
 
@@ -308,9 +327,35 @@ export function MealLoggerChatTab({ userId, mealSlot, eatenAt, onCommitted }: Pr
       });
   };
 
+  // Pinned-preview selection: the most recent meal_log row whose ui.mode is
+  // 'preview' AND whose entry is still in our drafts map (we filter out the
+  // row from the chronological feed below). When the user Confirms, the row
+  // flips to ui.mode='committed' and the pinned section clears naturally.
+  const activePreviewMsg = [...messages]
+    .reverse()
+    .find(
+      (m) =>
+        m.speaker === "nora" &&
+        m.ui?.mode === "preview" &&
+        m.ui.entry_id !== undefined &&
+        drafts[m.ui.entry_id] !== undefined,
+    );
+  const activeDraft = activePreviewMsg?.ui?.entry_id
+    ? drafts[activePreviewMsg.ui.entry_id]
+    : null;
+
+  // Auto-scroll on new messages so the latest content (and the pinned preview
+  // when it appears) is visible without the user reaching for the trackpad.
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, [messages.length, activeDraft?.id, activeDraft?.items.length, editingId]);
+
   return (
     <div className="flex flex-col h-[420px] -mx-4 -mb-4">
-      <div className="flex-1 min-h-0 overflow-y-auto px-4 py-2 space-y-3">
+      <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-4 py-2 space-y-3">
         {messages.length === 0 && (
           <div className="text-zinc-500 text-sm py-8 text-center">
             Tell Nora what you ate. She&apos;ll figure out the macros.
@@ -327,60 +372,10 @@ export function MealLoggerChatTab({ userId, mealSlot, eatenAt, onCommitted }: Pr
             );
           }
           // nora
-          if (m.ui?.mode === "preview" && m.ui.entry_id && drafts[m.ui.entry_id]) {
-            const draft = drafts[m.ui.entry_id];
-            if (editingId === draft.id) {
-              return (
-                <MealLoggerEditor
-                  key={m.id}
-                  entry={draft}
-                  onSaved={(u) => {
-                    setDrafts((p) => ({ ...p, [u.id]: u }));
-                    setEditingId(null);
-                  }}
-                  onCancel={() => setEditingId(null)}
-                />
-              );
-            }
-            return (
-              <MealLoggerPreviewCard
-                key={m.id}
-                entry={draft}
-                onCommitted={async () => {
-                  // Stamp a "committed" bubble.
-                  await supabase
-                    .from("chat_messages")
-                    .insert({
-                      user_id: userId,
-                      role: "assistant",
-                      content: "",
-                      status: "done",
-                      speaker: "nora",
-                      kind: "meal_log",
-                      mode: "meal_log",
-                      ui: { mode: "committed", entry_id: draft.id },
-                    });
-                  setMessages((prev) =>
-                    prev.map((x) =>
-                      x.id === m.id
-                        ? { ...x, ui: { mode: "committed", entry_id: draft.id } }
-                        : x,
-                    ),
-                  );
-                  await onCommitted();
-                }}
-                onCancelled={() => {
-                  setMessages((prev) => prev.filter((x) => x.id !== m.id));
-                  setDrafts((prev) => {
-                    const next = { ...prev };
-                    delete next[draft.id];
-                    return next;
-                  });
-                }}
-                onEdit={() => setEditingId(draft.id)}
-              />
-            );
-          }
+          // Preview rows render in the pinned section below — skip here so
+          // they don't appear twice and so chronological order in the feed
+          // stays user → Nora-text without a card breaking it up.
+          if (m.ui?.mode === "preview") return null;
           if (m.ui?.mode === "committed") {
             return (
               <div key={m.id} className="flex">
@@ -390,15 +385,65 @@ export function MealLoggerChatTab({ userId, mealSlot, eatenAt, onCommitted }: Pr
               </div>
             );
           }
-          // Plain Nora text (clarifying question from /api/chat/messages).
+          // Plain Nora text (deterministic clarification).
           return (
             <div key={m.id} className="flex">
-              <div className="rounded-2xl bg-zinc-800 text-zinc-200 px-3 py-2 text-sm max-w-[85%]">
+              <div className="rounded-2xl bg-zinc-800 text-zinc-200 px-3 py-2 text-sm max-w-[85%] whitespace-pre-wrap">
                 {m.content}
               </div>
             </div>
           );
         })}
+        {/* Pinned active draft: editor when editing, preview otherwise. Lives
+            at the bottom of the scroll area so it's always above the composer
+            and visually after any Nora clarification text. */}
+        {activeDraft && activePreviewMsg && (
+          editingId === activeDraft.id ? (
+            <MealLoggerEditor
+              entry={activeDraft}
+              onSaved={(u) => {
+                setDrafts((p) => ({ ...p, [u.id]: u }));
+                setEditingId(null);
+              }}
+              onCancel={() => setEditingId(null)}
+            />
+          ) : (
+            <MealLoggerPreviewCard
+              entry={activeDraft}
+              onCommitted={async () => {
+                // Stamp a "committed" bubble in place of the preview row so
+                // the pinned section clears and a chip appears in the feed.
+                const previewId = activePreviewMsg.id;
+                await supabase
+                  .from("chat_messages")
+                  .update({ ui: { mode: "committed", entry_id: activeDraft.id } })
+                  .eq("id", previewId);
+                setMessages((prev) =>
+                  prev.map((x) =>
+                    x.id === previewId
+                      ? { ...x, ui: { mode: "committed", entry_id: activeDraft.id } }
+                      : x,
+                  ),
+                );
+                setDrafts((prev) => {
+                  const next = { ...prev };
+                  delete next[activeDraft.id];
+                  return next;
+                });
+                await onCommitted();
+              }}
+              onCancelled={() => {
+                setMessages((prev) => prev.filter((x) => x.id !== activePreviewMsg.id));
+                setDrafts((prev) => {
+                  const next = { ...prev };
+                  delete next[activeDraft.id];
+                  return next;
+                });
+              }}
+              onEdit={() => setEditingId(activeDraft.id)}
+            />
+          )
+        )}
       </div>
       <div className="border-t border-zinc-800 px-3 py-2 flex items-center gap-2">
         <button
