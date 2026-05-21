@@ -1,13 +1,18 @@
 // lib/food/lookup.ts
 //
-// resolveItemMacros: name + qty_g → FoodItem
+// resolveItemMacros: name + qty_g + userId → FoodItem
 //
 // Lookup chain:
-//   1. food_db_cache trigram match on name (similarity ≥ TRGM_THRESHOLD)
-//   2. USDA FoodData Central /foods/search (writes back to cache on success)
-//   3. OpenFoodFacts text search (writes back to cache on success)
+//   1. user_food_items (personal library single-items via lookupLibraryByName)
+//   2. food_db_cache trigram match on name (similarity ≥ TRGM_THRESHOLD)
+//   3. USDA FoodData Central /foods/search (with British→US spelling fallback;
+//      writes back to cache on success)
 //   4. Haiku 4.5 estimates per_100g macros (NOT cached — only verified DB
 //      sources go to cache)
+//
+// OpenFoodFacts is no longer in the text-resolve chain. It remains available
+// for `/api/food/barcode` and `lib/food/search.ts` (the SEARCH-tab fan-out)
+// via the exported lookupOpenFoodFacts helper.
 //
 // Returns a fully-populated FoodItem with macros scaled to qty_g.
 
@@ -16,6 +21,9 @@ import { callClaude, parseClaudeJson } from "@/lib/anthropic/client";
 import { SHORT_FORM_MODEL } from "@/lib/anthropic/models";
 import { macrosForQty, type FoodItem, type FoodMacros, type FoodDbCacheRow } from "@/lib/food/types";
 import { pickBestCandidate } from "@/lib/food/scoring";
+import { maybeNormalize } from "@/lib/food/spelling";
+import { lookupLibraryByName } from "@/lib/food/library";
+import type { UserFoodItem } from "@/lib/food/types";
 
 /** Minimum trigram similarity for a cache match to count. Tune during use. */
 const TRGM_THRESHOLD = 0.6;
@@ -93,25 +101,42 @@ async function lookupUsda(name: string): Promise<{ row: FoodDbCacheRow; score: n
     console.warn("[food-lookup] USDA_FDC_API_KEY not set — skipping USDA");
     return null;
   }
-  const url = `${USDA_SEARCH_URL}?api_key=${encodeURIComponent(apiKey)}&query=${encodeURIComponent(name)}&pageSize=5&dataType=Foundation,SR%20Legacy`;
-  let res: Response;
-  try {
-    res = await fetch(url, { signal: AbortSignal.timeout(5000) });
-  } catch (err) {
-    console.warn(`[food-lookup] USDA fetch failed for query "${name}"`, err);
-    return null;
-  }
-  if (!res.ok) {
-    console.warn(`[food-lookup] USDA ${res.status} for query "${name}"`);
-    return null;
-  }
-  const data = (await res.json()) as { foods?: UsdaFood[] };
-  const foods = data.foods ?? [];
-  if (foods.length === 0) return null;
+  const doSearch = async (q: string): Promise<UsdaFood[] | null> => {
+    const url = `${USDA_SEARCH_URL}?api_key=${encodeURIComponent(apiKey)}&query=${encodeURIComponent(q)}&pageSize=5&dataType=Foundation,SR%20Legacy`;
+    let res: Response;
+    try {
+      res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+    } catch (err) {
+      console.warn(`[food-lookup] USDA fetch failed for query "${q}"`, err);
+      return null;
+    }
+    if (!res.ok) {
+      console.warn(`[food-lookup] USDA ${res.status} for query "${q}"`);
+      return null;
+    }
+    const data = (await res.json()) as { foods?: UsdaFood[] };
+    return data.foods ?? [];
+  };
 
-  // Score each candidate by token overlap with the query.
+  // First try: literal query.
+  let foods = await doSearch(name);
+  let usedQuery = name;
+  if (foods && foods.length === 0) {
+    // Retry with a US-spelled variant if any British token maps.
+    const variant = maybeNormalize(name);
+    if (variant && variant !== name.toLowerCase()) {
+      console.info(`[food-lookup] USDA 0 hits for "${name}" — retrying as "${variant}"`);
+      const retried = await doSearch(variant);
+      if (retried) {
+        foods = retried;
+        usedQuery = variant;
+      }
+    }
+  }
+  if (!foods || foods.length === 0) return null;
+
   const best = pickBestCandidate(
-    name,
+    usedQuery,
     foods.map((f) => ({ name: f.description, food: f })),
     0.5,
   );
@@ -256,8 +281,29 @@ If the food is ambiguous, pick the most common prepared form.`;
   return parseClaudeJson<FoodMacros>(raw);
 }
 
-export async function resolveItemMacros(name: string, qty_g: number): Promise<FoodItem> {
-  // 1. cache
+export async function resolveItemMacros(
+  name: string,
+  qty_g: number,
+  userId: string,
+): Promise<FoodItem> {
+  // 1. user_food_items (library — single items only at this layer; recipes
+  //    are expanded by the caller via expandLibraryRecipe, not here).
+  const lib = await lookupLibraryByName(userId, name);
+  if (lib && lib.per_100g) {
+    const macros = macrosForQty(lib.per_100g, qty_g);
+    return {
+      name: lib.name,
+      qty_g,
+      ...macros,
+      per_100g: lib.per_100g,
+      source: "db",
+      db_ref: { source: "user_library", canonical_id: lib.id },
+      confidence: "high",
+      match_score: 1.0,
+    };
+  }
+
+  // 2. food_db_cache
   const cached = await lookupCacheByName(name);
   if (cached) {
     const macros = macrosForQty(cached.per_100g, qty_g);
@@ -272,7 +318,8 @@ export async function resolveItemMacros(name: string, qty_g: number): Promise<Fo
       match_score: 1.0,
     };
   }
-  // 2. USDA with scoring
+
+  // 3. USDA (with spelling fallback inside lookupUsda)
   const usda = await lookupUsda(name);
   if (usda) {
     const macros = macrosForQty(usda.row.per_100g, qty_g);
@@ -287,23 +334,8 @@ export async function resolveItemMacros(name: string, qty_g: number): Promise<Fo
       match_score: usda.score,
     };
   }
-  // 3. OpenFoodFacts with scoring
-  const off = await lookupOpenFoodFacts(name);
-  if (off) {
-    const macros = macrosForQty(off.row.per_100g, qty_g);
-    return {
-      name: off.row.name,
-      qty_g,
-      ...macros,
-      per_100g: off.row.per_100g,
-      source: "db",
-      db_ref: { source: "openfoodfacts", canonical_id: off.row.canonical_id },
-      confidence: off.score >= 0.7 ? "high" : "medium",
-      match_score: off.score,
-    };
-  }
-  // 4. LLM fallback — wrap so route handlers get a typed error instead of an
-  //    uncaught Anthropic-API or JSON-parse exception bubbling up as a 500.
+
+  // 4. LLM fallback (unchanged) — confidence='low', is_estimated=true.
   let per_100g: FoodMacros;
   try {
     per_100g = await llmEstimate(name);
@@ -322,4 +354,23 @@ export async function resolveItemMacros(name: string, qty_g: number): Promise<Fo
     confidence: "low",
     match_score: null,
   };
+}
+
+/** Expand a recipe library row into its component items, resolving each via
+ *  the standard chain. Returns the resolved FoodItem[] sized to `qty_g`
+ *  relative to the recipe's default_serving_g (or 1× if no default). */
+export async function expandLibraryRecipe(
+  recipe: UserFoodItem,
+  qty_g: number,
+  userId: string,
+): Promise<FoodItem[]> {
+  if (!recipe.composite_of || !recipe.default_serving_g) {
+    throw new Error(`expandLibraryRecipe: ${recipe.id} is not a recipe`);
+  }
+  const scale = qty_g / recipe.default_serving_g;
+  return Promise.all(
+    recipe.composite_of.map((ing) =>
+      resolveItemMacros(ing.name, ing.qty_g * scale, userId),
+    ),
+  );
 }

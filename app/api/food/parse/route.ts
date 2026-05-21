@@ -47,7 +47,7 @@ export async function POST(req: Request) {
   const items: FoodItem[] = await Promise.all(
     extracted.map(async (it) => {
       try {
-        return await resolveItemMacros(it.name, it.qty_g);
+        return await resolveItemMacros(it.name, it.qty_g, user.id);
       } catch (err) {
         console.warn(`[/api/food/parse] all lookup paths failed for "${it.name}"`, err);
         return {
