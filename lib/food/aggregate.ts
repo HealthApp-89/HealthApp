@@ -50,7 +50,12 @@ export async function upsertDailyLogsNutrition(
       {
         user_id: userId,
         date,
-        calories_eaten: macros.kcal,
+        // daily_logs.calories_eaten is INTEGER (legacy from the Yazio-rounded
+        // intake path). sum_food_entries returns decimals from per-100g math
+        // (e.g. 912.5 kcal), which Postgres rejects with 22P02 on the upsert
+        // and silently 500'd /api/food/commit — see commit history for the
+        // symptom ("Confirm shows error but entry shows up after reopening").
+        calories_eaten: Math.round(macros.kcal),
         protein_g:      macros.protein_g,
         carbs_g:        macros.carbs_g,
         fat_g:          macros.fat_g,
