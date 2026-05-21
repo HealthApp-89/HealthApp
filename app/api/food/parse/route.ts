@@ -70,6 +70,9 @@ export async function POST(req: Request) {
 
   const totals = sumMacros(items);
   const is_estimated = items.some((it) => it.source === "llm");
+  const needs_clarification = items.some(
+    (it) => it.confidence === "medium" || it.confidence === "low",
+  );
 
   // 3. Insert draft entry
   const { data: inserted, error } = await supabase
@@ -93,5 +96,5 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "insert_failed" }, { status: 500 });
   }
 
-  return NextResponse.json({ entry: inserted });
+  return NextResponse.json({ entry: inserted, needs_clarification });
 }
