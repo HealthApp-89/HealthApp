@@ -271,8 +271,8 @@ export function MealLoggerChatTab({ userId, mealSlot, eatenAt, onCommitted }: Pr
   };
 
   return (
-    <div className="flex flex-col h-[60vh] -m-4">
-      <div className="flex-1 overflow-y-auto px-4 py-2 space-y-3">
+    <div className="flex flex-col h-[420px] -mx-4 -mb-4">
+      <div className="flex-1 min-h-0 overflow-y-auto px-4 py-2 space-y-3">
         {messages.length === 0 && (
           <div className="text-zinc-500 text-sm py-8 text-center">
             Tell Nora what you ate. She&apos;ll figure out the macros.
