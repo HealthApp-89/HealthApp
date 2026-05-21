@@ -50,9 +50,13 @@ drop policy if exists "user writes own items" on public.user_food_items;
 create policy "user writes own items" on public.user_food_items
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
--- updated_at trigger (matches existing convention from 0010, 0018, etc.)
+-- updated_at trigger. search_path pinned to public,pg_temp to match the
+-- project's defence-in-depth convention for trigger / SECURITY DEFINER
+-- functions (see sum_food_entries in 0019, commit_logger_session in 0026).
 create or replace function public.user_food_items_set_updated_at()
-returns trigger language plpgsql as $$
+returns trigger language plpgsql
+set search_path = public, pg_temp
+as $$
 begin
   new.updated_at := now();
   return new;
