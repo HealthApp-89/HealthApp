@@ -224,7 +224,7 @@ async function handleSlotAnswer(args: {
     });
     const firstSlot = SLOT_BY_KEY.readiness;
     await insertAssistantTurn(sr, userId, {
-      content: "Good — let's run through the morning check-in. " + firstSlot.prompt,
+      content: "Good to hear. Let's run through your morning. " + firstSlot.prompt,
       ui: chipsForSlot(firstSlot.key),
     });
     return NextResponse.json({ ok: true });
