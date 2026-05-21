@@ -73,6 +73,11 @@ export type FoodLogEntry = {
   status: FoodLogEntryStatus;
   created_at: string;
   updated_at: string;
+  /** Back-reference to a user_food_items recipe row, when the entry was
+   *  logged via a saved recipe. Migration 0028. NULL on every entry that
+   *  wasn't sourced from a recipe; ON DELETE SET NULL so deleting the
+   *  recipe row preserves the historical entry. */
+  recipe_id?: string | null;
 };
 
 export type FoodDbCacheRow = {
