@@ -126,6 +126,9 @@ export function ExerciseCard({
                 exerciseName={exercise.name}
                 excludeWorkoutExternalId={externalId}
                 set={s}
+                workingSetNumber={
+                  exercise.sets.slice(0, i).filter((x) => !x.warmup).length + 1
+                }
                 isActive={!s.committed_at && exercise.sets.findIndex((x) => !x.committed_at) === i}
                 onChange={(patch) => patchSet(i, patch)}
                 onCommit={() => commitSet(i)}

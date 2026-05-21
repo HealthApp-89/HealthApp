@@ -12,6 +12,10 @@ type Props = {
   exerciseName: string;
   excludeWorkoutExternalId: string | null;
   set: ExerciseSetDraft;
+  /** This set's position among non-warmup sets in the exercise (1-indexed).
+   *  Computed by the parent so warmups don't consume a number — two warmups
+   *  followed by a normal set show the normal one as "1", not "3". */
+  workingSetNumber: number;
   isActive: boolean;
   onChange: (patch: Partial<ExerciseSetDraft>) => void;
   onCommit: () => void;
@@ -20,7 +24,7 @@ type Props = {
 };
 
 export function SetRow({
-  userId, exerciseName, excludeWorkoutExternalId, set,
+  userId, exerciseName, excludeWorkoutExternalId, set, workingSetNumber,
   isActive, onChange, onCommit, onUncommit, onUnparsedVoice,
 }: Props) {
   const [draftKg, setDraftKg] = useState<string>(set.kg !== null ? String(set.kg) : "");
@@ -36,7 +40,7 @@ export function SetRow({
 
   const committed = !!set.committed_at;
   const [badgeOpen, setBadgeOpen] = useState(false);
-  const setLabel = set.warmup ? "W" : set.failure ? "F" : String(set.set_index + 1);
+  const setLabel = set.warmup ? "W" : set.failure ? "F" : String(workingSetNumber);
   const setBadgeClass = set.warmup
     ? "bg-yellow-500/15 text-yellow-300"
     : set.failure
@@ -66,7 +70,7 @@ export function SetRow({
                 className="w-9 h-7 rounded text-[11px] font-semibold bg-zinc-800 text-zinc-200 hover:bg-zinc-700"
                 role="menuitem"
               >
-                {set.set_index + 1}
+                {workingSetNumber}
               </button>
               <button
                 type="button"
