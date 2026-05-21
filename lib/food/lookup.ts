@@ -46,9 +46,21 @@ type UsdaFood = {
   servingSizeUnit?: string;
 };
 
-/** USDA nutrient numbers we care about. */
+/** USDA nutrient numbers we care about.
+ *
+ *  Energy is a multi-code mess: SR Legacy foods use #208 ("Energy" in kcal),
+ *  Foundation Foods use #1008 ("Energy" in kcal), and some Foundation rows
+ *  ALSO publish Atwater-derived energy under #957 (general factors) and
+ *  #958 (specific factors). Only checking #208 returns 0 for every
+ *  Foundation Food (e.g. "Pineapple, raw", "Kiwifruit, raw"), poisoning the
+ *  cache once they're looked up.
+ *
+ *  Strategy: walk the priority list and take the first nutrient with a
+ *  finite positive value. Atwater Specific is the "best" real-world energy
+ *  when present; fall back to the generic kcal codes; never fall back to
+ *  kJ (would silently 4×-inflate). */
+const ENERGY_KCAL_CODES = ["1008", "208", "958", "957"] as const;
 const NUTRIENT_NUM = {
-  energy_kcal: "208",
   protein_g:   "203",
   carbs_g:     "205",
   fat_g:       "204",
@@ -60,13 +72,27 @@ function extractUsdaMacros(food: UsdaFood): FoodMacros {
     const n = food.foodNutrients?.find((x) => x.nutrientNumber === num);
     return typeof n?.value === "number" ? n.value : 0;
   };
+  const kcal = (() => {
+    for (const num of ENERGY_KCAL_CODES) {
+      const v = get(num);
+      if (Number.isFinite(v) && v > 0) return v;
+    }
+    return 0;
+  })();
   return {
-    kcal:      get(NUTRIENT_NUM.energy_kcal),
+    kcal,
     protein_g: get(NUTRIENT_NUM.protein_g),
     carbs_g:   get(NUTRIENT_NUM.carbs_g),
     fat_g:     get(NUTRIENT_NUM.fat_g),
     fiber_g:   get(NUTRIENT_NUM.fiber_g),
   };
+}
+
+/** Exported for the food_db_cache backfill script — re-extract kcal from
+ *  raw_payload of cached USDA rows whose kcal=0 because the old extractor
+ *  only checked nutrient #208. */
+export function extractUsdaMacrosForBackfill(food: UsdaFood): FoodMacros {
+  return extractUsdaMacros(food);
 }
 
 async function lookupCacheByName(name: string): Promise<FoodDbCacheRow | null> {
