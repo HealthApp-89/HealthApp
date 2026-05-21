@@ -314,6 +314,7 @@ async function handleFeelTail(args: {
   await sr.from("chat_messages").insert({
     user_id: userId,
     role: "user",
+    thread: "remi",
     content: trimmed || "(no extra notes)",
     status: "done",
     kind: "morning_intake",
@@ -335,6 +336,8 @@ async function handleFeelTail(args: {
     .insert({
       user_id: userId,
       role: "assistant",
+      speaker: "remi",
+      thread: "remi",
       content: "",
       status: "streaming",
       kind: "morning_intake",
@@ -481,6 +484,7 @@ async function insertUserReply(
   const { error } = await sr.from("chat_messages").insert({
     user_id: userId,
     role: "user",
+    thread: "remi",
     content,
     status: "done",
     kind: "morning_intake",
@@ -506,6 +510,8 @@ async function insertAssistantTurn(
   const { error } = await sr.from("chat_messages").insert({
     user_id: userId,
     role: "assistant",
+    speaker: "remi",
+    thread: "remi",
     content: args.content,
     status: "done",
     kind: "morning_intake",
