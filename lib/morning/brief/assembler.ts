@@ -273,7 +273,7 @@ function composeHydration(inputs: BriefInputs): MorningBriefHydration | null {
   return {
     water_ml: t.hydration_target_ml,
     sodium_mg: t.sodium_target_mg ?? 0,
-    note: "GLP-1 can suppress thirst — front-load water & sodium around session.",
+    note: "Your protocol can suppress thirst — front-load water & sodium around session.",
   };
 }
 
