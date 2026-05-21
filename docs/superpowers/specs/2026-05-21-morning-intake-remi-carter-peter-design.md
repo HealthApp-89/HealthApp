@@ -122,110 +122,144 @@ change to the chip sequence.
 
 ### Carter session-adaptation step
 
-**New file:** `lib/morning/brief/session-adaptation.ts`
+We **extend the existing `coach_suggestion` primitive** on the brief card
+rather than inventing a parallel field. The primitive already triggers a
+swap-to-mobility chip when readiness is low (`pickCoachSuggestion` in
+`lib/morning/brief/assembler.ts`); we add Carter's two new rationales
+(high soreness on target muscle, recovery crash + heavy fatigue) and one
+new kind (reduce_intensity).
 
-Exports a pure function:
+**Type change** — `MorningBriefCoachSuggestion` in `lib/data/types.ts`
+grows from:
 
 ```ts
-type AdaptationAction = 'keep' | 'swap_to_rest' | 'swap_to_mobility' | 'reduce_intensity';
-
-type SessionAdaptation = {
-  action: AdaptationAction;
-  reason: string; // short, user-facing, e.g. "shoulder soreness 4/5"
-  swap_to?: string; // when action is swap_*; the session type to swap to
-};
-
-export function assessSessionAdaptation(input: {
-  intake: CheckinIntakePayload; // sick, soreness_areas, soreness_severity, fatigue, energy_label, readiness
-  recovery: number | null; // WHOOP recovery 0-100
-  todaysSession: { type: string; targetedMuscleGroups: string[] };
-}): SessionAdaptation
+export type MorningBriefCoachSuggestion =
+  | { kind: "swap_to_mobility"; rationale: "low_readiness" }
+  | null;
 ```
 
-**Rules (evaluated in order, first match wins):**
-
-1. **Sick** — `intake.sick === true` → `swap_to_rest`, reason `"reported sick — full rest day"`.
-2. **High soreness on target muscle** — `intake.soreness_severity >= 4`
-   AND any name in `intake.soreness_areas` overlaps `todaysSession.targetedMuscleGroups`
-   AND `todaysSession.type !== 'REST'` AND `todaysSession.type !== 'Mobility'`
-   → `swap_to_mobility`, reason `"<area> soreness <N>/5"`.
-3. **Recovery crash** — `recovery !== null` AND `recovery < 40`
-   AND (`intake.fatigue === 'high'` OR `intake.readiness === 'low'`)
-   AND `todaysSession.type !== 'REST'` AND `todaysSession.type !== 'Mobility'`
-   → `reduce_intensity`, reason `"recovery <N> + high fatigue — drop top sets to RPE 7"`.
-4. **Default** — `keep`, reason `""`.
-
-`targetedMuscleGroups` for each `SESSION_PLANS` entry is a small static map
-defined alongside the rules file (Push → `['chest', 'shoulders', 'triceps']`,
-Pull → `['back', 'biceps']`, Legs → `['quads', 'hamstrings', 'glutes', 'calves']`,
-Full Body → all, REST/Mobility → `[]`).
-
-`intake.soreness_areas` is the existing checkin slot — same string keys as
-the muscle groups above (chest, back, shoulders, etc.); the overlap check
-is case-insensitive substring match.
-
-**Wired into:** `lib/morning/brief/index.ts` inside
-`assembleBriefExceptAdvice`, after the session is resolved from
-`thisWeekPrescription`. The result is attached to the brief payload as
-`card.session.adaptation`. The advice flag computation in
-`computeAdviceFlags` gets one new flag (`adaptation_action`) so Peter's
-prose can acknowledge the adaptation when it's non-keep.
-
-### Brief card payload extension
-
-**File:** `components/morning/types.ts` (or wherever `MorningBriefCard` is typed)
-
-`MorningBriefCard.session` grows:
+to:
 
 ```ts
-session: {
-  // existing fields
-  adaptation?: SessionAdaptation; // undefined === implicit 'keep' for backward compat
+export type MorningBriefCoachSuggestion =
+  | { kind: "swap_to_mobility"; rationale: "low_readiness" | "high_soreness"; detail?: string }
+  | { kind: "reduce_intensity"; rationale: "recovery_crash"; detail?: string }
+  | null;
+```
+
+Backward compatible — existing low_readiness rows still match.
+
+**New file:** `lib/morning/brief/session-muscles.ts`
+
+```ts
+export const SESSION_MUSCLE_MAP: Record<string, readonly string[]> = {
+  Chest: ["chest", "shoulders", "arms"],
+  Back:  ["back", "arms"],
+  Legs:  ["legs"],
+  Mobility: [],
+  REST:  [],
 };
 ```
 
-`undefined` is treated as `keep` so any pre-existing brief rows (written
-before this change) render correctly without backfill.
+Keys match the `SORENESS_AREAS` constant in `lib/morning/script.ts`
+(chest, back, legs, shoulders, arms, core).
+
+**Modified function:** `pickCoachSuggestion` in
+`lib/morning/brief/assembler.ts` — signature changes to accept the new
+inputs, rules evaluated in order (first match wins):
+
+```ts
+export function pickCoachSuggestion(args: {
+  band: "low" | "moderate" | "high";
+  sessionType: string;
+  hasTrainingWeek: boolean;
+  intake: {
+    soreness_areas: string[] | null;
+    soreness_severity: "mild" | "sharp" | null;
+    fatigue: "none" | "some" | "heavy" | null;
+  };
+  recovery: number | null;
+}): MorningBriefCoachSuggestion
+```
+
+Rules:
+
+1. **High soreness on target muscle** —
+   `intake.soreness_severity === 'sharp'` AND `intake.soreness_areas`
+   has any element matching `SESSION_MUSCLE_MAP[sessionType]`
+   (case-insensitive) AND session is not REST/Mobility/Sick →
+   `{ kind: "swap_to_mobility", rationale: "high_soreness", detail: "sharp soreness in <overlap>" }`.
+
+2. **Low readiness** (existing) — `band === "low"` AND session is not
+   REST/Mobility/Sick →
+   `{ kind: "swap_to_mobility", rationale: "low_readiness" }`.
+
+3. **Recovery crash** — `recovery !== null && recovery < 40 &&
+   intake.fatigue === "heavy"` AND session is not REST/Mobility/Sick →
+   `{ kind: "reduce_intensity", rationale: "recovery_crash", detail: "recovery <N> + heavy fatigue" }`.
+
+4. Otherwise → `null`.
+
+**`sick` is not in the rule set.** The sickness path short-circuits intake
+to `intake_state='delivered'` upstream (no brief assembled), so it never
+reaches `pickCoachSuggestion`.
+
+**Wired into:** `assembleBriefExceptAdvice` in
+`lib/morning/brief/assembler.ts` — the call site at line ~117 changes
+from passing `(band, sessionType, hasTrainingWeek)` to passing the full
+args object including the intake slots from `checkin` and recovery from
+`todayLog`. Both are already available in the assembler's input bag.
+
+The advice flag `coach_swap_suggested` (already in `flags.ts` at line
+108) stays — it gates whether Peter's prose mentions Carter's
+recommendation. No new flag needed; the existing check
+(`card.coach_suggestion?.kind === "swap_to_mobility"`) covers the two new
+swap rationales naturally. A second flag `coach_reduce_intensity_suggested`
+(`card.coach_suggestion?.kind === "reduce_intensity"`) joins it so prose
+can acknowledge the weaker recommendation too.
 
 ### Brief card UI
 
-**File:** `components/morning/MorningBriefCard.tsx`
+**File:** `components/morning/BriefCoachSuggestion.tsx`
 
-The Today session block (currently a list of prescribed exercises with the
-`[Carter]` chip) grows a conditional sub-card when
-`card.session.adaptation && card.session.adaptation.action !== 'keep'`:
+The existing component already handles the low_readiness → swap_to_mobility
+path with Apply/Keep buttons + acknowledged state detection. We extend it
+to render the two new rationales/kinds:
 
-```
-┌─ Carter recommends ──────────────────────────┐
-│ {reason}                                     │
-│ {action === 'swap_to_*'                      │
-│   ? [Apply swap] [Keep {current}]            │
-│   : [Reduce intensity acknowledged]}         │
-└──────────────────────────────────────────────┘
-```
+- **`swap_to_mobility, rationale='high_soreness'`** — header label changes
+  from "Coach suggestion" to "Carter recommends"; body copy reads
+  `"<detail> — swap to Mobility today?"`; buttons unchanged
+  (Apply / Keep). Same swap mutation (`useSwapTrainingDay`,
+  `{ session_type: "Mobility" }`).
 
-- For `swap_to_rest` and `swap_to_mobility`: two buttons. Apply calls the
-  existing `POST /api/training-weeks/[week_start]/swap` with
-  `{ action: 'replace', weekday: <today>, new_type: 'REST' | 'Mobility' }`.
-  Keep dismisses client-side (toggles a `useState` flag); the recommendation
-  stays in the brief payload for audit.
-- For `reduce_intensity`: single acknowledge button (no swap endpoint
-  needed); the recommendation is informational. Clicking sets the same
-  dismissed flag.
+- **`swap_to_mobility, rationale='low_readiness'`** (existing) — copy
+  stays as-is for backward compat with users who already know this chip.
+  Header label still "Coach suggestion" so we don't change what's
+  already working.
 
-Apply success → invalidate `training-weeks` query key so the strikethrough
-detector picks up the new session. Brief payload is **not** rewritten on
-apply — the adaptation field is the record of what Carter recommended,
-not of what the user did.
+- **`reduce_intensity, rationale='recovery_crash'`** — header "Carter
+  recommends"; body copy reads `"<detail> — drop top sets to RPE 7
+  today"`; single `[Got it]` button. No swap mutation, just a client-side
+  dismiss flag. Acknowledged state on this kind = the button was tapped
+  this session (not persisted; reappears on reload — acceptable for v1).
+
+The component's existing acknowledgment logic (live training_weeks plan
+diverges from brief's frozen session.type → show ✓ banner) only applies
+to swap_to_* kinds. For reduce_intensity, acknowledgment is the
+button-tap state.
+
+Apply success on swap kinds → existing mutation invalidates
+`training-weeks` query key (no change needed). Brief payload is **not**
+rewritten on apply — coach_suggestion is the record of what Carter
+recommended, not of what the user did.
 
 ### Brief row threading
 
 **File:** `app/api/chat/morning/recommendation/route.ts`
 
-The morning_brief insertion (currently `speaker: 'peter'`, no thread) gets
-`thread: 'peter'` added. This makes the card appear in Peter's chat thread
-on `/metrics`. No migration needed — `thread` already exists from
-migration 0025.
+No change needed — the insertion at line 161-162 already stamps
+`speaker: 'peter'` and `thread: 'peter'`. (Earlier draft of this spec
+listed this as a delta; checking the file confirmed it's already done.)
 
 ### Today page placeholder
 
@@ -247,9 +281,10 @@ When the card exists, behavior unchanged. (The placeholder uses the same
 - No new Anthropic calls. Peter's advice prose stays one Haiku call;
   Carter's step is pure rules; Remi's voice change is prompt-only.
 - No new database tables, migrations, or columns. Carter's recommendation
-  lives in the existing `chat_messages.ui` jsonb.
-- No backfill of historic morning_brief rows. The `adaptation` field is
-  optional; pre-existing rows render as `keep` implicitly.
+  reuses the existing `coach_suggestion` field on the brief payload.
+- No backfill of historic morning_brief rows. The new rationales and
+  reduce_intensity kind are additive; existing low_readiness rows
+  continue rendering with the existing copy.
 - No new state machine values. Carter's step runs synchronously inside
   `assembleBriefExceptAdvice`.
 - No changes to the WHOOP wait / retry flow.
@@ -258,24 +293,28 @@ When the card exists, behavior unchanged. (The placeholder uses the same
 
 ## Edge cases
 
-- **No prescribed session for today** — adaptation step returns `keep`
-  with empty reason; UI renders the existing Today block unchanged.
-- **Today is REST or Mobility already** — rules 2 and 3 are gated to skip;
-  rule 1 still fires if sick is true but the result is also no-op (rest
-  stays rest). UI shows no adaptation sub-card.
+- **No prescribed session / hasTrainingWeek is false** — `pickCoachSuggestion`
+  returns `null` (existing behavior); UI renders the Today block with no
+  chip.
+- **Today is REST / Mobility / Sick already** — all three rules gate on
+  this; result is `null`, no chip.
 - **WHOOP recovery missing** — rule 3 is gated on `recovery !== null`;
-  with no recovery data we skip the reduce-intensity branch and fall
-  through to keep. Soreness and sick rules still apply.
-- **User dismisses the adaptation, then refreshes** — dismissal is client-
-  side only, so the sub-card reappears. Acceptable for v1 (this is a
-  recommendation, not a TODO); future versions could persist an
-  `acknowledged_adaptation` flag if it becomes noisy.
-- **User taps Apply, then we re-render** — the strikethrough detector
-  already shows the user's new session; the adaptation sub-card stays
-  visible as a record of why the swap happened.
+  with no recovery data we skip the reduce-intensity branch. Rules 1 and
+  2 still apply.
+- **User dismisses the recommendation, then refreshes** — for swap kinds,
+  the existing acknowledged state (live training_weeks vs brief frozen
+  type) handles the post-swap case; for reduce_intensity, the dismiss is
+  client-side only and the chip reappears on reload. Acceptable for v1.
+- **User taps Apply on a swap, then we re-render** — the existing
+  acknowledged banner ("✓ Swapped to Mobility at …") replaces the chip.
+  No new logic.
 - **User skips Health entirely on a given day** — intake never runs, brief
   never assembles, Today shows the placeholder. This is intentional with
   the new flow; the unread-dot on the Health pill provides discoverability.
+- **Multiple rules could fire simultaneously** — first-match-wins by design:
+  high_soreness beats low_readiness beats recovery_crash. A user with sharp
+  soreness AND low readiness sees Carter's soreness-specific copy, which
+  is the more actionable signal.
 
 ## Risks
 
@@ -286,12 +325,14 @@ When the card exists, behavior unchanged. (The placeholder uses the same
   eye. We accept some loss of forced engagement in exchange for cleaner
   coach attribution.
 
-- **Rule false positives on soreness swap.** If the soreness severity slot
-  is over-reported (e.g., 4/5 for mild stiffness), the swap recommendation
-  may feel pushy. The two-button UI (Apply / Keep) lets users dismiss
-  without action; Carter's reason is short and specific so users can
-  judge for themselves. Tune the threshold (currently `>= 4`) in code if
-  needed after a week of real use.
+- **Rule false positives on soreness swap.** Soreness severity has two
+  values ('mild' / 'sharp'); 'sharp' is meant to be the unambiguous "this
+  hurts" signal. If users over-tap 'sharp' for routine soreness, the swap
+  recommendation may feel pushy. The two-button UI (Apply / Keep) lets
+  users dismiss without action; Carter's `detail` string ("sharp soreness
+  in shoulders") makes the trigger transparent. We can tighten or change
+  the rule (e.g., require >1 area, or check `fatigue !== 'none'` too)
+  after a week of real use.
 
 - **Brief card appearing in Peter's thread might surprise users on first
   visit to /metrics.** Mitigation: the card uses the existing
