@@ -3017,6 +3017,345 @@ export async function executeMarkGlp1Discontinued(opts: {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
+// meal-log mode tools — search_library, pick_library_item, save_to_library.
+// Nora-only, exercised when mode='meal_log' inside MealLoggerSheet's CHAT tab.
+// All three operate on the user_food_items table and (for pick_library_item)
+// patch a draft food_log_entries row in place.
+// ────────────────────────────────────────────────────────────────────────────
+
+export const SEARCH_LIBRARY_TOOL: ToolSchema = {
+  name: "search_library",
+  description:
+    "Fuzzy-search the user's personal food library (user_food_items). Returns up to 5 names + ids. Use to find candidates before calling pick_library_item.",
+  input_schema: {
+    type: "object" as const,
+    required: ["query"],
+    properties: {
+      query: { type: "string", description: "Food name to look up." },
+      limit: { type: "integer", minimum: 1, maximum: 10, default: 5 },
+    },
+  },
+};
+
+export const PICK_LIBRARY_ITEM_TOOL: ToolSchema = {
+  name: "pick_library_item",
+  description:
+    "Replace one resolved item in a draft food_log_entries row with a specific user_food_items entry. Server scales macros to the existing qty_g.",
+  input_schema: {
+    type: "object" as const,
+    required: ["entry_id", "item_index", "library_item_id"],
+    properties: {
+      entry_id: { type: "string", description: "food_log_entries.id (must be status='draft')." },
+      item_index: { type: "integer", minimum: 0, description: "Index into entry.items[] to replace." },
+      library_item_id: { type: "string", description: "user_food_items.id to use." },
+    },
+  },
+};
+
+export const SAVE_TO_LIBRARY_TOOL: ToolSchema = {
+  name: "save_to_library",
+  description:
+    "Persist a food into the user's personal library. Two kinds: 'item' (single food, per_100g macros) or 'recipe' (composite of items + default serving). Item source is 'user_label' when macros come from a product label, 'user_manual' otherwise.",
+  input_schema: {
+    type: "object" as const,
+    required: ["kind", "name", "source"],
+    properties: {
+      kind: { type: "string", enum: ["item", "recipe"] },
+      name: { type: "string" },
+      source: { type: "string", enum: ["user_manual", "user_label", "user_recipe"] },
+      per_100g: {
+        type: "object",
+        properties: {
+          kcal: { type: "number" },
+          protein_g: { type: "number" },
+          carbs_g: { type: "number" },
+          fat_g: { type: "number" },
+          fiber_g: { type: "number" },
+        },
+      },
+      composite_of: {
+        type: "array",
+        items: {
+          type: "object",
+          required: ["name", "qty_g"],
+          properties: {
+            name: { type: "string" },
+            qty_g: { type: "number" },
+          },
+        },
+      },
+      default_serving_g: { type: "number" },
+      notes: { type: "string" },
+    },
+  },
+};
+
+export async function executeSearchLibrary(opts: {
+  supabase: SupabaseClient;
+  userId: string;
+  input: unknown;
+}): Promise<ToolResult<{ items: Array<{ id: string; name: string }> }>> {
+  const t0 = Date.now();
+  const i = (opts.input ?? {}) as Record<string, unknown>;
+  const query = typeof i.query === "string" ? i.query.trim() : "";
+  const limit = typeof i.limit === "number" ? Math.min(10, Math.max(1, i.limit)) : 5;
+  if (query.length < 2) {
+    return {
+      ok: false,
+      error: { error: "query must be at least 2 chars" },
+      meta: { ms: Date.now() - t0, range_days: 0 },
+    };
+  }
+  const { data, error } = await opts.supabase
+    .from("user_food_items")
+    .select("id, name")
+    .eq("user_id", opts.userId)
+    .ilike("name", `%${query}%`)
+    .order("updated_at", { ascending: false })
+    .limit(limit);
+  if (error) {
+    return {
+      ok: false,
+      error: { error: error.message },
+      meta: { ms: Date.now() - t0, range_days: 0 },
+    };
+  }
+  const items = (data ?? []) as Array<{ id: string; name: string }>;
+  return {
+    ok: true,
+    data: { items },
+    meta: { ms: Date.now() - t0, result_rows: items.length, range_days: 0, truncated: false },
+  };
+}
+
+export async function executePickLibraryItem(opts: {
+  supabase: SupabaseClient;
+  userId: string;
+  input: unknown;
+}): Promise<ToolResult<{ entry_id: string; updated_items_count: number }>> {
+  const t0 = Date.now();
+  const i = (opts.input ?? {}) as Record<string, unknown>;
+  const entry_id = typeof i.entry_id === "string" ? i.entry_id : "";
+  const item_index = typeof i.item_index === "number" ? i.item_index : -1;
+  const library_item_id = typeof i.library_item_id === "string" ? i.library_item_id : "";
+
+  if (!entry_id || item_index < 0 || !library_item_id) {
+    return {
+      ok: false,
+      error: { error: "entry_id, item_index, library_item_id all required" },
+      meta: { ms: Date.now() - t0, range_days: 0 },
+    };
+  }
+
+  const { data: lib, error: libErr } = await opts.supabase
+    .from("user_food_items")
+    .select("id, name, per_100g")
+    .eq("id", library_item_id)
+    .eq("user_id", opts.userId)
+    .single();
+  if (libErr || !lib) {
+    return {
+      ok: false,
+      error: { error: "library_item_not_found" },
+      meta: { ms: Date.now() - t0, range_days: 0 },
+    };
+  }
+  const libRow = lib as { id: string; name: string; per_100g: Record<string, number> | null };
+  if (!libRow.per_100g) {
+    return {
+      ok: false,
+      error: { error: "library_item_is_recipe_not_item" },
+      meta: { ms: Date.now() - t0, range_days: 0 },
+    };
+  }
+
+  const { data: entry, error: entryErr } = await opts.supabase
+    .from("food_log_entries")
+    .select("id, status, items")
+    .eq("id", entry_id)
+    .eq("user_id", opts.userId)
+    .single();
+  if (entryErr || !entry) {
+    return {
+      ok: false,
+      error: { error: "entry_not_found" },
+      meta: { ms: Date.now() - t0, range_days: 0 },
+    };
+  }
+  const entryRow = entry as { id: string; status: string; items: Array<Record<string, unknown>> };
+  if (entryRow.status !== "draft") {
+    return {
+      ok: false,
+      error: { error: "entry_not_draft" },
+      meta: { ms: Date.now() - t0, range_days: 0 },
+    };
+  }
+  if (item_index >= entryRow.items.length) {
+    return {
+      ok: false,
+      error: { error: "item_index_out_of_range" },
+      meta: { ms: Date.now() - t0, range_days: 0 },
+    };
+  }
+
+  const oldItem = entryRow.items[item_index] as { qty_g: number };
+  const qty_g = oldItem.qty_g;
+  const k = qty_g / 100;
+  const scaled = {
+    kcal: libRow.per_100g.kcal * k,
+    protein_g: libRow.per_100g.protein_g * k,
+    carbs_g: libRow.per_100g.carbs_g * k,
+    fat_g: libRow.per_100g.fat_g * k,
+    fiber_g: libRow.per_100g.fiber_g * k,
+  };
+  const newItem = {
+    name: libRow.name,
+    qty_g,
+    ...scaled,
+    per_100g: libRow.per_100g,
+    source: "db" as const,
+    db_ref: { source: "user_library" as const, canonical_id: libRow.id },
+    confidence: "high" as const,
+    match_score: 1.0,
+  };
+  const newItems = [...entryRow.items];
+  newItems[item_index] = newItem;
+
+  type Totals = { kcal: number; protein_g: number; carbs_g: number; fat_g: number; fiber_g: number };
+  const totals = newItems.reduce<Totals>(
+    (acc, it) => {
+      const x = it as Record<string, number>;
+      acc.kcal      += x.kcal      ?? 0;
+      acc.protein_g += x.protein_g ?? 0;
+      acc.carbs_g   += x.carbs_g   ?? 0;
+      acc.fat_g     += x.fat_g     ?? 0;
+      acc.fiber_g   += x.fiber_g   ?? 0;
+      return acc;
+    },
+    { kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0, fiber_g: 0 },
+  );
+  const is_estimated = newItems.some((it) => (it as { source?: string }).source === "llm");
+
+  const { error: updErr } = await opts.supabase
+    .from("food_log_entries")
+    .update({ items: newItems, totals, is_estimated })
+    .eq("id", entry_id)
+    .eq("user_id", opts.userId);
+  if (updErr) {
+    return {
+      ok: false,
+      error: { error: updErr.message },
+      meta: { ms: Date.now() - t0, range_days: 0 },
+    };
+  }
+  return {
+    ok: true,
+    data: { entry_id, updated_items_count: 1 },
+    meta: { ms: Date.now() - t0, result_rows: 1, range_days: 0, truncated: false },
+  };
+}
+
+export async function executeSaveToLibrary(opts: {
+  supabase: SupabaseClient;
+  userId: string;
+  input: unknown;
+}): Promise<ToolResult<{ id: string }>> {
+  const t0 = Date.now();
+  const i = (opts.input ?? {}) as Record<string, unknown>;
+  const kind = i.kind === "item" || i.kind === "recipe" ? i.kind : null;
+  const name = typeof i.name === "string" ? i.name.trim() : "";
+  const source = typeof i.source === "string" ? i.source : "";
+  if (!kind || !name || !source) {
+    return {
+      ok: false,
+      error: { error: "kind, name, source required" },
+      meta: { ms: Date.now() - t0, range_days: 0 },
+    };
+  }
+
+  if (kind === "item") {
+    const per_100g = i.per_100g as Record<string, unknown> | undefined;
+    if (!per_100g) {
+      return {
+        ok: false,
+        error: { error: "per_100g required for kind=item" },
+        meta: { ms: Date.now() - t0, range_days: 0 },
+      };
+    }
+    const row = {
+      user_id: opts.userId,
+      name,
+      per_100g,
+      composite_of: null,
+      default_serving_g: null,
+      source,
+      notes: typeof i.notes === "string" ? i.notes : null,
+    };
+    const { data, error } = await opts.supabase
+      .from("user_food_items")
+      .insert(row)
+      .select("id")
+      .single();
+    if (error) {
+      return {
+        ok: false,
+        error: { error: error.message },
+        meta: { ms: Date.now() - t0, range_days: 0 },
+      };
+    }
+    return {
+      ok: true,
+      data: { id: (data as { id: string }).id },
+      meta: { ms: Date.now() - t0, result_rows: 1, range_days: 0, truncated: false },
+    };
+  }
+
+  // recipe
+  const composite_of = i.composite_of as unknown[] | undefined;
+  const default_serving_g = i.default_serving_g as number | undefined;
+  if (!Array.isArray(composite_of) || composite_of.length === 0) {
+    return {
+      ok: false,
+      error: { error: "composite_of array required for kind=recipe" },
+      meta: { ms: Date.now() - t0, range_days: 0 },
+    };
+  }
+  if (!default_serving_g || default_serving_g <= 0) {
+    return {
+      ok: false,
+      error: { error: "default_serving_g > 0 required for kind=recipe" },
+      meta: { ms: Date.now() - t0, range_days: 0 },
+    };
+  }
+  const row = {
+    user_id: opts.userId,
+    name,
+    per_100g: null,
+    composite_of,
+    default_serving_g,
+    source,
+    notes: typeof i.notes === "string" ? i.notes : null,
+  };
+  const { data, error } = await opts.supabase
+    .from("user_food_items")
+    .insert(row)
+    .select("id")
+    .single();
+  if (error) {
+    return {
+      ok: false,
+      error: { error: error.message },
+      meta: { ms: Date.now() - t0, range_days: 0 },
+    };
+  }
+  return {
+    ok: true,
+    data: { id: (data as { id: string }).id },
+    meta: { ms: Date.now() - t0, result_rows: 1, range_days: 0, truncated: false },
+  };
+}
+
+// ────────────────────────────────────────────────────────────────────────────
 // regenerate_morning_brief — fresh structured brief card when user challenges
 // data in normal coach chat ("the brief used wrong WHOOP sleep", etc.).
 // Inserts a NEW chat_messages row with kind='morning_brief' so the structured
@@ -3386,6 +3725,9 @@ export const NORA_TOOLS: readonly ToolSchema[] = [
   SET_GLP1_STATUS_TOOL,
   SET_GLP1_TAPER_STARTED_TOOL,
   MARK_GLP1_DISCONTINUED_TOOL,
+  SEARCH_LIBRARY_TOOL,
+  PICK_LIBRARY_ITEM_TOOL,
+  SAVE_TO_LIBRARY_TOOL,
 ];
 
 // Remi: recovery/sleep/illness. Reads recovery-relevant daily_logs columns;

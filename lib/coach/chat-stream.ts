@@ -57,12 +57,15 @@ import {
   executeMarkMobilityDone,
   executeUnmarkMobilityDone,
   executeRegenerateMorningBrief,
+  executeSearchLibrary,
+  executePickLibraryItem,
+  executeSaveToLibrary,
   toolsForSpeaker,
   colsForSpeaker,
   type ToolResult,
   type ToolSchema,
 } from "@/lib/coach/tools";
-import { speakerSystemPrompt } from "@/lib/coach/system-prompts";
+import { speakerSystemPromptForMode } from "@/lib/coach/system-prompts";
 import { type ChatMode, type Speaker, type ToolCallLog } from "@/lib/data/types";
 import type { ContentBlock, RichMessage } from "@/lib/chat/types";
 
@@ -186,7 +189,9 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
   //   * For specialist turns (carter/nora/remi), discard the Peter-targeted
   //     prompt and use the specialist's base prompt instead. The schema
   //     explainer and snapshot prefix (positions 0 of `messages`) still apply.
-  const baseSystemText = speaker === "peter" ? opts.systemPrompt : speakerSystemPrompt(speaker);
+  const baseSystemText = speaker === "peter"
+    ? opts.systemPrompt
+    : speakerSystemPromptForMode(speaker, opts.mode ?? "default");
   const systemText = opts.peterContext
     ? `${baseSystemText}\n\n${opts.peterContext}`
     : baseSystemText;
@@ -215,6 +220,16 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
   //   default — read tools + set_glp1_taper_started + mark_glp1_discontinued
   //     plus regenerate_morning_brief.
   const modeAllowsTool = (name: string): boolean => {
+    if (opts.mode === "meal_log") {
+      // Nora-in-meal-log only ever needs the three library tools. All other
+      // tools are silenced to keep the LLM focused on data entry rather than
+      // wandering into nutrition advice (covered by NORA_MEAL_LOG_PROMPT).
+      return (
+        name === "search_library" ||
+        name === "pick_library_item" ||
+        name === "save_to_library"
+      );
+    }
     if (opts.mode === "plan_week" || opts.mode === "setup_block") {
       return (
         !name.startsWith("apply_") &&
@@ -470,6 +485,24 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
           });
         } else if (block.name === "regenerate_morning_brief") {
           result = await executeRegenerateMorningBrief({
+            supabase: opts.sr,
+            userId: opts.userId,
+            input: block.input,
+          });
+        } else if (block.name === "search_library") {
+          result = await executeSearchLibrary({
+            supabase: opts.sr,
+            userId: opts.userId,
+            input: block.input,
+          });
+        } else if (block.name === "pick_library_item") {
+          result = await executePickLibraryItem({
+            supabase: opts.sr,
+            userId: opts.userId,
+            input: block.input,
+          });
+        } else if (block.name === "save_to_library") {
+          result = await executeSaveToLibrary({
             supabase: opts.sr,
             userId: opts.userId,
             input: block.input,

@@ -14,7 +14,7 @@
 // User customization: profiles.system_prompt is interpreted as PETER's
 // override. The three specialists stay code-defined for v1.
 
-import type { Speaker } from "@/lib/data/types";
+import type { Speaker, ChatMode } from "@/lib/data/types";
 
 // ── Peter — Head Coach ────────────────────────────────────────────────────
 export const PETER_BASE = `You are Peter, the Head Coach. You lead a team of three specialists — Coach Carter (strength training), Nora (nutrition), Remi (recovery and sleep). The athlete chats with the whole team; questions are routed to the right coach before each turn starts. You see a turn when it's cross-domain, a block-level decision, weekly review interpretation, goal alignment, or the athlete addressed you directly.
@@ -101,6 +101,50 @@ export function speakerSystemPrompt(speaker: Speaker): string {
     case "nora":   return NORA_BASE;
     case "remi":   return REMI_BASE;
   }
+}
+
+// ── Nora — meal-logging mode override ────────────────────────────────────
+//
+// Composed onto NORA_BASE when mode='meal_log'. Switches Nora from her usual
+// nutrition-advice posture into a terse data-entry assistant: clarifying
+// only when the deterministic resolver returned non-high-confidence items.
+export const NORA_MEAL_LOG_PROMPT = `You are in meal-logging mode.
+
+Your job: help the user record what they ate, accurately and quickly. You
+are NOT giving nutrition advice or coaching in this mode — that's reserved
+for the /coach surface.
+
+You will receive a draft meal entry whose items have already been resolved
+to per-100g macros by the deterministic resolver (USDA/library/LLM). Each
+item carries a confidence level: high, medium, or low.
+
+When at least one item is non-high-confidence, ask ONE short clarifying
+question focused on the lowest-confidence item. Offer 2-3 chip suggestions:
+- a saved library item if search_library finds one matching the item name
+- "Enter label values" to capture exact macros for a brand-specific food
+- "Use generic" to accept the current resolved macros as-is
+
+Tool use:
+- search_library to look up saved items matching an item name
+- pick_library_item to swap a resolved item for a specific library row
+- save_to_library to add a new single-item or recipe entry
+
+When everything is settled or all items are already high-confidence, end
+your turn — do NOT call any commit tool. The user taps Confirm in the UI.
+
+Keep responses terse. One sentence per turn. No nutrition advice.`;
+
+/** Speaker + mode → system-prompt resolver. For meal-logging Nora composes
+ *  NORA_BASE with the mode override; all other (speaker, mode) pairs fall
+ *  through to speakerSystemPrompt unchanged. */
+export function speakerSystemPromptForMode(
+  speaker: Speaker,
+  mode: ChatMode,
+): string {
+  if (speaker === "nora" && mode === "meal_log") {
+    return `${NORA_BASE}\n\n${NORA_MEAL_LOG_PROMPT}`;
+  }
+  return speakerSystemPrompt(speaker);
 }
 
 /** Back-compat — old DEFAULT_SYSTEM_PROMPT consumers point to PETER_BASE. */
