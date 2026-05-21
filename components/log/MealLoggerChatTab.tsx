@@ -89,21 +89,40 @@ export function MealLoggerChatTab({ userId, mealSlot, eatenAt, onCommitted }: Pr
     if (!text || busy) return;
     setBusy(true);
 
-    // 1. POST /api/food/parse
-    const parseRes = await fetch("/api/food/parse", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text, meal_slot: mealSlot, eaten_at: eatenAt }),
-    });
-    if (!parseRes.ok) {
+    // 1. POST /api/food/parse — wrapped so a network throw doesn't leave
+    //    busy=true forever (which would look like a permanently dead button).
+    let parseRes: Response;
+    try {
+      parseRes = await fetch("/api/food/parse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, meal_slot: mealSlot, eaten_at: eatenAt }),
+      });
+    } catch (e) {
+      console.error("[meal-log] /api/food/parse fetch threw", e);
       setBusy(false);
-      // Inline error bubble — keep it simple.
       setMessages((prev) => [
         ...prev,
         {
           id: `err-${Date.now()}`,
           speaker: "nora",
-          content: "I couldn't read that. Try rephrasing.",
+          content: `Network error: ${(e as Error).message}`,
+          ui: null,
+          created_at: new Date().toISOString(),
+        },
+      ]);
+      return;
+    }
+    if (!parseRes.ok) {
+      const detail = await parseRes.text().catch(() => "");
+      console.error("[meal-log] /api/food/parse non-OK", parseRes.status, detail);
+      setBusy(false);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `err-${Date.now()}`,
+          speaker: "nora",
+          content: `I couldn't read that (HTTP ${parseRes.status}). Try rephrasing.`,
           ui: null,
           created_at: new Date().toISOString(),
         },
@@ -119,7 +138,7 @@ export function MealLoggerChatTab({ userId, mealSlot, eatenAt, onCommitted }: Pr
     //    route infra owns the heavyweight insert/stub flow; for the happy
     //    path we sidestep it and persist directly. Mirror the columns the
     //    /api/chat/messages route uses (role, status, speaker, kind, mode).
-    const { data: userRow } = await supabase
+    const { data: userRow, error: userErr } = await supabase
       .from("chat_messages")
       .insert({
         user_id: userId,
@@ -133,7 +152,7 @@ export function MealLoggerChatTab({ userId, mealSlot, eatenAt, onCommitted }: Pr
       })
       .select("id, speaker, content, ui, created_at")
       .single();
-    const { data: noraRow } = await supabase
+    const { data: noraRow, error: noraErr } = await supabase
       .from("chat_messages")
       .insert({
         user_id: userId,
@@ -147,6 +166,25 @@ export function MealLoggerChatTab({ userId, mealSlot, eatenAt, onCommitted }: Pr
       })
       .select("id, speaker, content, ui, created_at")
       .single();
+
+    // Surface insert failures so we don't look like a dead send button.
+    // The chat_messages constraints (chat_messages_kind_check + _mode_check)
+    // are the most likely culprits when this fires.
+    if (userErr || noraErr) {
+      console.error("[meal-log] chat_messages insert failed", { userErr, noraErr });
+      setBusy(false);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `err-${Date.now()}`,
+          speaker: "nora",
+          content: `Couldn't save the message: ${(userErr ?? noraErr)?.message ?? "unknown error"}`,
+          ui: null,
+          created_at: new Date().toISOString(),
+        },
+      ]);
+      return;
+    }
 
     setMessages((prev) => [
       ...prev,
