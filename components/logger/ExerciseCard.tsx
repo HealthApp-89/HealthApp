@@ -4,6 +4,7 @@ import { Fragment, useMemo, useState } from "react";
 import type { ExerciseDraft, ExerciseSetDraft } from "@/lib/logger/types";
 import { SetRow } from "@/components/logger/SetRow";
 import { RestBar } from "@/components/logger/RestBar";
+import { RestTimeDialog } from "@/components/logger/RestTimeDialog";
 import { annotateSession } from "@/lib/coach/session-structure/annotate";
 
 type Props = {
@@ -29,10 +30,13 @@ export function ExerciseCard({
   }, [allExercises, exerciseIndex]);
 
   const prescribedRestMin = annotated?.rest_seconds.min ?? 120;
+  const [restOverrideSeconds, setRestOverrideSeconds] = useState<number | null>(null);
+  const effectiveRest = restOverrideSeconds ?? prescribedRestMin;
   const [activeRestStartedAt, setActiveRestStartedAt] = useState<number | null>(null);
-  const [activeRestSeconds, setActiveRestSeconds] = useState<number>(prescribedRestMin);
+  const [activeRestSeconds, setActiveRestSeconds] = useState<number>(effectiveRest);
   const [restAfterSetIndex, setRestAfterSetIndex] = useState<number | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [restDialogOpen, setRestDialogOpen] = useState(false);
   const [unparsedBanner, setUnparsedBanner] = useState<string | null>(null);
 
   function commitSet(setIndex: number) {
@@ -46,7 +50,7 @@ export function ExerciseCard({
     // rest_seconds_actual on the NEXT pending set is captured at its own commit time.
     onChange({ ...exercise, sets: nextSets });
     setRestAfterSetIndex(setIndex);
-    setActiveRestSeconds(prescribedRestMin);
+    setActiveRestSeconds(effectiveRest);
     setActiveRestStartedAt(now);
   }
 
@@ -87,8 +91,9 @@ export function ExerciseCard({
           )}
           <button onClick={() => setMenuOpen((v) => !v)} className="text-zinc-500 text-base" aria-label="Exercise menu">⋯</button>
           {menuOpen && (
-            <div className="absolute right-0 top-6 bg-zinc-800 border border-zinc-700 rounded-lg p-1 text-xs z-10 min-w-[140px]">
+            <div className="absolute right-0 top-6 bg-zinc-800 border border-zinc-700 rounded-lg p-1 text-xs z-10 min-w-[160px]">
               <button onClick={() => { setMenuOpen(false); onReplace(); }} className="block w-full text-left px-2 py-1.5 hover:bg-zinc-700 rounded">Replace</button>
+              <button onClick={() => { setMenuOpen(false); setRestDialogOpen(true); }} className="block w-full text-left px-2 py-1.5 hover:bg-zinc-700 rounded">Edit rest time</button>
               <button onClick={() => { setMenuOpen(false); onRemove(); }} className="block w-full text-left px-2 py-1.5 hover:bg-zinc-700 rounded text-red-400">Remove</button>
             </div>
           )}
@@ -147,8 +152,17 @@ export function ExerciseCard({
         onClick={addSet}
         className="bg-zinc-800 text-zinc-300 border-none w-full py-2 rounded-lg text-[11px] mt-1"
       >
-        + Add set ({Math.floor(prescribedRestMin / 60)}:{(prescribedRestMin % 60).toString().padStart(2, "0")})
+        + Add set ({Math.floor(effectiveRest / 60)}:{(effectiveRest % 60).toString().padStart(2, "0")})
       </button>
+
+      {restDialogOpen && (
+        <RestTimeDialog
+          initialSeconds={effectiveRest}
+          exerciseName={exercise.name}
+          onConfirm={(seconds) => { setRestOverrideSeconds(seconds); setRestDialogOpen(false); }}
+          onCancel={() => setRestDialogOpen(false)}
+        />
+      )}
     </div>
   );
 }
