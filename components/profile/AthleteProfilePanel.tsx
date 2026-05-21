@@ -115,7 +115,7 @@ export function AthleteProfilePanel({ userId }: { userId: string }) {
                   Muscle volume: {TARGETED_MUSCLE_GROUPS.length} muscles · {tone}
                   {nBelowMev > 0 ? ` · ${nBelowMev} below MEV` : ""}
                   <Link
-                    href="/metrics?sub=strength&view=by_muscle"
+                    href="/strength?tab=by_muscle"
                     style={{ marginLeft: 8, color: COLOR.accent, textDecoration: "none" }}
                   >
                     view details →

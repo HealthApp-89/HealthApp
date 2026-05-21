@@ -27,7 +27,7 @@ export function DateNavigator({ date, min, max, onChange }: Props) {
     if (onChange) {
       onChange(next);
     } else {
-      router.push(`/strength?view=date&date=${next}`);
+      router.push(`/strength?tab=date&date=${next}`);
     }
   }
 
