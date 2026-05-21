@@ -1053,9 +1053,11 @@ export default function ChatPanel({
           minHeight: 0,
         }}
       >
-        <div style={{ padding: "0 12px 8px" }}>
-          <KindChips current={currentMode} onChange={handleKindChange} />
-        </div>
+        {(!thread || thread === "remi") && (
+          <div style={{ padding: "0 12px 8px" }}>
+            <KindChips current={currentMode} onChange={handleKindChange} />
+          </div>
+        )}
         <ModeBanner
           mode={mode}
           context={initialModeContext}
