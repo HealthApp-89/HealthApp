@@ -324,8 +324,17 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
       );
     }
     // default mode
+    // propose_/commit_ tools are blocked by default to prevent accidental plan
+    // writes — but a few pairs are explicitly exempted because the athlete
+    // legitimately initiates them from chat: nutrition target proposals
+    // (Nora/Peter) and meal logging (Nora). New propose_/commit_ pairs added
+    // for future write features must add their own explicit allows here, or
+    // they'll be stripped from the tool list and the model will hallucinate
+    // a fake commit in prose — see 2026-05-22 Nora-meal-log silent-fail.
     if (name === "propose_nutrition_targets") return true;
     if (name === "commit_nutrition_targets") return true;
+    if (name === "propose_meal_log") return true;
+    if (name === "commit_meal_log") return true;
     if (name.startsWith("propose_")) return false;
     if (name.startsWith("commit_")) return false;
     if (name.startsWith("apply_")) return false;
