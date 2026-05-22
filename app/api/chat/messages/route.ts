@@ -41,6 +41,26 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: false, reason: "unauthorized" }, { status: 401 });
   }
 
+  // Sweep stranded streaming rows so the chat UI doesn't stay frozen on the
+  // pulsing dots after a Vercel function hit maxDuration mid-turn (the
+  // try/finally that flips status='done'/'error' never runs when the process
+  // is killed). The POST self-heal handles this on the next user send, but
+  // viewers reloading a chat with no intent to send needed their own sweep.
+  // 90s cutoff matches the chat function's maxDuration (60s) + a safety
+  // margin so we don't kill an actually-in-flight stream.
+  const streamingCutoff = new Date(Date.now() - 90_000).toISOString();
+  const sweepClient = createSupabaseServiceRoleClient();
+  await sweepClient
+    .from("chat_messages")
+    .update({
+      status: "error",
+      error: "self_heal_stuck_streaming",
+      updated_at: new Date().toISOString(),
+    })
+    .eq("user_id", user.id)
+    .eq("status", "streaming")
+    .lt("created_at", streamingCutoff);
+
   const url = new URL(req.url);
   const before = url.searchParams.get("before"); // ISO timestamp, exclusive
   const kindRaw = url.searchParams.get("kind") ?? "coach";
