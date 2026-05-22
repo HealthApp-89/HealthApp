@@ -684,6 +684,7 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
             supabase: opts.sr,
             userId: opts.userId,
             input: block.input,
+            assistantMessageId: opts.assistantMessageId ?? null,
           });
         } else if (block.name === "commit_meal_log") {
           result = await executeCommitMealLog({

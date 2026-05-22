@@ -21,14 +21,21 @@ export type ApprovalAction = "block" | "week" | "plan" | "weekly_review" | "nutr
 // weekly_review). For `plan`, the payload lives in athlete_profile_documents
 // and the envelope carries only a reference + hash so the commit path can
 // detect drift between propose and commit by comparing the DB row's hash to
-// `ref.payload_hash`.
+// `ref.payload_hash`. For `meal_log`, the payload lives in the propose
+// assistant message's tool_calls (already persisted via PERSIST_RESULT_TOOLS),
+// and the envelope carries `chat_message_id` instead — the meal-log payload
+// (12+ items × full per_100g + db_ref) base64-encodes to ~7000 chars when
+// embedded, which forces the model to echo it verbatim on commit and
+// blows past MAX_TOKENS. The ref form keeps the token to ~300 chars.
 export type ApprovalEnvelope = {
   v: typeof TOKEN_VERSION;
   user_id: string;
   action: ApprovalAction;
   ts: number;
   payload?: unknown;
-  ref?: { doc_id: string; payload_hash: string };
+  ref?:
+    | { doc_id: string; payload_hash: string }
+    | { chat_message_id: string };
 };
 
 function getSecret(): string {
@@ -81,7 +88,9 @@ export function signApprovalToken(args: {
   userId: string;
   action: ApprovalAction;
   payload?: unknown;
-  ref?: { doc_id: string; payload_hash: string };
+  ref?:
+    | { doc_id: string; payload_hash: string }
+    | { chat_message_id: string };
 }): string {
   const envelope: ApprovalEnvelope = {
     v: TOKEN_VERSION,

@@ -3020,11 +3020,12 @@ export async function executeCommitPlan(opts: {
     }
     return { ok: false, error: { error: (e as Error).message, code: "verify_failed" }, meta: { ms: Date.now() - t0, range_days: 0 } };
   }
-  if (!envelope.ref || envelope.ref.doc_id !== opts.draftDocId) {
+  const planRef = envelope.ref as { doc_id?: string; payload_hash?: string } | undefined;
+  if (!planRef || planRef.doc_id !== opts.draftDocId) {
     return { ok: false, error: { error: "That approval belongs to a different draft plan. Please re-propose.", code: "doc_mismatch" }, meta: { ms: Date.now() - t0, range_days: 0 } };
   }
   const currentHash = payloadHash(draft.plan_payload);
-  if (currentHash !== envelope.ref.payload_hash) {
+  if (currentHash !== planRef.payload_hash) {
     return { ok: false, error: { error: "The plan changed after you approved it. Re-propose so I can sign the updated version.", code: "payload_drift" }, meta: { ms: Date.now() - t0, range_days: 0 } };
   }
 
@@ -3913,6 +3914,13 @@ export async function executeProposeMealLog(opts: {
   supabase: SupabaseClient;
   userId: string;
   input: unknown;
+  /** The currently-streaming assistant chat_messages row id. When present
+   *  the token uses a `ref` envelope and the proposal payload is read back
+   *  out of chat_messages.tool_calls at commit time — keeps the token to
+   *  ~300 chars vs ~7000 for an embedded 12-item meal payload. Null when
+   *  the caller can't provide one (e.g. unit tests); falls back to legacy
+   *  embedded-payload form. */
+  assistantMessageId?: string | null;
 }): Promise<ToolResult<{ preview: MealLogPayload; approval_token: string }>> {
   const t0 = Date.now();
   const i = (opts.input ?? {}) as Record<string, unknown>;
@@ -3972,7 +3980,19 @@ export async function executeProposeMealLog(opts: {
     raw_text,
     totals,
   };
-  const token = signApprovalToken({ userId: opts.userId, action: "meal_log", payload });
+  // Ref-based token when we know the streaming assistant row — propose's
+  // result is persisted to chat_messages.tool_calls via PERSIST_RESULT_TOOLS,
+  // so commit can read the payload back from there. Token shrinks from ~7k
+  // chars (12-item embedded payload base64'd) to ~300 chars, which is the
+  // difference between the model fitting commit_meal_log({approval_token})
+  // inside MAX_TOKENS=2000 vs streaming for 60s+ trying to echo the token.
+  const token = opts.assistantMessageId
+    ? signApprovalToken({
+        userId: opts.userId,
+        action: "meal_log",
+        ref: { chat_message_id: opts.assistantMessageId },
+      })
+    : signApprovalToken({ userId: opts.userId, action: "meal_log", payload });
   return {
     ok: true,
     data: { preview: payload, approval_token: token },
@@ -4012,10 +4032,38 @@ export async function executeCommitMealLog(opts: {
     }
     return { ok: false, error: { error: (e as Error).message, code: "verify_failed" }, meta: { ms: Date.now() - t0, range_days: 0 } };
   }
-  if (!envelope.payload || typeof envelope.payload !== "object") {
+  // Resolve the proposal payload. Two forms supported:
+  //   1. Ref-based (current): token carries chat_message_id. Look up the
+  //      propose assistant row's tool_calls — propose_meal_log persists its
+  //      result via PERSIST_RESULT_TOOLS, so the preview is right there.
+  //   2. Embedded (legacy): token carries the full payload. Used by tokens
+  //      signed before the ref migration (still valid until their 30-min TTL
+  //      expires) or by callers without an assistantMessageId.
+  let p: MealLogPayload | null = null;
+  const ref = envelope.ref as { chat_message_id?: string } | undefined;
+  if (ref?.chat_message_id) {
+    const { data: row, error: lookupErr } = await opts.supabase
+      .from("chat_messages")
+      .select("tool_calls")
+      .eq("user_id", opts.userId)
+      .eq("id", ref.chat_message_id)
+      .maybeSingle();
+    if (lookupErr || !row) {
+      return { ok: false, error: { error: "That proposal can't be found — please re-propose.", code: "ref_not_found" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+    }
+    const calls = (row as { tool_calls?: Array<{ name: string; result?: unknown }> }).tool_calls ?? [];
+    const proposeCall = calls.find((c) => c.name === "propose_meal_log");
+    const preview = (proposeCall?.result as { preview?: unknown } | undefined)?.preview;
+    if (!preview || typeof preview !== "object") {
+      return { ok: false, error: { error: "That proposal can't be found — please re-propose.", code: "ref_no_preview" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+    }
+    p = preview as MealLogPayload;
+  } else if (envelope.payload && typeof envelope.payload === "object") {
+    p = envelope.payload as MealLogPayload;
+  }
+  if (!p) {
     return { ok: false, error: { error: "That approval is missing the meal payload. Please re-propose.", code: "missing_payload" }, meta: { ms: Date.now() - t0, range_days: 0 } };
   }
-  const p = envelope.payload as MealLogPayload;
 
   const saved_library_ids: string[] = [];
   const itemsWithLibRefs: FoodItem[] = [];
