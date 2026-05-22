@@ -26,6 +26,7 @@ import { useDailyLogs } from "@/lib/query/hooks/useDailyLogs";
 import { useCheckin } from "@/lib/query/hooks/useCheckin";
 import { useProfile } from "@/lib/query/hooks/useProfile";
 import { useTrainingWeek } from "@/lib/query/hooks/useTrainingWeek";
+import { useUserSessionTemplate } from "@/lib/query/hooks/useUserSessionTemplate";
 import { weekdayInUserTz } from "@/lib/time";
 import { queryKeys } from "@/lib/query/keys";
 import { readSessionForDay } from "@/lib/coach/session-plan-reader";
@@ -125,8 +126,19 @@ export function StrengthClient({
   const exerciseOverrides =
     (committedWeek?.exercise_overrides as ExerciseOverrides | null | undefined) ?? null;
   const fullWeekday = weekdayInUserTz();
+
+  const { data: userTemplate = null } = useUserSessionTemplate(
+    userId,
+    committedSessionType ?? "",
+  );
+
   const effectivePlan = committedSessionType
-    ? getEffectiveSessionPlan(committedSessionType, fullWeekday, exerciseOverrides)
+    ? getEffectiveSessionPlan(
+        committedSessionType,
+        fullWeekday,
+        exerciseOverrides,
+        userTemplate?.exercises ?? null,
+      )
     : null;
   const dailyPlan = buildDailyPlan(todayLog, feel, hrvBaseline, {
     sessionType: committedSessionType,

@@ -79,17 +79,24 @@ export function getTodaySession(): string {
 
 import type { ExerciseOverrides } from "@/lib/data/types";
 
-/** Resolve the effective exercise list for a given session type + weekday,
- *  preferring an `exercise_overrides` entry when present. Override keys are
- *  full weekday names ("Monday", not "Mon"). When no override exists for
- *  `weekday`, returns the static `SESSION_PLANS[sessionType]` (or [] if the
- *  type is unknown / "REST"). */
+/** Returns the effective exercise list for a given session type + weekday.
+ *  Resolution chain (matches lib/logger/resolve-plan.ts): per-weekday override
+ *  in training_weeks.exercise_overrides → per-user persistent template in
+ *  user_session_templates → static SESSION_PLANS code default. Returns []
+ *  when no source has exercises (e.g. an unknown session type with no
+ *  override and no template).
+ *
+ *  This is the synchronous variant used by client components that already
+ *  fetch override + template via TanStack hooks. The async server-side
+ *  variant in lib/logger/resolve-plan.ts queries Supabase directly. */
 export function getEffectiveSessionPlan(
   sessionType: string,
   weekday: string,
   overrides: ExerciseOverrides | null | undefined,
+  userTemplate?: PlannedExercise[] | null,
 ): PlannedExercise[] {
   const override = overrides?.[weekday];
   if (override && override.length > 0) return override;
+  if (userTemplate && userTemplate.length > 0) return userTemplate;
   return SESSION_PLANS[sessionType] ?? [];
 }
