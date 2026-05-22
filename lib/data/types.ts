@@ -154,11 +154,12 @@ export type ToolCallLog = {
     | "pick_library_item"
     | "save_to_library"
     | "search_library"
-    | "log_meal_entry"
     | "propose_session_today"
     | "commit_session_today"
     | "propose_session_template"
-    | "commit_session_template";
+    | "commit_session_template"
+    | "propose_meal_log"
+    | "commit_meal_log";
   input: Record<string, unknown>;
   ms: number;
   result_rows: number;

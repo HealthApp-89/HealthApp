@@ -14,6 +14,7 @@ import { PlanProposalCard } from "./PlanProposalCard";
 import { NutritionTargetsProposalCard, type NutritionTargetsProposal } from "./NutritionTargetsProposalCard";
 import { SessionTodayProposalCard, type SessionTodayProposal } from "@/components/chat/SessionTodayProposalCard";
 import { SessionTemplateProposalCard, type SessionTemplateProposal } from "@/components/chat/SessionTemplateProposalCard";
+import { MealLogProposalCard, type MealLogProposal } from "@/components/chat/MealLogProposalCard";
 import type { PlanPayload, Speaker } from "@/lib/data/types";
 
 export function ChatMessage({
@@ -60,6 +61,9 @@ export function ChatMessage({
   );
   const hasCommittedSessionTemplate = toolCalls.some(
     (c) => c.name === "commit_session_template" && !c.error,
+  );
+  const hasCommittedMealLog = toolCalls.some(
+    (c) => c.name === "commit_meal_log" && !c.error,
   );
 
   if (isUser) {
@@ -365,6 +369,23 @@ export function ChatMessage({
                 </div>
               );
             }
+            if (call.name === "propose_meal_log") {
+              return (
+                <div key={i} style={{ marginTop: 8 }}>
+                  <MealLogProposalCard
+                    proposal={result.preview as MealLogProposal}
+                    approvalToken={result.approval_token}
+                    committed={hasCommittedMealLog}
+                    onApprove={(token) =>
+                      onSendUserMessage?.(`[approve:${token}]`)
+                    }
+                    onTweak={() =>
+                      onFocusComposer?.("e.g., 'change rice to 200g' or 'add a banana'")
+                    }
+                  />
+                </div>
+              );
+            }
             return null;
           })}
 
@@ -403,7 +424,6 @@ function renderToolReceiptChip(call: {
 }): React.ReactNode {
   const RECEIPT_TOOLS = new Set([
     "save_to_library",
-    "log_meal_entry",
     "search_library",
     "pick_library_item",
   ]);
@@ -448,26 +468,6 @@ function renderToolReceiptChip(call: {
       <span style={styleBase}>
         <span aria-hidden="true">{r.was_duplicate ? "↻" : "✓"}</span>
         <span>{label}: {name}</span>
-      </span>
-    );
-  }
-
-  if (call.name === "log_meal_entry") {
-    const r = (call.result ?? {}) as {
-      meal_slot?: "breakfast" | "lunch" | "dinner" | "snack";
-      item_count?: number;
-      totals?: { kcal?: number };
-    };
-    const slot = r.meal_slot ?? (call.input.meal_slot as string) ?? "snack";
-    const count = r.item_count ?? 0;
-    const kcal = r.totals?.kcal ? Math.round(r.totals.kcal) : null;
-    return (
-      <span style={styleBase}>
-        <span aria-hidden="true">🍽</span>
-        <span>
-          Logged to {slot}: {count} item{count === 1 ? "" : "s"}
-          {kcal !== null ? `, ${kcal} kcal` : ""}
-        </span>
       </span>
     );
   }
