@@ -22,7 +22,7 @@
 // never passes it, executors enforce .eq("user_id", userId) (security
 // invariants in lib/coach/tools.ts).
 
-import Anthropic, { APIUserAbortError } from "@anthropic-ai/sdk";
+import Anthropic, { APIError, APIUserAbortError } from "@anthropic-ai/sdk";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   executeQueryDailyLogs,
@@ -217,7 +217,11 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
   const _thread: Speaker = opts.thread ?? speaker;
   void _thread;
 
-  const client = new Anthropic({ apiKey });
+  // maxRetries handles initial-POST 5xx/429 (HTTP-level overloads) with
+  // SDK-managed exponential backoff. Mid-stream `event: error` overloads
+  // surface through the iterator and are retried separately in the
+  // attempt: loop below — the SDK can't restart an in-flight stream.
+  const client = new Anthropic({ apiKey, maxRetries: 4 });
   // The SDK accepts a system prompt as a string OR typed blocks. We use the
   // typed-block form so we can attach cache_control for the prompt-cache.
   //
@@ -317,49 +321,91 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
     ...(webSearchAllowedForMode(mode) ? [WEB_SEARCH_TOOL as unknown as Anthropic.Messages.Tool] : []),
   ];
 
+  // Auto-retry budget for mid-stream overloaded_error (the SDK can't retry
+  // an in-flight SSE stream). 3 attempts with jittered exponential backoff:
+  // ~1s, ~2s, ~4s — covers most transient capacity blips (~7s worst case).
+  // Budget spans the whole turn, not per tool-use round, so a sustained
+  // outage can't make us retry-storm Anthropic.
+  let overloadedRetryBudget = 3;
+  let overloadedRetryCount = 0;
+
   while (true) {
     const forceText = invocations >= MAX_TOOL_INVOCATIONS;
-    const stream = client.messages.stream(
-      {
-        model: MODEL,
-        max_tokens: MAX_TOKENS,
-        system,
-        tools,
-        // Why not disable_parallel_tool_use: Sonnet 4.6 occasionally emits
-        // multiple tool_use blocks per round (parallel tool use). Our
-        // for-loop below dispatches them serially in order, so parallel
-        // emission is safe.
-        tool_choice: forceText ? { type: "none" } : { type: "auto" },
-        messages: messages as Anthropic.MessageParam[],
-      },
-      { signal: opts.signal },
-    );
 
-    // Pipe deltas to the caller as they arrive.
-    try {
-      for await (const ev of stream) {
-        if (opts.signal.aborted) {
-          yield { type: "error", message: "aborted" };
-          return;
+    // Inner attempt loop: drives the auto-retry on overloaded_error. Breaks
+    // out on success; returns from the generator on a non-retryable error.
+    let stream!: ReturnType<typeof client.messages.stream>;
+    attempt: while (true) {
+      stream = client.messages.stream(
+        {
+          model: MODEL,
+          max_tokens: MAX_TOKENS,
+          system,
+          tools,
+          // Why not disable_parallel_tool_use: Sonnet 4.6 occasionally emits
+          // multiple tool_use blocks per round (parallel tool use). Our
+          // for-loop below dispatches them serially in order, so parallel
+          // emission is safe.
+          tool_choice: forceText ? { type: "none" } : { type: "auto" },
+          messages: messages as Anthropic.MessageParam[],
+        },
+        { signal: opts.signal },
+      );
+
+      let deltasYielded = 0;
+      let caught: unknown = null;
+
+      // Pipe deltas to the caller as they arrive.
+      try {
+        for await (const ev of stream) {
+          if (opts.signal.aborted) {
+            yield { type: "error", message: "aborted" };
+            return;
+          }
+          if (
+            ev.type === "content_block_delta" &&
+            ev.delta.type === "text_delta" &&
+            typeof ev.delta.text === "string"
+          ) {
+            deltasYielded += 1;
+            yield { type: "delta", text: ev.delta.text };
+          }
+          // Other events (input_json_delta, content_block_start, message_stop)
+          // are accumulated by the SDK; we read the final assembled message
+          // below via finalMessage().
         }
-        if (
-          ev.type === "content_block_delta" &&
-          ev.delta.type === "text_delta" &&
-          typeof ev.delta.text === "string"
-        ) {
-          yield { type: "delta", text: ev.delta.text };
-        }
-        // Other events (input_json_delta, content_block_start, message_stop)
-        // are accumulated by the SDK; we read the final assembled message
-        // below via finalMessage().
+      } catch (e) {
+        caught = e;
       }
-    } catch (e) {
-      if (e instanceof APIUserAbortError) {
+
+      if (caught === null) break attempt; // stream completed cleanly
+
+      if (caught instanceof APIUserAbortError) {
         yield { type: "error", message: "aborted" };
         return;
       }
-      const msg = (e as Error).message ?? "stream_error";
-      yield { type: "error", message: `anthropic_stream: ${msg}` };
+
+      // Auto-retry overloaded with jittered exponential backoff — but only
+      // if no text has reached the client yet, since a second stream would
+      // duplicate visible output. Overloaded almost always fails before
+      // the first token, so the guard rarely matters in practice.
+      // Backoff: ~1s, ~2s, ~4s (base) + up to 30% jitter to avoid
+      // synchronizing retry storms with other clients hitting the same
+      // capacity window.
+      if (
+        overloadedRetryBudget > 0 &&
+        deltasYielded === 0 &&
+        isOverloadedError(caught)
+      ) {
+        overloadedRetryBudget -= 1;
+        const base = 1000 * Math.pow(2, overloadedRetryCount);
+        const jitter = base * Math.random() * 0.3;
+        overloadedRetryCount += 1;
+        await new Promise((r) => setTimeout(r, base + jitter));
+        continue attempt;
+      }
+
+      yield { type: "error", message: formatStreamError(caught, "stream") };
       return;
     }
 
@@ -367,7 +413,7 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
     try {
       finalMsg = await stream.finalMessage();
     } catch (e) {
-      yield { type: "error", message: `anthropic_finalize: ${(e as Error).message}` };
+      yield { type: "error", message: formatStreamError(e, "finalize") };
       return;
     }
 
@@ -755,4 +801,52 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
     // Loop back; next stream() call will see the tool_result and either
     // call another tool or emit the final text.
   }
+}
+
+function isOverloadedError(e: unknown): boolean {
+  if (!(e instanceof APIError)) return false;
+  if (e.type === "overloaded_error") return true;
+  if (e.status === 529) return true;
+  return false;
+}
+
+// Build a short, human-readable error string for chat_messages.error. The
+// UI renders this field with text-transform: uppercase + 10px tracking
+// (components/chat/ChatMessage.tsx:212), so we keep it brief — no JSON
+// dumps, no request IDs. Errors here surface to the athlete; the SDK's
+// raw `.message` (which embeds the full JSON body for APIError) is too
+// noisy for that surface.
+function formatStreamError(e: unknown, stage: "stream" | "finalize"): string {
+  if (e instanceof APIError) {
+    if (e.type === "overloaded_error" || e.status === 529) {
+      return "Anthropic overloaded — try again";
+    }
+    if (e.type === "rate_limit_error" || e.status === 429) {
+      return "Rate limit hit — try again in a moment";
+    }
+    if (e.type === "authentication_error" || e.status === 401) {
+      return "Anthropic auth failed";
+    }
+    if (e.type === "permission_error" || e.status === 403) {
+      return "Anthropic denied the request";
+    }
+    if (e.type === "not_found_error" || e.status === 404) {
+      return "Anthropic 404 — model or resource not found";
+    }
+    if (e.status && e.status >= 500) {
+      return "Anthropic server error — try again";
+    }
+    if (e.type === "invalid_request_error" || e.status === 400) {
+      return `Invalid request: ${truncate((e as Error).message ?? "", 100)}`;
+    }
+    return `Anthropic error (${e.type ?? e.status ?? "unknown"})`;
+  }
+  const msg = e instanceof Error ? e.message : String(e);
+  return stage === "finalize"
+    ? `Finalize failed: ${truncate(msg, 100)}`
+    : `Stream failed: ${truncate(msg, 100)}`;
+}
+
+function truncate(s: string, n: number): string {
+  return s.length > n ? `${s.slice(0, n)}…` : s;
 }
