@@ -28,6 +28,7 @@ import {
   macrosForQty,
   sumMacros,
 } from "@/lib/food/types";
+import { resolveItemMacros } from "@/lib/food/lookup";
 import { reaggregateDay, sumFoodEntriesForDate } from "@/lib/food/aggregate";
 import { utcDate } from "@/lib/food/date";
 import { foodLogOwnsDailyLogs } from "@/lib/food/ownership";
@@ -3756,6 +3757,72 @@ export async function executeSaveToLibrary(opts: {
     data: { id: (data as { id: string }).id, name, kind, was_duplicate: false },
     meta: { ms: Date.now() - t0, result_rows: 1, range_days: 0, truncated: false },
   };
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// resolve_food_macros — read-only chain wrapper for Nora.
+//
+// Exposes lib/food/lookup.ts:resolveItemMacros (library → food_db_cache → USDA
+// → OpenFoodFacts → LLM) to chat. Lets Nora resolve macros without burning
+// web_search budget on whole foods her training data already covers. The
+// underlying resolver writes USDA / OFF hits to food_db_cache, so repeated
+// lookups of the same item short-circuit.
+// ────────────────────────────────────────────────────────────────────────────
+
+export const RESOLVE_FOOD_MACROS_TOOL: ToolSchema = {
+  name: "resolve_food_macros",
+  description:
+    "Resolve per-100g macros for a food item via library → cache → USDA → OpenFoodFacts → LLM fallback. Use this BEFORE propose_meal_log when the user hasn't given you explicit macros. Cheap and cached — prefer this over web_search for standard foods.",
+  input_schema: {
+    type: "object" as const,
+    required: ["name", "qty_g"],
+    properties: {
+      name: { type: "string", minLength: 1, maxLength: 120, description: "Display name (e.g., 'grilled chicken breast', '200g brown rice cooked')." },
+      qty_g: { type: "number", minimum: 0.1, maximum: 5000, description: "Quantity in grams." },
+    },
+  },
+};
+
+export async function executeResolveFoodMacros(opts: {
+  supabase: SupabaseClient;
+  userId: string;
+  input: unknown;
+}): Promise<ToolResult<{ name: string; qty_g: number; kcal: number; protein_g: number; carbs_g: number; fat_g: number; fiber_g: number; per_100g: FoodMacros; source: "db" | "llm"; db_ref: { source: string; canonical_id: string } | null; confidence: "high" | "medium" | "low" | null; match_score: number | null; library_item_id: string | null }>> {
+  const t0 = Date.now();
+  const i = (opts.input ?? {}) as Record<string, unknown>;
+  const name = typeof i.name === "string" ? i.name.trim() : "";
+  const qty_g = typeof i.qty_g === "number" && i.qty_g > 0 ? i.qty_g : NaN;
+  if (!name || !Number.isFinite(qty_g)) {
+    return { ok: false, error: { error: "name (string) and qty_g (positive number) required" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  try {
+    const item = await resolveItemMacros(name, qty_g, opts.userId);
+    return {
+      ok: true,
+      data: {
+        name: item.name,
+        qty_g: item.qty_g,
+        kcal: item.kcal,
+        protein_g: item.protein_g,
+        carbs_g: item.carbs_g,
+        fat_g: item.fat_g,
+        fiber_g: item.fiber_g,
+        per_100g: item.per_100g,
+        source: item.source,
+        db_ref: item.db_ref,
+        confidence: item.confidence,
+        match_score: item.match_score,
+        library_item_id: item.db_ref?.source === "user_library" ? item.db_ref.canonical_id : null,
+      },
+      meta: { ms: Date.now() - t0, result_rows: 1, range_days: 0, truncated: false },
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      error: { error: `resolve failed for "${name}": ${(err as Error).message}` },
+      meta: { ms: Date.now() - t0, range_days: 0 },
+    };
+  }
 }
 
 // ────────────────────────────────────────────────────────────────────────────
