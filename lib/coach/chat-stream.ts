@@ -313,6 +313,14 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
     ...(webSearchAllowedForMode(mode) ? [WEB_SEARCH_TOOL as unknown as Anthropic.Messages.Tool] : []),
   ];
 
+  // When web_search (server tool, Programmatic Tool Calling) runs alongside
+  // client tools, Anthropic holds a code-execution container across the
+  // assistant's turn-internal loop. On our next stream call we MUST pass
+  // the container id back, otherwise the API rejects with:
+  //   "container_id is required when there are pending tool uses generated
+  //    by code execution with tools."
+  // Tracked across loop iterations; the first iteration sends null.
+  let containerId: string | null = null;
   while (true) {
     const forceText = invocations >= MAX_TOOL_INVOCATIONS;
     const stream = client.messages.stream(
@@ -328,6 +336,7 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
         // safe.
         tool_choice: forceText ? { type: "none" } : { type: "auto" },
         messages: messages as Anthropic.MessageParam[],
+        ...(containerId ? { container: containerId } : {}),
       },
       { signal: opts.signal },
     );
@@ -367,6 +376,11 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
       yield { type: "error", message: `anthropic_finalize: ${(e as Error).message}` };
       return;
     }
+
+    // Capture the code-execution container id from this turn so the next
+    // iteration's request can resume it. Null when no server tool ran.
+    const finalContainer = (finalMsg as { container?: { id: string } | null }).container;
+    containerId = finalContainer?.id ?? containerId;
 
     // Accumulate usage. Anthropic returns cache_read_input_tokens +
     // cache_creation_input_tokens when prompt caching is in play; both can be
