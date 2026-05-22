@@ -109,7 +109,7 @@ export type ChatMessageRow = {
    *  segregates the daily check-in conversation in ChatPanel; 'morning_brief'
    *  and 'weekly_review' are structured assistant-only cards; 'system_routing'
    *  for system-triggered handoffs between speakers. */
-  kind: "coach" | "morning_intake" | "morning_brief" | "weekly_review" | "proactive_nudge" | "system_routing" | "meal_log";
+  kind: "coach" | "morning_intake" | "morning_brief" | "weekly_review" | "proactive_nudge" | "system_routing" | "meal_log" | "workout_debrief";
   /** Chip definitions / rendering hints for the morning intake bot, or
    *  structured card payload for morning_brief / weekly_review / proactive_nudge. NULL on
    *  free-form coach turns. */
@@ -1338,4 +1338,65 @@ export type WeeklyReviewRow = {
   generated_at: string;
   updated_at: string;
   created_at: string;
+};
+
+// ── Workout debrief (0032_workout_debrief) ───────────────────────────────────
+
+/** Payload shape for chat_messages.ui when kind='workout_debrief'.
+ *  Produced by lib/coach/session-debrief — see the 2026-05-22 spec.
+ *  Composer outputs are deterministic; narrative_md is the AI-generated
+ *  wrap. tldr is composer-templated (no AI) and mirrors chat_messages.content. */
+export type WorkoutDebriefPayload = {
+  workout_id: string;
+  date: string; // YYYY-MM-DD
+  session_type: string;
+
+  block: {
+    week_num: number | null;
+    total_weeks: number | null;
+    phase: "accumulate" | "deload" | null;
+    rir_target: number | null;
+  };
+
+  lifts: Array<{
+    name: string;
+    top_set_today: { kg: number | null; reps: number | null; e1rm: number | null };
+    top_set_last:  { kg: number | null; reps: number | null; e1rm: number | null; date: string | null };
+    delta_e1rm: number | null;
+    rir_today: number | null;
+    tag: "PR" | "stall" | "regression" | null;
+  }>;
+
+  volume: Array<{
+    muscle: string;
+    sets_today: number;
+    sets_this_week: number;
+    band: { mev: number; mav_low: number; mav_high: number; mrv: number };
+    status: "below_mev" | "in_mav" | "approaching_mrv" | "over_mrv";
+  }>;
+
+  autoregulation: {
+    today_recovery: number | null;
+    today_hrv: number | null;
+    today_sleep_hours: number | null;
+    today_strain: number | null;
+    interpretation: string;
+  };
+
+  body_comp: {
+    weight_kg: number | null;
+    fat_free_mass_kg: number | null;
+    strength_per_lbm:
+      | { lift: string; ratio: number; trend: "up" | "flat" | "down" }
+      | null;
+  } | null;
+
+  prescription: {
+    next_session_date: string | null;
+    weight_changes: Array<{ exercise: string; new_kg: number; rationale: string }>;
+    notes: string[];
+  };
+
+  narrative_md: string;
+  tldr: string;
 };
