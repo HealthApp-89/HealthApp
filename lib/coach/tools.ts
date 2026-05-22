@@ -3115,13 +3115,36 @@ export async function executeSearchLibrary(opts: {
       meta: { ms: Date.now() - t0, range_days: 0 },
     };
   }
+
+  // Token-AND requirement instead of raw substring: every query word must
+  // appear as a whole-word match (word boundary on both sides) inside the
+  // name. Prevents the 2026-05-22 "grilled chicken → McDonald's Chicken
+  // Salad with Grilled Chicken" miss-hit where a substring match grabbed
+  // a brand item with extra prefix tokens. Fetch a wider candidate window
+  // first (ilike on the first token still uses the trigram index), then
+  // rank in JS so the cheapest exact / prefix matches win.
+  const tokens = query
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((t) => t.length >= 2);
+  if (tokens.length === 0) {
+    return {
+      ok: true,
+      data: { items: [] },
+      meta: { ms: Date.now() - t0, result_rows: 0, range_days: 0, truncated: false },
+    };
+  }
+
+  // Pull a generous candidate window keyed on the longest token (most
+  // selective on average). Score + filter happens client-side.
+  const seedToken = [...tokens].sort((a, b) => b.length - a.length)[0];
   const { data, error } = await opts.supabase
     .from("user_food_items")
     .select("id, name")
     .eq("user_id", opts.userId)
-    .ilike("name", `%${query}%`)
+    .ilike("name", `%${seedToken}%`)
     .order("updated_at", { ascending: false })
-    .limit(limit);
+    .limit(50);
   if (error) {
     return {
       ok: false,
@@ -3129,7 +3152,35 @@ export async function executeSearchLibrary(opts: {
       meta: { ms: Date.now() - t0, range_days: 0 },
     };
   }
-  const items = (data ?? []) as Array<{ id: string; name: string }>;
+
+  const wordBoundary = (haystack: string, token: string) =>
+    new RegExp(`\\b${token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(haystack);
+
+  type Row = { id: string; name: string };
+  const rows = (data ?? []) as Row[];
+  const scored: Array<{ row: Row; score: number }> = [];
+  const lowerQuery = query.toLowerCase();
+  for (const row of rows) {
+    const lowerName = row.name.toLowerCase();
+    // Require ALL tokens to be word-boundary present. Anything less and we
+    // drop the candidate — better to return 0 hits than the wrong row.
+    const allPresent = tokens.every((tok) => wordBoundary(lowerName, tok));
+    if (!allPresent) continue;
+    let score = 0;
+    if (lowerName === lowerQuery) score = 100;
+    else if (lowerName.startsWith(lowerQuery)) score = 80;
+    else if (lowerName.includes(lowerQuery)) score = 60;
+    else score = 40;
+    // Length-penalty so "Grilled Chicken Breast" outranks
+    // "McDonald's Grilled Chicken Salad Wrap Combo with Side" when both
+    // satisfy the tokens. 1 pt off per extra word past the query length.
+    const nameWords = lowerName.split(/\s+/).length;
+    const queryWords = tokens.length;
+    if (nameWords > queryWords) score -= Math.min(20, nameWords - queryWords);
+    scored.push({ row, score });
+  }
+  scored.sort((a, b) => b.score - a.score);
+  const items = scored.slice(0, limit).map((s) => s.row);
   return {
     ok: true,
     data: { items },

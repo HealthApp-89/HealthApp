@@ -97,20 +97,28 @@ function shouldPersistResult(name: string): boolean {
 const MAX_TOOL_INVOCATIONS = 5;
 const MAX_TOKENS = 2000;
 
-// Web search removed 2026-05-22. web_search_20260209 engages Anthropic's
-// Programmatic Tool Calling, which spins up a code-execution container
-// whose container_id must be threaded back across stream rounds. SDK
-// 0.95.0's container-param support is unreliable in practice (passing
-// finalMsg.container.id top-level still produces "container_id is required"
-// 400s on the post-tool round), so the combination of web_search +
-// client tools (save_to_library / log_meal_entry / search_library)
-// repeatedly tore down Nora's save→log workflow.
-//
-// Cost of removal: model uses training-data nutrition values (USDA-aligned)
-// instead of fresh web lookups. Nora was already doing this when she hit
-// max_uses=5 anyway. Re-introduce if/when Anthropic SDK container handling
-// stabilizes or when we move to a separate web-search lane that doesn't
-// share a turn with client tools.
+// Anthropic-managed web search. Pinned to web_search_20250305 (the basic
+// version) instead of _20260209. The _20260209 tool engages dynamic
+// filtering, which runs *inside* a code-execution container — when client
+// tools (save_to_library / log_meal_entry / etc.) are emitted in the same
+// turn, the API requires the container_id back on every follow-up request
+// and the SDK 0.95.0 plumbing for that is fragile (per Anthropic server-
+// tools docs, dynamic filtering is what creates the container; the basic
+// version skips that step entirely). For nutrition lookups we don't need
+// dynamic filtering — a couple of search hits + the model's reasoning is
+// plenty — so the basic version is the right trade.
+const WEB_SEARCH_TOOL: Anthropic.Messages.WebSearchTool20250305 = {
+  type: "web_search_20250305",
+  name: "web_search",
+  max_uses: 5,
+};
+
+// Modes where coaches may search the web. Hidden in meal_log (Nora's
+// data-entry flow stays focused on resolving items) and intake (Phase 2
+// plan-builder is deterministic — no web noise during the wizard).
+function webSearchAllowedForMode(mode: ChatMode): boolean {
+  return mode === "default" || mode === "plan_week" || mode === "setup_block";
+}
 
 export type ChatStreamYield =
   | { type: "delta"; text: string }
@@ -303,8 +311,11 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
 
   const speakerTools = toolsForSpeaker(speaker);
   const toolsForMode: ToolSchema[] = speakerTools.filter((t) => modeAllowsTool(t.name)).slice();
-  const tools: Anthropic.Messages.Tool[] =
-    toolsForMode as unknown as Anthropic.Messages.Tool[];
+  const mode: ChatMode = opts.mode ?? "default";
+  const tools: Anthropic.Messages.Tool[] = [
+    ...(toolsForMode as unknown as Anthropic.Messages.Tool[]),
+    ...(webSearchAllowedForMode(mode) ? [WEB_SEARCH_TOOL as unknown as Anthropic.Messages.Tool] : []),
+  ];
 
   while (true) {
     const forceText = invocations >= MAX_TOOL_INVOCATIONS;
@@ -381,6 +392,20 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
     const toolUseBlocks = finalMsg.content.filter(
       (b): b is Anthropic.ToolUseBlock => b.type === "tool_use",
     );
+
+    // `pause_turn` fires when a server tool (web_search) ran long and the API
+    // paused the turn mid-flight. The Anthropic docs say to push the assistant
+    // content back as-is and re-call .stream() to resume; no tool_results to
+    // synthesize since the paused work is server-side. Distinct from the
+    // client-tool branch below — server-tool resumes don't increment our
+    // invocations counter and don't go through the executor switch.
+    if (finalMsg.stop_reason === "pause_turn" && toolUseBlocks.length === 0) {
+      messages.push({
+        role: "assistant",
+        content: finalMsg.content as unknown as ContentBlock[],
+      });
+      continue;
+    }
 
     // No tool calls → we're done.
     if (toolUseBlocks.length === 0 || forceText) {
