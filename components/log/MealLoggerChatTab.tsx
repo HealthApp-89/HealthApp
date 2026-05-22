@@ -326,12 +326,22 @@ export function MealLoggerChatTab({ userId, mealSlot, eatenAt, onCommitted }: Pr
     if (!parseRes.ok) {
       const detail = await parseRes.text().catch(() => "");
       console.error("[meal-log] /api/food/parse non-OK", parseRes.status, detail);
+      // Surface the upstream error detail so the user can self-diagnose
+      // (Haiku output bad JSON, rate-limit, Vercel timeout) without having
+      // to open DevTools — diet-tab error triage 2026-05-22.
+      let parsedDetail = "";
+      try {
+        const j = JSON.parse(detail) as { error?: string; detail?: string };
+        parsedDetail = [j.error, j.detail].filter(Boolean).join(": ");
+      } catch {
+        parsedDetail = detail.slice(0, 160);
+      }
       setMessages((prev) => [
         ...prev,
         {
           id: `err-${Date.now()}`,
           speaker: "nora",
-          content: `I couldn't read that (HTTP ${parseRes.status}). Try rephrasing.`,
+          content: `I couldn't read that (HTTP ${parseRes.status}).${parsedDetail ? `\n${parsedDetail}` : ""}`,
           ui: null,
           created_at: new Date().toISOString(),
         },
