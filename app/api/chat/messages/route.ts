@@ -12,6 +12,7 @@ import {
 import type { ChatMessage, ChatMessageImage, ChatRole, ChatStatus } from "@/lib/chat/types";
 import { type RichMessage, type ContentBlock } from "@/lib/anthropic/client";
 import { runChatStream, emptyUsageTotals } from "@/lib/coach/chat-stream";
+import { executeCommitMealLog } from "@/lib/coach/tools";
 import { SPEAKERS } from "@/lib/data/types";
 import { CHAT_MODEL } from "@/lib/anthropic/models";
 import { findFabricatedNumbers } from "@/lib/coach/fabrication-check";
@@ -380,6 +381,133 @@ export async function POST(req: Request) {
       updated_at: new Date().toISOString(),
     })
     .eq("id", rpcTyped.assistant_message_id);
+
+  // ── Approval-token intercept ──────────────────────────────────────────
+  // When the user taps Approve on a proposal card, ChatPanel sends
+  // `[approve:<token>]` as the user message. The legacy flow was to push
+  // this to Anthropic and let the speaker call commit_X({approval_token}).
+  // That breaks for meal_log because the embedded-payload token is ~7000
+  // chars / ~1700 output tokens — close to MAX_TOKENS=2000. The model
+  // either truncates the token (signature mismatch → loop) or just streams
+  // its way through the entire 60s Vercel budget echoing it back. Even
+  // after the ref-shrink fix landed, in-flight 7k-char tokens still hung,
+  // and the model occasionally dropped the token argument entirely.
+  //
+  // The commit step is deterministic — verify the token, do the thing.
+  // No reason to round-trip through the model. We dispatch directly,
+  // synthesize a short assistant message, and stream a one-shot SSE
+  // response. Other commit_* actions still go through the model (their
+  // tokens are small and they need the LLM to compose the follow-up
+  // narrative); only meal_log intercepts for now.
+  const approveMatch = content.trim().match(/^\[approve:([^\]]+)\]$/);
+  if (approveMatch) {
+    const token = approveMatch[1];
+    let approveAction: string | null = null;
+    try {
+      const parts = token.split(".");
+      if (parts.length === 2) {
+        const env = JSON.parse(
+          Buffer.from(parts[0], "base64url").toString("utf8"),
+        ) as { action?: string };
+        approveAction = env.action ?? null;
+      }
+    } catch {
+      // Malformed token — fall through to the Anthropic path so the
+      // existing error surface handles it.
+    }
+
+    if (approveAction === "meal_log") {
+      const t0 = Date.now();
+      const result = await executeCommitMealLog({
+        supabase: sr,
+        userId: user.id,
+        input: { approval_token: token },
+      });
+      const elapsed = Date.now() - t0;
+
+      const content = result.ok
+        ? `Logged to ${result.data.meal_slot} ✅ — ${result.data.item_count} items, ${Math.round(result.data.totals.kcal)} kcal · ${Math.round(result.data.totals.protein_g)}P / ${Math.round(result.data.totals.carbs_g)}C / ${Math.round(result.data.totals.fat_g)}F. Today: ${Math.round(result.data.day_totals.kcal)} kcal · ${Math.round(result.data.day_totals.protein_g)}P / ${Math.round(result.data.day_totals.carbs_g)}C / ${Math.round(result.data.day_totals.fat_g)}F.`
+        : result.error.error;
+
+      const toolCallLog: ToolCallLog = {
+        name: "commit_meal_log",
+        input: { approval_token: `${token.slice(0, 24)}…` },
+        ms: elapsed,
+        result_rows: result.ok ? 1 : 0,
+        range_days: 0,
+        truncated: false,
+        error: result.ok ? null : result.error.error,
+        result: result.ok ? result.data : undefined,
+      };
+
+      await sr
+        .from("chat_messages")
+        .update({
+          content,
+          status: result.ok ? "done" : "error",
+          error: result.ok ? null : result.error.error,
+          tool_calls: [toolCallLog],
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", rpcTyped.assistant_message_id);
+
+      // Synthesize the SSE response the client expects: one delta with
+      // the full text, then a done event carrying the tool_calls so the
+      // proposal card can flip to its committed state in-place.
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(
+            encoder.encode(
+              formatSseEvent({ event: "delta", data: { text: content } }),
+            ),
+          );
+          if (!result.ok) {
+            controller.enqueue(
+              encoder.encode(
+                formatSseEvent({
+                  event: "done",
+                  data: {
+                    message_id: rpcTyped.assistant_message_id,
+                    partial: true,
+                    tool_calls: [toolCallLog],
+                  },
+                }),
+              ),
+            );
+            controller.enqueue(
+              encoder.encode(
+                formatSseEvent({
+                  event: "error",
+                  data: { message: result.error.error },
+                }),
+              ),
+            );
+          } else {
+            controller.enqueue(
+              encoder.encode(
+                formatSseEvent({
+                  event: "done",
+                  data: {
+                    message_id: rpcTyped.assistant_message_id,
+                    tool_calls: [toolCallLog],
+                  },
+                }),
+              ),
+            );
+          }
+          controller.close();
+        },
+      });
+      return new Response(stream, {
+        headers: {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache, no-transform",
+          Connection: "keep-alive",
+        },
+      });
+    }
+  }
 
   // Three independent reads in parallel: user's editable system prompt,
   // the cached 14-day snapshot prefix, and the rolling chat-history window.
