@@ -45,17 +45,31 @@ export async function loadDraft(
   sessionType: string,
 ): Promise<LoggerDraft | null> {
   const db = await getDB();
-  const draft = (await db.get(STORE, key(userId, sessionType))) as LoggerDraft | undefined;
-  if (!draft) return null;
+  const raw = (await db.get(STORE, key(userId, sessionType))) as LoggerDraft | undefined;
+  if (!raw) return null;
 
   // Discard if older than MAX_AGE_HOURS.
-  const ageMs = Date.now() - new Date(draft.updated_at).getTime();
+  const ageMs = Date.now() - new Date(raw.updated_at).getTime();
   if (ageMs > MAX_AGE_HOURS * 3600 * 1000) {
     await db.delete(STORE, key(userId, sessionType));
     return null;
   }
 
+  // Backfill pause fields for drafts written before the pause/resume feature.
+  const draft: LoggerDraft = {
+    ...raw,
+    paused_at: raw.paused_at ?? null,
+    paused_ms_total: raw.paused_ms_total ?? 0,
+  };
   return draft;
+}
+
+export async function hasExistingDraft(
+  userId: string,
+  sessionType: string,
+): Promise<boolean> {
+  const draft = await loadDraft(userId, sessionType);
+  return !!draft;
 }
 
 export async function clearDraft(userId: string, sessionType: string): Promise<void> {

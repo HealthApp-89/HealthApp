@@ -28,8 +28,12 @@ export type LoggerDraft = {
   user_id: string;
   session_type: string;
   date: string;           // YYYY-MM-DD
-  started_at: string;     // ISO timestamp on first ✓ commit
+  started_at: string;     // ISO timestamp at sheet open; anchors elapsed timer
   updated_at: string;     // ISO timestamp on every change
+  /** ISO timestamp when timer was paused; null = running. */
+  paused_at: string | null;
+  /** Total ms accumulated across previously-completed pause intervals. */
+  paused_ms_total: number;
   exercises: ExerciseDraft[];
   /** Resolved-plan exercise list at sheet open, for divergence detection. */
   resolved_plan: PlannedExercise[];

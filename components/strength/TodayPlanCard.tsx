@@ -8,6 +8,7 @@ import { Card } from "@/components/ui/Card";
 import { RADIUS, modeColorLight } from "@/lib/ui/theme";
 import { SessionStructureBanner } from "@/components/strength/SessionStructureBanner";
 import { LoggerSheet } from "@/components/logger/LoggerSheet";
+import { useExistingLoggerDraft } from "@/lib/logger/use-existing-draft";
 
 function fmtRestRange(r: { min: number; max: number }): string {
   if (r.min >= 60 && r.max >= 90 && r.min % 60 === 0 && r.max % 60 === 0) {
@@ -32,7 +33,9 @@ type Props = {
 export function TodayPlanCard({ plan, committedFromPlan, rirTarget, researchPhase, weekStart, weekday, userId, weekOverrides }: Props) {
   const accent = modeColorLight(plan.mode.color);
   const [loggerOpen, setLoggerOpen] = useState(false);
+  const [draftEpoch, setDraftEpoch] = useState(0);
   const canStartSession = plan.sessionType !== "REST" && plan.sessionType !== "Mobility";
+  const hasDraft = useExistingLoggerDraft(userId, plan.sessionType, draftEpoch);
 
   // Pill text: prefer committed plan info if present.
   const pillText = committedFromPlan
@@ -186,7 +189,7 @@ export function TodayPlanCard({ plan, committedFromPlan, rirTarget, researchPhas
             cursor: "pointer",
           }}
         >
-          Start session
+          {hasDraft ? "Resume session" : "Start session"}
         </button>
       )}
     </Card>
@@ -197,7 +200,7 @@ export function TodayPlanCard({ plan, committedFromPlan, rirTarget, researchPhas
         date={new Date().toISOString().slice(0, 10)}
         weekdayLong={weekday}
         weekOverrides={weekOverrides}
-        onClose={() => setLoggerOpen(false)}
+        onClose={() => { setLoggerOpen(false); setDraftEpoch((e) => e + 1); }}
       />
     )}
     </>

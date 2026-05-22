@@ -50,12 +50,50 @@ function makeDraftFromPlan(args: {
     user_id: args.userId,
     session_type: args.sessionType,
     date: args.date,
-    started_at: nowIso, // overwritten on first ✓
+    started_at: nowIso,
     updated_at: nowIso,
+    paused_at: null,
+    paused_ms_total: 0,
     exercises,
     resolved_plan: args.plan,
     external_id: externalId,
   };
+}
+
+function getElapsedMs(draft: LoggerDraft, now: number): number {
+  const start = new Date(draft.started_at).getTime();
+  const end = draft.paused_at ? new Date(draft.paused_at).getTime() : now;
+  return Math.max(0, end - start - draft.paused_ms_total);
+}
+
+/** Wipe all entered sets + timer state, keep the current exercise list. */
+function resetDraft(draft: LoggerDraft): LoggerDraft {
+  const nowIso = new Date().toISOString();
+  return {
+    ...draft,
+    started_at: nowIso,
+    updated_at: nowIso,
+    paused_at: null,
+    paused_ms_total: 0,
+    exercises: draft.exercises.map((ex) => ({
+      ...ex,
+      sets: Array.from({ length: ex.prescribed.sets ?? 1 }, (_unused, j) => ({
+        set_index: j,
+        kg: ex.prescribed.baseKg ?? null,
+        reps: null,
+        warmup: !!ex.prescribed.warmup && j === 0,
+        failure: false,
+        committed_at: null,
+      })),
+    })),
+  };
+}
+
+function formatElapsed(ms: number): string {
+  const totalSec = Math.floor(ms / 1000);
+  const min = Math.floor(totalSec / 60);
+  const sec = totalSec % 60;
+  return `${min}:${sec.toString().padStart(2, "0")}`;
 }
 
 function hasFirstCommit(draft: LoggerDraft) {
@@ -96,18 +134,23 @@ export function LoggerSheet(props: Props) {
   const [saveDefaultOpen, setSaveDefaultOpen] = useState(false);
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [finishOpen, setFinishOpen] = useState(false);
+  const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
+  const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
   const [committing, setCommitting] = useState(false);
   const [now, setNow] = useState(() => Date.now());
 
   useWakeLock(!!draft);
 
   // 1) Mount: load existing draft or build from resolved plan.
+  //    Resume prompt shows whenever the close path preserved a draft (it sets
+  //    paused_at) or there are committed sets. Truly-empty open/close cycles
+  //    are auto-discarded by handleClose so they don't show here.
   useEffect(() => {
     let cancelled = false;
     (async () => {
       const existing = await loadDraft(props.userId, props.sessionType);
       if (cancelled) return;
-      if (existing && hasFirstCommit(existing)) {
+      if (existing && (hasFirstCommit(existing) || existing.paused_at !== null)) {
         setResumePrompt(existing);
         return;
       }
@@ -137,32 +180,38 @@ export function LoggerSheet(props: Props) {
     void saveDraft(updated);
   }, [draft]);
 
-  // 3) Tick clock for elapsed.
+  // 3) Tick clock for elapsed. Skip ticks while paused — the displayed value
+  //    is derived from draft.paused_at, which doesn't move.
   useEffect(() => {
+    if (draft?.paused_at) return;
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
-  }, []);
+  }, [draft?.paused_at]);
 
-  const startedAt = useMemo(() => {
-    if (!draft) return null;
-    for (const ex of draft.exercises) {
-      for (const s of ex.sets) {
-        if (s.committed_at) return new Date(s.committed_at).getTime();
-      }
-    }
-    return null;
-  }, [draft]);
-
-  const elapsedMs = startedAt ? now - startedAt : 0;
-  const elapsedMin = Math.floor(elapsedMs / 60000);
-  const elapsedSec = Math.floor((elapsedMs % 60000) / 1000);
-  const elapsedLabel = `${elapsedMin}:${elapsedSec.toString().padStart(2, "0")}`;
+  const elapsedMs = draft ? getElapsedMs(draft, now) : 0;
+  const elapsedLabel = formatElapsed(elapsedMs);
+  const isPaused = !!draft?.paused_at;
 
   if (resumePrompt && !draft) {
     return (
       <ResumeDraftPrompt
         draft={resumePrompt}
-        onResume={() => { setDraft(resumePrompt); setResumePrompt(null); }}
+        onResume={() => {
+          // If the draft is paused (typical — close auto-pauses), unpause and
+          // fold the closed-window into paused_ms_total so elapsed picks up
+          // where it left off.
+          if (resumePrompt.paused_at) {
+            const pausedMs = Date.now() - new Date(resumePrompt.paused_at).getTime();
+            setDraft({
+              ...resumePrompt,
+              paused_at: null,
+              paused_ms_total: resumePrompt.paused_ms_total + pausedMs,
+            });
+          } else {
+            setDraft(resumePrompt);
+          }
+          setResumePrompt(null);
+        }}
         onDiscard={async () => {
           await clearDraft(props.userId, props.sessionType);
           setResumePrompt(null);
@@ -186,15 +235,60 @@ export function LoggerSheet(props: Props) {
 
   const diverged = exerciseListDiverged(draft);
 
+  function togglePause() {
+    if (!draft) return;
+    if (draft.paused_at) {
+      // Resume: fold the just-completed pause interval into paused_ms_total.
+      const pausedMs = Date.now() - new Date(draft.paused_at).getTime();
+      setDraft({
+        ...draft,
+        paused_at: null,
+        paused_ms_total: draft.paused_ms_total + pausedMs,
+      });
+      setNow(Date.now());
+    } else {
+      setDraft({ ...draft, paused_at: new Date().toISOString() });
+    }
+  }
+
+  function requestClose() {
+    if (!draft) { props.onClose(); return; }
+    const elapsed = getElapsedMs(draft, Date.now());
+    // Truly-empty open/close: skip the confirm — nothing to lose.
+    if (!hasFirstCommit(draft) && !draft.paused_at && elapsed < 10_000) {
+      void clearDraft(draft.user_id, draft.session_type);
+      props.onClose();
+      return;
+    }
+    setCloseConfirmOpen(true);
+  }
+
+  function pauseAndClose() {
+    if (!draft) { props.onClose(); return; }
+    if (!draft.paused_at) {
+      setDraft({ ...draft, paused_at: new Date().toISOString() });
+    }
+    setCloseConfirmOpen(false);
+    props.onClose();
+  }
+
+  function discardAndClose() {
+    if (!draft) { props.onClose(); return; }
+    void clearDraft(draft.user_id, draft.session_type);
+    setCloseConfirmOpen(false);
+    props.onClose();
+  }
+
   async function commitNow() {
     if (!draft) return;
     setCommitting(true);
+    const elapsedMin = Math.round(getElapsedMs(draft, Date.now()) / 60000);
     const payload: CommitSessionPayload = {
       user_id: draft.user_id,
       external_id: draft.external_id,
       date: draft.date,
       type: draft.session_type,
-      duration_min: startedAt ? Math.round((Date.now() - startedAt) / 60000) : null,
+      duration_min: elapsedMin > 0 ? elapsedMin : null,
       exercises: draft.exercises.map((ex, i) => ({
         name: ex.name,
         position: i,
@@ -272,11 +366,27 @@ export function LoggerSheet(props: Props) {
   return (
     <div className="fixed inset-0 bg-black z-40 flex flex-col">
       <div className="flex items-center justify-between p-3 border-b border-zinc-900 pt-[env(safe-area-inset-top)]">
-        <button onClick={props.onClose} className="text-zinc-400 text-lg" aria-label="Close logger">‹</button>
-        <div className="text-zinc-300 text-sm flex items-center gap-1.5">
-          <span className="w-1.5 h-1.5 bg-green-500 rounded-full"></span>
-          <span className="font-mono tabular-nums">{startedAt ? elapsedLabel : "0:00"}</span>
-          <span>· {draft.session_type}</span>
+        <button onClick={requestClose} className="text-zinc-400 text-lg" aria-label="Close logger">‹</button>
+        <div className="text-zinc-300 text-sm flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
+            <span className={`w-1.5 h-1.5 rounded-full ${isPaused ? "bg-yellow-500" : "bg-green-500"}`}></span>
+            <span className="font-mono tabular-nums">{elapsedLabel}</span>
+            <span>· {draft.session_type}</span>
+          </div>
+          <button
+            onClick={togglePause}
+            className="text-[11px] font-semibold uppercase tracking-wide text-zinc-300 bg-zinc-800 hover:bg-zinc-700 px-2 py-1 rounded-md"
+            aria-label={isPaused ? "Resume timer" : "Pause timer"}
+          >
+            {isPaused ? "Resume" : "Pause"}
+          </button>
+          <button
+            onClick={() => setResetConfirmOpen(true)}
+            className="text-[11px] font-semibold uppercase tracking-wide text-zinc-400 hover:text-red-400 px-1 py-1"
+            aria-label="Reset session"
+          >
+            Reset
+          </button>
         </div>
         <button onClick={() => setFinishOpen(true)} className="bg-green-600 text-white text-xs font-semibold px-3 py-1.5 rounded-lg">
           Finish
@@ -295,7 +405,7 @@ export function LoggerSheet(props: Props) {
 
         {draft.exercises.map((ex, i) => (
           <ExerciseCard
-            key={`${ex.name}-${i}`}
+            key={`${draft.started_at}-${ex.name}-${i}`}
             userId={draft.user_id}
             externalId={draft.external_id}
             exercise={ex}
@@ -353,11 +463,70 @@ export function LoggerSheet(props: Props) {
       {finishOpen && (
         <FinishSummary
           draft={draft}
-          durationMin={startedAt ? (Date.now() - startedAt) / 60000 : 0}
+          durationMin={getElapsedMs(draft, Date.now()) / 60000}
           saving={committing}
           onConfirm={commitNow}
           onCancel={() => setFinishOpen(false)}
         />
+      )}
+
+      {closeConfirmOpen && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 max-w-sm w-full">
+            <h3 className="text-base font-semibold text-zinc-50 mb-1">Close session?</h3>
+            <p className="text-sm text-zinc-400 mb-4">
+              <strong className="text-zinc-200">Pause &amp; close</strong> saves your progress so you can resume from the strength page.{" "}
+              <strong className="text-red-400">Discard</strong> clears all current logs and the timer — this can&apos;t be undone.
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={pauseAndClose}
+                className="w-full bg-green-600 text-white rounded-lg py-2 text-sm font-medium"
+              >
+                Pause &amp; close
+              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setCloseConfirmOpen(false)}
+                  className="flex-1 bg-zinc-800 text-zinc-300 rounded-lg py-2 text-sm"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={discardAndClose}
+                  className="flex-1 bg-red-600/20 text-red-400 border border-red-600/40 rounded-lg py-2 text-sm"
+                >
+                  Discard
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {resetConfirmOpen && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 max-w-sm w-full">
+            <h3 className="text-base font-semibold text-zinc-50 mb-1">Are you sure you want to reset the session?</h3>
+            <p className="text-sm text-zinc-400 mb-4">
+              You will lose the current logs and reset the timer. The exercise list stays. This can&apos;t be undone.
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => { setDraft(resetDraft(draft)); setNow(Date.now()); setResetConfirmOpen(false); }}
+                className="flex-1 bg-red-600 text-white rounded-lg py-2 text-sm font-medium"
+              >
+                Reset
+              </button>
+              <button
+                onClick={() => setResetConfirmOpen(false)}
+                className="flex-1 bg-zinc-800 text-zinc-300 rounded-lg py-2 text-sm"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

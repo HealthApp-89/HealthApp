@@ -8,6 +8,7 @@ import type { MorningBriefCard, MorningBriefExercise, ExerciseOverrides } from "
 import type { SessionStructure } from "@/lib/coach/session-structure";
 import { SessionStructureBanner } from "@/components/strength/SessionStructureBanner";
 import { LoggerSheet } from "@/components/logger/LoggerSheet";
+import { useExistingLoggerDraft } from "@/lib/logger/use-existing-draft";
 
 function fmtRestRange(r: { min: number; max: number }): string {
   if (r.min >= 60 && r.max >= 90 && r.min % 60 === 0 && r.max % 60 === 0) {
@@ -45,7 +46,9 @@ export function BriefSessionList({
 }) {
   const { exercises, volume_gaps } = session;
   const [loggerOpen, setLoggerOpen] = useState(false);
+  const [draftEpoch, setDraftEpoch] = useState(0);
   const loggerSessionType = liveType ?? session.type;
+  const hasDraft = useExistingLoggerDraft(userId, loggerSessionType, draftEpoch);
 
   if (exercises.length === 0) {
     return (
@@ -215,7 +218,7 @@ export function BriefSessionList({
           padding: 0,
         }}
       >
-        Log this session
+        {hasDraft ? "Resume this session" : "Log this session"}
       </button>
       {loggerOpen && (
         <LoggerSheet
@@ -224,7 +227,7 @@ export function BriefSessionList({
           date={new Date().toISOString().slice(0, 10)}
           weekdayLong={weekday}
           weekOverrides={weekOverrides}
-          onClose={() => setLoggerOpen(false)}
+          onClose={() => { setLoggerOpen(false); setDraftEpoch((e) => e + 1); }}
         />
       )}
     </div>
