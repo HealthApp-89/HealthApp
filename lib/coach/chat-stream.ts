@@ -37,6 +37,10 @@ import {
   executeCommitBlock,
   executeProposeWeekPlan,
   executeCommitWeekPlan,
+  executeProposeSessionToday,
+  executeCommitSessionToday,
+  executeProposeSessionTemplate,
+  executeCommitSessionTemplate,
   executeProposeNutritionTargets,
   executeCommitNutritionTargets,
   executeApplyGoalTarget,
@@ -559,6 +563,30 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
             userId: opts.userId,
             input: block.input,
             chatMessageId: opts.assistantMessageId ?? null,
+          });
+        } else if (block.name === "propose_session_today") {
+          result = await executeProposeSessionToday({
+            supabase: opts.sr,
+            userId: opts.userId,
+            input: block.input,
+          });
+        } else if (block.name === "commit_session_today") {
+          result = await executeCommitSessionToday({
+            supabase: opts.sr,
+            userId: opts.userId,
+            input: block.input,
+          });
+        } else if (block.name === "propose_session_template") {
+          result = await executeProposeSessionTemplate({
+            supabase: opts.sr,
+            userId: opts.userId,
+            input: block.input,
+          });
+        } else if (block.name === "commit_session_template") {
+          result = await executeCommitSessionTemplate({
+            supabase: opts.sr,
+            userId: opts.userId,
+            input: block.input,
           });
         } else if (block.name === "propose_nutrition_targets") {
           result = await executeProposeNutritionTargets({
