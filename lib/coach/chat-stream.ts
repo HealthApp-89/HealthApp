@@ -86,6 +86,13 @@ const PERSIST_RESULT_TOOLS = new Set([
   "commit_plan",
   "propose_nutrition_targets",
   "commit_nutrition_targets",
+  // Session-write tools (Carter): the preview + approval_token + commit result
+  // must persist so the preview/confirmation chips render on chat history
+  // reload (see 2026-05-21 Nora re-save loop for the same bug class).
+  "propose_session_today",
+  "commit_session_today",
+  "propose_session_template",
+  "commit_session_template",
   // Library + meal-log tools persist their result so the UI can render
   // confirmation chips ("Saved: <name>", "Logged to <slot>") under the
   // assistant bubble. Without this the user couldn't tell that 8×
