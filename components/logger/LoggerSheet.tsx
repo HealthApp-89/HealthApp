@@ -326,6 +326,20 @@ export function LoggerSheet(props: Props) {
       return;
     }
 
+    // Capture workout_id BEFORE clearing draft / closing the sheet, then
+    // fire-and-forget the debrief generator. Errors are swallowed — the workout
+    // itself is already committed and Carter can be re-asked for a debrief later.
+    const commitResult = (await res.json().catch(() => null)) as { workout_id?: string } | null;
+    if (commitResult?.workout_id) {
+      fetch("/api/coach/workout-debrief", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ workout_id: commitResult.workout_id }),
+      }).catch(() => {
+        /* fire-and-forget — debrief is best-effort */
+      });
+    }
+
     await clearDraft(draft.user_id, draft.session_type);
     qc.invalidateQueries({ queryKey: queryKeys.workouts.all(draft.user_id) });
     router.refresh();
