@@ -2039,6 +2039,155 @@ export async function executeCommitSessionToday(opts: {
   };
 }
 
+// ── propose_session_template / commit_session_template ───────────────────────
+//
+// Defines the canonical exercise list for a session type (what "Arms"
+// contains). Persists across weeks via user_session_templates. Used for:
+//   - first-time setup of a session type (today's empty-card gap)
+//   - block-boundary 1-2 accessory rotation (swap-policy rule 5)
+// Carter is instructed to call query_exercise_library first and prefer
+// library-canonical names; free-form names are allowed but flagged in the
+// rationale (they skip downstream metadata like session-structure tiering).
+
+type SessionTemplatePayload = {
+  session_type: string;
+  exercises: PlannedExercise[];
+  rationale: string;
+};
+
+export const PROPOSE_SESSION_TEMPLATE_TOOL = {
+  name: "propose_session_template",
+  description:
+    "Propose the canonical exercise list for a session type (e.g. what 'Arms' contains). Persists across weeks via user_session_templates. Use when a session type has no exercises set up yet, or at a block boundary to rotate 1-2 accessories (swap-policy rule 5). Call query_exercise_library first to source canonical names; free-form names are allowed when the library has a genuine gap but should be flagged in the rationale.",
+  input_schema: {
+    type: "object" as const,
+    required: ["session_type", "exercises", "rationale"],
+    properties: {
+      session_type: { type: "string", minLength: 2, maxLength: 40, description: "e.g. 'Arms', 'Push', 'Pull', 'Chest'." },
+      exercises: {
+        type: "array",
+        minItems: 1,
+        maxItems: 20,
+        items: {
+          type: "object",
+          required: ["name"],
+          properties: {
+            name:     { type: "string", minLength: 2, maxLength: 80 },
+            warmup:   { type: "boolean" },
+            reps:     { type: "string", maxLength: 40 },
+            baseKg:   { type: "number", minimum: 0, maximum: 500 },
+            baseReps: { type: "integer", minimum: 1, maximum: 60 },
+            sets:     { type: "integer", minimum: 1, maximum: 12 },
+            key:      { type: "string", maxLength: 40 },
+            note:     { type: "string", maxLength: 200 },
+            increment: {
+              type: "object",
+              required: ["step"],
+              properties: {
+                step:         { type: "number", minimum: 0.5, maximum: 20 },
+                intermediate: { type: "number", minimum: 0.5, maximum: 20 },
+              },
+            },
+          },
+        },
+      },
+      rationale: { type: "string", minLength: 4, maxLength: 400, description: "Plain-language reasoning shown to the athlete on the approval chip." },
+    },
+  },
+};
+
+export const COMMIT_SESSION_TEMPLATE_TOOL = {
+  name: "commit_session_template",
+  description:
+    "Commit a previously proposed session-type template. Requires approval_token from propose_session_template. Upserts user_session_templates by (user_id, session_type).",
+  input_schema: {
+    type: "object" as const,
+    required: ["approval_token"],
+    properties: {
+      approval_token: { type: "string", minLength: 60 },
+    },
+  },
+};
+
+export async function executeProposeSessionTemplate(opts: {
+  supabase: SupabaseClient;
+  userId: string;
+  input: unknown;
+}): Promise<ToolResult<{ preview: SessionTemplatePayload; approval_token: string }>> {
+  const t0 = Date.now();
+  const i = (opts.input ?? {}) as Record<string, unknown>;
+
+  if (typeof i.session_type !== "string" || i.session_type.length < 2 || i.session_type.length > 40) {
+    return { ok: false, error: { error: "session_type required (2-40 chars)" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  if (!Array.isArray(i.exercises) || i.exercises.length === 0) {
+    return { ok: false, error: { error: "exercises must be a non-empty array" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  if (typeof i.rationale !== "string" || i.rationale.length < 4) {
+    return { ok: false, error: { error: "rationale required (4-400 chars)" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+
+  const payload: SessionTemplatePayload = {
+    session_type: i.session_type as string,
+    exercises: i.exercises as PlannedExercise[],
+    rationale: i.rationale as string,
+  };
+  const token = signApprovalToken({ userId: opts.userId, action: "session_template", payload });
+  return {
+    ok: true,
+    data: { preview: payload, approval_token: token },
+    meta: { ms: Date.now() - t0, result_rows: 1, range_days: 0, truncated: false },
+  };
+}
+
+export async function executeCommitSessionTemplate(opts: {
+  supabase: SupabaseClient;
+  userId: string;
+  input: unknown;
+}): Promise<ToolResult<{ session_type: string; exercises: PlannedExercise[] }>> {
+  const t0 = Date.now();
+  const i = (opts.input ?? {}) as Record<string, unknown>;
+  const token = i.approval_token;
+
+  if (typeof token !== "string") {
+    return { ok: false, error: { error: "approval_token required" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  let envelope;
+  try {
+    envelope = verifyApprovalToken({ token, userId: opts.userId, action: "session_template" });
+  } catch (e) {
+    if (e instanceof ApprovalTokenError) {
+      return { ok: false, error: { error: approvalTokenUserMessage(e.code), code: e.code }, meta: { ms: Date.now() - t0, range_days: 0 } };
+    }
+    return { ok: false, error: { error: (e as Error).message, code: "verify_failed" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  if (!envelope.payload || typeof envelope.payload !== "object") {
+    return { ok: false, error: { error: "That approval is missing the template payload. Please re-propose.", code: "missing_payload" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  const p = envelope.payload as SessionTemplatePayload;
+
+  const { error: upsertErr } = await opts.supabase
+    .from("user_session_templates")
+    .upsert(
+      {
+        user_id: opts.userId,
+        session_type: p.session_type,
+        exercises: p.exercises,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id,session_type" },
+    );
+  if (upsertErr) {
+    return { ok: false, error: { error: "Couldn't save the session template. Please try again.", code: upsertErr.code ?? "upsert_failed" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+
+  return {
+    ok: true,
+    data: { session_type: p.session_type, exercises: p.exercises },
+    meta: { ms: Date.now() - t0, result_rows: 1, range_days: 0, truncated: false },
+  };
+}
+
 // ── propose_nutrition_targets executor ────────────────────────────────────────
 
 type NutritionTargetsPayload = {
