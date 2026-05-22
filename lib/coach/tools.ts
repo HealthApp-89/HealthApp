@@ -20,16 +20,17 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { signApprovalToken, verifyApprovalToken, payloadHash, ApprovalTokenError, approvalTokenUserMessage } from "@/lib/coach/approval-token";
 import type { IntakePayload, PlanPayload, Speaker, TrainingBlock, TrainingWeek } from "@/lib/data/types";
+import type { PlannedExercise } from "@/lib/coach/sessionPlans";
 import {
   type MealSlot,
   type FoodItem,
   type FoodMacros,
-  macrosForQty,
   sumMacros,
 } from "@/lib/food/types";
 import { reaggregateDay, sumFoodEntriesForDate } from "@/lib/food/aggregate";
 import { utcDate } from "@/lib/food/date";
 import { foodLogOwnsDailyLogs } from "@/lib/food/ownership";
+import { resolveItemMacros } from "@/lib/food/lookup";
 import { buildPlanPayload } from "@/lib/coach/plan-builder";
 import { renderProfileMarkdown } from "@/lib/coach/profile-renderer";
 import {
@@ -44,7 +45,7 @@ import {
 } from "@/lib/coach/derived";
 import { categorize, type ExerciseCategory } from "@/lib/coach/exercise-categories";
 import type { PrimaryLift } from "@/lib/data/types";
-import { todayInUserTz } from "@/lib/time";
+import { todayInUserTz, weekdayInUserTz } from "@/lib/time";
 import { computeAdherence } from "@/lib/coach/adherence";
 import { getAutoregulationSignals } from "@/lib/coach/autoregulation";
 import {
@@ -1856,6 +1857,337 @@ export async function executeCommitWeekPlan(opts: {
   };
 }
 
+// ── propose_session_today / commit_session_today ─────────────────────────────
+//
+// One-off override of today's exercises. Writes
+// training_weeks.exercise_overrides[<weekdayLong>] without the permutation
+// rule the /api/training-weeks/[week_start]/exercise-overrides route enforces
+// (that route still protects the drag-to-reorder chip's contract).
+//
+// Used for swap-policy rules 1 (pain), 3 (equipment), 6 (athlete-raised
+// boredom) and illness scaling. Tomorrow's same-type session reverts to the
+// template; this is single-day only.
+
+const WEEKDAYS_LONG = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"] as const;
+type WeekdayLong = (typeof WEEKDAYS_LONG)[number];
+
+type SessionTodayPayload = {
+  weekday: WeekdayLong;
+  exercises: PlannedExercise[];
+  rationale: string;
+};
+
+export const PROPOSE_SESSION_TODAY_TOOL = {
+  name: "propose_session_today",
+  description:
+    "Propose a one-off override of today's exercises for the athlete to approve. Use ONLY for mid-block exceptions: pain (swap-policy rule 1), equipment unavailable (rule 3), illness scaling, athlete-raised boredom (rule 6). Tomorrow's same-type session reverts to the saved template. Writes to training_weeks.exercise_overrides[weekday]; does NOT persist beyond today. Requires a committed training_weeks row for the current week.",
+  input_schema: {
+    type: "object" as const,
+    required: ["weekday", "exercises", "rationale"],
+    properties: {
+      weekday: { type: "string", enum: WEEKDAYS_LONG, description: "Full weekday name; must match today's user-tz weekday." },
+      exercises: {
+        type: "array",
+        minItems: 1,
+        maxItems: 20,
+        items: {
+          type: "object",
+          required: ["name"],
+          properties: {
+            name:     { type: "string", minLength: 2, maxLength: 80 },
+            warmup:   { type: "boolean" },
+            reps:     { type: "string", maxLength: 40 },
+            baseKg:   { type: "number", minimum: 0, maximum: 500 },
+            baseReps: { type: "integer", minimum: 1, maximum: 60 },
+            sets:     { type: "integer", minimum: 1, maximum: 12 },
+            key:      { type: "string", maxLength: 40 },
+            note:     { type: "string", maxLength: 200 },
+            increment: {
+              type: "object",
+              required: ["step"],
+              properties: {
+                step:         { type: "number", minimum: 0.5, maximum: 20 },
+                intermediate: { type: "number", minimum: 0.5, maximum: 20 },
+              },
+            },
+          },
+        },
+      },
+      rationale: { type: "string", minLength: 4, maxLength: 400, description: "Plain-language reasoning shown to the athlete on the approval chip." },
+    },
+  },
+};
+
+export const COMMIT_SESSION_TODAY_TOOL = {
+  name: "commit_session_today",
+  description:
+    "Commit a previously proposed one-off session override. Requires approval_token from propose_session_today. Writes training_weeks.exercise_overrides for today's weekday slot.",
+  input_schema: {
+    type: "object" as const,
+    required: ["approval_token"],
+    properties: {
+      approval_token: { type: "string", minLength: 60 },
+    },
+  },
+};
+
+export async function executeProposeSessionToday(opts: {
+  supabase: SupabaseClient;
+  userId: string;
+  input: unknown;
+}): Promise<ToolResult<{ preview: SessionTodayPayload; approval_token: string }>> {
+  const t0 = Date.now();
+  const i = (opts.input ?? {}) as Record<string, unknown>;
+
+  if (typeof i.weekday !== "string" || !(WEEKDAYS_LONG as readonly string[]).includes(i.weekday)) {
+    return { ok: false, error: { error: "weekday must be a full weekday name (Monday-Sunday)" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  if (!Array.isArray(i.exercises) || i.exercises.length === 0) {
+    return { ok: false, error: { error: "exercises must be a non-empty array" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  if (typeof i.rationale !== "string" || i.rationale.length < 4) {
+    return { ok: false, error: { error: "rationale required (4-400 chars)" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+
+  // Soft anchor: the weekday should match today's user-tz weekday. If it
+  // doesn't, the override would land on the wrong day. Reject cleanly rather
+  // than silently writing the wrong slot.
+  const todayWeekday = weekdayInUserTz();
+  if (i.weekday !== todayWeekday) {
+    return {
+      ok: false,
+      error: { error: `weekday=${i.weekday} doesn't match today (${todayWeekday}). For future days, propose a week plan instead.` },
+      meta: { ms: Date.now() - t0, range_days: 0 },
+    };
+  }
+
+  const payload: SessionTodayPayload = {
+    weekday: i.weekday as WeekdayLong,
+    exercises: i.exercises as PlannedExercise[],
+    rationale: i.rationale as string,
+  };
+  const token = signApprovalToken({ userId: opts.userId, action: "session_today", payload });
+  return {
+    ok: true,
+    data: { preview: payload, approval_token: token },
+    meta: { ms: Date.now() - t0, result_rows: 1, range_days: 1, truncated: false },
+  };
+}
+
+export async function executeCommitSessionToday(opts: {
+  supabase: SupabaseClient;
+  userId: string;
+  input: unknown;
+}): Promise<ToolResult<{ week_start: string; weekday: WeekdayLong; exercises: PlannedExercise[] }>> {
+  const t0 = Date.now();
+  const i = (opts.input ?? {}) as Record<string, unknown>;
+  const token = i.approval_token;
+
+  if (typeof token !== "string") {
+    return { ok: false, error: { error: "approval_token required" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  let envelope;
+  try {
+    envelope = verifyApprovalToken({ token, userId: opts.userId, action: "session_today" });
+  } catch (e) {
+    if (e instanceof ApprovalTokenError) {
+      return { ok: false, error: { error: approvalTokenUserMessage(e.code), code: e.code }, meta: { ms: Date.now() - t0, range_days: 0 } };
+    }
+    return { ok: false, error: { error: (e as Error).message, code: "verify_failed" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  if (!envelope.payload || typeof envelope.payload !== "object") {
+    return { ok: false, error: { error: "That approval is missing the session payload. Please re-propose.", code: "missing_payload" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  const p = envelope.payload as SessionTodayPayload;
+
+  const today = todayInUserTz();
+  const week_start = weekStart(today);
+
+  const { data: row, error: loadErr } = await opts.supabase
+    .from("training_weeks")
+    .select("id, exercise_overrides")
+    .eq("user_id", opts.userId)
+    .eq("week_start", week_start)
+    .maybeSingle();
+  if (loadErr) {
+    return { ok: false, error: { error: "Couldn't load this week's plan. Please try again.", code: loadErr.code ?? "load_failed" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  if (!row) {
+    return {
+      ok: false,
+      error: { error: "No weekly plan committed yet for this week. Tell me 'plan my week' first.", code: "no_week" },
+      meta: { ms: Date.now() - t0, range_days: 0 },
+    };
+  }
+
+  const existing = (row.exercise_overrides as Record<string, PlannedExercise[]> | null) ?? {};
+  const next = { ...existing, [p.weekday]: p.exercises };
+
+  const { error: updateErr } = await opts.supabase
+    .from("training_weeks")
+    .update({ exercise_overrides: next, updated_at: new Date().toISOString() })
+    .eq("user_id", opts.userId)
+    .eq("week_start", week_start);
+  if (updateErr) {
+    return { ok: false, error: { error: "Couldn't save today's session override. Please try again.", code: updateErr.code ?? "update_failed" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+
+  return {
+    ok: true,
+    data: { week_start, weekday: p.weekday, exercises: p.exercises },
+    meta: { ms: Date.now() - t0, result_rows: 1, range_days: 1, truncated: false },
+  };
+}
+
+// ── propose_session_template / commit_session_template ───────────────────────
+//
+// Defines the canonical exercise list for a session type (what "Arms"
+// contains). Persists across weeks via user_session_templates. Used for:
+//   - first-time setup of a session type (today's empty-card gap)
+//   - block-boundary 1-2 accessory rotation (swap-policy rule 5)
+// Carter is instructed to call query_exercise_library first and prefer
+// library-canonical names; free-form names are allowed but flagged in the
+// rationale (they skip downstream metadata like session-structure tiering).
+
+type SessionTemplatePayload = {
+  session_type: string;
+  exercises: PlannedExercise[];
+  rationale: string;
+};
+
+export const PROPOSE_SESSION_TEMPLATE_TOOL = {
+  name: "propose_session_template",
+  description:
+    "Propose the canonical exercise list for a session type (e.g. what 'Arms' contains). Persists across weeks via user_session_templates. Use when a session type has no exercises set up yet, or at a block boundary to rotate 1-2 accessories (swap-policy rule 5). Call query_exercise_library first to source canonical names; free-form names are allowed when the library has a genuine gap but should be flagged in the rationale.",
+  input_schema: {
+    type: "object" as const,
+    required: ["session_type", "exercises", "rationale"],
+    properties: {
+      session_type: { type: "string", minLength: 2, maxLength: 40, description: "e.g. 'Arms', 'Push', 'Pull', 'Chest'." },
+      exercises: {
+        type: "array",
+        minItems: 1,
+        maxItems: 20,
+        items: {
+          type: "object",
+          required: ["name"],
+          properties: {
+            name:     { type: "string", minLength: 2, maxLength: 80 },
+            warmup:   { type: "boolean" },
+            reps:     { type: "string", maxLength: 40 },
+            baseKg:   { type: "number", minimum: 0, maximum: 500 },
+            baseReps: { type: "integer", minimum: 1, maximum: 60 },
+            sets:     { type: "integer", minimum: 1, maximum: 12 },
+            key:      { type: "string", maxLength: 40 },
+            note:     { type: "string", maxLength: 200 },
+            increment: {
+              type: "object",
+              required: ["step"],
+              properties: {
+                step:         { type: "number", minimum: 0.5, maximum: 20 },
+                intermediate: { type: "number", minimum: 0.5, maximum: 20 },
+              },
+            },
+          },
+        },
+      },
+      rationale: { type: "string", minLength: 4, maxLength: 400, description: "Plain-language reasoning shown to the athlete on the approval chip." },
+    },
+  },
+};
+
+export const COMMIT_SESSION_TEMPLATE_TOOL = {
+  name: "commit_session_template",
+  description:
+    "Commit a previously proposed session-type template. Requires approval_token from propose_session_template. Upserts user_session_templates by (user_id, session_type).",
+  input_schema: {
+    type: "object" as const,
+    required: ["approval_token"],
+    properties: {
+      approval_token: { type: "string", minLength: 60 },
+    },
+  },
+};
+
+export async function executeProposeSessionTemplate(opts: {
+  supabase: SupabaseClient;
+  userId: string;
+  input: unknown;
+}): Promise<ToolResult<{ preview: SessionTemplatePayload; approval_token: string }>> {
+  const t0 = Date.now();
+  const i = (opts.input ?? {}) as Record<string, unknown>;
+
+  if (typeof i.session_type !== "string" || i.session_type.length < 2 || i.session_type.length > 40) {
+    return { ok: false, error: { error: "session_type required (2-40 chars)" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  if (!Array.isArray(i.exercises) || i.exercises.length === 0) {
+    return { ok: false, error: { error: "exercises must be a non-empty array" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  if (typeof i.rationale !== "string" || i.rationale.length < 4) {
+    return { ok: false, error: { error: "rationale required (4-400 chars)" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+
+  const payload: SessionTemplatePayload = {
+    session_type: i.session_type as string,
+    exercises: i.exercises as PlannedExercise[],
+    rationale: i.rationale as string,
+  };
+  const token = signApprovalToken({ userId: opts.userId, action: "session_template", payload });
+  return {
+    ok: true,
+    data: { preview: payload, approval_token: token },
+    meta: { ms: Date.now() - t0, result_rows: 1, range_days: 0, truncated: false },
+  };
+}
+
+export async function executeCommitSessionTemplate(opts: {
+  supabase: SupabaseClient;
+  userId: string;
+  input: unknown;
+}): Promise<ToolResult<{ session_type: string; exercises: PlannedExercise[] }>> {
+  const t0 = Date.now();
+  const i = (opts.input ?? {}) as Record<string, unknown>;
+  const token = i.approval_token;
+
+  if (typeof token !== "string") {
+    return { ok: false, error: { error: "approval_token required" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  let envelope;
+  try {
+    envelope = verifyApprovalToken({ token, userId: opts.userId, action: "session_template" });
+  } catch (e) {
+    if (e instanceof ApprovalTokenError) {
+      return { ok: false, error: { error: approvalTokenUserMessage(e.code), code: e.code }, meta: { ms: Date.now() - t0, range_days: 0 } };
+    }
+    return { ok: false, error: { error: (e as Error).message, code: "verify_failed" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  if (!envelope.payload || typeof envelope.payload !== "object") {
+    return { ok: false, error: { error: "That approval is missing the template payload. Please re-propose.", code: "missing_payload" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  const p = envelope.payload as SessionTemplatePayload;
+
+  const { error: upsertErr } = await opts.supabase
+    .from("user_session_templates")
+    .upsert(
+      {
+        user_id: opts.userId,
+        session_type: p.session_type,
+        exercises: p.exercises,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id,session_type" },
+    );
+  if (upsertErr) {
+    return { ok: false, error: { error: "Couldn't save the session template. Please try again.", code: upsertErr.code ?? "upsert_failed" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+
+  return {
+    ok: true,
+    data: { session_type: p.session_type, exercises: p.exercises },
+    meta: { ms: Date.now() - t0, result_rows: 1, range_days: 0, truncated: false },
+  };
+}
+
 // ── propose_nutrition_targets executor ────────────────────────────────────────
 
 type NutritionTargetsPayload = {
@@ -3427,32 +3759,119 @@ export async function executeSaveToLibrary(opts: {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// log_meal_entry — Nora-only chat write-path for food_log_entries.
+// resolve_food_macros — read-only chain wrapper for Nora.
 //
-// Lets Nora finish the full "save items → log to slot" workflow from /coach
-// without bouncing the user into MealLoggerSheet. Writes a committed
-// food_log_entries row (status='committed' on insert) for the given meal
-// slot, then calls reaggregateDay so daily_logs.{calories_eaten, protein_g,
-// carbs_g, fat_g, fiber_g} reflect the new total.
-//
-// Item shape: name + qty_g + per_100g (the macros Nora already has from
-// resolving the item via search_library / save_to_library / her own
-// estimate). Macros at the logged qty are computed server-side via
-// macrosForQty so the totals stay consistent with the rest of the food
-// pipeline (single source of truth = macrosForQty + sumMacros).
-//
-// kind='text' on the row: the input modality WAS text (Nora interpreted a
-// user message). raw_input.text carries the original message for trace.
-// Source field on each FoodItem: 'llm' when the item didn't carry a
-// library_item_id (Nora estimated/recalled the macros) or 'db' with
-// db_ref.source='user_library' when a library row was the source — matches
-// the convention from migration 0028's resolver chain.
+// Exposes lib/food/lookup.ts:resolveItemMacros (library → food_db_cache → USDA
+// → OpenFoodFacts → LLM) to chat. Lets Nora resolve macros without burning
+// web_search budget on whole foods her training data already covers. The
+// underlying resolver writes USDA / OFF hits to food_db_cache, so repeated
+// lookups of the same item short-circuit.
 // ────────────────────────────────────────────────────────────────────────────
 
-export const LOG_MEAL_ENTRY_TOOL: ToolSchema = {
-  name: "log_meal_entry",
+export const RESOLVE_FOOD_MACROS_TOOL: ToolSchema = {
+  name: "resolve_food_macros",
   description:
-    "Write a committed food_log_entries row for the given meal slot, then re-aggregate the day's daily_logs nutrition columns. Use AFTER you've resolved each item (via search_library, save_to_library, or you have explicit macros from the user). Don't call this if the user only asked you to save items to the library — saving and logging are separate actions.",
+    "Resolve per-100g macros for a food item via library → cache → USDA → OpenFoodFacts → LLM fallback. Use this BEFORE propose_meal_log when the user hasn't given you explicit macros. Cheap and cached — prefer this over web_search for standard foods.",
+  input_schema: {
+    type: "object" as const,
+    required: ["name", "qty_g"],
+    properties: {
+      name: { type: "string", minLength: 1, maxLength: 120, description: "Display name (e.g., 'grilled chicken breast', '200g brown rice cooked')." },
+      qty_g: { type: "number", minimum: 0.1, maximum: 5000, description: "Quantity in grams." },
+    },
+  },
+};
+
+export async function executeResolveFoodMacros(opts: {
+  supabase: SupabaseClient;
+  userId: string;
+  input: unknown;
+}): Promise<ToolResult<{ name: string; qty_g: number; kcal: number; protein_g: number; carbs_g: number; fat_g: number; fiber_g: number; per_100g: FoodMacros; source: "db" | "llm"; db_ref: { source: string; canonical_id: string } | null; confidence: "high" | "medium" | "low" | null; match_score: number | null; library_item_id: string | null }>> {
+  const t0 = Date.now();
+  const i = (opts.input ?? {}) as Record<string, unknown>;
+  const name = typeof i.name === "string" ? i.name.trim() : "";
+  const qty_g = typeof i.qty_g === "number" && i.qty_g > 0 ? i.qty_g : NaN;
+  if (!name || !Number.isFinite(qty_g)) {
+    return { ok: false, error: { error: "name (string) and qty_g (positive number) required" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  try {
+    const item = await resolveItemMacros(name, qty_g, opts.userId);
+    return {
+      ok: true,
+      data: {
+        name: item.name,
+        qty_g: item.qty_g,
+        kcal: item.kcal,
+        protein_g: item.protein_g,
+        carbs_g: item.carbs_g,
+        fat_g: item.fat_g,
+        fiber_g: item.fiber_g,
+        per_100g: item.per_100g,
+        source: item.source,
+        db_ref: item.db_ref,
+        confidence: item.confidence,
+        match_score: item.match_score,
+        library_item_id: item.db_ref?.source === "user_library" ? item.db_ref.canonical_id : null,
+      },
+      meta: { ms: Date.now() - t0, result_rows: 1, range_days: 0, truncated: false },
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      error: { error: `resolve failed for "${name}": ${(err as Error).message}` },
+      meta: { ms: Date.now() - t0, range_days: 0 },
+    };
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// propose_meal_log / commit_meal_log — Nora's confirm-gated meal write.
+//
+// Replaces the legacy fire-and-confirm log_meal_entry tool. Nora calls propose
+// with raw (name, qty_g) tuples; the executor resolves each via
+// resolveItemMacros, builds the preview, and signs an approval token. The chat
+// UI renders MealLogProposalCard with an Approve button. On approval the
+// athlete's message contains [approve:<token>], Nora calls commit, the
+// food_log_entries row is inserted, any non-library items get auto-saved to
+// user_food_items as a side effect (idempotent via 23505 dedup floor), and
+// the day re-aggregates.
+//
+// Auto-save: items resolved from the personal library (db_ref.source ===
+// 'user_library') pass through with library_item_id stamped on the food log
+// item. All other items (USDA / OFF / LLM-estimated) get inserted into
+// user_food_items so the next log of the same name short-circuits at the
+// library lookup. executeSaveToLibrary already handles the 23505 unique
+// violation as was_duplicate=true — no extra collision logic needed here.
+// ────────────────────────────────────────────────────────────────────────────
+
+type ProposeMealLogItem = {
+  name: string;
+  qty_g: number;
+  kcal: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+  fiber_g: number;
+  per_100g: FoodMacros;
+  source: "db" | "llm";
+  db_ref: FoodItem["db_ref"];
+  confidence: "high" | "medium" | "low" | null;
+  match_score: number | null;
+  library_item_id: string | null;
+};
+
+type MealLogPayload = {
+  items: ProposeMealLogItem[];
+  meal_slot: MealSlot;
+  eaten_at: string;
+  raw_text: string;
+  totals: FoodMacros;
+};
+
+export const PROPOSE_MEAL_LOG_TOOL: ToolSchema = {
+  name: "propose_meal_log",
+  description:
+    "Propose a meal-log write for the athlete to approve. Server-side: resolves each item's macros via library → cache → USDA → OpenFoodFacts → LLM, builds a preview with day-totals delta, and signs an approval token. The chat UI surfaces an Approve chip; the athlete's approval triggers commit_meal_log. Use AFTER you've confirmed item names + quantities with the athlete. Do NOT call resolve_food_macros first — this tool resolves everything itself.",
   input_schema: {
     type: "object" as const,
     required: ["items", "meal_slot"],
@@ -3463,48 +3882,105 @@ export const LOG_MEAL_ENTRY_TOOL: ToolSchema = {
         maxItems: 15,
         items: {
           type: "object",
-          required: ["name", "qty_g", "per_100g"],
+          required: ["name", "qty_g"],
           properties: {
-            name: { type: "string", description: "Display name of the food." },
-            qty_g: { type: "number", description: "Quantity in grams." },
-            per_100g: {
-              type: "object",
-              required: ["kcal", "protein_g", "carbs_g", "fat_g"],
-              properties: {
-                kcal: { type: "number" },
-                protein_g: { type: "number" },
-                carbs_g: { type: "number" },
-                fat_g: { type: "number" },
-                fiber_g: { type: "number" },
-              },
-            },
-            library_item_id: {
-              type: "string",
-              description:
-                "Optional user_food_items.id when this item came from the personal library.",
-            },
+            name: { type: "string", minLength: 1, maxLength: 120 },
+            qty_g: { type: "number", minimum: 0.1, maximum: 5000 },
           },
         },
       },
-      meal_slot: {
-        type: "string",
-        enum: ["breakfast", "lunch", "dinner", "snack"],
-      },
-      eaten_at: {
-        type: "string",
-        description:
-          "Optional ISO-8601 timestamp the meal was eaten at. Defaults to now.",
-      },
-      raw_text: {
-        type: "string",
-        description:
-          "The original user message that prompted this log, for traceability.",
-      },
+      meal_slot: { type: "string", enum: ["breakfast", "lunch", "dinner", "snack"] },
+      eaten_at: { type: "string", description: "Optional ISO-8601 timestamp. Defaults to now." },
+      raw_text: { type: "string", description: "Optional original user message for traceability." },
     },
   },
 };
 
-export async function executeLogMealEntry(opts: {
+export const COMMIT_MEAL_LOG_TOOL: ToolSchema = {
+  name: "commit_meal_log",
+  description:
+    "Commit a previously proposed meal-log entry. Requires approval_token from propose_meal_log. Writes food_log_entries, auto-saves any non-library items to user_food_items, and reaggregates daily_logs.",
+  input_schema: {
+    type: "object" as const,
+    required: ["approval_token"],
+    properties: {
+      approval_token: { type: "string", minLength: 60 },
+    },
+  },
+};
+
+export async function executeProposeMealLog(opts: {
+  supabase: SupabaseClient;
+  userId: string;
+  input: unknown;
+}): Promise<ToolResult<{ preview: MealLogPayload; approval_token: string }>> {
+  const t0 = Date.now();
+  const i = (opts.input ?? {}) as Record<string, unknown>;
+  const meal_slot = i.meal_slot as MealSlot | undefined;
+  if (!meal_slot || !["breakfast", "lunch", "dinner", "snack"].includes(meal_slot)) {
+    return { ok: false, error: { error: "meal_slot must be one of breakfast|lunch|dinner|snack" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  const itemsInput = Array.isArray(i.items) ? (i.items as Array<Record<string, unknown>>) : [];
+  if (itemsInput.length === 0 || itemsInput.length > 15) {
+    return { ok: false, error: { error: "items must contain 1..15 entries" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  const eaten_at_raw = typeof i.eaten_at === "string" ? i.eaten_at : null;
+  const eaten_at =
+    eaten_at_raw && !Number.isNaN(Date.parse(eaten_at_raw))
+      ? new Date(eaten_at_raw).toISOString()
+      : new Date().toISOString();
+  const raw_text = typeof i.raw_text === "string" ? i.raw_text : "Logged via chat";
+
+  const resolved: ProposeMealLogItem[] = [];
+  for (const it of itemsInput) {
+    const name = typeof it.name === "string" ? it.name.trim() : "";
+    const qty_g = typeof it.qty_g === "number" && it.qty_g > 0 ? it.qty_g : NaN;
+    if (!name || !Number.isFinite(qty_g)) {
+      return { ok: false, error: { error: `item missing name/qty_g: ${JSON.stringify(it).slice(0, 120)}` }, meta: { ms: Date.now() - t0, range_days: 0 } };
+    }
+    try {
+      const item = await resolveItemMacros(name, qty_g, opts.userId);
+      resolved.push({
+        name: item.name,
+        qty_g: item.qty_g,
+        kcal: item.kcal,
+        protein_g: item.protein_g,
+        carbs_g: item.carbs_g,
+        fat_g: item.fat_g,
+        fiber_g: item.fiber_g,
+        per_100g: item.per_100g,
+        source: item.source,
+        db_ref: item.db_ref,
+        confidence: item.confidence,
+        match_score: item.match_score,
+        library_item_id: item.db_ref?.source === "user_library" ? item.db_ref.canonical_id : null,
+      });
+    } catch (err) {
+      return {
+        ok: false,
+        error: { error: `resolve failed for "${name}": ${(err as Error).message}` },
+        meta: { ms: Date.now() - t0, range_days: 0 },
+      };
+    }
+  }
+  const totals = sumMacros(resolved);
+
+  const payload: MealLogPayload = {
+    items: resolved,
+    meal_slot,
+    eaten_at,
+    raw_text,
+    totals,
+  };
+  const token = signApprovalToken({ userId: opts.userId, action: "meal_log", payload });
+  return {
+    ok: true,
+    data: { preview: payload, approval_token: token },
+    meta: { ms: Date.now() - t0, result_rows: 1, range_days: 0, truncated: false },
+  };
+}
+
+export async function executeCommitMealLog(opts: {
   supabase: SupabaseClient;
   userId: string;
   input: unknown;
@@ -3517,95 +3993,80 @@ export async function executeLogMealEntry(opts: {
     totals: FoodMacros;
     day_totals: FoodMacros;
     date: string;
+    saved_library_ids: string[];
   }>
 > {
   const t0 = Date.now();
   const i = (opts.input ?? {}) as Record<string, unknown>;
-  const meal_slot = i.meal_slot as MealSlot | undefined;
-  if (!meal_slot || !["breakfast", "lunch", "dinner", "snack"].includes(meal_slot)) {
-    return {
-      ok: false,
-      error: { error: "meal_slot must be one of breakfast|lunch|dinner|snack" },
-      meta: { ms: Date.now() - t0, range_days: 0 },
-    };
+  const token = i.approval_token;
+  if (typeof token !== "string") {
+    return { ok: false, error: { error: "approval_token required" }, meta: { ms: Date.now() - t0, range_days: 0 } };
   }
-  const itemsInput = Array.isArray(i.items) ? (i.items as Array<Record<string, unknown>>) : [];
-  if (itemsInput.length === 0 || itemsInput.length > 15) {
-    return {
-      ok: false,
-      error: { error: "items must contain 1..15 entries" },
-      meta: { ms: Date.now() - t0, range_days: 0 },
-    };
-  }
-  const eaten_at_raw = typeof i.eaten_at === "string" ? i.eaten_at : null;
-  const eaten_at =
-    eaten_at_raw && !Number.isNaN(Date.parse(eaten_at_raw))
-      ? new Date(eaten_at_raw).toISOString()
-      : new Date().toISOString();
-  const raw_text = typeof i.raw_text === "string" ? i.raw_text : "Logged via chat";
 
-  // Build FoodItem rows, validating each input.
-  const items: FoodItem[] = [];
-  for (const it of itemsInput) {
-    const name = typeof it.name === "string" ? it.name.trim() : "";
-    const qty_g = typeof it.qty_g === "number" && it.qty_g > 0 ? it.qty_g : NaN;
-    const p100 = it.per_100g as Record<string, unknown> | undefined;
-    const library_item_id = typeof it.library_item_id === "string" ? it.library_item_id : null;
-    if (!name || !Number.isFinite(qty_g) || !p100) {
-      return {
-        ok: false,
-        error: { error: `item missing name/qty_g/per_100g: ${JSON.stringify(it).slice(0, 120)}` },
-        meta: { ms: Date.now() - t0, range_days: 0 },
-      };
+  let envelope;
+  try {
+    envelope = verifyApprovalToken({ token, userId: opts.userId, action: "meal_log" });
+  } catch (e) {
+    if (e instanceof ApprovalTokenError) {
+      return { ok: false, error: { error: approvalTokenUserMessage(e.code), code: e.code }, meta: { ms: Date.now() - t0, range_days: 0 } };
     }
-    const per_100g: FoodMacros = {
-      kcal: Number(p100.kcal) || 0,
-      protein_g: Number(p100.protein_g) || 0,
-      carbs_g: Number(p100.carbs_g) || 0,
-      fat_g: Number(p100.fat_g) || 0,
-      fiber_g: Number(p100.fiber_g) || 0,
-    };
-    const m = macrosForQty(per_100g, qty_g);
-    items.push({
-      name,
-      qty_g,
-      kcal: m.kcal,
-      protein_g: m.protein_g,
-      carbs_g: m.carbs_g,
-      fat_g: m.fat_g,
-      fiber_g: m.fiber_g,
-      per_100g,
-      source: library_item_id ? "db" : "llm",
+    return { ok: false, error: { error: (e as Error).message, code: "verify_failed" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  if (!envelope.payload || typeof envelope.payload !== "object") {
+    return { ok: false, error: { error: "That approval is missing the meal payload. Please re-propose.", code: "missing_payload" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  const p = envelope.payload as MealLogPayload;
+
+  const saved_library_ids: string[] = [];
+  const itemsWithLibRefs: FoodItem[] = [];
+  for (const it of p.items) {
+    let library_item_id = it.library_item_id;
+    if (!library_item_id) {
+      const save = await executeSaveToLibrary({
+        supabase: opts.supabase,
+        userId: opts.userId,
+        input: { kind: "item", name: it.name, source: "user_manual", per_100g: it.per_100g },
+      });
+      if (save.ok) {
+        library_item_id = save.data.id;
+        if (!save.data.was_duplicate) saved_library_ids.push(save.data.id);
+      }
+    }
+    itemsWithLibRefs.push({
+      name: it.name,
+      qty_g: it.qty_g,
+      kcal: it.kcal,
+      protein_g: it.protein_g,
+      carbs_g: it.carbs_g,
+      fat_g: it.fat_g,
+      fiber_g: it.fiber_g,
+      per_100g: it.per_100g,
+      source: library_item_id ? "db" : it.source,
       db_ref: library_item_id
         ? { source: "user_library", canonical_id: library_item_id }
-        : null,
-      confidence: "high",
-      match_score: library_item_id ? 1.0 : null,
+        : it.db_ref,
+      confidence: it.confidence,
+      match_score: it.match_score,
     });
   }
-  const totals = sumMacros(items);
 
   const { data: inserted, error } = await opts.supabase
     .from("food_log_entries")
     .insert({
       user_id: opts.userId,
-      eaten_at,
+      eaten_at: p.eaten_at,
       kind: "text",
-      meal_slot,
-      raw_input: { kind: "text", text: raw_text },
-      items,
-      totals,
-      is_estimated: items.some((it) => it.source === "llm"),
+      meal_slot: p.meal_slot,
+      raw_input: { kind: "text", text: p.raw_text },
+      items: itemsWithLibRefs,
+      totals: p.totals,
+      is_estimated: itemsWithLibRefs.some((it) => it.source === "llm"),
       status: "committed",
     })
     .select("id, eaten_at")
     .single();
   if (error || !inserted) {
-    return {
-      ok: false,
-      error: { error: error?.message ?? "insert returned no row" },
-      meta: { ms: Date.now() - t0, range_days: 0 },
-    };
+    return { ok: false, error: { error: error?.message ?? "insert returned no row" }, meta: { ms: Date.now() - t0, range_days: 0 } };
   }
   const date = utcDate((inserted as { eaten_at: string }).eaten_at);
   const day_totals = foodLogOwnsDailyLogs()
@@ -3616,12 +4077,13 @@ export async function executeLogMealEntry(opts: {
     ok: true,
     data: {
       entry_id: (inserted as { id: string }).id,
-      meal_slot,
-      eaten_at,
-      item_count: items.length,
-      totals,
+      meal_slot: p.meal_slot,
+      eaten_at: p.eaten_at,
+      item_count: itemsWithLibRefs.length,
+      totals: p.totals,
       day_totals,
       date,
+      saved_library_ids,
     },
     meta: { ms: Date.now() - t0, result_rows: 1, range_days: 0, truncated: false },
   };
@@ -3980,6 +4442,10 @@ export const CARTER_TOOLS: readonly ToolSchema[] = [
   ADHERENCE_TOOL,
   PROPOSE_WEEK_PLAN_TOOL,
   COMMIT_WEEK_PLAN_TOOL,
+  PROPOSE_SESSION_TODAY_TOOL,
+  COMMIT_SESSION_TODAY_TOOL,
+  PROPOSE_SESSION_TEMPLATE_TOOL,
+  COMMIT_SESSION_TEMPLATE_TOOL,
   MARK_MOBILITY_DONE_TOOL,
   UNMARK_MOBILITY_DONE_TOOL,
 ];
@@ -4000,7 +4466,9 @@ export const NORA_TOOLS: readonly ToolSchema[] = [
   SEARCH_LIBRARY_TOOL,
   PICK_LIBRARY_ITEM_TOOL,
   SAVE_TO_LIBRARY_TOOL,
-  LOG_MEAL_ENTRY_TOOL,
+  RESOLVE_FOOD_MACROS_TOOL,
+  PROPOSE_MEAL_LOG_TOOL,
+  COMMIT_MEAL_LOG_TOOL,
 ];
 
 // Remi: recovery/sleep/illness. Reads recovery-relevant daily_logs columns;

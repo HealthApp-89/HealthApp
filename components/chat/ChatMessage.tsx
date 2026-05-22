@@ -12,6 +12,9 @@ import { WeekPlanProposalCard, type WeekProposal } from "./WeekPlanProposalCard"
 import { BlockProposalCard, type BlockProposal } from "./BlockProposalCard";
 import { PlanProposalCard } from "./PlanProposalCard";
 import { NutritionTargetsProposalCard, type NutritionTargetsProposal } from "./NutritionTargetsProposalCard";
+import { SessionTodayProposalCard, type SessionTodayProposal } from "@/components/chat/SessionTodayProposalCard";
+import { SessionTemplateProposalCard, type SessionTemplateProposal } from "@/components/chat/SessionTemplateProposalCard";
+import { MealLogProposalCard, type MealLogProposal } from "@/components/chat/MealLogProposalCard";
 import type { PlanPayload, Speaker } from "@/lib/data/types";
 
 export function ChatMessage({
@@ -52,6 +55,15 @@ export function ChatMessage({
   );
   const hasCommittedNutritionTargets = toolCalls.some(
     (c) => c.name === "commit_nutrition_targets" && !c.error,
+  );
+  const hasCommittedSessionToday = toolCalls.some(
+    (c) => c.name === "commit_session_today" && !c.error,
+  );
+  const hasCommittedSessionTemplate = toolCalls.some(
+    (c) => c.name === "commit_session_template" && !c.error,
+  );
+  const hasCommittedMealLog = toolCalls.some(
+    (c) => c.name === "commit_meal_log" && !c.error,
   );
 
   if (isUser) {
@@ -323,6 +335,57 @@ export function ChatMessage({
                 </div>
               );
             }
+            if (call.name === "propose_session_today") {
+              return (
+                <div key={i} style={{ marginTop: 8 }}>
+                  <SessionTodayProposalCard
+                    proposal={result.preview as SessionTodayProposal}
+                    approvalToken={result.approval_token}
+                    committed={hasCommittedSessionToday}
+                    onApprove={(token) =>
+                      onSendUserMessage?.(`[approve:${token}]`)
+                    }
+                    onTweak={() =>
+                      onFocusComposer?.("e.g., 'swap the curls for hammer curls'")
+                    }
+                  />
+                </div>
+              );
+            }
+            if (call.name === "propose_session_template") {
+              return (
+                <div key={i} style={{ marginTop: 8 }}>
+                  <SessionTemplateProposalCard
+                    proposal={result.preview as SessionTemplateProposal}
+                    approvalToken={result.approval_token}
+                    committed={hasCommittedSessionTemplate}
+                    onApprove={(token) =>
+                      onSendUserMessage?.(`[approve:${token}]`)
+                    }
+                    onTweak={() =>
+                      onFocusComposer?.("e.g., 'add a triceps finisher'")
+                    }
+                  />
+                </div>
+              );
+            }
+            if (call.name === "propose_meal_log") {
+              return (
+                <div key={i} style={{ marginTop: 8 }}>
+                  <MealLogProposalCard
+                    proposal={result.preview as MealLogProposal}
+                    approvalToken={result.approval_token}
+                    committed={hasCommittedMealLog}
+                    onApprove={(token) =>
+                      onSendUserMessage?.(`[approve:${token}]`)
+                    }
+                    onTweak={() =>
+                      onFocusComposer?.("e.g., 'change rice to 200g' or 'add a banana'")
+                    }
+                  />
+                </div>
+              );
+            }
             return null;
           })}
 
@@ -361,7 +424,6 @@ function renderToolReceiptChip(call: {
 }): React.ReactNode {
   const RECEIPT_TOOLS = new Set([
     "save_to_library",
-    "log_meal_entry",
     "search_library",
     "pick_library_item",
   ]);
@@ -406,26 +468,6 @@ function renderToolReceiptChip(call: {
       <span style={styleBase}>
         <span aria-hidden="true">{r.was_duplicate ? "↻" : "✓"}</span>
         <span>{label}: {name}</span>
-      </span>
-    );
-  }
-
-  if (call.name === "log_meal_entry") {
-    const r = (call.result ?? {}) as {
-      meal_slot?: "breakfast" | "lunch" | "dinner" | "snack";
-      item_count?: number;
-      totals?: { kcal?: number };
-    };
-    const slot = r.meal_slot ?? (call.input.meal_slot as string) ?? "snack";
-    const count = r.item_count ?? 0;
-    const kcal = r.totals?.kcal ? Math.round(r.totals.kcal) : null;
-    return (
-      <span style={styleBase}>
-        <span aria-hidden="true">🍽</span>
-        <span>
-          Logged to {slot}: {count} item{count === 1 ? "" : "s"}
-          {kcal !== null ? `, ${kcal} kcal` : ""}
-        </span>
       </span>
     );
   }

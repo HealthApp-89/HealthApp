@@ -37,6 +37,10 @@ import {
   executeCommitBlock,
   executeProposeWeekPlan,
   executeCommitWeekPlan,
+  executeProposeSessionToday,
+  executeCommitSessionToday,
+  executeProposeSessionTemplate,
+  executeCommitSessionTemplate,
   executeProposeNutritionTargets,
   executeCommitNutritionTargets,
   executeApplyGoalTarget,
@@ -61,7 +65,9 @@ import {
   executeSearchLibrary,
   executePickLibraryItem,
   executeSaveToLibrary,
-  executeLogMealEntry,
+  executeResolveFoodMacros,
+  executeProposeMealLog,
+  executeCommitMealLog,
   toolsForSpeaker,
   colsForSpeaker,
   type ToolResult,
@@ -82,6 +88,13 @@ const PERSIST_RESULT_TOOLS = new Set([
   "commit_plan",
   "propose_nutrition_targets",
   "commit_nutrition_targets",
+  // Session-write tools (Carter): the preview + approval_token + commit result
+  // must persist so the preview/confirmation chips render on chat history
+  // reload (see 2026-05-21 Nora re-save loop for the same bug class).
+  "propose_session_today",
+  "commit_session_today",
+  "propose_session_template",
+  "commit_session_template",
   // Library + meal-log tools persist their result so the UI can render
   // confirmation chips ("Saved: <name>", "Logged to <slot>") under the
   // assistant bubble. Without this the user couldn't tell that 8×
@@ -89,18 +102,23 @@ const PERSIST_RESULT_TOOLS = new Set([
   "save_to_library",
   "search_library",
   "pick_library_item",
-  "log_meal_entry",
+  "propose_meal_log",
+  "commit_meal_log",
 ]);
 function shouldPersistResult(name: string): boolean {
   return PERSIST_RESULT_TOOLS.has(name);
 }
-const MAX_TOOL_INVOCATIONS = 5;
+// Cap counts each tool_use block (parallel tool use included), not each round.
+// A realistic Nora batch-save in meal_log/default mode is 2N+2 calls (N search
+// + N save + 1 propose_meal_log + 1 commit_meal_log); 25 covers a 12-item meal comfortably while
+// still floor-limiting runaway loops on cheap query_* tools.
+const MAX_TOOL_INVOCATIONS = 25;
 const MAX_TOKENS = 2000;
 
 // Anthropic-managed web search. Pinned to web_search_20250305 (the basic
 // version) instead of _20260209. The _20260209 tool engages dynamic
 // filtering, which runs *inside* a code-execution container — when client
-// tools (save_to_library / log_meal_entry / etc.) are emitted in the same
+// tools (save_to_library / propose_meal_log / etc.) are emitted in the same
 // turn, the API requires the container_id back on every follow-up request
 // and the SDK 0.95.0 plumbing for that is fragile (per Anthropic server-
 // tools docs, dynamic filtering is what creates the container; the basic
@@ -269,16 +287,18 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
   //     plus regenerate_morning_brief.
   const modeAllowsTool = (name: string): boolean => {
     if (opts.mode === "meal_log") {
-      // Nora-in-meal-log needs the three library tools plus log_meal_entry
-      // so she can finish the resolve → save → log loop in one mode without
-      // bouncing the user back out to the meal sheet. All other tools are
-      // silenced to keep the LLM focused on data entry rather than wandering
-      // into nutrition advice (covered by NORA_MEAL_LOG_PROMPT).
+      // Nora-in-meal-log needs the library tools plus the propose/commit meal
+      // log pair so she can finish the resolve → preview → confirm → log loop
+      // in one mode without bouncing the user back out to the meal sheet. All
+      // other tools are silenced to keep the LLM focused on data entry rather
+      // than wandering into nutrition advice (covered by NORA_MEAL_LOG_PROMPT).
       return (
         name === "search_library" ||
         name === "pick_library_item" ||
         name === "save_to_library" ||
-        name === "log_meal_entry"
+        name === "resolve_food_macros" ||
+        name === "propose_meal_log" ||
+        name === "commit_meal_log"
       );
     }
     if (opts.mode === "plan_week" || opts.mode === "setup_block") {
@@ -560,6 +580,30 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
             input: block.input,
             chatMessageId: opts.assistantMessageId ?? null,
           });
+        } else if (block.name === "propose_session_today") {
+          result = await executeProposeSessionToday({
+            supabase: opts.sr,
+            userId: opts.userId,
+            input: block.input,
+          });
+        } else if (block.name === "commit_session_today") {
+          result = await executeCommitSessionToday({
+            supabase: opts.sr,
+            userId: opts.userId,
+            input: block.input,
+          });
+        } else if (block.name === "propose_session_template") {
+          result = await executeProposeSessionTemplate({
+            supabase: opts.sr,
+            userId: opts.userId,
+            input: block.input,
+          });
+        } else if (block.name === "commit_session_template") {
+          result = await executeCommitSessionTemplate({
+            supabase: opts.sr,
+            userId: opts.userId,
+            input: block.input,
+          });
         } else if (block.name === "propose_nutrition_targets") {
           result = await executeProposeNutritionTargets({
             supabase: opts.sr,
@@ -620,8 +664,20 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
             userId: opts.userId,
             input: block.input,
           });
-        } else if (block.name === "log_meal_entry") {
-          result = await executeLogMealEntry({
+        } else if (block.name === "resolve_food_macros") {
+          result = await executeResolveFoodMacros({
+            supabase: opts.sr,
+            userId: opts.userId,
+            input: block.input,
+          });
+        } else if (block.name === "propose_meal_log") {
+          result = await executeProposeMealLog({
+            supabase: opts.sr,
+            userId: opts.userId,
+            input: block.input,
+          });
+        } else if (block.name === "commit_meal_log") {
+          result = await executeCommitMealLog({
             supabase: opts.sr,
             userId: opts.userId,
             input: block.input,

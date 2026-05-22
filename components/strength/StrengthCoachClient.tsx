@@ -11,6 +11,7 @@ import { useCheckin } from "@/lib/query/hooks/useCheckin";
 import { useTrainingWeek } from "@/lib/query/hooks/useTrainingWeek";
 import { useRecentE1RMs } from "@/lib/query/hooks/useRecentE1RMs";
 import { useBlockProgress, isActiveBlock } from "@/lib/query/hooks/useBlockProgress";
+import { useUserSessionTemplate } from "@/lib/query/hooks/useUserSessionTemplate";
 import { buildDailyPlan } from "@/lib/coach/readiness";
 import { getEffectiveSessionPlan } from "@/lib/coach/sessionPlans";
 import { readSessionForDay } from "@/lib/coach/session-plan-reader";
@@ -89,8 +90,18 @@ export function StrengthCoachClient({ userId }: Props) {
   const exerciseOverrides =
     (committedWeek?.exercise_overrides as ExerciseOverrides | null | undefined) ?? null;
 
+  const { data: userTemplate = null } = useUserSessionTemplate(
+    userId,
+    committedSessionType ?? "",
+  );
+
   const effectivePlan = committedSessionType
-    ? getEffectiveSessionPlan(committedSessionType, fullWeekday, exerciseOverrides)
+    ? getEffectiveSessionPlan(
+        committedSessionType,
+        fullWeekday,
+        exerciseOverrides,
+        userTemplate?.exercises ?? null,
+      )
     : null;
 
   const dailyPlan = buildDailyPlan(todayLog, feel, hrvBaseline, {
