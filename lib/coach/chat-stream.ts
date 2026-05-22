@@ -97,24 +97,20 @@ function shouldPersistResult(name: string): boolean {
 const MAX_TOOL_INVOCATIONS = 5;
 const MAX_TOKENS = 2000;
 
-// Anthropic-managed web search. Executed entirely on Anthropic's side: the
-// model emits server_tool_use blocks that we never have to dispatch, and the
-// web_search_tool_result blocks come back inline in the same stream. Our
-// `b.type === "tool_use"` filter below ignores both, so the loop terminates
-// naturally after the model writes its final text. Cost: ~$10 per 1k searches
-// + token cost on returned content. max_uses caps abuse per turn.
-const WEB_SEARCH_TOOL: Anthropic.Messages.WebSearchTool20260209 = {
-  type: "web_search_20260209",
-  name: "web_search",
-  max_uses: 5,
-};
-
-// Modes where coaches may search the web. Hidden in meal_log (Nora's
-// data-entry flow stays focused on resolving items) and intake (Phase 2
-// plan-builder is deterministic — no web noise during the wizard).
-function webSearchAllowedForMode(mode: ChatMode): boolean {
-  return mode === "default" || mode === "plan_week" || mode === "setup_block";
-}
+// Web search removed 2026-05-22. web_search_20260209 engages Anthropic's
+// Programmatic Tool Calling, which spins up a code-execution container
+// whose container_id must be threaded back across stream rounds. SDK
+// 0.95.0's container-param support is unreliable in practice (passing
+// finalMsg.container.id top-level still produces "container_id is required"
+// 400s on the post-tool round), so the combination of web_search +
+// client tools (save_to_library / log_meal_entry / search_library)
+// repeatedly tore down Nora's save→log workflow.
+//
+// Cost of removal: model uses training-data nutrition values (USDA-aligned)
+// instead of fresh web lookups. Nora was already doing this when she hit
+// max_uses=5 anyway. Re-introduce if/when Anthropic SDK container handling
+// stabilizes or when we move to a separate web-search lane that doesn't
+// share a turn with client tools.
 
 export type ChatStreamYield =
   | { type: "delta"; text: string }
@@ -307,20 +303,9 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
 
   const speakerTools = toolsForSpeaker(speaker);
   const toolsForMode: ToolSchema[] = speakerTools.filter((t) => modeAllowsTool(t.name)).slice();
-  const mode: ChatMode = opts.mode ?? "default";
-  const tools: Anthropic.Messages.Tool[] = [
-    ...(toolsForMode as unknown as Anthropic.Messages.Tool[]),
-    ...(webSearchAllowedForMode(mode) ? [WEB_SEARCH_TOOL as unknown as Anthropic.Messages.Tool] : []),
-  ];
+  const tools: Anthropic.Messages.Tool[] =
+    toolsForMode as unknown as Anthropic.Messages.Tool[];
 
-  // When web_search (server tool, Programmatic Tool Calling) runs alongside
-  // client tools, Anthropic holds a code-execution container across the
-  // assistant's turn-internal loop. On our next stream call we MUST pass
-  // the container id back, otherwise the API rejects with:
-  //   "container_id is required when there are pending tool uses generated
-  //    by code execution with tools."
-  // Tracked across loop iterations; the first iteration sends null.
-  let containerId: string | null = null;
   while (true) {
     const forceText = invocations >= MAX_TOOL_INVOCATIONS;
     const stream = client.messages.stream(
@@ -329,14 +314,12 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
         max_tokens: MAX_TOKENS,
         system,
         tools,
-        // Why not disable_parallel_tool_use: Anthropic's server tools (web_search
-        // here) run via Programmatic Tool Calling, which the API refuses to
-        // combine with disable_parallel_tool_use=true. Our for-loop over
-        // toolUseBlocks already serializes execution, so parallel emission is
-        // safe.
+        // Why not disable_parallel_tool_use: Sonnet 4.6 occasionally emits
+        // multiple tool_use blocks per round (parallel tool use). Our
+        // for-loop below dispatches them serially in order, so parallel
+        // emission is safe.
         tool_choice: forceText ? { type: "none" } : { type: "auto" },
         messages: messages as Anthropic.MessageParam[],
-        ...(containerId ? { container: containerId } : {}),
       },
       { signal: opts.signal },
     );
@@ -376,11 +359,6 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
       yield { type: "error", message: `anthropic_finalize: ${(e as Error).message}` };
       return;
     }
-
-    // Capture the code-execution container id from this turn so the next
-    // iteration's request can resume it. Null when no server tool ran.
-    const finalContainer = (finalMsg as { container?: { id: string } | null }).container;
-    containerId = finalContainer?.id ?? containerId;
 
     // Accumulate usage. Anthropic returns cache_read_input_tokens +
     // cache_creation_input_tokens when prompt caching is in play; both can be
