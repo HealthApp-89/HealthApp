@@ -12,6 +12,8 @@ import { WeekPlanProposalCard, type WeekProposal } from "./WeekPlanProposalCard"
 import { BlockProposalCard, type BlockProposal } from "./BlockProposalCard";
 import { PlanProposalCard } from "./PlanProposalCard";
 import { NutritionTargetsProposalCard, type NutritionTargetsProposal } from "./NutritionTargetsProposalCard";
+import { SessionTodayProposalCard, type SessionTodayProposal } from "@/components/chat/SessionTodayProposalCard";
+import { SessionTemplateProposalCard, type SessionTemplateProposal } from "@/components/chat/SessionTemplateProposalCard";
 import type { PlanPayload, Speaker } from "@/lib/data/types";
 
 export function ChatMessage({
@@ -52,6 +54,12 @@ export function ChatMessage({
   );
   const hasCommittedNutritionTargets = toolCalls.some(
     (c) => c.name === "commit_nutrition_targets" && !c.error,
+  );
+  const hasCommittedSessionToday = toolCalls.some(
+    (c) => c.name === "commit_session_today" && !c.error,
+  );
+  const hasCommittedSessionTemplate = toolCalls.some(
+    (c) => c.name === "commit_session_template" && !c.error,
   );
 
   if (isUser) {
@@ -318,6 +326,40 @@ export function ChatMessage({
                     }
                     onTweak={() =>
                       onFocusComposer?.("e.g., 'lower kcal to 1800'")
+                    }
+                  />
+                </div>
+              );
+            }
+            if (call.name === "propose_session_today") {
+              return (
+                <div key={i} style={{ marginTop: 8 }}>
+                  <SessionTodayProposalCard
+                    proposal={result.preview as SessionTodayProposal}
+                    approvalToken={result.approval_token}
+                    committed={hasCommittedSessionToday}
+                    onApprove={(token) =>
+                      onSendUserMessage?.(`[approve:${token}]`)
+                    }
+                    onTweak={() =>
+                      onFocusComposer?.("e.g., 'swap the curls for hammer curls'")
+                    }
+                  />
+                </div>
+              );
+            }
+            if (call.name === "propose_session_template") {
+              return (
+                <div key={i} style={{ marginTop: 8 }}>
+                  <SessionTemplateProposalCard
+                    proposal={result.preview as SessionTemplateProposal}
+                    approvalToken={result.approval_token}
+                    committed={hasCommittedSessionTemplate}
+                    onApprove={(token) =>
+                      onSendUserMessage?.(`[approve:${token}]`)
+                    }
+                    onTweak={() =>
+                      onFocusComposer?.("e.g., 'add a triceps finisher'")
                     }
                   />
                 </div>
