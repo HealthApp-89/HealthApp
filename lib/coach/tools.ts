@@ -20,6 +20,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { signApprovalToken, verifyApprovalToken, payloadHash, ApprovalTokenError, approvalTokenUserMessage } from "@/lib/coach/approval-token";
 import type { IntakePayload, PlanPayload, Speaker, TrainingBlock, TrainingWeek } from "@/lib/data/types";
+import type { PlannedExercise } from "@/lib/coach/sessionPlans";
 import {
   type MealSlot,
   type FoodItem,
@@ -44,7 +45,7 @@ import {
 } from "@/lib/coach/derived";
 import { categorize, type ExerciseCategory } from "@/lib/coach/exercise-categories";
 import type { PrimaryLift } from "@/lib/data/types";
-import { todayInUserTz } from "@/lib/time";
+import { todayInUserTz, weekdayInUserTz } from "@/lib/time";
 import { computeAdherence } from "@/lib/coach/adherence";
 import { getAutoregulationSignals } from "@/lib/coach/autoregulation";
 import {
@@ -1853,6 +1854,188 @@ export async function executeCommitWeekPlan(opts: {
     ok: true,
     data: data as TrainingWeek,
     meta: { ms: Date.now() - t0, result_rows: 1, range_days: 7, truncated: false },
+  };
+}
+
+// ── propose_session_today / commit_session_today ─────────────────────────────
+//
+// One-off override of today's exercises. Writes
+// training_weeks.exercise_overrides[<weekdayLong>] without the permutation
+// rule the /api/training-weeks/[week_start]/exercise-overrides route enforces
+// (that route still protects the drag-to-reorder chip's contract).
+//
+// Used for swap-policy rules 1 (pain), 3 (equipment), 6 (athlete-raised
+// boredom) and illness scaling. Tomorrow's same-type session reverts to the
+// template; this is single-day only.
+
+const WEEKDAYS_LONG = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"] as const;
+type WeekdayLong = (typeof WEEKDAYS_LONG)[number];
+
+type SessionTodayPayload = {
+  weekday: WeekdayLong;
+  exercises: PlannedExercise[];
+  rationale: string;
+};
+
+export const PROPOSE_SESSION_TODAY_TOOL = {
+  name: "propose_session_today",
+  description:
+    "Propose a one-off override of today's exercises for the athlete to approve. Use ONLY for mid-block exceptions: pain (swap-policy rule 1), equipment unavailable (rule 3), illness scaling, athlete-raised boredom (rule 6). Tomorrow's same-type session reverts to the saved template. Writes to training_weeks.exercise_overrides[weekday]; does NOT persist beyond today. Requires a committed training_weeks row for the current week.",
+  input_schema: {
+    type: "object" as const,
+    required: ["weekday", "exercises", "rationale"],
+    properties: {
+      weekday: { type: "string", enum: WEEKDAYS_LONG, description: "Full weekday name; must match today's user-tz weekday." },
+      exercises: {
+        type: "array",
+        minItems: 1,
+        maxItems: 20,
+        items: {
+          type: "object",
+          required: ["name"],
+          properties: {
+            name:     { type: "string", minLength: 2, maxLength: 80 },
+            warmup:   { type: "boolean" },
+            reps:     { type: "string", maxLength: 40 },
+            baseKg:   { type: "number", minimum: 0, maximum: 500 },
+            baseReps: { type: "integer", minimum: 1, maximum: 60 },
+            sets:     { type: "integer", minimum: 1, maximum: 12 },
+            key:      { type: "string", maxLength: 40 },
+            note:     { type: "string", maxLength: 200 },
+            increment: {
+              type: "object",
+              required: ["step"],
+              properties: {
+                step:         { type: "number", minimum: 0.5, maximum: 20 },
+                intermediate: { type: "number", minimum: 0.5, maximum: 20 },
+              },
+            },
+          },
+        },
+      },
+      rationale: { type: "string", minLength: 4, maxLength: 400, description: "Plain-language reasoning shown to the athlete on the approval chip." },
+    },
+  },
+};
+
+export const COMMIT_SESSION_TODAY_TOOL = {
+  name: "commit_session_today",
+  description:
+    "Commit a previously proposed one-off session override. Requires approval_token from propose_session_today. Writes training_weeks.exercise_overrides for today's weekday slot.",
+  input_schema: {
+    type: "object" as const,
+    required: ["approval_token"],
+    properties: {
+      approval_token: { type: "string", minLength: 60 },
+    },
+  },
+};
+
+export async function executeProposeSessionToday(opts: {
+  supabase: SupabaseClient;
+  userId: string;
+  input: unknown;
+}): Promise<ToolResult<{ preview: SessionTodayPayload; approval_token: string }>> {
+  const t0 = Date.now();
+  const i = (opts.input ?? {}) as Record<string, unknown>;
+
+  if (typeof i.weekday !== "string" || !(WEEKDAYS_LONG as readonly string[]).includes(i.weekday)) {
+    return { ok: false, error: { error: "weekday must be a full weekday name (Monday-Sunday)" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  if (!Array.isArray(i.exercises) || i.exercises.length === 0) {
+    return { ok: false, error: { error: "exercises must be a non-empty array" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  if (typeof i.rationale !== "string" || i.rationale.length < 4) {
+    return { ok: false, error: { error: "rationale required (4-400 chars)" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+
+  // Soft anchor: the weekday should match today's user-tz weekday. If it
+  // doesn't, the override would land on the wrong day. Reject cleanly rather
+  // than silently writing the wrong slot.
+  const todayWeekday = weekdayInUserTz();
+  if (i.weekday !== todayWeekday) {
+    return {
+      ok: false,
+      error: { error: `weekday=${i.weekday} doesn't match today (${todayWeekday}). For future days, propose a week plan instead.` },
+      meta: { ms: Date.now() - t0, range_days: 0 },
+    };
+  }
+
+  const payload: SessionTodayPayload = {
+    weekday: i.weekday as WeekdayLong,
+    exercises: i.exercises as PlannedExercise[],
+    rationale: i.rationale as string,
+  };
+  const token = signApprovalToken({ userId: opts.userId, action: "session_today", payload });
+  return {
+    ok: true,
+    data: { preview: payload, approval_token: token },
+    meta: { ms: Date.now() - t0, result_rows: 1, range_days: 1, truncated: false },
+  };
+}
+
+export async function executeCommitSessionToday(opts: {
+  supabase: SupabaseClient;
+  userId: string;
+  input: unknown;
+}): Promise<ToolResult<{ week_start: string; weekday: WeekdayLong; exercises: PlannedExercise[] }>> {
+  const t0 = Date.now();
+  const i = (opts.input ?? {}) as Record<string, unknown>;
+  const token = i.approval_token;
+
+  if (typeof token !== "string") {
+    return { ok: false, error: { error: "approval_token required" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  let envelope;
+  try {
+    envelope = verifyApprovalToken({ token, userId: opts.userId, action: "session_today" });
+  } catch (e) {
+    if (e instanceof ApprovalTokenError) {
+      return { ok: false, error: { error: approvalTokenUserMessage(e.code), code: e.code }, meta: { ms: Date.now() - t0, range_days: 0 } };
+    }
+    return { ok: false, error: { error: (e as Error).message, code: "verify_failed" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  if (!envelope.payload || typeof envelope.payload !== "object") {
+    return { ok: false, error: { error: "That approval is missing the session payload. Please re-propose.", code: "missing_payload" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  const p = envelope.payload as SessionTodayPayload;
+
+  const today = todayInUserTz();
+  const week_start = weekStart(today);
+
+  const { data: row, error: loadErr } = await opts.supabase
+    .from("training_weeks")
+    .select("id, exercise_overrides")
+    .eq("user_id", opts.userId)
+    .eq("week_start", week_start)
+    .maybeSingle();
+  if (loadErr) {
+    return { ok: false, error: { error: "Couldn't load this week's plan. Please try again.", code: loadErr.code ?? "load_failed" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  if (!row) {
+    return {
+      ok: false,
+      error: { error: "No weekly plan committed yet for this week. Tell me 'plan my week' first.", code: "no_week" },
+      meta: { ms: Date.now() - t0, range_days: 0 },
+    };
+  }
+
+  const existing = (row.exercise_overrides as Record<string, PlannedExercise[]> | null) ?? {};
+  const next = { ...existing, [p.weekday]: p.exercises };
+
+  const { error: updateErr } = await opts.supabase
+    .from("training_weeks")
+    .update({ exercise_overrides: next, updated_at: new Date().toISOString() })
+    .eq("user_id", opts.userId)
+    .eq("week_start", week_start);
+  if (updateErr) {
+    return { ok: false, error: { error: "Couldn't save today's session override. Please try again.", code: updateErr.code ?? "update_failed" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+
+  return {
+    ok: true,
+    data: { week_start, weekday: p.weekday, exercises: p.exercises },
+    meta: { ms: Date.now() - t0, result_rows: 1, range_days: 1, truncated: false },
   };
 }
 
