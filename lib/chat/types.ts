@@ -4,7 +4,7 @@
 // Also the canonical home for Anthropic-message wire shapes used by the
 // chat path — both lib/anthropic/client.ts (hand-rolled streamer) and
 // lib/coach/chat-stream.ts (SDK-based tool loop) import from here.
-import type { MorningBriefCard, MorningUI, WeeklyReviewCardUI, ProactiveNudgeCard } from "@/lib/data/types";
+import type { MorningBriefCard, MorningUI, WeeklyReviewCardUI, ProactiveNudgeCard, WorkoutDebriefPayload } from "@/lib/data/types";
 
 export type ChatRole = "user" | "assistant";
 export type ChatStatus = "streaming" | "done" | "error";
@@ -50,10 +50,10 @@ export type ChatMessage = {
    *  Matches chat_messages.thread; used for per-coach chat surfaces. */
   thread: import("@/lib/data/types").Speaker;
   /** Default 'coach'. ChatPanel filters its render by this. */
-  kind: "coach" | "morning_intake" | "morning_brief" | "weekly_review" | "proactive_nudge" | "system_routing";
+  kind: "coach" | "morning_intake" | "morning_brief" | "weekly_review" | "proactive_nudge" | "system_routing" | "workout_debrief";
   /** Chips / rendering hints for morning_intake turns; structured card UI
    *  for morning_brief / weekly_review / proactive_nudge turns. */
-  ui: MorningUI | MorningBriefCard | WeeklyReviewCardUI | ProactiveNudgeCard | null;
+  ui: MorningUI | MorningBriefCard | WeeklyReviewCardUI | ProactiveNudgeCard | WorkoutDebriefPayload | null;
   /** Persisted tool-call logs. Populated only for assistant messages that
    *  invoked at least one tool. Non-null only when the server includes the
    *  column in its select (GET /api/chat/messages returns it). */

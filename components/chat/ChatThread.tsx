@@ -8,12 +8,14 @@ import { HandoffLine } from "./HandoffLine";
 import { MorningBriefCard as MorningBriefCardComponent } from "@/components/morning/MorningBriefCard";
 import { WeeklyReviewCard } from "@/components/chat/WeeklyReviewCard";
 import { ProactiveNudgeCard } from "@/components/chat/ProactiveNudgeCard";
+import { WorkoutDebriefCard } from "@/components/chat/WorkoutDebriefCard";
 import { isCoachSpeaker } from "@/lib/coach/speakers";
 import type {
   MorningBriefCard,
   Speaker,
   WeeklyReviewCardUI,
   ProactiveNudgeCard as ProactiveNudgeCardUI,
+  WorkoutDebriefPayload,
 } from "@/lib/data/types";
 
 function ChatThreadInner({
@@ -227,6 +229,14 @@ function ChatThreadInner({
             />
           );
         }
+        if (it.m.kind === "workout_debrief" && it.m.ui) {
+          return (
+            <WorkoutDebriefCard
+              key={it.m.id}
+              payload={it.m.ui as WorkoutDebriefPayload}
+            />
+          );
+        }
         // Compute grouping: a coach turn is "first in group" when the prior
         // item is a day divider, a special card, or a message from the
         // opposite role. Day dividers and full-bleed cards both reset the
@@ -240,7 +250,8 @@ function ChatThreadInner({
             (prevItem.m.role !== it.m.role ||
               prevItem.m.kind === "morning_brief" ||
               prevItem.m.kind === "weekly_review" ||
-              prevItem.m.kind === "proactive_nudge"));
+              prevItem.m.kind === "proactive_nudge" ||
+              prevItem.m.kind === "workout_debrief"));
 
         // Render a HandoffLine when two adjacent assistant turns belong to
         // different coach speakers. Briefing prose is live-only; replayed
