@@ -16,6 +16,7 @@ import { queryKeys } from "@/lib/query/keys";
 import { useDailyLogs } from "@/lib/query/hooks/useDailyLogs";
 import { useCheckin } from "@/lib/query/hooks/useCheckin";
 import { todayInUserTz, ymdInUserTz } from "@/lib/time";
+import { currentWeekMonday } from "@/lib/coach/week";
 import { COLOR } from "@/lib/ui/theme";
 
 /** Coach / Morning kind toggle. URL-driven (`?kind=morning_intake`) so refresh
@@ -513,6 +514,34 @@ export default function ChatPanel({
                   // Best-effort.
                 }
               })();
+            }
+            // Carter's session-write tools mutate training_weeks / user_session_templates.
+            // Invalidate the relevant TanStack caches so /strength reflects the change
+            // without a manual refresh.
+            const committedSessionToday = (inlineToolCalls ?? []).some(
+              (c) => c.name === "commit_session_today" && !c.error,
+            );
+            const committedSessionTemplate = (inlineToolCalls ?? []).find(
+              (c) => c.name === "commit_session_template" && !c.error,
+            );
+            if (committedSessionToday) {
+              queryClient.invalidateQueries({
+                queryKey: queryKeys.trainingWeeks.one(userId, currentWeekMonday()),
+              });
+            }
+            if (committedSessionTemplate) {
+              const sessionType = (committedSessionTemplate.result as { session_type?: string } | null)?.session_type;
+              if (sessionType) {
+                queryClient.invalidateQueries({
+                  queryKey: queryKeys.userSessionTemplates.one(userId, sessionType),
+                });
+              } else {
+                // Defensive fallback: if the result didn't carry session_type, blow the
+                // whole namespace for this user.
+                queryClient.invalidateQueries({
+                  queryKey: queryKeys.userSessionTemplates.all(userId),
+                });
+              }
             }
           } else if (ev.type === "handoff") {
             // Peter delegated to a specialist. The server resets its own
