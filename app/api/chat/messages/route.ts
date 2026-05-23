@@ -343,10 +343,37 @@ export async function POST(req: Request) {
     draftDocId = body.doc;
   }
 
-  // Stamp both rows with the resolved mode.
+  // Pull the draft entry id out of hidden_context for meal_log mode. The
+  // MealLoggerChatTab includes a line `entry_id: <uuid>` in the hidden
+  // context for every reply turn; we tag both the user and assistant rows
+  // with it so the post-commit DELETE can scope by draft_entry_id.
+  let mealLogDraftEntryId: string | null = null;
+  if (effectiveMode === "meal_log" && typeof body.hidden_context === "string") {
+    const m = body.hidden_context.match(/entry_id:\s*([0-9a-f-]{36})/i);
+    if (m) mealLogDraftEntryId = m[1];
+  }
+
+  // Stamp both rows with the resolved mode + kind + (for meal_log) the
+  // draft entry tag. kind defaults to 'coach' from the table; for meal_log
+  // mode we need 'meal_log' so the MealLoggerChatTab thread query picks up
+  // the assistant reply and the post-commit DELETE-by-draft_entry_id finds
+  // these rows.
+  const stampPatch: {
+    mode: ChatMode;
+    updated_at: string;
+    kind?: "meal_log";
+    draft_entry_id?: string;
+  } = {
+    mode: effectiveMode,
+    updated_at: new Date().toISOString(),
+  };
+  if (effectiveMode === "meal_log") {
+    stampPatch.kind = "meal_log";
+    if (mealLogDraftEntryId) stampPatch.draft_entry_id = mealLogDraftEntryId;
+  }
   await sr
     .from("chat_messages")
-    .update({ mode: effectiveMode, updated_at: new Date().toISOString() })
+    .update(stampPatch)
     .in("id", [rpcTyped.user_message_id, rpcTyped.assistant_message_id]);
 
   // ── Pre-stream routing ────────────────────────────────────────────────
