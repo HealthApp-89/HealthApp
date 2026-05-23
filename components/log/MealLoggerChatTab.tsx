@@ -367,6 +367,7 @@ export function MealLoggerChatTab({ userId, mealSlot, eatenAt, onCommitted }: Pr
         speaker: "user",
         kind: "meal_log",
         mode: "meal_log",
+        draft_entry_id: parseJson.entry.id,
         ui: null,
       })
       .select("id, speaker, content, ui, created_at")
@@ -397,6 +398,7 @@ export function MealLoggerChatTab({ userId, mealSlot, eatenAt, onCommitted }: Pr
         speaker: "nora",
         kind: "meal_log",
         mode: "meal_log",
+        draft_entry_id: parseJson.entry.id,
         ui: { mode: "preview", entry_id: parseJson.entry.id },
       })
       .select("id, speaker, content, ui, created_at")
@@ -537,6 +539,7 @@ export function MealLoggerChatTab({ userId, mealSlot, eatenAt, onCommitted }: Pr
             speaker: "nora",
             kind: "meal_log",
             mode: "meal_log",
+          draft_entry_id: entry.id,
             ui: { mode: "preview", entry_id: entry.id },
           })
           .select("id, speaker, content, ui, created_at")
