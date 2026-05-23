@@ -68,8 +68,21 @@ export type LibraryExercise = {
    *  sessionPlans.ts. `step` = base increment (e.g., 2.5 for a barbell with
    *  1.25 plates). `intermediate` = optional pin between steps (e.g., 5 with
    *  a 2.3 micro-pin → valid weights: 0, 2.3, 5, 7.3, 10, 12.3, ...). Absent
-   *  means no rounding needed (bodyweight / duration exercises). */
+   *  means no rounding needed (bodyweight / duration exercises).
+   *
+   *  For dumbbell exercises, `step` is the per-DB increment (typically 2 kg),
+   *  NOT the total system-load increment. See `pairedDb` below for converting
+   *  per-DB to total load. */
   increment?: { step: number; intermediate?: number };
+  /** Only meaningful when `equipment` includes "dumbbell".
+   *  true  → exercise uses two DBs simultaneously (curls, presses, flys, lateral
+   *          raises, paired rows). Total system load = 2 × per-DB. Smallest
+   *          achievable total-load jump = 2 × increment.step (4 kg with the
+   *          default 2 kg DB step).
+   *  false → exercise uses one DB at a time (pullover with both hands on one DB,
+   *          single-arm row, goblet squat). Total system load = per-DB. Smallest
+   *          achievable total-load jump = increment.step (2 kg). */
+  pairedDb?: boolean;
   notes?: string;
 };
 
@@ -106,6 +119,7 @@ export const EXERCISE_LIBRARY: readonly LibraryExercise[] = [
     jointStress: ["shoulder", "elbow"],
     loadability: "moderate",
     role: "accessory",
+    increment: { step: 2.5 },
   },
   {
     id: "flat_bench_db",
@@ -120,6 +134,8 @@ export const EXERCISE_LIBRARY: readonly LibraryExercise[] = [
     jointStress: ["shoulder", "elbow"],
     loadability: "coarse",
     role: "accessory",
+    increment: { step: 2 },
+    pairedDb: true,
   },
   {
     id: "incline_bench",
@@ -134,6 +150,7 @@ export const EXERCISE_LIBRARY: readonly LibraryExercise[] = [
     jointStress: ["shoulder", "elbow"],
     loadability: "moderate",
     role: "accessory",
+    increment: { step: 2.5 },
   },
   {
     id: "incline_db",
@@ -149,6 +166,7 @@ export const EXERCISE_LIBRARY: readonly LibraryExercise[] = [
     loadability: "coarse",
     role: "accessory",
     increment: { step: 2 },
+    pairedDb: true,
   },
   {
     id: "decline_db",
@@ -163,6 +181,8 @@ export const EXERCISE_LIBRARY: readonly LibraryExercise[] = [
     jointStress: ["shoulder", "elbow"],
     loadability: "coarse",
     role: "accessory",
+    increment: { step: 2 },
+    pairedDb: true,
   },
   {
     id: "machine_chest_press",
@@ -177,6 +197,7 @@ export const EXERCISE_LIBRARY: readonly LibraryExercise[] = [
     jointStress: ["shoulder"],
     loadability: "fine",
     role: "accessory",
+    increment: { step: 5 },
   },
   {
     id: "chest_fly_cable",
@@ -205,6 +226,8 @@ export const EXERCISE_LIBRARY: readonly LibraryExercise[] = [
     jointStress: ["shoulder"],
     loadability: "coarse",
     role: "accessory",
+    increment: { step: 2 },
+    pairedDb: true,
   },
   {
     id: "pec_deck",
@@ -218,6 +241,7 @@ export const EXERCISE_LIBRARY: readonly LibraryExercise[] = [
     jointStress: ["shoulder"],
     loadability: "fine",
     role: "accessory",
+    increment: { step: 5 },
   },
   {
     id: "push_up",
@@ -279,6 +303,8 @@ export const EXERCISE_LIBRARY: readonly LibraryExercise[] = [
     jointStress: ["shoulder", "elbow"],
     loadability: "coarse",
     role: "accessory",
+    increment: { step: 2 },
+    pairedDb: true,
   },
   {
     id: "arnold_press",
@@ -293,6 +319,8 @@ export const EXERCISE_LIBRARY: readonly LibraryExercise[] = [
     jointStress: ["shoulder", "elbow"],
     loadability: "coarse",
     role: "accessory",
+    increment: { step: 2 },
+    pairedDb: true,
   },
   {
     id: "machine_shoulder_press",
@@ -307,6 +335,7 @@ export const EXERCISE_LIBRARY: readonly LibraryExercise[] = [
     jointStress: ["shoulder"],
     loadability: "fine",
     role: "accessory",
+    increment: { step: 5 },
   },
   {
     id: "lateral_raise",
@@ -321,6 +350,7 @@ export const EXERCISE_LIBRARY: readonly LibraryExercise[] = [
     loadability: "coarse",
     role: "accessory",
     increment: { step: 2 },
+    pairedDb: true,
     notes: "Athlete's current Chest day delt isolation.",
   },
   {
@@ -335,6 +365,7 @@ export const EXERCISE_LIBRARY: readonly LibraryExercise[] = [
     jointStress: ["shoulder"],
     loadability: "fine",
     role: "accessory",
+    increment: { step: 2.5 },
   },
 
   // ── PUSH — Triceps ─────────────────────────────────────────────────────────
@@ -365,6 +396,7 @@ export const EXERCISE_LIBRARY: readonly LibraryExercise[] = [
     jointStress: ["elbow", "shoulder"],
     loadability: "fine",
     role: "accessory",
+    increment: { step: 2.5 },
   },
   {
     id: "skull_crusher",
@@ -378,6 +410,7 @@ export const EXERCISE_LIBRARY: readonly LibraryExercise[] = [
     jointStress: ["elbow"],
     loadability: "moderate",
     role: "accessory",
+    increment: { step: 2.5 },
   },
   {
     id: "close_grip_bench",
@@ -392,6 +425,7 @@ export const EXERCISE_LIBRARY: readonly LibraryExercise[] = [
     jointStress: ["shoulder", "elbow"],
     loadability: "moderate",
     role: "accessory",
+    increment: { step: 2.5 },
   },
 
   // ── PULL — Lats ────────────────────────────────────────────────────────────
@@ -424,6 +458,7 @@ export const EXERCISE_LIBRARY: readonly LibraryExercise[] = [
     jointStress: ["shoulder", "elbow"],
     loadability: "fine",
     role: "accessory",
+    increment: { step: 2.5 },
   },
   {
     id: "pull_up",
@@ -482,6 +517,7 @@ export const EXERCISE_LIBRARY: readonly LibraryExercise[] = [
     jointStress: ["shoulder", "elbow", "lumbar"],
     loadability: "fine",
     role: "accessory",
+    increment: { step: 2.5 },
   },
   {
     id: "dumbbell_row",
@@ -496,6 +532,8 @@ export const EXERCISE_LIBRARY: readonly LibraryExercise[] = [
     jointStress: ["shoulder", "elbow", "lumbar"],
     loadability: "coarse",
     role: "accessory",
+    increment: { step: 2 },
+    pairedDb: false,
   },
   {
     id: "tbar_row",
@@ -510,6 +548,7 @@ export const EXERCISE_LIBRARY: readonly LibraryExercise[] = [
     jointStress: ["shoulder", "lumbar"],
     loadability: "moderate",
     role: "accessory",
+    increment: { step: 2.5 },
   },
   {
     id: "pullover_db",
@@ -525,6 +564,7 @@ export const EXERCISE_LIBRARY: readonly LibraryExercise[] = [
     loadability: "coarse",
     role: "accessory",
     increment: { step: 2 },
+    pairedDb: false,
     notes: "Athlete's current Back day lat-stretch finisher.",
   },
 
@@ -541,6 +581,7 @@ export const EXERCISE_LIBRARY: readonly LibraryExercise[] = [
     jointStress: ["shoulder"],
     loadability: "fine",
     role: "accessory",
+    increment: { step: 2.5 },
   },
   {
     id: "rear_delt_fly",
@@ -554,6 +595,8 @@ export const EXERCISE_LIBRARY: readonly LibraryExercise[] = [
     jointStress: ["shoulder"],
     loadability: "coarse",
     role: "accessory",
+    increment: { step: 2 },
+    pairedDb: true,
   },
   {
     id: "reverse_pec_deck",
@@ -567,6 +610,7 @@ export const EXERCISE_LIBRARY: readonly LibraryExercise[] = [
     jointStress: ["shoulder"],
     loadability: "fine",
     role: "accessory",
+    increment: { step: 5 },
   },
 
   // ── PULL — Traps ───────────────────────────────────────────────────────────
@@ -597,6 +641,8 @@ export const EXERCISE_LIBRARY: readonly LibraryExercise[] = [
     jointStress: ["shoulder"],
     loadability: "coarse",
     role: "accessory",
+    increment: { step: 2 },
+    pairedDb: true,
   },
   {
     id: "cable_shrug",
@@ -610,6 +656,7 @@ export const EXERCISE_LIBRARY: readonly LibraryExercise[] = [
     jointStress: ["shoulder"],
     loadability: "fine",
     role: "accessory",
+    increment: { step: 2.5 },
   },
 
   // ── PULL — Biceps ──────────────────────────────────────────────────────────
@@ -625,6 +672,7 @@ export const EXERCISE_LIBRARY: readonly LibraryExercise[] = [
     jointStress: ["elbow", "wrist"],
     loadability: "moderate",
     role: "accessory",
+    increment: { step: 2.5 },
   },
   {
     id: "db_curl",
@@ -638,6 +686,8 @@ export const EXERCISE_LIBRARY: readonly LibraryExercise[] = [
     jointStress: ["elbow", "wrist"],
     loadability: "coarse",
     role: "accessory",
+    increment: { step: 2 },
+    pairedDb: true,
   },
   {
     id: "hammer_curl",
@@ -651,6 +701,8 @@ export const EXERCISE_LIBRARY: readonly LibraryExercise[] = [
     jointStress: ["elbow"],
     loadability: "coarse",
     role: "accessory",
+    increment: { step: 2 },
+    pairedDb: true,
   },
   {
     id: "preacher_curl",
@@ -664,6 +716,8 @@ export const EXERCISE_LIBRARY: readonly LibraryExercise[] = [
     jointStress: ["elbow"],
     loadability: "moderate",
     role: "accessory",
+    increment: { step: 2.5 },
+    pairedDb: true,
   },
   {
     id: "cable_curl",
@@ -677,6 +731,7 @@ export const EXERCISE_LIBRARY: readonly LibraryExercise[] = [
     jointStress: ["elbow"],
     loadability: "fine",
     role: "accessory",
+    increment: { step: 2.5 },
   },
 
   // ── SQUAT — Quads ──────────────────────────────────────────────────────────
@@ -709,6 +764,7 @@ export const EXERCISE_LIBRARY: readonly LibraryExercise[] = [
     jointStress: ["knee", "hip"],
     loadability: "moderate",
     role: "accessory",
+    increment: { step: 2.5 },
   },
   {
     id: "leg_press",
@@ -739,6 +795,7 @@ export const EXERCISE_LIBRARY: readonly LibraryExercise[] = [
     jointStress: ["knee"],
     loadability: "moderate",
     role: "accessory",
+    increment: { step: 5 },
   },
   {
     id: "leg_extension",
@@ -768,6 +825,8 @@ export const EXERCISE_LIBRARY: readonly LibraryExercise[] = [
     jointStress: ["knee", "hip"],
     loadability: "coarse",
     role: "accessory",
+    increment: { step: 2 },
+    pairedDb: false,
   },
 
   // ── HINGE — Hams / Glutes ──────────────────────────────────────────────────
@@ -816,6 +875,7 @@ export const EXERCISE_LIBRARY: readonly LibraryExercise[] = [
     jointStress: ["lumbar", "hip"],
     loadability: "moderate",
     role: "accessory",
+    increment: { step: 2.5 },
   },
   {
     id: "hip_thrust",
@@ -830,6 +890,7 @@ export const EXERCISE_LIBRARY: readonly LibraryExercise[] = [
     jointStress: ["hip"],
     loadability: "moderate",
     role: "accessory",
+    increment: { step: 2.5 },
   },
   {
     id: "glute_bridge",
@@ -872,6 +933,7 @@ export const EXERCISE_LIBRARY: readonly LibraryExercise[] = [
     jointStress: ["knee"],
     loadability: "fine",
     role: "accessory",
+    increment: { step: 5 },
   },
   {
     id: "back_extension",
@@ -917,6 +979,7 @@ export const EXERCISE_LIBRARY: readonly LibraryExercise[] = [
     jointStress: [],
     loadability: "fine",
     role: "accessory",
+    increment: { step: 5 },
   },
   {
     id: "hip_abductor",
@@ -948,6 +1011,7 @@ export const EXERCISE_LIBRARY: readonly LibraryExercise[] = [
     jointStress: ["hip"],
     loadability: "fine",
     role: "accessory",
+    increment: { step: 2.5 },
   },
   {
     id: "standing_hip_abduction",
@@ -961,6 +1025,7 @@ export const EXERCISE_LIBRARY: readonly LibraryExercise[] = [
     jointStress: ["hip"],
     loadability: "fine",
     role: "accessory",
+    increment: { step: 2.5 },
   },
 
   // ── ACCESSORY — Calves (additional coverage) ───────────────────────────────
@@ -976,6 +1041,7 @@ export const EXERCISE_LIBRARY: readonly LibraryExercise[] = [
     jointStress: [],
     loadability: "moderate",
     role: "accessory",
+    increment: { step: 5 },
   },
 ];
 
