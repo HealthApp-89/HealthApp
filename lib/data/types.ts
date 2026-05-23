@@ -115,6 +115,10 @@ export type ChatMessageRow = {
    *  free-form coach turns. */
   ui: MorningUI | WeeklyReviewCardUI | ProactiveNudgeCard | null;
   mode: ChatMode;
+  /** For kind='meal_log' rows only: the food_log_entries.id this message
+   *  belongs to. Populated on insert; used to DELETE the row when the draft
+   *  resolves (commit/cancel). NULL on every non-meal_log row. */
+  draft_entry_id: string | null;
   created_at: string;
   updated_at: string;
 };

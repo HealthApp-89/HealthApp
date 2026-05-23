@@ -32,6 +32,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { MealSlot, FoodLogEntry, FoodItem } from "@/lib/food/types";
+import { mealSlotLabel } from "@/lib/food/meal-slot";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { MealLoggerPreviewCard } from "./MealLoggerPreviewCard";
 import { MealLoggerEditor } from "./MealLoggerEditor";
@@ -42,6 +43,7 @@ type ThreadMessage = {
   content: string;
   ui: { mode: "preview" | "committed" | "cancelled"; entry_id?: string } | null;
   created_at: string;
+  draft_entry_id?: string | null;
 };
 
 /** Build the hidden_context block we feed into Nora's system prompt for a
@@ -100,20 +102,44 @@ export function MealLoggerChatTab({ userId, mealSlot, eatenAt, onCommitted }: Pr
   // `done` event lands (the persisted row then surfaces in the next thread
   // refetch). Decoupled from `messages` so we don't double-render.
   const [streamingNora, setStreamingNora] = useState<string | null>(null);
+  // Transient post-commit confirmation: appears for ~3s after a successful
+  // commit so the chat tab doesn't appear to do nothing when it suddenly
+  // clears. React-local; cleared by timer or sheet close.
+  const [recentlyCommitted, setRecentlyCommitted] = useState<{
+    slot: MealSlot;
+    summary: string;
+  } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const supabase = createSupabaseBrowserClient();
 
-  // Initial fetch: today's meal_log rows.
+  // Initial fetch: thread rows belonging to in-flight drafts only.
   useEffect(() => {
     const fetchThread = async () => {
-      const todayUtcStart = new Date();
-      todayUtcStart.setHours(0, 0, 0, 0);
+      // First: get the user's active draft entry ids. Drafts are
+      // food_log_entries rows with status='draft'. Cancelled drafts are
+      // hard-deleted by cancelActiveDraft, so the set is naturally bounded.
+      const { data: drafts, error: draftsErr } = await supabase
+        .from("food_log_entries")
+        .select("id, eaten_at, meal_slot, kind, items, totals, is_estimated, is_favorite, status, recipe_id")
+        .eq("user_id", userId)
+        .eq("status", "draft");
+      if (draftsErr) {
+        console.error("[chat-tab] drafts fetch failed", draftsErr);
+        return;
+      }
+      const draftIds = (drafts ?? []).map((d) => d.id);
+      if (draftIds.length === 0) {
+        setMessages([]);
+        setDrafts({});
+        return;
+      }
+
       const { data, error } = await supabase
         .from("chat_messages")
-        .select("id, speaker, content, ui, created_at")
+        .select("id, speaker, content, ui, created_at, draft_entry_id")
         .eq("user_id", userId)
         .eq("kind", "meal_log")
-        .gte("created_at", todayUtcStart.toISOString())
+        .in("draft_entry_id", draftIds)
         .order("created_at", { ascending: true });
       if (error) {
         console.error("[chat-tab] thread fetch failed", error);
@@ -121,19 +147,10 @@ export function MealLoggerChatTab({ userId, mealSlot, eatenAt, onCommitted }: Pr
       }
       setMessages((data ?? []) as ThreadMessage[]);
 
-      // Hydrate draft entries referenced by any preview-mode message.
-      const entryIds = (data ?? [])
-        .map((m) => (m as ThreadMessage).ui?.entry_id)
-        .filter((x): x is string => typeof x === "string");
-      if (entryIds.length > 0) {
-        const { data: entries } = await supabase
-          .from("food_log_entries")
-          .select("id, eaten_at, meal_slot, kind, items, totals, is_estimated, is_favorite, status, recipe_id")
-          .in("id", entryIds);
-        const dict: Record<string, FoodLogEntry> = {};
-        for (const e of (entries ?? []) as unknown as FoodLogEntry[]) dict[e.id] = e;
-        setDrafts(dict);
-      }
+      // Hydrate the drafts map from the rows we already fetched.
+      const dict: Record<string, FoodLogEntry> = {};
+      for (const e of (drafts ?? []) as unknown as FoodLogEntry[]) dict[e.id] = e;
+      setDrafts(dict);
     };
     fetchThread();
   }, [userId, supabase]);
@@ -151,26 +168,32 @@ export function MealLoggerChatTab({ userId, mealSlot, eatenAt, onCommitted }: Pr
     if (entry) setDrafts((prev) => ({ ...prev, [entry.id]: entry }));
   };
 
-  /** Refetch today's meal_log rows and merge — preserves local-only state
-   *  (committed stamps written ahead of refetch) by keying on id. */
+  /** Refetch thread rows belonging to in-flight drafts and merge — preserves
+   *  local-only state (committed stamps written ahead of refetch) by keying on id. */
   const refetchThread = async () => {
-    const todayUtcStart = new Date();
-    todayUtcStart.setHours(0, 0, 0, 0);
+    const { data: drafts } = await supabase
+      .from("food_log_entries")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("status", "draft");
+    const draftIds = (drafts ?? []).map((d) => d.id);
+    if (draftIds.length === 0) {
+      setMessages([]);
+      return;
+    }
+
     const { data } = await supabase
       .from("chat_messages")
-      .select("id, speaker, content, ui, created_at")
+      .select("id, speaker, content, ui, created_at, draft_entry_id")
       .eq("user_id", userId)
       .eq("kind", "meal_log")
-      .gte("created_at", todayUtcStart.toISOString())
+      .in("draft_entry_id", draftIds)
       .order("created_at", { ascending: true });
     if (!data) return;
     setMessages((prev) => {
       const byId = new Map(prev.map((m) => [m.id, m]));
       for (const r of data as ThreadMessage[]) {
         const existing = byId.get(r.id);
-        // Preserve the local "committed" override if we stamped it ahead of
-        // refetch; server should agree but doesn't always have updated_at
-        // ordering guarantees on rapid actions.
         byId.set(r.id, existing?.ui?.mode === "committed" ? existing : r);
       }
       return Array.from(byId.values()).sort(
@@ -367,6 +390,7 @@ export function MealLoggerChatTab({ userId, mealSlot, eatenAt, onCommitted }: Pr
         speaker: "user",
         kind: "meal_log",
         mode: "meal_log",
+        draft_entry_id: parseJson.entry.id,
         ui: null,
       })
       .select("id, speaker, content, ui, created_at")
@@ -397,6 +421,7 @@ export function MealLoggerChatTab({ userId, mealSlot, eatenAt, onCommitted }: Pr
         speaker: "nora",
         kind: "meal_log",
         mode: "meal_log",
+        draft_entry_id: parseJson.entry.id,
         ui: { mode: "preview", entry_id: parseJson.entry.id },
       })
       .select("id, speaker, content, ui, created_at")
@@ -458,19 +483,24 @@ export function MealLoggerChatTab({ userId, mealSlot, eatenAt, onCommitted }: Pr
   const cancelActiveDraft = async () => {
     const active = findActiveDraft();
     if (!active) return;
-    // Find the matching preview row in the thread so we can drop it.
-    const previewMsg = [...messages].reverse().find(
-      (m) =>
-        m.speaker === "nora" &&
-        m.ui?.mode === "preview" &&
-        m.ui.entry_id === active.id,
-    );
+
+    // Delete the food_log_entries draft row (existing behavior).
     await fetch(`/api/food/entries/${active.id}`, { method: "DELETE" }).catch(
       (e) => console.warn("[meal-log] DELETE entry failed (best-effort)", e),
     );
-    if (previewMsg) {
-      setMessages((prev) => prev.filter((m) => m.id !== previewMsg.id));
-    }
+
+    // Delete all chat rows tagged with this draft (new).
+    const { error: delErr } = await supabase
+      .from("chat_messages")
+      .delete()
+      .eq("user_id", userId)
+      .eq("kind", "meal_log")
+      .eq("draft_entry_id", active.id);
+    if (delErr) console.warn("[meal-log] chat cleanup on cancel failed", delErr);
+
+    // Local state prune — clear ALL messages tied to the cancelled draft,
+    // not just the preview row.
+    setMessages((prev) => prev.filter((m) => m.draft_entry_id !== active.id));
     setDrafts((prev) => {
       const next = { ...prev };
       delete next[active.id];
@@ -537,6 +567,7 @@ export function MealLoggerChatTab({ userId, mealSlot, eatenAt, onCommitted }: Pr
             speaker: "nora",
             kind: "meal_log",
             mode: "meal_log",
+          draft_entry_id: entry.id,
             ui: { mode: "preview", entry_id: entry.id },
           })
           .select("id, speaker, content, ui, created_at")
@@ -577,6 +608,13 @@ export function MealLoggerChatTab({ userId, mealSlot, eatenAt, onCommitted }: Pr
   return (
     <div className="flex flex-col h-[420px] -mx-4 -mb-4">
       <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-4 py-2 space-y-3">
+        {recentlyCommitted && (
+          <div className="flex justify-center">
+            <div className="rounded-full bg-emerald-900/60 text-emerald-200 px-3 py-1 text-xs">
+              ✓ Logged · {mealSlotLabel(recentlyCommitted.slot)} — {recentlyCommitted.summary}
+            </div>
+          </div>
+        )}
         {messages.length === 0 && (
           <div className="text-zinc-500 text-sm py-8 text-center">
             Tell Nora what you ate. She&apos;ll figure out the macros.
@@ -643,29 +681,48 @@ export function MealLoggerChatTab({ userId, mealSlot, eatenAt, onCommitted }: Pr
             <MealLoggerPreviewCard
               entry={activeDraft}
               onCommitted={async () => {
-                // Stamp a "committed" bubble in place of the preview row so
-                // the pinned section clears and a chip appears in the feed.
-                const previewId = activePreviewMsg.id;
-                await supabase
+                // Build the summary BEFORE we drop the draft from local state.
+                const summary = activeDraft.items
+                  .map((it) => `${it.name} · ${Math.round(it.kcal)} kcal`)
+                  .join(", ");
+
+                // Delete all chat rows tagged with this draft. Includes the preview row
+                // itself — that's intentional. The MealSlotCard on /diet now shows the
+                // committed meal as the durable record.
+                const { error: delErr } = await supabase
                   .from("chat_messages")
-                  .update({ ui: { mode: "committed", entry_id: activeDraft.id } })
-                  .eq("id", previewId);
+                  .delete()
+                  .eq("user_id", userId)
+                  .eq("kind", "meal_log")
+                  .eq("draft_entry_id", activeDraft.id);
+                if (delErr) console.warn("[meal-log] chat cleanup failed", delErr);
+
+                // Local state prune (don't wait for refetch).
                 setMessages((prev) =>
-                  prev.map((x) =>
-                    x.id === previewId
-                      ? { ...x, ui: { mode: "committed", entry_id: activeDraft.id } }
-                      : x,
-                  ),
+                  prev.filter((m) => m.draft_entry_id !== activeDraft.id && m.id !== activePreviewMsg.id),
                 );
                 setDrafts((prev) => {
                   const next = { ...prev };
                   delete next[activeDraft.id];
                   return next;
                 });
+
+                // Transient pill — auto-clear after 3s.
+                setRecentlyCommitted({ slot: activeDraft.meal_slot, summary });
+                setTimeout(() => setRecentlyCommitted(null), 3000);
+
                 await onCommitted();
               }}
-              onCancelled={() => {
-                setMessages((prev) => prev.filter((x) => x.id !== activePreviewMsg.id));
+              onCancelled={async () => {
+                const { error: delErr } = await supabase
+                  .from("chat_messages")
+                  .delete()
+                  .eq("user_id", userId)
+                  .eq("kind", "meal_log")
+                  .eq("draft_entry_id", activeDraft.id);
+                if (delErr) console.warn("[meal-log] chat cleanup on cancel failed", delErr);
+
+                setMessages((prev) => prev.filter((m) => m.draft_entry_id !== activeDraft.id));
                 setDrafts((prev) => {
                   const next = { ...prev };
                   delete next[activeDraft.id];

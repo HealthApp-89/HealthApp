@@ -12,8 +12,8 @@ import { fmtNum } from "@/lib/ui/score";
 
 type Props = {
   entry: FoodLogEntry;
-  onCommitted: () => void;
-  onCancelled: () => void;
+  onCommitted: () => Promise<void> | void;
+  onCancelled: () => Promise<void> | void;
   onEdit: () => void;
 };
 
@@ -44,7 +44,7 @@ export function MealLoggerPreviewCard({ entry, onCommitted, onCancelled, onEdit 
       setBusy(null);
       return;
     }
-    onCommitted();
+    await onCommitted();
   };
 
   const cancel = async () => {
@@ -66,7 +66,7 @@ export function MealLoggerPreviewCard({ entry, onCommitted, onCancelled, onEdit 
       setBusy(null);
       return;
     }
-    onCancelled();
+    await onCancelled();
   };
 
   return (
