@@ -483,19 +483,24 @@ export function MealLoggerChatTab({ userId, mealSlot, eatenAt, onCommitted }: Pr
   const cancelActiveDraft = async () => {
     const active = findActiveDraft();
     if (!active) return;
-    // Find the matching preview row in the thread so we can drop it.
-    const previewMsg = [...messages].reverse().find(
-      (m) =>
-        m.speaker === "nora" &&
-        m.ui?.mode === "preview" &&
-        m.ui.entry_id === active.id,
-    );
+
+    // Delete the food_log_entries draft row (existing behavior).
     await fetch(`/api/food/entries/${active.id}`, { method: "DELETE" }).catch(
       (e) => console.warn("[meal-log] DELETE entry failed (best-effort)", e),
     );
-    if (previewMsg) {
-      setMessages((prev) => prev.filter((m) => m.id !== previewMsg.id));
-    }
+
+    // Delete all chat rows tagged with this draft (new).
+    const { error: delErr } = await supabase
+      .from("chat_messages")
+      .delete()
+      .eq("user_id", userId)
+      .eq("kind", "meal_log")
+      .eq("draft_entry_id", active.id);
+    if (delErr) console.warn("[meal-log] chat cleanup on cancel failed", delErr);
+
+    // Local state prune — clear ALL messages tied to the cancelled draft,
+    // not just the preview row.
+    setMessages((prev) => prev.filter((m) => m.draft_entry_id !== active.id));
     setDrafts((prev) => {
       const next = { ...prev };
       delete next[active.id];
@@ -708,8 +713,16 @@ export function MealLoggerChatTab({ userId, mealSlot, eatenAt, onCommitted }: Pr
 
                 await onCommitted();
               }}
-              onCancelled={() => {
-                setMessages((prev) => prev.filter((x) => x.id !== activePreviewMsg.id));
+              onCancelled={async () => {
+                const { error: delErr } = await supabase
+                  .from("chat_messages")
+                  .delete()
+                  .eq("user_id", userId)
+                  .eq("kind", "meal_log")
+                  .eq("draft_entry_id", activeDraft.id);
+                if (delErr) console.warn("[meal-log] chat cleanup on cancel failed", delErr);
+
+                setMessages((prev) => prev.filter((m) => m.draft_entry_id !== activeDraft.id));
                 setDrafts((prev) => {
                   const next = { ...prev };
                   delete next[activeDraft.id];
