@@ -70,7 +70,7 @@ export const CARB_TOKENS: Array<{ cat: CarbCategory; tokens: string[] }> = [
     "white rice", "jasmine rice", "basmati rice",
     "pasta", "noodle", "spaghetti", "macaroni", "penne", "fettuccine",
     "bread", "bagel", "baguette", "ciabatta", "tortilla", "wrap",
-    "cracker", "pretzel", "cereal", "couscous",
+    "cracker", "pretzel", "cereal", "couscous", "rice",
   ]},
   { cat: "starchy_veg", tokens: [
     "sweet potato", "yam", "plantain", "cassava", "yuca",
@@ -121,6 +121,7 @@ export const USDA_PROTEIN_CATEGORY: Record<string, ProteinCategory> = {
   "Beef Products":                 "red_meat",
   "Pork Products":                 "red_meat",
   "Lamb, Veal, and Game Products": "red_meat",
+  "Game Meats":                    "red_meat",
   "Sausages and Luncheon Meats":   "red_meat",
   "Finfish and Shellfish Products":"fish_seafood",
   "Dairy and Egg Products":        "dairy_protein", // post-process eggs subset by name
