@@ -42,6 +42,7 @@ type ThreadMessage = {
   content: string;
   ui: { mode: "preview" | "committed" | "cancelled"; entry_id?: string } | null;
   created_at: string;
+  draft_entry_id?: string | null;
 };
 
 /** Build the hidden_context block we feed into Nora's system prompt for a
@@ -103,17 +104,34 @@ export function MealLoggerChatTab({ userId, mealSlot, eatenAt, onCommitted }: Pr
   const inputRef = useRef<HTMLInputElement>(null);
   const supabase = createSupabaseBrowserClient();
 
-  // Initial fetch: today's meal_log rows.
+  // Initial fetch: thread rows belonging to in-flight drafts only.
   useEffect(() => {
     const fetchThread = async () => {
-      const todayUtcStart = new Date();
-      todayUtcStart.setHours(0, 0, 0, 0);
+      // First: get the user's active draft entry ids. Drafts are
+      // food_log_entries rows with status='draft'. Cancelled drafts are
+      // hard-deleted by cancelActiveDraft, so the set is naturally bounded.
+      const { data: drafts, error: draftsErr } = await supabase
+        .from("food_log_entries")
+        .select("id, eaten_at, meal_slot, kind, items, totals, is_estimated, is_favorite, status, recipe_id")
+        .eq("user_id", userId)
+        .eq("status", "draft");
+      if (draftsErr) {
+        console.error("[chat-tab] drafts fetch failed", draftsErr);
+        return;
+      }
+      const draftIds = (drafts ?? []).map((d) => d.id);
+      if (draftIds.length === 0) {
+        setMessages([]);
+        setDrafts({});
+        return;
+      }
+
       const { data, error } = await supabase
         .from("chat_messages")
-        .select("id, speaker, content, ui, created_at")
+        .select("id, speaker, content, ui, created_at, draft_entry_id")
         .eq("user_id", userId)
         .eq("kind", "meal_log")
-        .gte("created_at", todayUtcStart.toISOString())
+        .in("draft_entry_id", draftIds)
         .order("created_at", { ascending: true });
       if (error) {
         console.error("[chat-tab] thread fetch failed", error);
@@ -121,19 +139,10 @@ export function MealLoggerChatTab({ userId, mealSlot, eatenAt, onCommitted }: Pr
       }
       setMessages((data ?? []) as ThreadMessage[]);
 
-      // Hydrate draft entries referenced by any preview-mode message.
-      const entryIds = (data ?? [])
-        .map((m) => (m as ThreadMessage).ui?.entry_id)
-        .filter((x): x is string => typeof x === "string");
-      if (entryIds.length > 0) {
-        const { data: entries } = await supabase
-          .from("food_log_entries")
-          .select("id, eaten_at, meal_slot, kind, items, totals, is_estimated, is_favorite, status, recipe_id")
-          .in("id", entryIds);
-        const dict: Record<string, FoodLogEntry> = {};
-        for (const e of (entries ?? []) as unknown as FoodLogEntry[]) dict[e.id] = e;
-        setDrafts(dict);
-      }
+      // Hydrate the drafts map from the rows we already fetched.
+      const dict: Record<string, FoodLogEntry> = {};
+      for (const e of (drafts ?? []) as unknown as FoodLogEntry[]) dict[e.id] = e;
+      setDrafts(dict);
     };
     fetchThread();
   }, [userId, supabase]);
@@ -151,26 +160,32 @@ export function MealLoggerChatTab({ userId, mealSlot, eatenAt, onCommitted }: Pr
     if (entry) setDrafts((prev) => ({ ...prev, [entry.id]: entry }));
   };
 
-  /** Refetch today's meal_log rows and merge — preserves local-only state
-   *  (committed stamps written ahead of refetch) by keying on id. */
+  /** Refetch thread rows belonging to in-flight drafts and merge — preserves
+   *  local-only state (committed stamps written ahead of refetch) by keying on id. */
   const refetchThread = async () => {
-    const todayUtcStart = new Date();
-    todayUtcStart.setHours(0, 0, 0, 0);
+    const { data: drafts } = await supabase
+      .from("food_log_entries")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("status", "draft");
+    const draftIds = (drafts ?? []).map((d) => d.id);
+    if (draftIds.length === 0) {
+      setMessages([]);
+      return;
+    }
+
     const { data } = await supabase
       .from("chat_messages")
-      .select("id, speaker, content, ui, created_at")
+      .select("id, speaker, content, ui, created_at, draft_entry_id")
       .eq("user_id", userId)
       .eq("kind", "meal_log")
-      .gte("created_at", todayUtcStart.toISOString())
+      .in("draft_entry_id", draftIds)
       .order("created_at", { ascending: true });
     if (!data) return;
     setMessages((prev) => {
       const byId = new Map(prev.map((m) => [m.id, m]));
       for (const r of data as ThreadMessage[]) {
         const existing = byId.get(r.id);
-        // Preserve the local "committed" override if we stamped it ahead of
-        // refetch; server should agree but doesn't always have updated_at
-        // ordering guarantees on rapid actions.
         byId.set(r.id, existing?.ui?.mode === "committed" ? existing : r);
       }
       return Array.from(byId.values()).sort(
