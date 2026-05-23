@@ -50,7 +50,7 @@ export type ChatMessage = {
    *  Matches chat_messages.thread; used for per-coach chat surfaces. */
   thread: import("@/lib/data/types").Speaker;
   /** Default 'coach'. ChatPanel filters its render by this. */
-  kind: "coach" | "morning_intake" | "morning_brief" | "weekly_review" | "proactive_nudge" | "system_routing" | "workout_debrief";
+  kind: "coach" | "morning_intake" | "morning_brief" | "weekly_review" | "proactive_nudge" | "system_routing" | "workout_debrief" | "meal_log";
   /** Chips / rendering hints for morning_intake turns; structured card UI
    *  for morning_brief / weekly_review / proactive_nudge turns. */
   ui: MorningUI | MorningBriefCard | WeeklyReviewCardUI | ProactiveNudgeCard | WorkoutDebriefPayload | null;
@@ -60,6 +60,10 @@ export type ChatMessage = {
   tool_calls?: import("@/lib/data/types").ToolCallLog[] | null;
   /** Conversational sub-state within the coach lane. */
   mode?: import("@/lib/data/types").ChatMode;
+  /** For kind='meal_log' rows only: the food_log_entries.id this message
+   *  belongs to. Populated on insert; used to DELETE the row when the draft
+   *  resolves (commit/cancel). NULL on every non-meal_log row. */
+  draft_entry_id?: string | null;
 };
 
 /** SSE event sent from server to client. */
