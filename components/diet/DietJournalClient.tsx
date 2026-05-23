@@ -9,7 +9,6 @@ import { useDailyLogs } from "@/lib/query/hooks/useDailyLogs";
 import { MealLoggerSheet } from "@/components/log/MealLoggerSheet";
 import { FoodEntryEditSheet } from "@/components/log/FoodEntryEditSheet";
 import { HistoryPickerSheet } from "@/components/log/HistoryPickerSheet";
-import { MealJournalDay } from "@/components/meal/MealJournalDay";
 import { SummaryCard } from "./SummaryCard";
 import { MealSlotCardCollapsed } from "./MealSlotCardCollapsed";
 import { targetsForAllSlots } from "@/lib/food/meal-targets";
@@ -86,16 +85,36 @@ export function DietJournalClient({ userId, initialDate }: Props) {
     return `${date}T12:00:00.000Z`;
   };
 
+  // Derive display date parts for the inline scrubber.
+  const d = new Date(`${date}T00:00:00`);
+  const weekday = d.toLocaleDateString(undefined, { weekday: "short" });
+  const monthDay = d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  const isToday = date === todayInUserTz();
+
   return (
     <main className="mx-auto max-w-md px-0 pt-6 pb-32">
-      {/* Day scrubber — same component MealJournalClient uses */}
-      <div className="px-4 mb-4">
-        <MealJournalDay
-          entries={entries}
-          targets={targets ?? null}
-          date={date}
-          onShiftDate={shift}
-        />
+      {/* Inline date scrubber — prev/next chevrons + formatted date display */}
+      <div className="flex items-center justify-between px-4 py-3">
+        <button
+          type="button"
+          onClick={() => shift(-1)}
+          aria-label="Previous day"
+          className="px-3 py-1 text-lg text-zinc-400 hover:text-zinc-100"
+        >
+          ‹
+        </button>
+        <div className="text-sm font-semibold text-zinc-100">
+          {weekday}, {monthDay}
+        </div>
+        <button
+          type="button"
+          onClick={() => shift(1)}
+          disabled={isToday}
+          aria-label="Next day"
+          className="px-3 py-1 text-lg text-zinc-400 hover:text-zinc-100 disabled:opacity-30"
+        >
+          ›
+        </button>
       </div>
 
       {/* kcal ring + macro bars */}
