@@ -32,6 +32,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { MealSlot, FoodLogEntry, FoodItem } from "@/lib/food/types";
+import { mealSlotLabel } from "@/lib/food/meal-slot";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { MealLoggerPreviewCard } from "./MealLoggerPreviewCard";
 import { MealLoggerEditor } from "./MealLoggerEditor";
@@ -101,6 +102,13 @@ export function MealLoggerChatTab({ userId, mealSlot, eatenAt, onCommitted }: Pr
   // `done` event lands (the persisted row then surfaces in the next thread
   // refetch). Decoupled from `messages` so we don't double-render.
   const [streamingNora, setStreamingNora] = useState<string | null>(null);
+  // Transient post-commit confirmation: appears for ~3s after a successful
+  // commit so the chat tab doesn't appear to do nothing when it suddenly
+  // clears. React-local; cleared by timer or sheet close.
+  const [recentlyCommitted, setRecentlyCommitted] = useState<{
+    slot: MealSlot;
+    summary: string;
+  } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const supabase = createSupabaseBrowserClient();
 
@@ -595,6 +603,13 @@ export function MealLoggerChatTab({ userId, mealSlot, eatenAt, onCommitted }: Pr
   return (
     <div className="flex flex-col h-[420px] -mx-4 -mb-4">
       <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-4 py-2 space-y-3">
+        {recentlyCommitted && (
+          <div className="flex justify-center">
+            <div className="rounded-full bg-emerald-900/60 text-emerald-200 px-3 py-1 text-xs">
+              ✓ Logged · {mealSlotLabel(recentlyCommitted.slot)} — {recentlyCommitted.summary}
+            </div>
+          </div>
+        )}
         {messages.length === 0 && (
           <div className="text-zinc-500 text-sm py-8 text-center">
             Tell Nora what you ate. She&apos;ll figure out the macros.
@@ -661,25 +676,36 @@ export function MealLoggerChatTab({ userId, mealSlot, eatenAt, onCommitted }: Pr
             <MealLoggerPreviewCard
               entry={activeDraft}
               onCommitted={async () => {
-                // Stamp a "committed" bubble in place of the preview row so
-                // the pinned section clears and a chip appears in the feed.
-                const previewId = activePreviewMsg.id;
-                await supabase
+                // Build the summary BEFORE we drop the draft from local state.
+                const summary = activeDraft.items
+                  .map((it) => `${it.name} · ${Math.round(it.kcal)} kcal`)
+                  .join(", ");
+
+                // Delete all chat rows tagged with this draft. Includes the preview row
+                // itself — that's intentional. The MealSlotCard on /diet now shows the
+                // committed meal as the durable record.
+                const { error: delErr } = await supabase
                   .from("chat_messages")
-                  .update({ ui: { mode: "committed", entry_id: activeDraft.id } })
-                  .eq("id", previewId);
+                  .delete()
+                  .eq("user_id", userId)
+                  .eq("kind", "meal_log")
+                  .eq("draft_entry_id", activeDraft.id);
+                if (delErr) console.warn("[meal-log] chat cleanup failed", delErr);
+
+                // Local state prune (don't wait for refetch).
                 setMessages((prev) =>
-                  prev.map((x) =>
-                    x.id === previewId
-                      ? { ...x, ui: { mode: "committed", entry_id: activeDraft.id } }
-                      : x,
-                  ),
+                  prev.filter((m) => m.draft_entry_id !== activeDraft.id && m.id !== activePreviewMsg.id),
                 );
                 setDrafts((prev) => {
                   const next = { ...prev };
                   delete next[activeDraft.id];
                   return next;
                 });
+
+                // Transient pill — auto-clear after 3s.
+                setRecentlyCommitted({ slot: activeDraft.meal_slot, summary });
+                setTimeout(() => setRecentlyCommitted(null), 3000);
+
                 await onCommitted();
               }}
               onCancelled={() => {
