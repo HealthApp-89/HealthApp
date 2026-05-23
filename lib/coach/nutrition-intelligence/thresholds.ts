@@ -4,19 +4,24 @@
 // Pulling these into one module so we never get drift between "what fires"
 // and "what the inline callout claims is firing".
 
+import { COLOR } from "@/lib/ui/theme";
+
 /** Body comp triggers — 4-week window deltas. */
 export const RECOMP_SUCCESS_LBM_DELTA_KG = 0.3;       // ≥ +0.3 kg
 export const RECOMP_SUCCESS_BF_DELTA_PTS = -0.5;      // ≤ −0.5 pts
 export const RECOMP_DRIFT_WEIGHT_TOL_KG  = 0.3;       // within ±0.3 kg
 export const RECOMP_DRIFT_BF_DELTA_PTS   = 0.5;       // ≥ +0.5 pts
+export const RECOMP_WINDOW_DAYS          = 28;        // 4 weeks
 
 /** Protein adherence triggers — 7-day window. */
 export const PROTEIN_UNDER_HIT_RATE     = 0.60;       // < 60% hit rate fires
 export const PROTEIN_UNDER_MIN_LOGGED   = 5;          // require ≥ 5 logged days
+export const PROTEIN_ADHERENCE_WINDOW_DAYS = 7;       // 7-day window
 
 /** GLP-1 protein floor — 5-day window. */
 export const GLP1_PROTEIN_FLOOR_G_PER_KG = 1.8;       // active mode floor
 export const GLP1_PROTEIN_MISS_DAYS      = 3;         // misses on ≥ 3 of last 5
+export const GLP1_PROTEIN_WINDOW_DAYS    = 5;         // 5-day window
 
 /** Food-quality triggers — 14-day window with min-volume gate. */
 export const MONOTONE_PROTEIN_SHARE_THRESHOLD = 0.70; // ≥ 70% from one source
@@ -30,9 +35,9 @@ export const TRAINING_UNDEREAT_HIT_RATIO  = 0.50;     // ≥ 50% of lift days
 export const TRAINING_UNDEREAT_MIN_DAYS   = 6;        // ≥ 6 lift days in 4w
 
 /** Inline-callout severity colors (matches existing ProactiveNudgeCard styling). */
-export const CALLOUT_AMBER_BG     = "#fef3c7";
+export const CALLOUT_AMBER_BG     = COLOR.warningSoft;   // "#fef3c7"
 export const CALLOUT_AMBER_BORDER = "#fde68a";
-export const CALLOUT_AMBER_FG     = "#92400e";
+export const CALLOUT_AMBER_FG     = COLOR.warningDeep;   // "#92400e"
 export const CALLOUT_GREEN_BG     = "#dcfce7";
 export const CALLOUT_GREEN_BORDER = "#bbf7d0";
 export const CALLOUT_GREEN_FG     = "#166534";
