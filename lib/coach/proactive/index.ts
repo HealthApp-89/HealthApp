@@ -29,6 +29,19 @@ import { checkProteinFloor }      from "./check-protein-floor";
 import { checkMonotoneProtein }   from "./check-monotone-protein";
 import { checkFriedHeavy }        from "./check-fried-heavy";
 import { checkTrainingUndereat }  from "./check-training-undereat";
+import { checkHrvChronic }          from "./check-hrv-chronic";
+import { checkRhrElevated }         from "./check-rhr-elevated";
+import { checkSleepDebt }           from "./check-sleep-debt";
+import { checkLowRecoveryStreak }   from "./check-low-recovery-streak";
+import { checkStrainRecovery }      from "./check-strain-recovery";
+import { checkSkinTemp }            from "./check-skin-temp";
+import { checkRecurringSoreness }   from "./check-recurring-soreness";
+import { checkSicknessLingering }   from "./check-sickness-lingering";
+import { checkDeepSleepDeficit }    from "./check-deep-sleep-deficit";
+import { checkBedtimeDrift }        from "./check-bedtime-drift";
+import { checkRespiratoryRate }     from "./check-respiratory-rate";
+import { checkHeavyFatigue }        from "./check-heavy-fatigue";
+import { checkPostStrainUndersleep } from "./check-post-strain-undersleep";
 import { renderCard } from "./render-card";
 import { todayInUserTz } from "@/lib/time";
 
@@ -59,13 +72,30 @@ const TRIGGER_OWNER: Record<string, Speaker> = {
   monotone_protein:      "nora",
   fried_heavy:           "nora",
   training_day_undereat: "nora",
+  // NEW — all Remi.
+  hrv_chronic_depression:    "remi",
+  rhr_elevated:              "remi",
+  sleep_debt_accumulated:    "remi",
+  low_recovery_streak:       "remi",
+  strain_recovery_imbalance: "remi",
+  skin_temp_elevated:        "remi",
+  recurring_soreness_area:   "remi",  // semantic prefix (keys are per-area)
+  sickness_lingering:        "remi",
+  deep_sleep_deficit:        "remi",
+  bedtime_drift:             "remi",
+  respiratory_rate_elevated: "remi",
+  heavy_fatigue_cluster:     "remi",
+  post_strain_undersleep:    "remi",
 };
 
 function ownerForTrigger(triggerKey: string): Speaker {
-  // Plateau keys are colon-namespaced (e.g. "plateau:bench"); all others are
-  // flat snake_case. Check colon-prefix first, then fall back to full-key.
+  // Colon-namespaced (e.g. "plateau:bench").
   const colonPrefix = triggerKey.split(":")[0];
-  const owner = TRIGGER_OWNER[colonPrefix] ?? TRIGGER_OWNER[triggerKey];
+  // Underscore-namespaced for per-area triggers
+  // (e.g. "recurring_soreness_legs" → "recurring_soreness_area").
+  const isAreaKey = /^recurring_soreness_(chest|back|legs|shoulders|arms|core)$/.test(triggerKey);
+  const lookupKey = isAreaKey ? "recurring_soreness_area" : triggerKey;
+  const owner = TRIGGER_OWNER[colonPrefix] ?? TRIGGER_OWNER[lookupKey];
   if (!owner) {
     throw new Error(`proactive: no owning coach for trigger '${triggerKey}'`);
   }
@@ -98,6 +128,20 @@ export async function runProactiveChecks(args: {
     ...checkMonotoneProtein(trends),                 // NEW
     ...checkFriedHeavy(trends),                      // NEW
     ...await checkTrainingUndereat(trends, { supabase, userId, today }),  // NEW — joins workouts
+    // Remi — read from recovery payload only.
+    ...checkHrvChronic(recoveryIntelligence),
+    ...checkRhrElevated(recoveryIntelligence),
+    ...checkSleepDebt(recoveryIntelligence),
+    ...checkLowRecoveryStreak(recoveryIntelligence),
+    ...checkStrainRecovery(recoveryIntelligence),
+    ...checkSkinTemp(recoveryIntelligence),
+    ...checkRecurringSoreness(recoveryIntelligence),
+    ...checkSicknessLingering(recoveryIntelligence),
+    ...checkDeepSleepDeficit(recoveryIntelligence),
+    ...checkBedtimeDrift(recoveryIntelligence),
+    ...checkRespiratoryRate(recoveryIntelligence),
+    ...checkHeavyFatigue(recoveryIntelligence),
+    ...checkPostStrainUndersleep(recoveryIntelligence),
   ];
 
   const fired: ProactiveRunResult["fired"] = [];
