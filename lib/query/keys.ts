@@ -85,6 +85,10 @@ export const queryKeys = {
     one: (userId: string, today: string) =>
       ["recent-e1rms", userId, today] as const,
   },
+  activeNudges: {
+    all: (userId: string) => ["activeNudges", userId] as const,
+    byUser: (userId: string) => ["activeNudges", userId] as const,
+  },
   athleteProfile: {
     /** Active acknowledged version for this user (status='active'). */
     active: (userId: string) => ["athlete-profile", userId, "active"] as const,
