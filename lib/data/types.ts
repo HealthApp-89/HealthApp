@@ -25,6 +25,8 @@ export type DailyLog = {
   sleep_score: number | null;
   deep_sleep_hours: number | null;
   rem_sleep_hours: number | null;
+  sleep_start_at: string | null;
+  sleep_end_at:   string | null;
   weight_kg: number | null;
   body_fat_pct: number | null;
   fat_mass_kg: number | null;

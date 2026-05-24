@@ -24,6 +24,8 @@ export type WhoopDayRow = {
   sleep_score?: number | null;
   deep_sleep_hours?: number | null;
   rem_sleep_hours?: number | null;
+  sleep_start_at?: string | null;
+  sleep_end_at?: string | null;
   source: string;
   updated_at: string;
 };
@@ -143,8 +145,10 @@ export function buildWhoopDayRows(
       date = ymdInUserTz(endDate);
     }
     sleepIdToDate.set(s.id, date);
-    if (!s.score) continue;
     const row = ensure(date);
+    row.sleep_start_at = s.start ?? null;
+    row.sleep_end_at   = s.end   ?? null;
+    if (!s.score) continue;
     const stages = s.score.stage_summary;
     if (stages) {
       // "Asleep" excludes both `awake` AND `no_data` (sensor-gap) windows —
