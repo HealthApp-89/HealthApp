@@ -20,7 +20,7 @@ const MacrosSchema = z.object({
 
 const DbRefSchema = z
   .object({
-    source: z.enum(["usda", "openfoodfacts", "manual"]),
+    source: z.enum(["usda", "openfoodfacts", "manual", "user_library"]),
     canonical_id: z.string().uuid(),
   })
   .nullable()
