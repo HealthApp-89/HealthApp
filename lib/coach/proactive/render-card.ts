@@ -71,6 +71,8 @@ export function renderCard(
     case "monotone_protein":     return renderMonotoneProtein(event, ctx);
     case "fried_heavy":          return renderFriedHeavy(event, ctx);
     case "training_day_undereat":return renderTrainingUndereat(event, ctx);
+    // Remi recovery triggers — render templates added in Task 15.
+    default: throw new Error(`renderCard: unhandled trigger_type '${(event as ProactiveEvent).trigger_type}'`);
   }
 }
 

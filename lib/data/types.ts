@@ -1353,7 +1353,21 @@ export type ProactiveTriggerType =
   | "monotone_protein"
   | "fried_heavy"
   // NEW — training × nutrition
-  | "training_day_undereat";
+  | "training_day_undereat"
+  // NEW — Remi recovery intelligence
+  | "hrv_chronic_depression"
+  | "rhr_elevated"
+  | "sleep_debt_accumulated"
+  | "low_recovery_streak"
+  | "strain_recovery_imbalance"
+  | "skin_temp_elevated"
+  | "recurring_soreness_area"
+  | "sickness_lingering"
+  | "deep_sleep_deficit"
+  | "bedtime_drift"
+  | "respiratory_rate_elevated"
+  | "heavy_fatigue_cluster"
+  | "post_strain_undersleep";
 
 /** Internal event shape passed from check-* functions to the orchestrator.
  *  The `payload` field carries trigger-specific data the renderer needs. */
