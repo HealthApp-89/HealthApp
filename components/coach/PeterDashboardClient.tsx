@@ -40,7 +40,7 @@ export function PeterDashboardClient({ userId, today }: Props) {
         Peter hasn&apos;t generated today&apos;s read yet — running daily at 04:00 UTC.
         Use the regenerate button below to trigger one now.
         <div style={{ marginTop: 16 }}>
-          <PeterDashboardRegenButton />
+          <PeterDashboardRegenButton userId={userId} />
         </div>
       </div>
     );
@@ -72,7 +72,7 @@ export function PeterDashboardClient({ userId, today }: Props) {
           Last refreshed {generatedLabel}
           {data.payload.narrative_failed ? ' · narrative failed' : ''}
         </div>
-        <PeterDashboardRegenButton />
+        <PeterDashboardRegenButton userId={userId} />
       </div>
       <PeterDashboardHero
         narrative={data.payload.narrative}

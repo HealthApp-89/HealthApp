@@ -12,6 +12,7 @@ import {
 import type { ThemePayload, Severity } from '@/lib/data/types';
 import { THEME_LABEL, THEME_DRILLDOWN } from '@/lib/coach/peter-dashboard/types';
 import { COLOR, RADIUS, SHADOW } from '@/lib/ui/theme';
+import { fmtNum } from '@/lib/ui/score';
 
 const SEVERITY_COLOR: Record<Severity, string> = {
   ok:     COLOR.success,
@@ -27,70 +28,85 @@ type Props = {
 };
 
 export function PeterThemeCard({ theme, narrative, expanded, onToggle }: Props) {
+  const panelId = `theme-panel-${theme.key}`;
   return (
-    <button
-      type="button"
-      onClick={onToggle}
+    <div
       style={{
-        width: '100%',
-        textAlign: 'left',
         background: COLOR.surface,
         border: `1px solid ${COLOR.divider}`,
         borderRadius: RADIUS.cardMid,
         boxShadow: SHADOW.card,
-        padding: expanded ? 14 : 10,
-        cursor: 'pointer',
+        overflow: 'hidden',
         display: 'flex',
         flexDirection: 'column',
-        gap: 6,
-        font: 'inherit',
-        color: 'inherit',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span
-          aria-hidden
-          style={{
-            display: 'inline-block',
-            width: 8,
-            height: 8,
-            borderRadius: 4,
-            background: SEVERITY_COLOR[theme.severity],
-          }}
-        />
-        <span
-          style={{
-            fontSize: 12,
-            fontWeight: 600,
-            color: COLOR.textStrong,
-            letterSpacing: 0.2,
-          }}
-        >
-          {THEME_LABEL[theme.key]}
-        </span>
-        <span
-          style={{
-            marginLeft: 'auto',
-            fontSize: 12,
-            color: COLOR.textMuted,
-            lineHeight: 1,
-          }}
-        >
-          {expanded ? '−' : '+'}
-        </span>
-      </div>
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={expanded}
+        aria-controls={panelId}
+        style={{
+          width: '100%',
+          textAlign: 'left',
+          background: 'transparent',
+          border: 'none',
+          padding: 10,
+          cursor: 'pointer',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 6,
+          font: 'inherit',
+          color: 'inherit',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span
+            aria-hidden
+            style={{
+              display: 'inline-block',
+              width: 8,
+              height: 8,
+              borderRadius: 4,
+              background: SEVERITY_COLOR[theme.severity],
+            }}
+          />
+          <span
+            style={{
+              fontSize: 12,
+              fontWeight: 600,
+              color: COLOR.textStrong,
+              letterSpacing: 0.2,
+            }}
+          >
+            {THEME_LABEL[theme.key]}
+          </span>
+          <span
+            style={{
+              marginLeft: 'auto',
+              fontSize: 12,
+              color: COLOR.textMuted,
+              lineHeight: 1,
+            }}
+          >
+            {expanded ? '−' : '+'}
+          </span>
+        </div>
 
-      <div style={{ fontSize: 11, color: COLOR.textMuted }}>
-        {theme.one_line}
-      </div>
+        <div style={{ fontSize: 11, color: COLOR.textMuted }}>
+          {theme.one_line}
+        </div>
+      </button>
 
       {expanded && (
         <div
+          id={panelId}
+          role="region"
           style={{
+            padding: '0 10px 14px',
             display: 'flex',
             flexDirection: 'column',
             gap: 10,
-            marginTop: 4,
           }}
         >
           <p
@@ -116,7 +132,7 @@ export function PeterThemeCard({ theme, narrative, expanded, onToggle }: Props) 
                     {k.replace(/_/g, ' ')}:
                   </span>{' '}
                   <span style={{ color: COLOR.textStrong, fontWeight: 600 }}>
-                    {String(v)}
+                    {typeof v === 'number' ? fmtNum(v) : String(v)}
                   </span>
                 </span>
               ))}
@@ -162,10 +178,7 @@ export function PeterThemeCard({ theme, narrative, expanded, onToggle }: Props) 
           )}
 
           {/* Nav chips */}
-          <div
-            style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}
-            onClick={(e) => e.stopPropagation()}
-          >
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             <Link
               href={`/coach?tab=chat&context=${theme.key}`}
               style={chipStyle}
@@ -178,7 +191,7 @@ export function PeterThemeCard({ theme, narrative, expanded, onToggle }: Props) 
           </div>
         </div>
       )}
-    </button>
+    </div>
   );
 }
 

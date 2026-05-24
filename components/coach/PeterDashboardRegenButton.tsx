@@ -3,8 +3,11 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { COLOR, RADIUS } from '@/lib/ui/theme';
+import { queryKeys } from '@/lib/query/keys';
 
-export function PeterDashboardRegenButton() {
+type Props = { userId: string };
+
+export function PeterDashboardRegenButton({ userId }: Props) {
   const [pending, setPending] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const qc = useQueryClient();
@@ -30,7 +33,7 @@ export function PeterDashboardRegenButton() {
         return;
       }
       // Wide-prefix invalidation — evicts every (userId, date) key.
-      await qc.invalidateQueries({ queryKey: ['peterDashboard'] });
+      await qc.invalidateQueries({ queryKey: queryKeys.peterDashboard.all(userId) });
     } catch (e) {
       setErr(String(e));
     } finally {
