@@ -61,7 +61,7 @@ function pickHeadline(input: {
     return {
       severity: "ok",
       title: "Recomp working",
-      body_md: `LBM +${lbm4w.toFixed(1)} kg, body fat ${bf4w.toFixed(1)} pts over 4 weeks. Whatever the lever is, keep it.`,
+      body_md: `LBM +${lbm4w.toFixed(1)} kg, body fat ${Math.abs(bf4w).toFixed(1)} pts down over 4 weeks. Whatever the lever is, keep it.`,
     };
   }
 
@@ -87,7 +87,7 @@ function pickHeadline(input: {
     return {
       severity: "warn",
       title: `Recomp drift — body fat +${bf4w.toFixed(1)} pts`,
-      body_md: "Scale weight is roughly flat over 4 weeks but body fat ticked up. The deficit isn't deep enough at maintenance protein — Nora has details.",
+      body_md: "Scale weight is roughly flat over 4 weeks but body fat ticked up. The deficit isn't deep enough at maintenance protein — check the Nutrition section for the full picture.",
     };
   }
 
