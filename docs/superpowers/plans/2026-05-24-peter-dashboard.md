@@ -381,7 +381,6 @@ Write to `lib/coach/peter-dashboard/compose-recomp.ts`:
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ThemePayload } from './types';
-import { THEME_DRILLDOWN } from './types';
 import {
   RECOMP_LBM_HOLD_KG_4W,
   RECOMP_BF_DOWN_PTS_4W,
@@ -512,7 +511,6 @@ Write to `lib/coach/peter-dashboard/compose-energy.ts`:
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ThemePayload } from './types';
-import { THEME_DRILLDOWN } from './types';
 import {
   ENERGY_UNDER_TARGET_KCAL,
   ENERGY_UNDER_WINDOW_DAYS_WARN,
@@ -693,7 +691,6 @@ Write to `lib/coach/peter-dashboard/compose-fatigue.ts`:
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ThemePayload } from './types';
-import { THEME_DRILLDOWN } from './types';
 import {
   FATIGUE_REMI_TRIGGER_COUNT_WARN,
   FATIGUE_REMI_TRIGGER_COUNT_URGENT,
@@ -851,7 +848,6 @@ Write to `lib/coach/peter-dashboard/compose-performance.ts`:
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ThemePayload } from './types';
-import { THEME_DRILLDOWN } from './types';
 import {
   PERFORMANCE_PLATEAU_WEEKS_WARN,
   PERFORMANCE_LIFT_DROP_URGENT_PCT_4W,
@@ -990,7 +986,6 @@ Write to `lib/coach/peter-dashboard/compose-plan-adherence.ts`:
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ThemePayload } from './types';
-import { THEME_DRILLDOWN } from './types';
 import {
   ADHERENCE_PCT_WARN,
   ADHERENCE_PCT_URGENT,
@@ -1143,7 +1138,6 @@ Write to `lib/coach/peter-dashboard/compose-goal-distance.ts`:
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ThemePayload } from './types';
-import { THEME_DRILLDOWN } from './types';
 import {
   GOAL_PACE_RATIO_OK,
   GOAL_PACE_RATIO_WARN,
@@ -2609,7 +2603,7 @@ Write to `components/coach/PeterThemeCard.tsx`:
 import Link from 'next/link';
 import { LineChart, Line, ResponsiveContainer, ReferenceLine, Tooltip } from 'recharts';
 import type { ThemePayload } from '@/lib/data/types';
-import { THEME_LABEL } from '@/lib/coach/peter-dashboard/types';
+import { THEME_LABEL, THEME_DRILLDOWN } from '@/lib/coach/peter-dashboard/types';
 import { COLOR, RADIUS } from '@/lib/ui/theme';
 
 const SEVERITY_COLOR = {
@@ -2712,8 +2706,8 @@ export function PeterThemeCard({ theme, narrative, expanded, onToggle }: Props) 
             >
               Ask Peter →
             </Link>
-            <Link href={theme.drilldown} style={chipStyle}>
-              Open {drilldownLabel(theme.drilldown)} →
+            <Link href={THEME_DRILLDOWN[theme.key]} style={chipStyle}>
+              Open {drilldownLabel(THEME_DRILLDOWN[theme.key])} →
             </Link>
           </div>
         </div>
