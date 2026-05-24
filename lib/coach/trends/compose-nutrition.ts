@@ -5,6 +5,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { NutritionAdherenceTrend } from "@/lib/data/types";
 import { getTodayTargets } from "@/lib/morning/brief/get-today-targets";
+import type { MealSlot } from "@/lib/food/types";
+import { targetsForAllSlots, DEFAULT_MEAL_RATIOS, type MealRatios } from "@/lib/food/meal-targets";
 
 const KCAL_HIT_TOLERANCE = 0.05;
 
@@ -81,6 +83,90 @@ export async function composeNutrition(args: {
     rows.filter((r) => r.calories_eaten != null).map((r) => r.calories_eaten as number),
   );
 
+  // ── Per-meal-slot 14d averages ─────────────────────────────────────────
+  // Reads food_log_entries.totals (jsonb) per entry. One entry = one meal
+  // with its items already aggregated to a totals object. We aggregate
+  // entry totals by (date, slot) so a same-slot multi-entry day still
+  // contributes one (averaged) value per day.
+  const slot14wCutoff = shiftDays(today, -14);
+  type SlotTotalsRow = {
+    meal_slot: MealSlot;
+    eaten_at: string;
+    totals: { kcal?: number; protein_g?: number; carbs_g?: number; fat_g?: number; fiber_g?: number } | null;
+  };
+  const { data: slotEntries, error: slotErr } = await supabase
+    .from("food_log_entries")
+    .select("meal_slot, totals, eaten_at")
+    .eq("user_id", userId)
+    .eq("status", "committed")
+    .gte("eaten_at", `${slot14wCutoff}T00:00:00Z`)
+    .lte("eaten_at", `${today}T23:59:59Z`);
+  if (slotErr) throw slotErr;
+  const slotRows = (slotEntries as SlotTotalsRow[] | null) ?? [];
+
+  // Aggregate by (date, slot) — collapse multiple entries in same slot/day
+  // into one sum, then average across days observed for that slot.
+  const byDaySlot = new Map<string, { protein: number; kcal: number }>();
+  for (const r of slotRows) {
+    const dateKey = r.eaten_at.slice(0, 10);
+    const k = `${dateKey}|${r.meal_slot}`;
+    const cell = byDaySlot.get(k) ?? { protein: 0, kcal: 0 };
+    cell.protein += r.totals?.protein_g ?? 0;
+    cell.kcal    += r.totals?.kcal      ?? 0;
+    byDaySlot.set(k, cell);
+  }
+
+  type SlotAggregate = { proteinSum: number; kcalSum: number; daysObserved: number };
+  const slotTotals: Record<MealSlot, SlotAggregate> = {
+    breakfast: { proteinSum: 0, kcalSum: 0, daysObserved: 0 },
+    lunch:     { proteinSum: 0, kcalSum: 0, daysObserved: 0 },
+    dinner:    { proteinSum: 0, kcalSum: 0, daysObserved: 0 },
+    snack:     { proteinSum: 0, kcalSum: 0, daysObserved: 0 },
+  };
+  for (const [k, cell] of byDaySlot.entries()) {
+    const slot = k.split("|")[1] as MealSlot;
+    slotTotals[slot].proteinSum += cell.protein;
+    slotTotals[slot].kcalSum    += cell.kcal;
+    slotTotals[slot].daysObserved += 1;
+  }
+
+  // Per-slot targets: kcal via meal_ratios; protein evenly distributed
+  // across slots (25% per slot) — future: pull a per-slot protein ratio
+  // from profiles.nutrition_overrides if/when one is added.
+  const ratios: MealRatios = DEFAULT_MEAL_RATIOS;
+  const slotKcalTargets = kcalTarget != null ? targetsForAllSlots(kcalTarget, ratios) : null;
+  const slotProteinTarget = proteinTarget != null ? proteinTarget / 4 : null;
+
+  function buildProteinSlot(slot: MealSlot) {
+    const t = slotTotals[slot];
+    const avg = t.daysObserved > 0 ? t.proteinSum / t.daysObserved : null;
+    const target = slotProteinTarget;
+    const pct = avg != null && target != null && target > 0 ? avg / target : null;
+    return { avg_14d: avg, target_g: target, pct_of_target: pct };
+  }
+  function buildKcalSlot(slot: MealSlot) {
+    const t = slotTotals[slot];
+    const avg = t.daysObserved > 0 ? t.kcalSum / t.daysObserved : null;
+    const target = slotKcalTargets?.[slot] ?? null;
+    const pct = avg != null && target != null && target > 0 ? avg / target : null;
+    return { avg_14d: avg, target_kcal: target, pct_of_target: pct };
+  }
+
+  const per_meal_slot = {
+    protein_g: {
+      breakfast: buildProteinSlot("breakfast"),
+      lunch:     buildProteinSlot("lunch"),
+      dinner:    buildProteinSlot("dinner"),
+      snack:     buildProteinSlot("snack"),
+    },
+    kcal: {
+      breakfast: buildKcalSlot("breakfast"),
+      lunch:     buildKcalSlot("lunch"),
+      dinner:    buildKcalSlot("dinner"),
+      snack:     buildKcalSlot("snack"),
+    },
+  };
+
   const deficit4w = kcalAvg4w != null && kcalTarget != null ? kcalAvg4w - kcalTarget : null;
   const deficit12w = kcalAvg12w != null && kcalTarget != null ? kcalAvg12w - kcalTarget : null;
 
@@ -106,6 +192,7 @@ export async function composeNutrition(args: {
       avg_4w: deficit4w,
       avg_12w: deficit12w,
     },
+    per_meal_slot,
   };
 }
 
