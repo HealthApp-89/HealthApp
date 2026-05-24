@@ -5,6 +5,8 @@ import { makeServerQueryClient } from "@/lib/query/queryClient";
 import { queryKeys } from "@/lib/query/keys";
 import { fetchDailyLogsServer } from "@/lib/query/fetchers/dailyLogs";
 import { fetchCheckinServer } from "@/lib/query/fetchers/checkin";
+import { fetchRecoveryIntelligenceServer } from "@/lib/query/fetchers/recoveryIntelligence";
+import { HealthTrendsClient } from "@/components/health/HealthTrendsClient";
 import { SubPillNav } from "@/components/layout/SubPillNav";
 import { HealthCoachClient } from "@/components/health/HealthCoachClient";
 import { HealthLogClient } from "@/components/health/HealthLogClient";
@@ -12,8 +14,9 @@ import { todayInUserTz } from "@/lib/time";
 import { COLOR } from "@/lib/ui/theme";
 
 const SUB_TABS = [
-  { key: "coach", label: "Coach" },
-  { key: "log", label: "Log" },
+  { key: "coach",  label: "Coach"  },
+  { key: "trends", label: "Trends" },
+  { key: "log",    label: "Log"    },
 ];
 
 export default async function HealthPage({
@@ -28,7 +31,9 @@ export default async function HealthPage({
   if (!user) redirect("/login");
 
   const { tab: tabParam, date: dateParam } = await searchParams;
-  const tab = tabParam === "log" ? "log" : "coach";
+  const tab =
+  tabParam === "log"    ? "log"    :
+  tabParam === "trends" ? "trends" : "coach";
 
   const today = todayInUserTz();
 
@@ -81,6 +86,12 @@ export default async function HealthPage({
       queryKey: queryKeys.checkin.one(user.id, logDate),
       queryFn: () => fetchCheckinServer(supabase, user.id, logDate),
     }),
+    // Trends-tab data: recovery intelligence
+    queryClient.prefetchQuery({
+      queryKey: queryKeys.recoveryIntelligence.one(user.id),
+      queryFn: () =>
+        fetchRecoveryIntelligenceServer(supabase, user.id, today),
+    }),
   ]);
 
   return (
@@ -95,11 +106,9 @@ export default async function HealthPage({
           </p>
         </header>
         <SubPillNav pills={SUB_TABS} paramName="tab" defaultKey="coach" />
-        {tab === "coach" ? (
-          <HealthCoachClient userId={user.id} hrvBaseline={hrvBaseline} />
-        ) : (
-          <HealthLogClient userId={user.id} initialDate={dateParam} />
-        )}
+        {tab === "coach"  && <HealthCoachClient userId={user.id} hrvBaseline={hrvBaseline} />}
+        {tab === "trends" && <HealthTrendsClient userId={user.id} />}
+        {tab === "log"    && <HealthLogClient userId={user.id} initialDate={dateParam} />}
       </div>
     </HydrationBoundary>
   );
