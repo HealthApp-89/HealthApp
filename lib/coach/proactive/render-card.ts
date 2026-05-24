@@ -61,12 +61,16 @@ export function renderCard(
   ctx?: RenderContext,
 ): ProactiveNudgeCard {
   switch (event.trigger_type) {
-    case "plateau":
-      return renderPlateau(event, ctx);
-    case "off_pace_weight":
-      return renderOffPace(event, ctx);
-    case "hrv_below_baseline":
-      return renderHrv(event, ctx);
+    case "plateau":              return renderPlateau(event, ctx);
+    case "off_pace_weight":      return renderOffPace(event, ctx);
+    case "hrv_below_baseline":   return renderHrv(event, ctx);
+    case "recomp_success":       return renderRecompSuccess(event, ctx);
+    case "recomp_drift":         return renderRecompDrift(event, ctx);
+    case "protein_under":        return renderProteinUnder(event, ctx);
+    case "glp1_protein_floor":   return renderGlp1ProteinFloor(event, ctx);
+    case "monotone_protein":     return renderMonotoneProtein(event, ctx);
+    case "fried_heavy":          return renderFriedHeavy(event, ctx);
+    case "training_day_undereat":return renderTrainingUndereat(event, ctx);
   }
 }
 
@@ -213,5 +217,126 @@ function renderHrv(event: ProactiveEvent, ctx?: RenderContext): ProactiveNudgeCa
       href: "/coach/progress?section=performance",
     },
     speaker: "remi",
+  };
+}
+
+function renderRecompSuccess(event: ProactiveEvent, ctx?: RenderContext): ProactiveNudgeCard {
+  const lbm = event.payload.lbm_delta_4w_kg as number;
+  const bf  = event.payload.bf_delta_4w_pts as number;
+  const variants = [
+    `LBM up ${fmt1(lbm)} kg, body fat down ${fmt1(Math.abs(bf))} pts over 4 weeks. Keep the lever where it is.`,
+    `Composition is moving the right way — +${fmt1(lbm)} kg lean, −${fmt1(Math.abs(bf))} pts fat in 4w. Whatever you changed, keep it.`,
+  ];
+  const idx = pickVariant({ userId: ctx?.userId ?? "", triggerKey: "recomp_success", today: ctx?.today ?? "", count: variants.length });
+  return {
+    schema_version: 1,
+    trigger_type: "recomp_success",
+    trigger_key: "recomp_success",
+    severity: "ok",
+    headline: "Recomp working — keep this",
+    body_md: variants[idx],
+    deep_link: { label: "View Body trends", href: "/metrics?section=body" },
+    speaker: "nora",
+  };
+}
+
+function renderRecompDrift(event: ProactiveEvent, ctx?: RenderContext): ProactiveNudgeCard {
+  const bf = event.payload.bf_delta_4w_pts as number;
+  const variants = [
+    `Scale is roughly flat over 4 weeks, but body fat ticked up ${fmt1(bf)} pts. Deficit isn't deep enough at maintenance protein.`,
+    `4-week weight is flat — but BF% climbed ${fmt1(bf)} pts. The scale lies; the tape doesn't.`,
+  ];
+  const idx = pickVariant({ userId: ctx?.userId ?? "", triggerKey: "recomp_drift", today: ctx?.today ?? "", count: variants.length });
+  return {
+    schema_version: 1,
+    trigger_type: "recomp_drift",
+    trigger_key: "recomp_drift",
+    severity: "warn",
+    headline: "Recomp drifting wrong way",
+    body_md: variants[idx],
+    deep_link: { label: "View Body trends", href: "/metrics?section=body" },
+    speaker: "nora",
+  };
+}
+
+function renderProteinUnder(event: ProactiveEvent, _ctx?: RenderContext): ProactiveNudgeCard {
+  const hit = event.payload.hit as number;
+  const logged = event.payload.logged as number;
+  const target = event.payload.target_g as number;
+  return {
+    schema_version: 1,
+    trigger_type: "protein_under",
+    trigger_key: "protein_under",
+    severity: "warn",
+    headline: "Protein under target too often",
+    body_md: `You hit your ${target}g target on ${hit} of the last ${logged} logged days. Two days of front-loading breakfast usually closes the gap.`,
+    deep_link: { label: "View Nutrition trends", href: "/metrics?section=nutrition" },
+    speaker: "nora",
+  };
+}
+
+function renderGlp1ProteinFloor(event: ProactiveEvent, _ctx?: RenderContext): ProactiveNudgeCard {
+  const misses = event.payload.misses as number;
+  const observed = event.payload.observed as number;
+  const floor = event.payload.floor_g as number;
+  return {
+    schema_version: 1,
+    trigger_type: "glp1_protein_floor",
+    trigger_key: "glp1_protein_floor",
+    severity: "warn",
+    headline: "Protein floor missed on your protocol",
+    body_md: `On your current protocol the floor is ${Math.round(floor)} g — you came in under that on ${misses} of the last ${observed} logged days. LBM protection drops fast below floor.`,
+    deep_link: { label: "View Nutrition trends", href: "/metrics?section=nutrition" },
+    speaker: "nora",
+  };
+}
+
+function renderMonotoneProtein(event: ProactiveEvent, _ctx?: RenderContext): ProactiveNudgeCard {
+  const cat = event.payload.dominant_category as string;
+  const pct = event.payload.dominant_pct as number;
+  const labelMap: Record<string, string> = {
+    poultry: "poultry", red_meat: "red meat", fish_seafood: "fish",
+    eggs: "eggs", dairy_protein: "dairy", plant_protein: "plant protein",
+    protein_supplement: "protein supplement",
+  };
+  const human = labelMap[cat] ?? cat;
+  return {
+    schema_version: 1,
+    trigger_type: "monotone_protein",
+    trigger_key: "monotone_protein",
+    severity: "info",
+    headline: "Protein has gone monotone",
+    body_md: `${human} is ${Math.round(pct * 100)}% of your protein over the last 2 weeks. Cycling in fish (omega-3) and red meat (iron) covers gaps a single source can't.`,
+    deep_link: { label: "View Nutrition trends", href: "/metrics?section=nutrition" },
+    speaker: "nora",
+  };
+}
+
+function renderFriedHeavy(event: ProactiveEvent, _ctx?: RenderContext): ProactiveNudgeCard {
+  const pct = event.payload.fried_pct as number;
+  return {
+    schema_version: 1,
+    trigger_type: "fried_heavy",
+    trigger_key: "fried_heavy",
+    severity: "info",
+    headline: "Frying-heavy mix lately",
+    body_md: `${Math.round(pct * 100)}% of items with a known cooking method were pan-fried or deep-fried over the last 2 weeks. Swapping the top 2-3 to grilled or air-fried trims hidden fat kcal at the same macros.`,
+    deep_link: { label: "View Nutrition trends", href: "/metrics?section=nutrition" },
+    speaker: "nora",
+  };
+}
+
+function renderTrainingUndereat(event: ProactiveEvent, _ctx?: RenderContext): ProactiveNudgeCard {
+  const under = event.payload.undereat_count as number;
+  const total = event.payload.lift_days_observed as number;
+  return {
+    schema_version: 1,
+    trigger_type: "training_day_undereat",
+    trigger_key: "training_day_undereat",
+    severity: "warn",
+    headline: "Undereating on lift days",
+    body_md: `On ${under} of the last ${total} lift days you came in 300+ kcal under target. That's why dinner ends up protein-heavy — a 200 kcal pre-lift snack fixes most of it.`,
+    deep_link: { label: "View Nutrition trends", href: "/metrics?section=nutrition" },
+    speaker: "nora",
   };
 }
