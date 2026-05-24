@@ -139,7 +139,7 @@ function bodyMdFor(x: {
     return 'Recovery markers steady; no Remi flags in the last 14 days.';
   }
   const parts: string[] = [];
-  if (x.hrvVsBaseline7d != null && x.hrvVsBaseline7d <= -0.05) {
+  if (x.hrvVsBaseline7d != null && x.hrvVsBaseline7d <= FATIGUE_HRV_BELOW_BASELINE_PCT_WARN) {
     parts.push(
       `HRV ${fmtNum(Math.abs(x.hrvVsBaseline7d * 100), 0)}% below baseline (7d)`,
     );
