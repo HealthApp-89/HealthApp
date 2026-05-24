@@ -101,7 +101,7 @@ function StrainRecoveryCard({
   return (
     <Card>
       <CardHeader title="Strain × Recovery · 28d"
-        sub={`7d strain ${derived.strain_avg_7d != null ? fmtNum(derived.strain_avg_7d) : "—"} · recovery ${derived.recovery_avg_7d != null ? `${Math.round(derived.recovery_avg_7d)}%` : "—"}`}
+        sub={`7d strain ${derived.strain_avg_7d != null ? fmtNum(derived.strain_avg_7d) : "—"} · recovery ${derived.recovery_avg_7d != null ? `${fmtNum(derived.recovery_avg_7d)}%` : "—"}`}
         value={overreach ? "⚠ overreach risk" : "balanced"} tone={overreach ? "bad" : "good"} />
       <svg viewBox="0 0 360 80" preserveAspectRatio="none" style={{ width: "100%" }}>
         {overreach && <rect x="240" y="0" width="120" height="80" fill={COLOR.danger} fillOpacity={0.06} />}

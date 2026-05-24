@@ -5,7 +5,7 @@ import { Card, CardHeader, Legend } from "@/components/health/trends/HrvAutonomi
 import { COLOR } from "@/lib/ui/theme";
 import { fmtNum } from "@/lib/ui/score";
 import {
-  SLEEP_TARGET_BAND, SLEEP_SCORE_MEANINGFUL, SLEEP_SCORE_ACTION, BEDTIME_DRIFT_SD_MINUTES,
+  SLEEP_TARGET_BAND, SLEEP_SCORE_MEANINGFUL, BEDTIME_DRIFT_SD_MINUTES,
 } from "@/lib/coach/recovery-intelligence/thresholds";
 
 type Props = { payload: RecoveryIntelligencePayload };

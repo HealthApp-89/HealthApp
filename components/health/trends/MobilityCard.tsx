@@ -23,13 +23,16 @@ export function MobilityCard({ payload }: Props) {
   }
   while (grid[3].length < 7) grid[3].push(null);
 
+  const pct = derived.mobility_completion_pct_28d;
+  const tone: "good" | "warn" | "bad" = pct >= 0.7 ? "good" : pct >= 0.4 ? "warn" : "bad";
+
   return (
     <section style={{ padding: 16, paddingTop: 0 }}>
       <h3 style={sectionTitle}>Mobility · adherence</h3>
       <Card>
         <CardHeader title="Mobility completion · 28d"
           sub={`Current streak: ${derived.mobility_current_streak_days} days · ${subjective.filter((s) => s.mobility_done).length}/28 done`}
-          value={`${Math.round(derived.mobility_completion_pct_28d * 100)}%`} tone="good" />
+          value={`${Math.round(derived.mobility_completion_pct_28d * 100)}%`} tone={tone} />
         <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
           {grid.map((rowCells, ri) => (
             <div key={ri} style={{ display: "flex", gap: 2, alignItems: "center" }}>
