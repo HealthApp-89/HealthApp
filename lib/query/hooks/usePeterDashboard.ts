@@ -11,6 +11,11 @@ export function usePeterDashboard(userId: string, today: string) {
     queryKey: queryKeys.peterDashboard.latest(userId, today),
     queryFn: fetchPeterDashboardBrowser,
     enabled: !!userId && !!today,
+    // SSR-hydrate-only: the browser fetcher throws by design. staleTime
+    // Infinity tells TanStack Query to trust the dehydrated cache for the
+    // page lifetime; without it the cache is stale on mount and a
+    // background refetch fires → throws → red error replaces the dashboard.
+    // Matches useRecoveryIntelligence.
     staleTime: Infinity,
   });
 }
