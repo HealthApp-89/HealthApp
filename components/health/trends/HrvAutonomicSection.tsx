@@ -1,9 +1,22 @@
 // components/health/trends/HrvAutonomicSection.tsx
 "use client";
 import type { RecoveryIntelligencePayload } from "@/lib/coach/recovery-intelligence/types";
-import { COLOR } from "@/lib/ui/theme";
+import { COLOR, SHADOW } from "@/lib/ui/theme";
 import { fmtNum } from "@/lib/ui/score";
 import { formatDateLabel } from "@/components/health/trends/format";
+import {
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ReferenceLine,
+  ReferenceArea,
+  Cell,
+} from "recharts";
 
 type Props = { payload: RecoveryIntelligencePayload };
 
@@ -46,7 +59,25 @@ const sectionTitle: React.CSSProperties = {
   margin: "0 0 10px 0",
 };
 
-// — Card implementations: each renders the equivalent SVG from the mockup. —
+// ── Shared tooltip style ───────────────────────────────────────────────────
+
+function TooltipBox({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{
+      background: COLOR.surface,
+      border: `1px solid ${COLOR.divider}`,
+      borderRadius: 8,
+      padding: "6px 10px",
+      fontSize: 11,
+      boxShadow: SHADOW.card,
+      pointerEvents: "none",
+    }}>
+      {children}
+    </div>
+  );
+}
+
+// ── A1: HRV vs baseline ───────────────────────────────────────────────────
 
 function HrvVsBaselineCard({
   daily, baseline, hrvSd, avg7d, vsBaselinePct,
@@ -57,21 +88,15 @@ function HrvVsBaselineCard({
   avg7d: number | null;
   vsBaselinePct: number | null;
 }) {
-  // Trend-line polyline. Map y so baseline is centered, ±SD is a band.
-  // Use a simple linear scale: take min/max from daily HRV with a 10% pad.
-  const hrvs = daily.map((d) => d.hrv).filter((h): h is number => h != null);
-  const yMin = (Math.min(...hrvs, baseline ?? 0)) * 0.9;
-  const yMax = (Math.max(...hrvs, baseline ?? 0)) * 1.1;
-  const yScale = (v: number) => 80 - ((v - yMin) / (yMax - yMin)) * 80;
-
-  const points = daily
-    .map((d, i) => (d.hrv == null ? null : `${(i / (daily.length - 1)) * 360},${yScale(d.hrv)}`))
-    .filter(Boolean)
-    .join(" ");
+  const data = daily.map((d) => ({ date: d.date, hrv: d.hrv }));
+  const hasData = data.some((d) => d.hrv != null);
 
   const pctRounded = vsBaselinePct == null ? null : Math.round(vsBaselinePct * 100);
   const valueClass: "good" | "warn" | "bad" =
     pctRounded == null ? "warn" : pctRounded < -7 ? "bad" : pctRounded < -3 ? "warn" : "good";
+
+  const sdHi = baseline != null && hrvSd != null ? baseline + hrvSd : null;
+  const sdLo = baseline != null && hrvSd != null ? baseline - hrvSd : null;
 
   return (
     <Card>
@@ -83,32 +108,58 @@ function HrvVsBaselineCard({
         value={pctRounded != null ? `${pctRounded > 0 ? "+" : ""}${pctRounded}%` : "—"}
         tone={valueClass}
       />
-      <svg viewBox="0 0 360 80" preserveAspectRatio="none" style={{ width: "100%" }}>
-        {baseline != null && hrvSd != null && (
-          <rect
-            x="0" y={yScale(baseline + hrvSd)} width="360"
-            height={yScale(baseline - hrvSd) - yScale(baseline + hrvSd)}
-            fill={COLOR.accent} fillOpacity={0.08}
-          />
-        )}
-        {baseline != null && (
-          <line x1="0" y1={yScale(baseline)} x2="360" y2={yScale(baseline)}
-            stroke={COLOR.accent} strokeWidth={1} strokeDasharray="3,3" opacity={0.5} />
-        )}
-        {/* "#7dd3fc" = cyan info color; migrate to COLOR.info when token is added */}
-        <polyline points={points} fill="none" stroke="#7dd3fc" strokeWidth={1.5} />
-        {/* Invisible hover targets — one circle per day with native <title> tooltip */}
-        {daily.map((d, i) => {
-          if (d.hrv == null) return null;
-          const x = (i / (daily.length - 1)) * 360;
-          const y = yScale(d.hrv);
-          return (
-            <circle key={d.date} cx={x} cy={y} r={7} fill="transparent" stroke="transparent" style={{ cursor: "pointer" }}>
-              <title>{`${formatDateLabel(d.date)}: ${fmtNum(d.hrv)} ms`}</title>
-            </circle>
-          );
-        })}
-      </svg>
+      {hasData ? (
+        <ResponsiveContainer width="100%" height={90}>
+          <LineChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+            <XAxis dataKey="date" hide />
+            <YAxis hide domain={["auto", "auto"]} />
+            {sdHi != null && sdLo != null && (
+              <ReferenceArea y1={sdLo} y2={sdHi} fill={COLOR.accent} fillOpacity={0.08} />
+            )}
+            {baseline != null && (
+              <ReferenceLine
+                y={baseline}
+                stroke={COLOR.accent}
+                strokeDasharray="3,3"
+                strokeOpacity={0.5}
+                strokeWidth={1}
+              />
+            )}
+            <Tooltip
+              content={({ active, payload }) => {
+                if (!active || !payload?.length) return null;
+                const p = payload[0].payload as { date: string; hrv: number | null };
+                return (
+                  <TooltipBox>
+                    <div style={{ fontWeight: 600, color: COLOR.textStrong }}>{formatDateLabel(p.date)}</div>
+                    <div style={{ color: "#7dd3fc" }}>{p.hrv != null ? `${fmtNum(p.hrv)} ms` : "—"}</div>
+                    {baseline != null && p.hrv != null && (
+                      <div style={{ color: COLOR.textMuted }}>
+                        {`baseline ${fmtNum(baseline)} ms`}
+                      </div>
+                    )}
+                  </TooltipBox>
+                );
+              }}
+              cursor={{ stroke: COLOR.accent, strokeDasharray: "3,3", strokeOpacity: 0.4 }}
+            />
+            <Line
+              type="monotone"
+              dataKey="hrv"
+              stroke="#7dd3fc"
+              strokeWidth={1.5}
+              dot={false}
+              activeDot={{ r: 4, fill: "#7dd3fc", stroke: COLOR.surface, strokeWidth: 2 }}
+              connectNulls={false}
+              isAnimationActive={false}
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      ) : (
+        <div style={{ height: 90, display: "flex", alignItems: "center", justifyContent: "center", color: COLOR.textMuted, fontSize: 12 }}>
+          Insufficient data
+        </div>
+      )}
       <Legend items={[
         { color: "#7dd3fc", label: "HRV daily" },
         { color: COLOR.accent, label: "baseline ±1 SD" },
@@ -116,6 +167,8 @@ function HrvVsBaselineCard({
     </Card>
   );
 }
+
+// ── A2: RHR vs baseline ───────────────────────────────────────────────────
 
 function RhrVsBaselineCard({
   daily, baseline, avg7d, deltaBpm,
@@ -125,15 +178,8 @@ function RhrVsBaselineCard({
   avg7d: number | null;
   deltaBpm: number | null;
 }) {
-  const vals = daily.map((d) => d.rhr).filter((v): v is number => v != null);
-  const yMin = Math.min(...vals, baseline ?? 0) - 3;
-  const yMax = Math.max(...vals, baseline ?? 0) + 3;
-  const yScale = (v: number) => 80 - ((v - yMin) / (yMax - yMin)) * 80;
-
-  const points = daily
-    .map((d, i) => (d.rhr == null ? null : `${(i / (daily.length - 1)) * 360},${yScale(d.rhr)}`))
-    .filter(Boolean)
-    .join(" ");
+  const data = daily.map((d) => ({ date: d.date, rhr: d.rhr }));
+  const hasData = data.some((d) => d.rhr != null);
 
   const tone: "good" | "warn" | "bad" =
     deltaBpm == null ? "warn" : deltaBpm >= 5 ? "bad" : deltaBpm >= 3 ? "warn" : "good";
@@ -148,29 +194,62 @@ function RhrVsBaselineCard({
         value={deltaBpm != null ? `${deltaBpm > 0 ? "+" : ""}${fmtNum(deltaBpm)} bpm` : "—"}
         tone={tone}
       />
-      <svg viewBox="0 0 360 80" preserveAspectRatio="none" style={{ width: "100%" }}>
-        {baseline != null && (
-          <>
-            <line x1="0" y1={yScale(baseline)}     x2="360" y2={yScale(baseline)}
-              stroke={COLOR.accent} strokeWidth={1} strokeDasharray="3,3" opacity={0.5} />
-            <line x1="0" y1={yScale(baseline + 5)} x2="360" y2={yScale(baseline + 5)}
-              stroke={COLOR.danger} strokeWidth={1} strokeDasharray="2,4" opacity={0.4} />
-          </>
-        )}
-        {/* "#7dd3fc" = cyan info color; migrate to COLOR.info when token is added */}
-        <polyline points={points} fill="none" stroke="#7dd3fc" strokeWidth={1.5} />
-        {/* Invisible hover targets with native <title> tooltip */}
-        {daily.map((d, i) => {
-          if (d.rhr == null) return null;
-          const x = (i / (daily.length - 1)) * 360;
-          const y = yScale(d.rhr);
-          return (
-            <circle key={d.date} cx={x} cy={y} r={7} fill="transparent" stroke="transparent" style={{ cursor: "pointer" }}>
-              <title>{`${formatDateLabel(d.date)}: ${fmtNum(d.rhr)} bpm`}</title>
-            </circle>
-          );
-        })}
-      </svg>
+      {hasData ? (
+        <ResponsiveContainer width="100%" height={90}>
+          <LineChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+            <XAxis dataKey="date" hide />
+            <YAxis hide domain={["auto", "auto"]} />
+            {baseline != null && (
+              <ReferenceLine
+                y={baseline}
+                stroke={COLOR.accent}
+                strokeDasharray="3,3"
+                strokeOpacity={0.5}
+                strokeWidth={1}
+              />
+            )}
+            {baseline != null && (
+              <ReferenceLine
+                y={baseline + 5}
+                stroke={COLOR.danger}
+                strokeDasharray="2,4"
+                strokeOpacity={0.4}
+                strokeWidth={1}
+              />
+            )}
+            <Tooltip
+              content={({ active, payload }) => {
+                if (!active || !payload?.length) return null;
+                const p = payload[0].payload as { date: string; rhr: number | null };
+                return (
+                  <TooltipBox>
+                    <div style={{ fontWeight: 600, color: COLOR.textStrong }}>{formatDateLabel(p.date)}</div>
+                    <div style={{ color: "#7dd3fc" }}>{p.rhr != null ? `${fmtNum(p.rhr)} bpm` : "—"}</div>
+                    {baseline != null && p.rhr != null && (
+                      <div style={{ color: COLOR.textMuted }}>{`baseline ${fmtNum(baseline)} bpm`}</div>
+                    )}
+                  </TooltipBox>
+                );
+              }}
+              cursor={{ stroke: COLOR.accent, strokeDasharray: "3,3", strokeOpacity: 0.4 }}
+            />
+            <Line
+              type="monotone"
+              dataKey="rhr"
+              stroke="#7dd3fc"
+              strokeWidth={1.5}
+              dot={false}
+              activeDot={{ r: 4, fill: "#7dd3fc", stroke: COLOR.surface, strokeWidth: 2 }}
+              connectNulls={false}
+              isAnimationActive={false}
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      ) : (
+        <div style={{ height: 90, display: "flex", alignItems: "center", justifyContent: "center", color: COLOR.textMuted, fontSize: 12 }}>
+          Insufficient data
+        </div>
+      )}
       <Legend items={[
         { color: COLOR.accent, label: "baseline" },
         { color: COLOR.danger, label: "+5 bpm alert" },
@@ -178,6 +257,8 @@ function RhrVsBaselineCard({
     </Card>
   );
 }
+
+// ── A3: HRV weekly avg ────────────────────────────────────────────────────
 
 function HrvWeeklyCard({
   weekly, baseline,
@@ -193,13 +274,13 @@ function HrvWeeklyCard({
       </Card>
     );
   }
-  const yMax = Math.max(...vals, baseline ?? 0) * 1.1;
-  const barH = (v: number | null) => (v == null ? 0 : (v / yMax) * 70);
 
   const recentTrendingDown =
     baseline != null
       ? weekly.slice(-3).every((w) => w.hrv_avg != null && w.hrv_avg < baseline * 0.97)
       : false;
+
+  const data = weekly.map((w) => ({ week_start: w.week_start, hrv_avg: w.hrv_avg }));
 
   return (
     <Card>
@@ -209,25 +290,43 @@ function HrvWeeklyCard({
         value={vals[vals.length - 1] != null ? `${fmtNum(vals[vals.length - 1])}` : "—"}
         tone={recentTrendingDown ? "warn" : "good"}
       />
-      <svg viewBox="0 0 360 80" preserveAspectRatio="none" style={{ width: "100%" }}>
-        {baseline != null && (
-          <line x1="0" y1={80 - (baseline / yMax) * 70} x2="360" y2={80 - (baseline / yMax) * 70}
-            stroke={COLOR.accent} strokeDasharray="3,3" opacity={0.5} />
-        )}
-        {weekly.map((w, i) => {
-          const h = barH(w.hrv_avg);
-          const x = 4 + i * 30;
-          const isRecent = i >= weekly.length - 3 && recentTrendingDown;
-          return (
-            <rect key={w.week_start}
-              x={x} y={80 - h} width={22} height={h}
-              fill={isRecent ? COLOR.warning : "#7dd3fc"}
-              style={{ cursor: "pointer" }}>
-              <title>{w.hrv_avg != null ? `Week of ${formatDateLabel(w.week_start)}: ${fmtNum(w.hrv_avg)} ms` : `Week of ${formatDateLabel(w.week_start)}: —`}</title>
-            </rect>
-          );
-        })}
-      </svg>
+      <ResponsiveContainer width="100%" height={90}>
+        <BarChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }} barCategoryGap="25%">
+          <XAxis dataKey="week_start" hide />
+          <YAxis hide domain={[0, "auto"]} />
+          {baseline != null && (
+            <ReferenceLine
+              y={baseline}
+              stroke={COLOR.accent}
+              strokeDasharray="3,3"
+              strokeOpacity={0.5}
+            />
+          )}
+          <Tooltip
+            content={({ active, payload }) => {
+              if (!active || !payload?.length) return null;
+              const p = payload[0].payload as { week_start: string; hrv_avg: number | null };
+              return (
+                <TooltipBox>
+                  <div style={{ fontWeight: 600, color: COLOR.textStrong }}>
+                    {`Week of ${formatDateLabel(p.week_start)}`}
+                  </div>
+                  <div style={{ color: "#7dd3fc" }}>
+                    {p.hrv_avg != null ? `${fmtNum(p.hrv_avg)} ms` : "—"}
+                  </div>
+                </TooltipBox>
+              );
+            }}
+            cursor={{ fill: COLOR.surfaceAlt }}
+          />
+          <Bar dataKey="hrv_avg" radius={[4, 4, 0, 0]} isAnimationActive={false}>
+            {data.map((entry, i) => {
+              const isRecent = i >= data.length - 3 && recentTrendingDown;
+              return <Cell key={entry.week_start} fill={isRecent ? COLOR.warning : "#7dd3fc"} />;
+            })}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
     </Card>
   );
 }

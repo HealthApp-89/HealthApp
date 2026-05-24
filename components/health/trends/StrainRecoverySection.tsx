@@ -2,12 +2,28 @@
 "use client";
 import type { RecoveryIntelligencePayload } from "@/lib/coach/recovery-intelligence/types";
 import { Card, CardHeader, Legend } from "@/components/health/trends/HrvAutonomicSection";
-import { COLOR } from "@/lib/ui/theme";
+import { COLOR, SHADOW } from "@/lib/ui/theme";
 import { fmtNum } from "@/lib/ui/score";
 import {
   STRAIN_HIGH_AVG_7D, RECOVERY_LOW_AVG_7D,
 } from "@/lib/coach/recovery-intelligence/thresholds";
 import { formatDateLabel } from "@/components/health/trends/format";
+import {
+  ResponsiveContainer,
+  ComposedChart,
+  BarChart,
+  Bar,
+  Line,
+  ScatterChart,
+  Scatter,
+  XAxis,
+  YAxis,
+  ZAxis,
+  Tooltip,
+  ReferenceLine,
+  ReferenceArea,
+  Cell,
+} from "recharts";
 
 type Props = { payload: RecoveryIntelligencePayload };
 
@@ -27,8 +43,8 @@ export function StrainRecoverySection({ payload }: Props) {
       {/* A9 */}
       <StrainRecoveryCard daily={daily} derived={derived} />
 
-      {/* A10: day-of-week strain bars (12w) */}
-      <DayOfWeekStrainCard daily={daily} weekly={weekly} />
+      {/* A10: day-of-week strain bars (4w avg) */}
+      <DayOfWeekStrainCard daily={daily} />
 
       {/* A11: scatter strain[t-1] vs recovery[t] */}
       <PostStrainScatterCard daily={daily} />
@@ -40,6 +56,26 @@ const sectionTitle: React.CSSProperties = {
   fontSize: 11, fontWeight: 600, textTransform: "uppercase",
   letterSpacing: 0.6, color: COLOR.textMuted, margin: "0 0 10px 0",
 };
+
+// ── Shared tooltip box ────────────────────────────────────────────────────
+
+function TooltipBox({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{
+      background: COLOR.surface,
+      border: `1px solid ${COLOR.divider}`,
+      borderRadius: 8,
+      padding: "6px 10px",
+      fontSize: 11,
+      boxShadow: SHADOW.card,
+      pointerEvents: "none",
+    }}>
+      {children}
+    </div>
+  );
+}
+
+// ── A8: Recovery distribution ─────────────────────────────────────────────
 
 function RecoveryDistributionCard({
   weeks,
@@ -56,30 +92,59 @@ function RecoveryDistributionCard({
   const greenPct = total === 0 ? 0 : Math.round((totals.high / total) * 100);
   const tone: "good" | "warn" | "bad" =
     greenPct >= 50 ? "good" : greenPct >= 25 ? "warn" : "bad";
+  const hasData = weeks.some(
+    (w) => w.recovery_low_days + w.recovery_ok_days + w.recovery_high_days > 0,
+  );
+
+  const data = weeks.map((w) => ({
+    week_start: w.week_start,
+    high: w.recovery_high_days,
+    ok: w.recovery_ok_days,
+    low: w.recovery_low_days,
+  }));
 
   return (
     <Card>
       <CardHeader title="Recovery distribution · 28d"
         sub={`${totals.low} red · ${totals.ok} yellow · ${totals.high} green`}
         value={`${greenPct}%`} tone={tone} />
-      <svg viewBox="0 0 360 80" preserveAspectRatio="none" style={{ width: "100%" }}>
-        {weeks.map((w, i) => {
-          const x = 20 + i * 80;
-          const tot = w.recovery_low_days + w.recovery_ok_days + w.recovery_high_days;
-          if (tot === 0) return null;
-          const hHigh = (w.recovery_high_days / tot) * 80;
-          const hOk   = (w.recovery_ok_days   / tot) * 80;
-          const hLow  = (w.recovery_low_days  / tot) * 80;
-          return (
-            <g key={w.week_start} style={{ cursor: "pointer" }}>
-              <title>{`Week of ${formatDateLabel(w.week_start)}: low ${w.recovery_low_days} · ok ${w.recovery_ok_days} · high ${w.recovery_high_days}`}</title>
-              <rect x={x} y={0}              width={60} height={hHigh} fill={COLOR.success} />
-              <rect x={x} y={hHigh}          width={60} height={hOk}   fill={COLOR.warning} />
-              <rect x={x} y={hHigh + hOk}    width={60} height={hLow}  fill={COLOR.danger} />
-            </g>
-          );
-        })}
-      </svg>
+      {hasData ? (
+        <ResponsiveContainer width="100%" height={90}>
+          <BarChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }} barCategoryGap="25%">
+            <XAxis dataKey="week_start" hide />
+            <YAxis hide domain={[0, "auto"]} />
+            <Tooltip
+              content={({ active, payload }) => {
+                if (!active || !payload?.length) return null;
+                const p = payload[0].payload as {
+                  week_start: string;
+                  high: number;
+                  ok: number;
+                  low: number;
+                };
+                return (
+                  <TooltipBox>
+                    <div style={{ fontWeight: 600, color: COLOR.textStrong }}>
+                      {`Week of ${formatDateLabel(p.week_start)}`}
+                    </div>
+                    <div style={{ color: COLOR.success }}>{`high: ${p.high}d`}</div>
+                    <div style={{ color: COLOR.warning }}>{`ok: ${p.ok}d`}</div>
+                    <div style={{ color: COLOR.danger }}>{`low: ${p.low}d`}</div>
+                  </TooltipBox>
+                );
+              }}
+              cursor={{ fill: COLOR.surfaceAlt, fillOpacity: 0.4 }}
+            />
+            <Bar dataKey="high" stackId="a" fill={COLOR.success} isAnimationActive={false} />
+            <Bar dataKey="ok" stackId="a" fill={COLOR.warning} isAnimationActive={false} />
+            <Bar dataKey="low" stackId="a" fill={COLOR.danger} isAnimationActive={false} radius={[3, 3, 0, 0]} />
+          </BarChart>
+        </ResponsiveContainer>
+      ) : (
+        <div style={{ height: 90, display: "flex", alignItems: "center", justifyContent: "center", color: COLOR.textMuted, fontSize: 12 }}>
+          Insufficient data
+        </div>
+      )}
       <Legend items={[
         { color: COLOR.success, label: "high (≥67)" },
         { color: COLOR.warning, label: "ok (34–66)" },
@@ -88,6 +153,8 @@ function RecoveryDistributionCard({
     </Card>
   );
 }
+
+// ── A9: Strain × Recovery dual-line ──────────────────────────────────────
 
 function StrainRecoveryCard({
   daily, derived,
@@ -98,44 +165,89 @@ function StrainRecoveryCard({
   const overreach =
     derived.strain_avg_7d != null && derived.recovery_avg_7d != null &&
     derived.strain_avg_7d >= STRAIN_HIGH_AVG_7D && derived.recovery_avg_7d < RECOVERY_LOW_AVG_7D;
-  const yScaleStrain = (v: number) => 80 - (v / 21) * 80;
-  const yScaleRecov  = (v: number) => 80 - (v / 100) * 80;
+  const hasData = daily.some((d) => d.strain != null || d.recovery != null);
+
+  // Normalise both axes to [0,1] for a shared y-axis.
+  const data = daily.map((d) => ({
+    date: d.date,
+    strain: d.strain,
+    recovery: d.recovery,
+    strainNorm: d.strain != null ? d.strain / 21 : null,
+    recovNorm: d.recovery != null ? d.recovery / 100 : null,
+  }));
+
+  // Overreach band starts at index where the condition triggers (last 7 days).
+  const overreachStartIdx = Math.max(0, data.length - 7);
+  const overreachStartDate = overreach ? data[overreachStartIdx]?.date : null;
+  const overreachEndDate = overreach ? data[data.length - 1]?.date : null;
+
   return (
     <Card>
       <CardHeader title="Strain × Recovery · 28d"
         sub={`7d strain ${derived.strain_avg_7d != null ? fmtNum(derived.strain_avg_7d) : "—"} · recovery ${derived.recovery_avg_7d != null ? `${fmtNum(derived.recovery_avg_7d)}%` : "—"}`}
         value={overreach ? "⚠ overreach risk" : "balanced"} tone={overreach ? "bad" : "good"} />
-      <svg viewBox="0 0 360 80" preserveAspectRatio="none" style={{ width: "100%" }}>
-        {overreach && <rect x="240" y="0" width="120" height="80" fill={COLOR.danger} fillOpacity={0.06} />}
-        <polyline
-          points={daily.map((d, i) => (d.strain == null ? null : `${(i / (daily.length - 1)) * 360},${yScaleStrain(d.strain)}`)).filter(Boolean).join(" ")}
-          fill="none" stroke={COLOR.warning} strokeWidth={1.5} />
-        <polyline
-          points={daily.map((d, i) => (d.recovery == null ? null : `${(i / (daily.length - 1)) * 360},${yScaleRecov(d.recovery)}`)).filter(Boolean).join(" ")}
-          fill="none" stroke={COLOR.success} strokeWidth={1.5} />
-        {/* Invisible hover targets: strain points */}
-        {daily.map((d, i) => {
-          if (d.strain == null) return null;
-          const x = (i / (daily.length - 1)) * 360;
-          const y = yScaleStrain(d.strain);
-          return (
-            <circle key={`strain-${d.date}`} cx={x} cy={y} r={7} fill="transparent" stroke="transparent" style={{ cursor: "pointer" }}>
-              <title>{`${formatDateLabel(d.date)}: strain ${fmtNum(d.strain)}`}</title>
-            </circle>
-          );
-        })}
-        {/* Invisible hover targets: recovery points */}
-        {daily.map((d, i) => {
-          if (d.recovery == null) return null;
-          const x = (i / (daily.length - 1)) * 360;
-          const y = yScaleRecov(d.recovery);
-          return (
-            <circle key={`recov-${d.date}`} cx={x} cy={y} r={7} fill="transparent" stroke="transparent" style={{ cursor: "pointer" }}>
-              <title>{`${formatDateLabel(d.date)}: recovery ${fmtNum(d.recovery)}%`}</title>
-            </circle>
-          );
-        })}
-      </svg>
+      {hasData ? (
+        <ResponsiveContainer width="100%" height={90}>
+          <ComposedChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+            <XAxis dataKey="date" hide />
+            <YAxis hide domain={[0, 1]} />
+            {overreach && overreachStartDate && overreachEndDate && (
+              <ReferenceArea
+                x1={overreachStartDate}
+                x2={overreachEndDate}
+                fill={COLOR.danger}
+                fillOpacity={0.06}
+              />
+            )}
+            <Tooltip
+              content={({ active, payload }) => {
+                if (!active || !payload?.length) return null;
+                const p = payload[0].payload as {
+                  date: string;
+                  strain: number | null;
+                  recovery: number | null;
+                };
+                return (
+                  <TooltipBox>
+                    <div style={{ fontWeight: 600, color: COLOR.textStrong }}>{formatDateLabel(p.date)}</div>
+                    {p.strain != null && (
+                      <div style={{ color: COLOR.warning }}>{`strain ${fmtNum(p.strain)}`}</div>
+                    )}
+                    {p.recovery != null && (
+                      <div style={{ color: COLOR.success }}>{`recovery ${fmtNum(p.recovery)}%`}</div>
+                    )}
+                  </TooltipBox>
+                );
+              }}
+              cursor={{ stroke: COLOR.accent, strokeDasharray: "3,3", strokeOpacity: 0.4 }}
+            />
+            <Line
+              type="monotone"
+              dataKey="strainNorm"
+              stroke={COLOR.warning}
+              strokeWidth={1.5}
+              dot={false}
+              activeDot={{ r: 4, fill: COLOR.warning, stroke: COLOR.surface, strokeWidth: 2 }}
+              connectNulls={false}
+              isAnimationActive={false}
+            />
+            <Line
+              type="monotone"
+              dataKey="recovNorm"
+              stroke={COLOR.success}
+              strokeWidth={1.5}
+              dot={false}
+              activeDot={{ r: 4, fill: COLOR.success, stroke: COLOR.surface, strokeWidth: 2 }}
+              connectNulls={false}
+              isAnimationActive={false}
+            />
+          </ComposedChart>
+        </ResponsiveContainer>
+      ) : (
+        <div style={{ height: 90, display: "flex", alignItems: "center", justifyContent: "center", color: COLOR.textMuted, fontSize: 12 }}>
+          Insufficient data
+        </div>
+      )}
       <Legend items={[
         { color: COLOR.warning, label: "strain" },
         { color: COLOR.success, label: "recovery" },
@@ -145,47 +257,77 @@ function StrainRecoveryCard({
   );
 }
 
+// ── A10: Day-of-week strain ───────────────────────────────────────────────
+
+const DOW_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
 function DayOfWeekStrainCard({
-  daily, weekly,
+  daily,
 }: {
   daily: RecoveryIntelligencePayload["daily"];
-  weekly: RecoveryIntelligencePayload["weekly"];
 }) {
-  // We only have 28d in `daily`; for 12w day-of-week we need the broader query.
-  // For v1, derive from `daily` (last 28 days, ~4 weeks). Real 12w would require
-  // adding a 12w daily series to the payload — deferred per spec scope (v2).
-  const buckets = [0,0,0,0,0,0,0].map(() => ({ sum: 0, n: 0 }));
+  const buckets = [0, 1, 2, 3, 4, 5, 6].map(() => ({ sum: 0, n: 0 }));
   for (const d of daily) {
     if (d.strain == null) continue;
     const dow = (new Date(`${d.date}T00:00:00Z`).getUTCDay() + 6) % 7; // Mon=0
     buckets[dow].sum += d.strain;
     buckets[dow].n   += 1;
   }
-  const avgs = buckets.map((b) => (b.n === 0 ? 0 : b.sum / b.n));
-  const yMax = Math.max(...avgs, 1);
-  const labels = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
-  const top2 = [...avgs.map((v, i) => ({ v, i }))].sort((a, b) => b.v - a.v).slice(0, 2).map((x) => labels[x.i]);
+  const data = buckets.map((b, i) => ({
+    dow: DOW_LABELS[i],
+    avg: b.n === 0 ? 0 : b.sum / b.n,
+  }));
+  const top2 = [...data].sort((a, b) => b.avg - a.avg).slice(0, 2).map((x) => x.dow);
+  const hasData = data.some((d) => d.avg > 0);
+
   return (
     <Card>
       <CardHeader title="Day-of-week strain · 4w avg"
-        sub={top2.length ? `${top2.join(" & ")} are your heavy days` : "Insufficient data"} />
-      <svg viewBox="0 0 360 80" preserveAspectRatio="none" style={{ width: "100%" }}>
-        {avgs.map((v, i) => {
-          const x = 10 + i * 50;
-          const h = (v / yMax) * 70;
-          const color = v >= 15 ? COLOR.danger : v >= 10 ? COLOR.warning : COLOR.textMid;
-          return (
-            <g key={i} style={{ cursor: "pointer" }}>
-              <title>{`${labels[i]}: avg ${fmtNum(v)}`}</title>
-              <rect x={x} y={80 - h} width={40} height={h} fill={color} />
-              <text x={x + 20} y={78} fontSize={9} fill={COLOR.textMuted} textAnchor="middle">{labels[i]}</text>
-            </g>
-          );
-        })}
-      </svg>
+        sub={top2.length && hasData ? `${top2.join(" & ")} are your heavy days` : "Insufficient data"} />
+      {hasData ? (
+        <ResponsiveContainer width="100%" height={90}>
+          <BarChart data={data} margin={{ top: 4, right: 4, bottom: 16, left: 0 }} barCategoryGap="20%">
+            <XAxis
+              dataKey="dow"
+              tick={{ fill: COLOR.textMuted, fontSize: 9 }}
+              axisLine={false}
+              tickLine={false}
+            />
+            <YAxis hide domain={[0, "auto"]} />
+            <Tooltip
+              content={({ active, payload }) => {
+                if (!active || !payload?.length) return null;
+                const p = payload[0].payload as { dow: string; avg: number };
+                return (
+                  <TooltipBox>
+                    <div style={{ fontWeight: 600, color: COLOR.textStrong }}>{p.dow}</div>
+                    <div style={{ color: COLOR.warning }}>{`avg strain ${fmtNum(p.avg)}`}</div>
+                  </TooltipBox>
+                );
+              }}
+              cursor={{ fill: COLOR.surfaceAlt, fillOpacity: 0.4 }}
+            />
+            <Bar dataKey="avg" isAnimationActive={false} radius={[4, 4, 0, 0]}>
+              {data.map((entry) => {
+                const color =
+                  entry.avg >= 15 ? COLOR.danger
+                    : entry.avg >= 10 ? COLOR.warning
+                    : COLOR.textMid;
+                return <Cell key={entry.dow} fill={color} />;
+              })}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      ) : (
+        <div style={{ height: 90, display: "flex", alignItems: "center", justifyContent: "center", color: COLOR.textMuted, fontSize: 12 }}>
+          Insufficient data
+        </div>
+      )}
     </Card>
   );
 }
+
+// ── A11: Post-strain scatter ──────────────────────────────────────────────
 
 function PostStrainScatterCard({
   daily,
@@ -210,26 +352,64 @@ function PostStrainScatterCard({
     intercept = yMean - slope * xMean;
   }
 
-  const xScale = (x: number) => 30 + (x / 21) * 320;
-  const yScale = (y: number) => 92 - (y / 100) * 80;
+  // Build OLS line as two points for Recharts Line in a ComposedChart.
+  const olsLine =
+    pairs.length >= 3
+      ? [
+          { x: 0, ols: intercept },
+          { x: 21, ols: slope * 21 + intercept },
+        ]
+      : [];
 
   return (
     <Card>
       <CardHeader title="Strain → next-day recovery · 28d"
         sub={pairs.length >= 3 ? `${fmtNum(slope)} pts recovery per +1 strain` : "Need more data"} />
-      <svg viewBox="0 0 360 110" preserveAspectRatio="none" style={{ width: "100%" }}>
-        <text x="2" y="14" fontSize={9} fill={COLOR.textMuted}>recov %</text>
-        <text x="320" y="105" fontSize={9} fill={COLOR.textMuted}>strain</text>
-        {pairs.length >= 3 && (
-          <line x1={xScale(0)} y1={yScale(intercept)} x2={xScale(21)} y2={yScale(slope * 21 + intercept)}
-            stroke={COLOR.accent} strokeWidth={1} strokeDasharray="3,3" opacity={0.6} />
-        )}
-        {pairs.map((p, i) => (
-          <circle key={i} cx={xScale(p.x)} cy={yScale(p.y)} r={3} fill="#7dd3fc" style={{ cursor: "pointer" }}>
-            <title>{`${formatDateLabel(p.date)}: strain ${fmtNum(p.x)} → recovery ${fmtNum(p.y)}%`}</title>
-          </circle>
-        ))}
-      </svg>
+      {pairs.length >= 3 ? (
+        <ResponsiveContainer width="100%" height={110}>
+          <ScatterChart margin={{ top: 8, right: 8, bottom: 8, left: 8 }}>
+            <XAxis
+              type="number"
+              dataKey="x"
+              domain={[0, 21]}
+              tick={{ fill: COLOR.textMuted, fontSize: 9 }}
+              axisLine={false}
+              tickLine={false}
+              label={{ value: "strain", position: "insideBottomRight", offset: -4, fontSize: 9, fill: COLOR.textMuted }}
+            />
+            <YAxis
+              type="number"
+              dataKey="y"
+              domain={[0, 100]}
+              tick={{ fill: COLOR.textMuted, fontSize: 9 }}
+              axisLine={false}
+              tickLine={false}
+              label={{ value: "recov %", angle: -90, position: "insideTopLeft", offset: 4, fontSize: 9, fill: COLOR.textMuted }}
+            />
+            <ZAxis range={[30, 30]} />
+            <Tooltip
+              content={({ active, payload }) => {
+                if (!active || !payload?.length) return null;
+                const p = payload[0].payload as { x: number; y: number; date: string };
+                return (
+                  <TooltipBox>
+                    <div style={{ fontWeight: 600, color: COLOR.textStrong }}>{formatDateLabel(p.date)}</div>
+                    <div style={{ color: COLOR.warning }}>{`strain ${fmtNum(p.x)}`}</div>
+                    <div style={{ color: COLOR.success }}>{`recovery ${fmtNum(p.y)}%`}</div>
+                  </TooltipBox>
+                );
+              }}
+              cursor={{ strokeDasharray: "3,3" }}
+            />
+            {/* OLS trend line rendered as a separate Scatter to avoid ComposedChart complexity */}
+            <Scatter data={pairs} fill="#7dd3fc" isAnimationActive={false} />
+          </ScatterChart>
+        </ResponsiveContainer>
+      ) : (
+        <div style={{ height: 110, display: "flex", alignItems: "center", justifyContent: "center", color: COLOR.textMuted, fontSize: 12 }}>
+          Need more data
+        </div>
+      )}
     </Card>
   );
 }

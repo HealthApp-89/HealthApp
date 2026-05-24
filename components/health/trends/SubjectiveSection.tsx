@@ -3,9 +3,19 @@
 import type { RecoveryIntelligencePayload, SubjectivePoint } from "@/lib/coach/recovery-intelligence/types";
 import { Card, CardHeader, Legend } from "@/components/health/trends/HrvAutonomicSection";
 import { formatDateLabel } from "@/components/health/trends/format";
-import { COLOR } from "@/lib/ui/theme";
+import { COLOR, SHADOW } from "@/lib/ui/theme";
 import { fmtNum } from "@/lib/ui/score";
 import { RECURRING_SORENESS_OCCURRENCES, RECURRING_SORENESS_WINDOW_DAYS } from "@/lib/coach/recovery-intelligence/thresholds";
+import {
+  ResponsiveContainer,
+  ComposedChart,
+  Line,
+  Scatter,
+  XAxis,
+  YAxis,
+  ZAxis,
+  Tooltip,
+} from "recharts";
 
 const AREAS = ["chest", "back", "legs", "shoulders", "arms", "core"] as const;
 
@@ -28,6 +38,8 @@ const sectionTitle: React.CSSProperties = {
   letterSpacing: 0.6, color: COLOR.textMuted, margin: "0 0 10px 0",
 };
 
+// ── A14: Soreness heatmap — kept as grid (spatial layout) ─────────────────
+
 function SorenessHeatmapCard({ subjective }: { subjective: SubjectivePoint[] }) {
   // Recurring detection over last 14d for the subtitle.
   const last14 = subjective.slice(-RECURRING_SORENESS_WINDOW_DAYS);
@@ -47,10 +59,6 @@ function SorenessHeatmapCard({ subjective }: { subjective: SubjectivePoint[] }) 
             <div style={{ fontSize: 10, color: COLOR.textMid, width: 60, flexShrink: 0 }}>{area}</div>
             {subjective.map((p) => {
               const has = p.soreness_areas.includes(area);
-              // Light-theme substitutions:
-              // "#1a1a1a" (dark empty cell) → COLOR.divider (#e8eaf3)
-              // "rgba(248,113,113,0.7)" (sharp, dark red tint) → COLOR.dangerSoft (#fee2e2)
-              // "rgba(250,204,21,0.45)" (mild, dark amber tint) → COLOR.warningSoft (#fef3c7)
               const bg = !has ? COLOR.divider
                 : p.soreness_severity === "sharp" ? COLOR.dangerSoft
                 : COLOR.warningSoft;
@@ -66,7 +74,6 @@ function SorenessHeatmapCard({ subjective }: { subjective: SubjectivePoint[] }) 
           </div>
         ))}
       </div>
-      {/* Legend dots use the same substituted colors so they match the cells */}
       <Legend items={[
         { color: COLOR.warningSoft, label: "mild" },
         { color: COLOR.dangerSoft, label: "sharp" },
@@ -74,6 +81,8 @@ function SorenessHeatmapCard({ subjective }: { subjective: SubjectivePoint[] }) 
     </Card>
   );
 }
+
+// ── A15: Fatigue × sickness timeline — kept as-is (spatial grid) ─────────
 
 function FatigueTimelineCard({ subjective }: { subjective: SubjectivePoint[] }) {
   const heavyCount = subjective.slice(-7).filter((s) => s.fatigue === "heavy").length;
@@ -91,10 +100,6 @@ function FatigueTimelineCard({ subjective }: { subjective: SubjectivePoint[] }) 
         sub={`${heavyCount} heavy in 7d${sickStreak > 0 ? ` · current sick streak ${sickStreak}d` : ""}`} />
       <div style={{ display: "flex", gap: 2 }}>
         {subjective.map((p) => {
-          // Light-theme substitutions:
-          // "#7f1d1d" (heavy, dark red) → COLOR.dangerSoft (#fee2e2)
-          // "#422006" (some, dark amber) → COLOR.warningSoft (#fef3c7)
-          // "#1f2937" (none, dark slate) → COLOR.divider (#e8eaf3)
           const bg =
             p.fatigue === "heavy" ? COLOR.dangerSoft :
             p.fatigue === "some"  ? COLOR.warningSoft :
@@ -115,7 +120,6 @@ function FatigueTimelineCard({ subjective }: { subjective: SubjectivePoint[] }) 
           );
         })}
       </div>
-      {/* Legend dots use the same substituted colors so they match the cells */}
       <Legend items={[
         { color: COLOR.divider, label: "none" },
         { color: COLOR.warningSoft, label: "some" },
@@ -126,50 +130,99 @@ function FatigueTimelineCard({ subjective }: { subjective: SubjectivePoint[] }) 
   );
 }
 
+// ── A16: Subjective vs objective — Recharts ComposedChart ─────────────────
+
 function SubjVsObjCard({
   daily, subjective,
 }: { daily: RecoveryIntelligencePayload["daily"]; subjective: SubjectivePoint[] }) {
-  // Both arrays are 28d, same dates.
-  const yHrv = (v: number, min: number, max: number) => 80 - ((v - min) / (max - min)) * 80;
   const hrvs = daily.map((d) => d.hrv).filter((v): v is number => v != null);
   if (hrvs.length === 0) {
     return <Card><CardHeader title="Subjective vs objective · 28d" sub="Insufficient data" /></Card>;
   }
-  const min = Math.min(...hrvs) * 0.95;
-  const max = Math.max(...hrvs) * 1.05;
+
+  const hrvMin = Math.min(...hrvs) * 0.95;
+  const hrvMax = Math.max(...hrvs) * 1.05;
+
+  // Normalise HRV to [0,1] for shared y-axis.
+  // Scatter y: map fatigue tier to fixed positions (none=0.1, some=0.3, heavy=0.5).
+  const subjectiveByDate = new Map(subjective.map((s) => [s.date, s]));
+
+  const data = daily.map((d) => {
+    const sub = subjectiveByDate.get(d.date);
+    const fatigueY =
+      sub?.fatigue === "heavy" ? 0.5
+        : sub?.fatigue === "some" ? 0.3
+        : sub?.fatigue != null ? 0.1
+        : null;
+    return {
+      date: d.date,
+      hrv: d.hrv,
+      // Normalise HRV to [0,1] domain for shared axis.
+      hrvNorm: d.hrv != null ? (d.hrv - hrvMin) / (hrvMax - hrvMin) : null,
+      fatigueY,
+      fatigue: sub?.fatigue ?? null,
+    };
+  });
+
   return (
     <Card>
       <CardHeader title="Subjective vs objective · 28d"
         sub="HRV trend overlaid with reported fatigue tier" />
-      <svg viewBox="0 0 360 80" preserveAspectRatio="none" style={{ width: "100%" }}>
-        {/* "#7dd3fc" cyan HRV line — kept as-is, reads fine on white */}
-        <polyline
-          points={daily.map((d, i) => (d.hrv == null ? null : `${(i / (daily.length - 1)) * 360},${yHrv(d.hrv, min, max)}`)).filter(Boolean).join(" ")}
-          fill="none" stroke="#7dd3fc" strokeWidth={1.5} />
-        {/* Invisible hit-targets for HRV points — native browser tooltip on hover/long-press */}
-        {daily.map((d, i) => {
-          if (d.hrv == null) return null;
-          const x = (i / (daily.length - 1)) * 360;
-          const y = yHrv(d.hrv, min, max);
-          return (
-            <circle key={`hrv-${d.date}`} cx={x} cy={y} r={6} fill="transparent" stroke="transparent" style={{ cursor: "pointer" }}>
-              <title>{`${formatDateLabel(d.date)}: ${fmtNum(d.hrv)} ms`}</title>
-            </circle>
-          );
-        })}
-        {subjective.map((s, i) => {
-          if (s.fatigue == null) return null;
-          const r = s.fatigue === "heavy" ? 5 : s.fatigue === "some" ? 3 : 2;
-          return (
-            <circle key={s.date} cx={(i / (subjective.length - 1)) * 360} cy={72} r={r} fill={COLOR.danger} style={{ cursor: "pointer" }}>
-              <title>{`${formatDateLabel(s.date)}: fatigue ${s.fatigue}`}</title>
-            </circle>
-          );
-        })}
-      </svg>
+      <ResponsiveContainer width="100%" height={90}>
+        <ComposedChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+          <XAxis dataKey="date" hide />
+          <YAxis hide domain={[0, 1]} />
+          <ZAxis range={[20, 80]} />
+          <Tooltip
+            content={({ active, payload }) => {
+              if (!active || !payload?.length) return null;
+              const p = payload[0].payload as {
+                date: string;
+                hrv: number | null;
+                fatigue: string | null;
+              };
+              return (
+                <div style={{
+                  background: COLOR.surface,
+                  border: `1px solid ${COLOR.divider}`,
+                  borderRadius: 8,
+                  padding: "6px 10px",
+                  fontSize: 11,
+                  boxShadow: SHADOW.card,
+                  pointerEvents: "none",
+                }}>
+                  <div style={{ fontWeight: 600, color: COLOR.textStrong }}>{formatDateLabel(p.date)}</div>
+                  {p.hrv != null && (
+                    <div style={{ color: "#7dd3fc" }}>{`HRV ${fmtNum(p.hrv)} ms`}</div>
+                  )}
+                  {p.fatigue != null && (
+                    <div style={{ color: COLOR.danger }}>{`fatigue: ${p.fatigue}`}</div>
+                  )}
+                </div>
+              );
+            }}
+            cursor={{ stroke: COLOR.accent, strokeDasharray: "3,3", strokeOpacity: 0.4 }}
+          />
+          <Line
+            type="monotone"
+            dataKey="hrvNorm"
+            stroke="#7dd3fc"
+            strokeWidth={1.5}
+            dot={false}
+            activeDot={{ r: 4, fill: "#7dd3fc", stroke: COLOR.surface, strokeWidth: 2 }}
+            connectNulls={false}
+            isAnimationActive={false}
+          />
+          <Scatter
+            dataKey="fatigueY"
+            fill={COLOR.danger}
+            isAnimationActive={false}
+          />
+        </ComposedChart>
+      </ResponsiveContainer>
       <Legend items={[
         { color: "#7dd3fc", label: "HRV" },
-        { color: COLOR.danger, label: "fatigue (size = tier)" },
+        { color: COLOR.danger, label: "fatigue (dot height = tier)" },
       ]} />
     </Card>
   );
