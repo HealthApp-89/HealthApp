@@ -72,6 +72,19 @@ export function renderCard(
     case "fried_heavy":          return renderFriedHeavy(event, ctx);
     case "training_day_undereat":return renderTrainingUndereat(event, ctx);
     // Remi recovery triggers — render templates added in Task 15.
+    case "hrv_chronic_depression":     return renderHrvChronic(event, ctx);
+    case "rhr_elevated":               return renderRhrElevated(event, ctx);
+    case "sleep_debt_accumulated":     return renderSleepDebt(event, ctx);
+    case "low_recovery_streak":        return renderLowRecoveryStreak(event, ctx);
+    case "strain_recovery_imbalance":  return renderStrainRecovery(event, ctx);
+    case "skin_temp_elevated":         return renderSkinTemp(event, ctx);
+    case "recurring_soreness_area":    return renderRecurringSoreness(event, ctx);
+    case "sickness_lingering":         return renderSicknessLingering(event, ctx);
+    case "deep_sleep_deficit":         return renderDeepSleepDeficit(event, ctx);
+    case "bedtime_drift":              return renderBedtimeDrift(event, ctx);
+    case "respiratory_rate_elevated":  return renderRespiratoryRate(event, ctx);
+    case "heavy_fatigue_cluster":      return renderHeavyFatigue(event, ctx);
+    case "post_strain_undersleep":     return renderPostStrainUndersleep(event, ctx);
     default: throw new Error(`renderCard: unhandled trigger_type '${(event as ProactiveEvent).trigger_type}'`);
   }
 }
@@ -340,5 +353,243 @@ function renderTrainingUndereat(event: ProactiveEvent, _ctx?: RenderContext): Pr
     body_md: `On ${under} of the last ${total} lift days you came in 300+ kcal under target. That's why dinner ends up protein-heavy — a 200 kcal pre-lift snack fixes most of it.`,
     deep_link: { label: "View Nutrition trends", href: "/metrics?section=nutrition" },
     speaker: "nora",
+  };
+}
+
+// ── Remi recovery triggers (Plan 2) ─────────────────────────────────────────
+
+function renderHrvChronic(event: ProactiveEvent, ctx?: RenderContext): ProactiveNudgeCard {
+  const pct = Math.round(Math.abs((event.payload.vs_baseline_pct_7d as number ?? 0) * 100));
+  const days = event.payload.days_depressed as number;
+  const variants = [
+    `Your 7-day HRV average is ${pct}% below baseline, depressed ${days} of the last 7 days. This is a pattern, not a single rough day. Consider cutting intensity 20–30% for the next 5 days, or take a true rest day.`,
+    `${pct}% below baseline ${days} of 7 — sustained. The autonomic system isn't bouncing back. Worth a deload conversation with @Peter, or pull back this week's heaviest session.`,
+    `HRV has been depressed ${days} of the last 7 days (${pct}% off baseline). Single-day dips are noise; this many in a row is signal. Time to back off.`,
+  ];
+  const idx = pickVariant({ userId: ctx?.userId ?? "", triggerKey: event.trigger_key, today: ctx?.today ?? "", count: variants.length });
+  return {
+    schema_version: 1, trigger_type: "hrv_chronic_depression", trigger_key: event.trigger_key,
+    severity: "warn",
+    headline: `HRV ${pct}% below baseline · ${days} of 7 days`,
+    body_md: variants[idx],
+    deep_link: { label: "See HRV trend →", href: "/health?tab=trends#hrv-vs-baseline" },
+    speaker: "remi",
+  };
+}
+
+function renderRhrElevated(event: ProactiveEvent, ctx?: RenderContext): ProactiveNudgeCard {
+  const bpm = Math.round(event.payload.vs_baseline_bpm_7d as number);
+  const days = event.payload.days_elevated as number;
+  const variants = [
+    `Resting HR is +${bpm} bpm above your baseline ${days} of the last 7 days. First illness signal — cross-check skin temp; if it's also up, you're likely fighting something. Pull back the next training session.`,
+    `RHR has been running +${bpm} bpm for ${days} days. Could be illness brewing, sleep debt, or overreach. Hydrate, sleep early, easy training only until it normalizes.`,
+  ];
+  const idx = pickVariant({ userId: ctx?.userId ?? "", triggerKey: event.trigger_key, today: ctx?.today ?? "", count: variants.length });
+  return {
+    schema_version: 1, trigger_type: "rhr_elevated", trigger_key: event.trigger_key,
+    severity: "warn",
+    headline: `RHR +${bpm} bpm · ${days} of 7 days`,
+    body_md: variants[idx],
+    deep_link: { label: "See RHR trend →", href: "/health?tab=trends#rhr-vs-baseline" },
+    speaker: "remi",
+  };
+}
+
+function renderSleepDebt(event: ProactiveEvent, ctx?: RenderContext): ProactiveNudgeCard {
+  const debt = Math.round((event.payload.debt_hours_7d as number) * 10) / 10;
+  const avg = event.payload.avg_hours_7d as number | null;
+  const avgStr = avg != null ? `${(Math.round(avg * 10) / 10).toFixed(1)}h` : "—";
+  const variants = [
+    `${debt}h of sleep debt over the last 7 days (avg ${avgStr}/night). This compounds — HRV and recovery scores will follow. Tonight: bed 30 min earlier than your usual.`,
+    `7-day sleep debt is ${debt}h. The body doesn't catch up over the weekend like the brain does. Pick one fix tonight: caffeine off by 14:00, no screens after 22:30, or bed by 22:30.`,
+  ];
+  const idx = pickVariant({ userId: ctx?.userId ?? "", triggerKey: event.trigger_key, today: ctx?.today ?? "", count: variants.length });
+  return {
+    schema_version: 1, trigger_type: "sleep_debt_accumulated", trigger_key: event.trigger_key,
+    severity: "warn",
+    headline: `${debt}h sleep debt · last 7 days`,
+    body_md: variants[idx],
+    deep_link: { label: "See sleep hours →", href: "/health?tab=trends#sleep-hours" },
+    speaker: "remi",
+  };
+}
+
+function renderLowRecoveryStreak(event: ProactiveEvent, ctx?: RenderContext): ProactiveNudgeCard {
+  const streak = event.payload.streak_days as number;
+  const avg = Math.round(event.payload.avg_recovery_pct as number);
+  const variants = [
+    `Recovery has been in the red (${avg}% avg) for ${streak} consecutive days. This is grind territory. Talk to @Peter about deloading the rest of this week — pushing further compounds rather than adapts.`,
+    `${streak} days in a row under 34% recovery (avg ${avg}%). The body is asking for a break. Z2 only or full rest day until recovery breaks 50% again.`,
+  ];
+  const idx = pickVariant({ userId: ctx?.userId ?? "", triggerKey: event.trigger_key, today: ctx?.today ?? "", count: variants.length });
+  return {
+    schema_version: 1, trigger_type: "low_recovery_streak", trigger_key: event.trigger_key,
+    severity: "warn",
+    headline: `${streak} consecutive red recovery days`,
+    body_md: variants[idx],
+    deep_link: { label: "See recovery distribution →", href: "/health?tab=trends#recovery-distribution" },
+    speaker: "remi",
+  };
+}
+
+function renderStrainRecovery(event: ProactiveEvent, ctx?: RenderContext): ProactiveNudgeCard {
+  const strain = (Math.round((event.payload.strain_avg_7d as number) * 10) / 10).toFixed(1);
+  const recovery = Math.round(event.payload.recovery_avg_7d as number);
+  const variants = [
+    `7-day strain avg ${strain} with recovery sitting at ${recovery}%. This is the overreach setup — load up, body down. One of two things needs to change this week: less strain, or more recovery (sleep, food, true rest day).`,
+    `Strain × recovery balance is off — averaging ${strain} strain into ${recovery}% recovery. If this continues, expect HRV depression next week. Easier sessions or a rest day buys you next week's quality.`,
+  ];
+  const idx = pickVariant({ userId: ctx?.userId ?? "", triggerKey: event.trigger_key, today: ctx?.today ?? "", count: variants.length });
+  return {
+    schema_version: 1, trigger_type: "strain_recovery_imbalance", trigger_key: event.trigger_key,
+    severity: "warn",
+    headline: `Strain × recovery imbalance · overreach risk`,
+    body_md: variants[idx],
+    deep_link: { label: "See balance chart →", href: "/health?tab=trends#strain-recovery" },
+    speaker: "remi",
+  };
+}
+
+function renderSkinTemp(event: ProactiveEvent, ctx?: RenderContext): ProactiveNudgeCard {
+  const delta = (Math.round((event.payload.delta_c_avg as number) * 10) / 10).toFixed(1);
+  const days = event.payload.days_elevated as number;
+  const variants = [
+    `Skin temp +${delta}°C above baseline for ${days} consecutive days. Pre-symptomatic illness signal — your body is fighting something before you feel it. Take a rest day or Z2 substitute today.`,
+    `${days} days of skin temp running +${delta}°C. Could be illness brewing, hot training environment, or cycle phase. If RHR is also up, it's likely the first. Cross-check with the RHR card.`,
+  ];
+  const idx = pickVariant({ userId: ctx?.userId ?? "", triggerKey: event.trigger_key, today: ctx?.today ?? "", count: variants.length });
+  return {
+    schema_version: 1, trigger_type: "skin_temp_elevated", trigger_key: event.trigger_key,
+    severity: "warn",
+    headline: `Skin temp +${delta}°C · ${days} days running`,
+    body_md: variants[idx],
+    deep_link: { label: "See skin temp →", href: "/health?tab=trends#skin-temp" },
+    speaker: "remi",
+  };
+}
+
+function renderRecurringSoreness(event: ProactiveEvent, ctx?: RenderContext): ProactiveNudgeCard {
+  const area = event.payload.area as string;
+  const occ = event.payload.occurrences as number;
+  const variants = [
+    `${area} flagged sore on ${occ} of the last 14 checkins. That's overuse, not normal DOMS. Worth flagging @Carter — pattern swap or volume cut on the movements that hit this region.`,
+    `${occ} soreness flags on ${area} in 14 days. If it's the same exercise stack each week, this is the body asking for rotation. Talk to @Carter about substituting the heaviest ${area}-dominant lift.`,
+  ];
+  const idx = pickVariant({ userId: ctx?.userId ?? "", triggerKey: event.trigger_key, today: ctx?.today ?? "", count: variants.length });
+  return {
+    schema_version: 1, trigger_type: "recurring_soreness_area", trigger_key: event.trigger_key,
+    severity: "warn",
+    headline: `Recurring ${area} soreness · ${occ}/14 days`,
+    body_md: variants[idx],
+    deep_link: { label: "See soreness heat-map →", href: "/health?tab=trends#soreness-heatmap" },
+    speaker: "remi",
+  };
+}
+
+function renderSicknessLingering(event: ProactiveEvent, ctx?: RenderContext): ProactiveNudgeCard {
+  const streak = event.payload.streak_days as number;
+  const notes = (event.payload.latest_notes as string | null) ?? "no specific notes";
+  const variants = [
+    `Sick ${streak} days running ("${notes}"). At this length consider a doctor visit, especially if fever or fatigue is dominant. Don't try to train through fever — it's the immune system asking for resources.`,
+    `${streak} consecutive sickness days. Most acute illness resolves in 1-3 days; ${streak}+ is worth a clinician's eyes. Rest, fluids, no training, and book a visit if symptoms haven't peaked yet.`,
+  ];
+  const idx = pickVariant({ userId: ctx?.userId ?? "", triggerKey: event.trigger_key, today: ctx?.today ?? "", count: variants.length });
+  return {
+    schema_version: 1, trigger_type: "sickness_lingering", trigger_key: event.trigger_key,
+    severity: "warn",
+    headline: `Sick ${streak} days — consider a doctor`,
+    body_md: variants[idx],
+    deep_link: { label: "See sickness timeline →", href: "/health?tab=trends#fatigue-sickness" },
+    speaker: "remi",
+  };
+}
+
+function renderDeepSleepDeficit(event: ProactiveEvent, ctx?: RenderContext): ProactiveNudgeCard {
+  const h = (Math.round((event.payload.avg_deep_h_14d as number) * 10) / 10).toFixed(1);
+  const pct = event.payload.avg_pct_14d as number | null;
+  const pctStr = pct != null ? `${Math.round(pct * 100)}%` : "—";
+  const variants = [
+    `Deep sleep averaging ${h}h (${pctStr} of total) over the last 14 days. Common culprits: late food, alcohol on training days, late training (<3h pre-bed). Pick one to remove this week.`,
+    `${h}h deep sleep avg — under floor. Deep sleep is where physical recovery happens. Cool room (16–19°C), no food in the 3h before bed, no alcohol on training days.`,
+  ];
+  const idx = pickVariant({ userId: ctx?.userId ?? "", triggerKey: event.trigger_key, today: ctx?.today ?? "", count: variants.length });
+  return {
+    schema_version: 1, trigger_type: "deep_sleep_deficit", trigger_key: event.trigger_key,
+    severity: "warn",
+    headline: `Deep sleep deficit · 14d avg ${h}h`,
+    body_md: variants[idx],
+    deep_link: { label: "See sleep architecture →", href: "/health?tab=trends#sleep-architecture" },
+    speaker: "remi",
+  };
+}
+
+function renderBedtimeDrift(event: ProactiveEvent, ctx?: RenderContext): ProactiveNudgeCard {
+  const sd = Math.round(event.payload.sd_minutes_14d as number);
+  const mean = event.payload.mean_bedtime_hhmm as string | null;
+  const meanStr = mean ?? "—";
+  const variants = [
+    `Bedtime varied by ${sd} min (SD) over the last 14 days, averaging ${meanStr}. Consistency matters more than total hours — pick a 30-min target window around ${meanStr} and hold it for a week, then reassess.`,
+    `Bedtime SD is ${sd} min — that's the lever. Hours might be 8 but with bedtime swinging by ${sd} min nightly, HRV will reflect the inconsistency. Lock a window: ${meanStr} ±15 min.`,
+  ];
+  const idx = pickVariant({ userId: ctx?.userId ?? "", triggerKey: event.trigger_key, today: ctx?.today ?? "", count: variants.length });
+  return {
+    schema_version: 1, trigger_type: "bedtime_drift", trigger_key: event.trigger_key,
+    severity: "warn",
+    headline: `Bedtime drift · SD ${sd} min over 14d`,
+    body_md: variants[idx],
+    deep_link: { label: "See bedtime consistency →", href: "/health?tab=trends#bedtime-consistency" },
+    speaker: "remi",
+  };
+}
+
+function renderRespiratoryRate(event: ProactiveEvent, ctx?: RenderContext): ProactiveNudgeCard {
+  const delta = (Math.round((event.payload.delta_bpm_avg as number) * 10) / 10).toFixed(1);
+  const days = event.payload.days_elevated as number;
+  const variants = [
+    `Respiratory rate +${delta} bpm above baseline for ${days} days. Often the earliest infection signal — appears before skin temp or symptoms. Easy training today; watch for skin temp confirming.`,
+    `RR up ${delta} bpm for ${days} days. The autonomic nervous system runs RR on autopilot, so changes are involuntary signals. If skin temp also rises, you're fighting something.`,
+  ];
+  const idx = pickVariant({ userId: ctx?.userId ?? "", triggerKey: event.trigger_key, today: ctx?.today ?? "", count: variants.length });
+  return {
+    schema_version: 1, trigger_type: "respiratory_rate_elevated", trigger_key: event.trigger_key,
+    severity: "warn",
+    headline: `Respiratory rate +${delta} · ${days} days`,
+    body_md: variants[idx],
+    deep_link: { label: "See respiratory rate →", href: "/health?tab=trends#respiratory-rate" },
+    speaker: "remi",
+  };
+}
+
+function renderHeavyFatigue(event: ProactiveEvent, ctx?: RenderContext): ProactiveNudgeCard {
+  const count = event.payload.heavy_days_count as number;
+  const variants = [
+    `"Heavy" fatigue reported on ${count} of the last 7 mornings. Even if HRV looks fine, this is the body talking. Trust the subjective — back off intensity until it lifts.`,
+    `${count} heavy-fatigue mornings in 7 days. Life stress, hidden sleep quality issues, or undereating can drive this independently of HRV. Worth a 1-day full rest to reset.`,
+  ];
+  const idx = pickVariant({ userId: ctx?.userId ?? "", triggerKey: event.trigger_key, today: ctx?.today ?? "", count: variants.length });
+  return {
+    schema_version: 1, trigger_type: "heavy_fatigue_cluster", trigger_key: event.trigger_key,
+    severity: "warn",
+    headline: `${count} heavy fatigue days in 7`,
+    body_md: variants[idx],
+    deep_link: { label: "See fatigue timeline →", href: "/health?tab=trends#fatigue-sickness" },
+    speaker: "remi",
+  };
+}
+
+function renderPostStrainUndersleep(event: ProactiveEvent, ctx?: RenderContext): ProactiveNudgeCard {
+  const occ = event.payload.occurrences as number;
+  const variants = [
+    `${occ} times in the last 14 days, you went hard (strain ≥15) and slept <7h after. The night after the hardest sessions is when recovery happens — protect it. Move late-day training earlier or lock a tighter post-training bedtime.`,
+    `Pattern: high-strain day → short sleep, ${occ}x in 14 days. The body uses sleep to consolidate the training stimulus. Cutting sleep on those nights is the most expensive cost-cut you can make.`,
+  ];
+  const idx = pickVariant({ userId: ctx?.userId ?? "", triggerKey: event.trigger_key, today: ctx?.today ?? "", count: variants.length });
+  return {
+    schema_version: 1, trigger_type: "post_strain_undersleep", trigger_key: event.trigger_key,
+    severity: "warn",
+    headline: `Post-strain undersleep · ${occ} in 14d`,
+    body_md: variants[idx],
+    deep_link: { label: "See sleep hours →", href: "/health?tab=trends#sleep-hours" },
+    speaker: "remi",
   };
 }
