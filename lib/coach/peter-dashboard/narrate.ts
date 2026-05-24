@@ -157,10 +157,13 @@ function collectAllowedNumbers(facts: PeterDashboardFacts): Set<string> {
       out.add(String(Math.abs(v)));
       out.add(String(Math.abs(Math.round(v))));
       out.add(String(Math.round(Math.abs(v) * 10) / 10));
-      if (Number.isInteger(v)) out.add(String(v));
-      // Percentages: facts often store decimals (0.07 == 7%); allow the
-      // multiplied-by-100 form too.
-      out.add(String(Math.round(v * 100)));
+      // Percentages: facts often store ratios (0.07 → "7%"). Only allow the
+      // ×100 rendering when the raw value is in the ratio range [-1, 1] —
+      // otherwise pushing 750 for 7.5 lets the model freely fabricate "750%".
+      if (Math.abs(v) <= 1) {
+        out.add(String(Math.round(v * 100)));
+        out.add(String(Math.round(Math.abs(v) * 100)));
+      }
     }
     if (typeof v === 'string') {
       // String fields may carry comma-separated numerics ("3.2,-1.1,0.4").
