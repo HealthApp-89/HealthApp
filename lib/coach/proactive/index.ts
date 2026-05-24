@@ -23,6 +23,11 @@ import type {
 import { checkPlateau } from "./check-plateau";
 import { checkOffPace } from "./check-off-pace";
 import { checkHrv } from "./check-hrv";
+import { checkRecomp }            from "./check-recomp";
+import { checkProteinFloor }      from "./check-protein-floor";
+import { checkMonotoneProtein }   from "./check-monotone-protein";
+import { checkFriedHeavy }        from "./check-fried-heavy";
+import { checkTrainingUndereat }  from "./check-training-undereat";
 import { renderCard } from "./render-card";
 import { todayInUserTz } from "@/lib/time";
 
@@ -45,6 +50,14 @@ const TRIGGER_OWNER: Record<string, Speaker> = {
   plateau: "carter",
   off_pace_weight: "nora",
   hrv_below_baseline: "remi",
+  // NEW — all Nora.
+  recomp_success:        "nora",
+  recomp_drift:          "nora",
+  protein_under:         "nora",
+  glp1_protein_floor:    "nora",
+  monotone_protein:      "nora",
+  fried_heavy:           "nora",
+  training_day_undereat: "nora",
 };
 
 function ownerForTrigger(triggerKey: string): Speaker {
@@ -78,6 +91,11 @@ export async function runProactiveChecks(args: {
     ...checkPlateau(trends),
     ...checkOffPace(trends),
     ...checkHrv(trends),
+    ...checkRecomp(trends),                          // NEW
+    ...await checkProteinFloor(trends, { supabase, userId, today }),  // NEW — reads glp1_status
+    ...checkMonotoneProtein(trends),                 // NEW
+    ...checkFriedHeavy(trends),                      // NEW
+    ...await checkTrainingUndereat(trends, { supabase, userId, today }),  // NEW — joins workouts
   ];
 
   const fired: ProactiveRunResult["fired"] = [];
