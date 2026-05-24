@@ -2,19 +2,21 @@
 
 import ChatPanel from "@/components/chat/ChatPanel";
 import { CoachTrendsView } from "@/components/coach/trends/CoachTrendsView";
+import type { TrendsSection } from "@/components/coach/trends/SectionPills";
 import { useMarkThreadSeen } from "@/lib/chat/use-mark-thread-seen";
 
 type Props = {
   userId: string;
+  initialSection: TrendsSection;
 };
 
-export function MetricsClient({ userId }: Props) {
+export function MetricsClient({ userId, initialSection }: Props) {
   useMarkThreadSeen("peter");
   return (
     <div style={{ display: "flex", flexDirection: "column", minHeight: "calc(100dvh - 88px)" }}>
       {/* Data block — top: coach trends (section pills + headline cards) */}
       <div style={{ flex: "0 0 auto" }}>
-        <CoachTrendsView userId={userId} initialSection="performance" />
+        <CoachTrendsView userId={userId} initialSection={initialSection} />
       </div>
 
       {/* Chat block — bottom: Peter chat (weekly review + nudge cards inline) */}

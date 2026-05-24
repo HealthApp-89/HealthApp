@@ -7,6 +7,7 @@ import { fetchCoachTrendsServer } from "@/lib/query/fetchers/coachTrends";
 import { MetricsClient } from "@/components/metrics/MetricsClient";
 import { COLOR } from "@/lib/ui/theme";
 import { todayInUserTz } from "@/lib/time";
+import type { TrendsSection } from "@/components/coach/trends/SectionPills";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +19,14 @@ type SP = {
     date?: string;
   }>;
 };
+
+const VALID_SECTIONS: TrendsSection[] = ["performance", "body", "nutrition", "cross"];
+
+function normalizeSection(raw: string | undefined): TrendsSection {
+  if (raw === "composition") return "body"; // back-compat redirect
+  if (raw && (VALID_SECTIONS as string[]).includes(raw)) return raw as TrendsSection;
+  return "performance";
+}
 
 export default async function MetricsPage({ searchParams }: SP) {
   const sp = (await searchParams) ?? {};
@@ -61,7 +70,7 @@ export default async function MetricsPage({ searchParams }: SP) {
             Peter · Head Coach
           </p>
         </header>
-        <MetricsClient userId={user.id} />
+        <MetricsClient userId={user.id} initialSection={normalizeSection(sp.section)} />
       </div>
     </HydrationBoundary>
   );

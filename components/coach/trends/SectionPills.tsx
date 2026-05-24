@@ -2,39 +2,41 @@
 
 import { COLOR } from "@/lib/ui/theme";
 
-export type TrendsSection = "performance" | "composition" | "cross";
+export type TrendsSection = "performance" | "body" | "nutrition" | "cross";
+
+const SECTIONS: Array<{ key: TrendsSection; label: string }> = [
+  { key: "performance", label: "Performance" },
+  { key: "body",        label: "Body" },
+  { key: "nutrition",   label: "Nutrition" },
+  { key: "cross",       label: "Cross" },
+];
 
 export function SectionPills({
   active,
   onChange,
 }: {
   active: TrendsSection;
-  onChange: (s: TrendsSection) => void;
+  onChange: (section: TrendsSection) => void;
 }) {
-  const items: { id: TrendsSection; label: string }[] = [
-    { id: "performance", label: "Performance" },
-    { id: "composition", label: "Composition" },
-    { id: "cross", label: "Cross" },
-  ];
   return (
-    <div style={{ display: "flex", gap: 6, padding: "8px 12px" }}>
-      {items.map((it) => (
+    <div style={{ display: "flex", gap: 6, padding: "8px 12px", overflowX: "auto" }}>
+      {SECTIONS.map((s) => (
         <button
-          key={it.id}
-          type="button"
-          onClick={() => onChange(it.id)}
+          key={s.key}
+          onClick={() => onChange(s.key)}
           style={{
-            background: active === it.id ? COLOR.accent : COLOR.surfaceAlt,
-            color: active === it.id ? "#fff" : COLOR.textStrong,
-            border: "none",
-            borderRadius: 9999,
-            padding: "6px 12px",
-            fontSize: 12,
-            fontWeight: active === it.id ? 700 : 500,
+            padding: "4px 10px",
+            fontSize: 11,
+            fontWeight: 600,
+            borderRadius: 999,
+            background: active === s.key ? COLOR.textStrong : "#f3f4f6",
+            color:      active === s.key ? "#fff"         : COLOR.textMuted,
+            border: `1px solid ${active === s.key ? COLOR.textStrong : "#d1d5db"}`,
             cursor: "pointer",
+            flexShrink: 0,
           }}
         >
-          {it.label}
+          {s.label}
         </button>
       ))}
     </div>
