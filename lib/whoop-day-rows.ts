@@ -146,8 +146,29 @@ export function buildWhoopDayRows(
     }
     sleepIdToDate.set(s.id, date);
     const row = ensure(date);
-    row.sleep_start_at = s.start ?? null;
-    row.sleep_end_at   = s.end   ?? null;
+
+    // Prefer the longest sleep per date so naps don't overwrite the main
+    // sleep's onset/offset. Both start and end are non-optional strings on
+    // WhoopSleep, so no ?? null guards are needed.
+    const startMs = Date.parse(s.start);
+    const endMs   = Date.parse(s.end);
+    const newDurMs = Number.isFinite(startMs) && Number.isFinite(endMs) ? endMs - startMs : 0;
+
+    const existingStartMs = row.sleep_start_at ? Date.parse(row.sleep_start_at) : NaN;
+    const existingEndMs   = row.sleep_end_at   ? Date.parse(row.sleep_end_at)   : NaN;
+    const existingDurMs =
+      Number.isFinite(existingStartMs) && Number.isFinite(existingEndMs)
+        ? existingEndMs - existingStartMs
+        : 0;
+
+    // Main sleep wins. Defensive: if both records are durationless (no valid
+    // start or end), fall through to first-write-wins so we still surface
+    // something useful.
+    if (newDurMs > existingDurMs || (existingDurMs === 0 && row.sleep_start_at == null)) {
+      row.sleep_start_at = s.start;
+      row.sleep_end_at   = s.end;
+    }
+
     if (!s.score) continue;
     const stages = s.score.stage_summary;
     if (stages) {
