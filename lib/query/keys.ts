@@ -131,6 +131,11 @@ export const queryKeys = {
     all: (userId: string) => ["recoveryIntelligence", userId] as const,
     one: (userId: string) => ["recoveryIntelligence", userId, "current"] as const,
   },
+  peterDashboard: {
+    all: (userId: string) => ["peterDashboard", userId] as const,
+    latest: (userId: string, date: string) =>
+      ["peterDashboard", userId, "latest", date] as const,
+  },
   foodEntries: {
     all: (userId: string) => ["food-entries", userId] as const,
     range: (userId: string, from: string, to: string) =>
