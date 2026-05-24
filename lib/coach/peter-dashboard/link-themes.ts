@@ -61,11 +61,8 @@ export function linkThemes(
     }
   }
 
-  // Rule 3: fatigue urgent + adherence warn → symptom-or-cause cluster.
-  if (
-    fatigue != null && fatigue.severity === 'urgent' &&
-    adh != null && (adh.severity === 'warn' || adh.severity === 'urgent')
-  ) {
+  // Rule 3: fatigue urgent + adherence active → symptom-or-cause cluster.
+  if (fatigue != null && fatigue.severity === 'urgent' && isActive(adh)) {
     clusters.push({
       id: 'fatigue-adherence',
       themes: ['fatigue', 'plan_adherence'],
@@ -74,8 +71,8 @@ export function linkThemes(
     });
   }
 
-  // Rule 4: performance plateau + goal warn → off-pace-from-stall cluster.
-  if (perfHasPlateau && goal != null && (goal.severity === 'warn' || goal.severity === 'urgent')) {
+  // Rule 4: performance plateau + goal active → off-pace-from-stall cluster.
+  if (perfHasPlateau && isActive(goal)) {
     clusters.push({
       id: 'performance-goal',
       themes: ['performance', 'goal_distance'],
