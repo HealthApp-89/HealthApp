@@ -2,7 +2,11 @@
 //
 // 14-day aggregation: per-item classification → category-grouped grams /
 // counts. Reads food_log_entries (status='committed') and joins
-// food_db_cache via db_ref->>'canonical_id' for the USDA foodCategory.
+// food_db_cache via db_ref.canonical_id (inside each item) for the USDA
+// foodCategory.
+//
+// food_log_entries.items is a jsonb array of FoodItem rows — the loop
+// iterates each entry's items inner-then-outer.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
@@ -11,17 +15,14 @@ import type {
   CarbCategory,
   CookingMethod,
 } from "@/lib/data/types";
+import type { FoodItem } from "@/lib/food/types";
 import { FOOD_QUALITY_WINDOW_DAYS } from "./thresholds";
 import { classifyProtein, classifyCarb, classifyCookingMethod } from "./classify";
 
-type FoodLogRow = {
-  id: string;
-  name: string;
-  protein_g: number | null;
-  carbs_g: number | null;
-  meal_slot: string;
+type EntryRow = {
   eaten_at: string;
-  db_ref: { source: string; canonical_id: string } | null;
+  meal_slot: string;
+  items: FoodItem[] | null;
 };
 
 type CacheRow = {
@@ -42,19 +43,33 @@ export async function composeFoodQuality(args: {
   // 1. Fetch committed food log entries in the window.
   const { data: entries, error } = await supabase
     .from("food_log_entries")
-    .select("id, name, protein_g, carbs_g, meal_slot, eaten_at, db_ref")
+    .select("eaten_at, meal_slot, items")
     .eq("user_id", userId)
     .eq("status", "committed")
     .gte("eaten_at", windowStartIso)
     .lte("eaten_at", todayIso);
   if (error) throw error;
-  const rows = (entries as FoodLogRow[] | null) ?? [];
+  const entryRows = (entries as EntryRow[] | null) ?? [];
+
+  // Flatten to per-item rows, tagged with eaten_at/meal_slot so we can
+  // still aggregate fish_meals_per_week at meal granularity.
+  type ItemRow = {
+    eaten_at: string;
+    meal_slot: string;
+    item: FoodItem;
+  };
+  const itemRows: ItemRow[] = [];
+  for (const e of entryRows) {
+    for (const item of e.items ?? []) {
+      itemRows.push({ eaten_at: e.eaten_at, meal_slot: e.meal_slot, item });
+    }
+  }
 
   // 2. Batch-fetch USDA category from food_db_cache for items with db_ref.
   const canonicalIds = [
     ...new Set(
-      rows
-        .map((r) => r.db_ref?.canonical_id)
+      itemRows
+        .map((r) => r.item.db_ref?.canonical_id)
         .filter((x): x is string => typeof x === "string"),
     ),
   ];
@@ -71,7 +86,7 @@ export async function composeFoodQuality(args: {
     }
   }
 
-  // 3. Classify each row + accumulate.
+  // 3. Classify each item + accumulate.
   const proteinBuckets = new Map<ProteinCategory, number>();
   const carbBuckets    = new Map<CarbCategory,    number>();
   const cookingBuckets = new Map<CookingMethod,   number>();
@@ -82,20 +97,20 @@ export async function composeFoodQuality(args: {
   let carbTotalG = 0;
   let cookingClassifiedN = 0;
   const distinctNames = new Set<string>();
-  const fishMealKeys = new Set<string>();   // `${date}|${meal_slot}` if any fish item
+  const fishMealKeys = new Set<string>();   // `${date}|${meal_slot}` if any fish item in that meal
   let vegItemCount = 0;
 
-  for (const r of rows) {
-    const usdaCat = r.db_ref?.canonical_id
-      ? cacheByCanonical.get(r.db_ref.canonical_id) ?? null
+  for (const { eaten_at, meal_slot, item } of itemRows) {
+    const usdaCat = item.db_ref?.canonical_id
+      ? cacheByCanonical.get(item.db_ref.canonical_id) ?? null
       : null;
 
-    const p = classifyProtein(r.name, usdaCat);
-    const c = classifyCarb(r.name, usdaCat);
-    const m = classifyCookingMethod(r.name);
+    const p = classifyProtein(item.name, usdaCat);
+    const c = classifyCarb(item.name, usdaCat);
+    const m = classifyCookingMethod(item.name);
 
-    const pg = r.protein_g ?? 0;
-    const cg = r.carbs_g ?? 0;
+    const pg = item.protein_g ?? 0;
+    const cg = item.carbs_g ?? 0;
 
     proteinTotalG += pg;
     if (p.category !== "unknown") {
@@ -114,14 +129,16 @@ export async function composeFoodQuality(args: {
       cookingClassifiedN += 1;
     }
 
-    distinctNames.add(r.name.toLowerCase().trim());
+    distinctNames.add(item.name.toLowerCase().trim());
 
     if (p.category === "fish_seafood") {
-      const dateKey = r.eaten_at.slice(0, 10);
-      fishMealKeys.add(`${dateKey}|${r.meal_slot}`);
+      const dateKey = eaten_at.slice(0, 10);
+      fishMealKeys.add(`${dateKey}|${meal_slot}`);
     }
     if (c.category === "non_starchy_veg") vegItemCount += 1;
   }
+
+  const totalItems = itemRows.length;
 
   const protein_sources = [...proteinBuckets.entries()]
     .map(([category, grams]) => ({
@@ -161,9 +178,9 @@ export async function composeFoodQuality(args: {
     data_completeness: {
       protein_classified_pct:       proteinTotalG > 0 ? proteinClassifiedG / proteinTotalG : 0,
       carb_classified_pct:          carbTotalG    > 0 ? carbClassifiedG / carbTotalG       : 0,
-      cooking_method_inferable_pct: rows.length   > 0 ? cookingClassifiedN / rows.length   : 0,
+      cooking_method_inferable_pct: totalItems    > 0 ? cookingClassifiedN / totalItems    : 0,
     },
-    total_items: rows.length,
+    total_items: totalItems,
   };
 }
 
