@@ -6,6 +6,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type {
+  Narrative,
   PeterDashboardFacts,
   PeterDashboardPayload,
   ThemeKey,
@@ -50,8 +51,10 @@ export async function generatePeterDashboard(args: {
   const clusters = linkThemes(themes);
 
   // Block + goal context for the narrative call.
-  const blockContext = await fetchBlockContext(supabase, userId, today);
-  const goalSummary = await fetchGoalSummary(supabase, userId);
+  const [blockContext, goalSummary] = await Promise.all([
+    fetchBlockContext(supabase, userId, today),
+    fetchGoalSummary(supabase, userId),
+  ]);
 
   const facts: PeterDashboardFacts = {
     themes,
@@ -61,7 +64,7 @@ export async function generatePeterDashboard(args: {
   };
 
   const narrateResult = await narrate(facts);
-  const narrative = narrateResult.failed
+  const narrative: Narrative = narrateResult.failed
     ? fallbackNarrative(themes)
     : narrateResult.narrative!;
 
@@ -69,7 +72,7 @@ export async function generatePeterDashboard(args: {
     schema_version: 1,
     generated_at: new Date().toISOString(),
     facts,
-    narrative: narrateResult.failed ? null : narrative,
+    narrative,  // always populated; fallback when AI failed
     narrative_failed: narrateResult.failed,
   };
 }
