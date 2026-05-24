@@ -3199,7 +3199,7 @@ Walking the spec sections vs tasks:
 - `ThemePayload`, `ThemeKey`, `ThemeCluster`, `PeterDashboardFacts`, `PeterDashboardPayload`, `Narrative` defined in Task 2 and referenced consistently throughout Tasks 3-15.
 - `loadLatestPeterDashboard` signature in Task 11 matches what Task 13 (fetcher) imports.
 - `generatePeterDashboard` signature in Task 11 matches what Task 12 (cron + regenerate) and Task 18 (audit) call.
-- `THEME_DRILLDOWN` from Task 2 used by all composers (Tasks 3-8) and ThemeCard (Task 15).
+- `THEME_DRILLDOWN` from Task 2 used by ThemeCard (Task 15) for the nav-chip link — composers no longer carry per-theme route, removing drift risk.
 - `peterDashboardBlock` field name consistent across Task 17 (chat-stream RunChatStreamOpts, route load + pass).
 
 ### Placeholder scan
