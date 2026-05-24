@@ -9,7 +9,6 @@ import type { ThemePayload } from './types';
 import {
   ENERGY_UNDER_TARGET_KCAL,
   ENERGY_UNDER_WINDOW_DAYS_WARN,
-  ENERGY_GLP1_DEFICIT_PCT_TDEE_URGENT,
 } from './thresholds';
 import { getTodayTargets } from '@/lib/morning/brief/get-today-targets';
 import { fmtNum } from '@/lib/ui/score';
@@ -78,12 +77,11 @@ export async function composeEnergy(args: {
   const trainAvg = avg(trainKcals);
   const restAvg  = avg(restKcals);
 
-  // GLP-1 deficit alarm (rough TDEE = average daily intake - average daily delta).
-  let glp1DeficitUrgent = false;
-  if (isGlp1Active && avgDelta != null && kcalTarget != null) {
-    const tdeeEst = kcalTarget; // target is calibrated to TDEE in GLP-1 modes
-    glp1DeficitUrgent = Math.abs(avgDelta) / tdeeEst > ENERGY_GLP1_DEFICIT_PCT_TDEE_URGENT;
-  }
+  // Delegate the deficit alarm to getTodayTargets, which pre-computes against
+  // glp1.tdee_estimate_kcal (the correct denominator). Re-implementing it here
+  // with kcalTarget — already 20% below TDEE — would silently swallow real alarms.
+  const glp1DeficitUrgent =
+    isGlp1Active && (targets?.deficit_alarm?.triggered ?? false);
 
   let severity: ThemePayload['severity'];
   if (glp1DeficitUrgent) severity = 'urgent';
@@ -131,8 +129,11 @@ function isoDaysAgo(today: string, days: number): string {
 
 function oneLineFor(x: { underDays: number; avgDelta: number | null }): string {
   if (x.avgDelta == null) return 'No intake data';
-  const sign = x.avgDelta >= 0 ? '+' : '';
-  return `${sign}${fmtNum(x.avgDelta, 0)} kcal × ${x.underDays}d under`;
+  if (x.underDays === 0) {
+    const sign = x.avgDelta >= 0 ? '+' : '';
+    return `Avg ${sign}${fmtNum(x.avgDelta, 0)} kcal vs target`;
+  }
+  return `${fmtNum(x.avgDelta, 0)} kcal avg · ${x.underDays}d under`;
 }
 
 function bodyMdFor(x: {
