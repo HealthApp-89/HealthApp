@@ -5,18 +5,11 @@
 // so that `chickpea` is matched before `chick` (which would mis-classify
 // to poultry).
 
-export type ProteinCategory =
-  | "poultry" | "red_meat" | "fish_seafood" | "eggs"
-  | "dairy_protein" | "plant_protein" | "protein_supplement"
-  | "mixed" | "unknown";
-
-export type CarbCategory =
-  | "whole_grain" | "refined_grain" | "starchy_veg" | "non_starchy_veg"
-  | "fruit" | "legume" | "sugar_sweets" | "unknown";
-
-export type CookingMethod =
-  | "grilled" | "baked" | "pan_fried" | "deep_fried" | "air_fried"
-  | "steamed" | "boiled" | "roasted" | "raw" | "smoked" | "unknown";
+// Type unions live in lib/data/types.ts (CLAUDE.md convention: shared shapes
+// live there). Re-export them here so classify.ts and compose-food-quality.ts
+// can import everything they need from this module.
+import type { ProteinCategory, CarbCategory, CookingMethod } from "@/lib/data/types";
+export type { ProteinCategory, CarbCategory, CookingMethod };
 
 /** Tokens checked LEFT-TO-RIGHT — first hit per category wins.
  *  Disambiguators (e.g. `chickpea` before any `chick` test) must come first. */
