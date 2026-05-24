@@ -1,0 +1,93 @@
+// lib/coach/peter-dashboard/compose-recomp.ts
+//
+// Recomp trajectory: are we losing fat while keeping muscle + strength?
+// Reads from generateCoachTrends() (body + strength) and food_log
+// aggregations. Pure: no LLM, no side effects.
+
+import type { SupabaseClient } from '@supabase/supabase-js';
+import type { ThemePayload } from './types';
+import {
+  RECOMP_LBM_HOLD_KG_4W,
+  RECOMP_BF_DOWN_PTS_4W,
+  RECOMP_LIFT_HOLD_SLOPE_PCT_4W,
+  RECOMP_LBM_LOSS_URGENT_KG_4W,
+  RECOMP_LIFT_DROP_URGENT_PCT_4W,
+} from './thresholds';
+import type { CoachTrendsPayload } from '@/lib/data/types';
+
+export async function composeRecomp(args: {
+  supabase: SupabaseClient;
+  userId: string;
+  today: string;
+  trends: CoachTrendsPayload;
+}): Promise<ThemePayload> {
+  const { trends } = args;
+
+  const lbm4w = trends.body.lbm.delta_4w_kg;
+  const bf4w  = trends.body.body_fat_pct.delta_4w_pct;
+  const topLiftSlopes = trends.strength.per_lift
+    .slice(0, 3)
+    .map((p) => p.slope_pct_per_wk_4w)
+    .filter((s): s is number => s != null);
+
+  const lbmHolding = lbm4w == null ? true : lbm4w >= RECOMP_LBM_HOLD_KG_4W;
+  const bfDown     = bf4w  != null && bf4w <= RECOMP_BF_DOWN_PTS_4W;
+  const liftsHolding = topLiftSlopes.every(
+    (s) => s > RECOMP_LIFT_HOLD_SLOPE_PCT_4W,
+  );
+  const lbmCollapsing = lbm4w != null && lbm4w < RECOMP_LBM_LOSS_URGENT_KG_4W;
+  const liftCollapsing = topLiftSlopes.some(
+    (s) => s <= RECOMP_LIFT_DROP_URGENT_PCT_4W,
+  );
+
+  let severity: ThemePayload['severity'];
+  if (lbmCollapsing && liftCollapsing) severity = 'urgent';
+  else if (lbmHolding && bfDown && liftsHolding) severity = 'ok';
+  else severity = 'warn';
+
+  // Sparkline deferred: BodyTrend.body_fat_pct exposes only delta_4w/12w summary
+  // fields, not a daily 12w series. Adding it requires raw daily_logs fetch which
+  // isn't blocking for v1; the audit script will flag this as a future improvement.
+  const sparkline = null;
+
+  return {
+    key: 'recomp',
+    severity,
+    one_line: oneLineFor({ lbm4w, bf4w }),
+    body_md: bodyMdFor({ lbm4w, bf4w, severity }),
+    facts: {
+      lbm_delta_4w_kg: lbm4w,
+      bf_pct_delta_4w_pts: bf4w,
+      top_lift_slopes_pct_per_wk_4w: topLiftSlopes.join(','),
+    },
+    sparkline,
+    inputs_used: ['coach_trends.body', 'coach_trends.strength.per_lift'],
+  };
+}
+
+function oneLineFor(x: { lbm4w: number | null; bf4w: number | null }): string {
+  const lbmStr = x.lbm4w == null ? 'LBM —' :
+    x.lbm4w >= -0.1 ? 'LBM flat' :
+    `LBM ${x.lbm4w.toFixed(1)}kg`;
+  const bfStr = x.bf4w == null ? 'BF —' :
+    x.bf4w >= 0 ? `BF +${x.bf4w.toFixed(1)}pts` :
+    `BF ${x.bf4w.toFixed(1)}pts`;
+  return `${bfStr} / 4w · ${lbmStr}`;
+}
+
+function bodyMdFor(x: {
+  lbm4w: number | null;
+  bf4w: number | null;
+  severity: ThemePayload['severity'];
+}): string {
+  if (x.severity === 'ok') {
+    return 'LBM holding, body fat trending down, strength preserved. Recomp working.';
+  }
+  if (x.severity === 'urgent') {
+    return `LBM down ${x.lbm4w?.toFixed(1)} kg over 4 weeks and at least one top lift dropped >5%. Cut is too aggressive.`;
+  }
+  if (x.bf4w != null && x.bf4w > 0) {
+    return `Body fat up ${x.bf4w.toFixed(1)} pts over 4 weeks while LBM is ${x.lbm4w == null ? 'unknown' : x.lbm4w >= -0.1 ? 'holding' : `down ${Math.abs(x.lbm4w).toFixed(1)} kg`}. Deficit drift is the likely candidate.`;
+  }
+  return 'Recomp showing mixed signal across LBM, body fat, and strength. Check the inputs.';
+}
