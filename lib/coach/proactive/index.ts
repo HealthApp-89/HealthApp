@@ -20,6 +20,7 @@ import type {
   ProactiveNudgeCard,
   Speaker,
 } from "@/lib/data/types";
+import type { RecoveryIntelligencePayload } from "@/lib/coach/recovery-intelligence/types";
 import { checkPlateau } from "./check-plateau";
 import { checkOffPace } from "./check-off-pace";
 import { checkHrv } from "./check-hrv";
@@ -82,9 +83,10 @@ export async function runProactiveChecks(args: {
   supabase: SupabaseClient;
   userId: string;
   trends: CoachTrendsPayload;
+  recoveryIntelligence: RecoveryIntelligencePayload;
   dry_run?: boolean;
 }): Promise<ProactiveRunResult> {
-  const { supabase, userId, trends, dry_run } = args;
+  const { supabase, userId, trends, recoveryIntelligence, dry_run } = args;
   const today = todayInUserTz();
 
   const events: ProactiveEvent[] = [

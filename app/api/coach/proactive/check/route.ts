@@ -8,6 +8,7 @@ import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { generateCoachTrends } from "@/lib/coach/trends";
+import { generateRecoveryIntelligence } from "@/lib/coach/recovery-intelligence";
 import { runProactiveChecks } from "@/lib/coach/proactive";
 import { todayInUserTz } from "@/lib/time";
 
@@ -43,8 +44,12 @@ export async function GET(req: Request) {
   const today = todayInUserTz();
 
   let trends;
+  let recoveryIntelligence;
   try {
-    trends = await generateCoachTrends({ supabase: sb, userId, today });
+    [trends, recoveryIntelligence] = await Promise.all([
+      generateCoachTrends({ supabase: sb, userId, today }),
+      generateRecoveryIntelligence({ supabase: sb, userId, today }),
+    ]);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return NextResponse.json(
@@ -55,7 +60,7 @@ export async function GET(req: Request) {
 
   let result;
   try {
-    result = await runProactiveChecks({ supabase: sb, userId, trends });
+    result = await runProactiveChecks({ supabase: sb, userId, trends, recoveryIntelligence });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return NextResponse.json(
