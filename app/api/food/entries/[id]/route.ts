@@ -13,6 +13,11 @@ import { foodLogOwnsDailyLogs } from "@/lib/food/ownership";
 import { sumMacros, type FoodItem } from "@/lib/food/types";
 import { utcDate, isToday } from "@/lib/food/date";
 
+// fiber_g may be null on items logged before fiber tracking was added.
+// Coerce null/undefined to 0 so existing entries round-trip through the edit
+// flow without forcing the user to re-derive a value they never logged.
+const fiberG = z.preprocess((v) => v ?? 0, z.number().nonnegative());
+
 const ItemSchema = z.object({
   name: z.string(),
   qty_g: z.number().positive().finite(),
@@ -20,18 +25,21 @@ const ItemSchema = z.object({
   protein_g: z.number().nonnegative(),
   carbs_g: z.number().nonnegative(),
   fat_g: z.number().nonnegative(),
-  fiber_g: z.number().nonnegative(),
+  fiber_g: fiberG,
   per_100g: z.object({
     kcal: z.number().nonnegative(),
     protein_g: z.number().nonnegative(),
     carbs_g: z.number().nonnegative(),
     fat_g: z.number().nonnegative(),
-    fiber_g: z.number().nonnegative(),
+    fiber_g: fiberG,
   }),
   source: z.enum(["db", "llm"]),
   db_ref: z
     .object({
-      source: z.enum(["usda", "openfoodfacts", "manual"]),
+      // user_library added in the v1.2 meal-logging arc — the sibling
+      // /api/food/entries/[id]/items/route.ts already lists it; this endpoint
+      // got missed.
+      source: z.enum(["usda", "openfoodfacts", "manual", "user_library"]),
       canonical_id: z.string().uuid(),
     })
     .nullable(),
