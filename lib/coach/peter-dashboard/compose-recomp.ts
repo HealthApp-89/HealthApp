@@ -14,6 +14,7 @@ import {
   RECOMP_LIFT_DROP_URGENT_PCT_4W,
 } from './thresholds';
 import type { CoachTrendsPayload } from '@/lib/data/types';
+import { fmtNum } from '@/lib/ui/score';
 
 export async function composeRecomp(args: {
   supabase: SupabaseClient;
@@ -22,6 +23,10 @@ export async function composeRecomp(args: {
   trends: CoachTrendsPayload;
 }): Promise<ThemePayload> {
   const { trends } = args;
+  // supabase + userId reserved for future per-composer Supabase reads
+  // (e.g. body-comp daily series for the sparkline). Unused in this version.
+  void args.supabase;
+  void args.userId;
 
   const lbm4w = trends.body.lbm.delta_4w_kg;
   const bf4w  = trends.body.body_fat_pct.delta_4w_pct;
@@ -32,9 +37,8 @@ export async function composeRecomp(args: {
 
   const lbmHolding = lbm4w == null ? true : lbm4w >= RECOMP_LBM_HOLD_KG_4W;
   const bfDown     = bf4w  != null && bf4w <= RECOMP_BF_DOWN_PTS_4W;
-  const liftsHolding = topLiftSlopes.every(
-    (s) => s > RECOMP_LIFT_HOLD_SLOPE_PCT_4W,
-  );
+  const liftsHolding = topLiftSlopes.length > 0 &&
+    topLiftSlopes.every((s) => s > RECOMP_LIFT_HOLD_SLOPE_PCT_4W);
   const lbmCollapsing = lbm4w != null && lbm4w < RECOMP_LBM_LOSS_URGENT_KG_4W;
   const liftCollapsing = topLiftSlopes.some(
     (s) => s <= RECOMP_LIFT_DROP_URGENT_PCT_4W,
@@ -68,10 +72,10 @@ export async function composeRecomp(args: {
 function oneLineFor(x: { lbm4w: number | null; bf4w: number | null }): string {
   const lbmStr = x.lbm4w == null ? 'LBM —' :
     x.lbm4w >= -0.1 ? 'LBM flat' :
-    `LBM ${x.lbm4w.toFixed(1)}kg`;
+    `LBM ${fmtNum(x.lbm4w, 1)}kg`;
   const bfStr = x.bf4w == null ? 'BF —' :
-    x.bf4w >= 0 ? `BF +${x.bf4w.toFixed(1)}pts` :
-    `BF ${x.bf4w.toFixed(1)}pts`;
+    x.bf4w >= 0 ? `BF +${fmtNum(x.bf4w, 1)}pts` :
+    `BF ${fmtNum(x.bf4w, 1)}pts`;
   return `${bfStr} / 4w · ${lbmStr}`;
 }
 
@@ -84,10 +88,10 @@ function bodyMdFor(x: {
     return 'LBM holding, body fat trending down, strength preserved. Recomp working.';
   }
   if (x.severity === 'urgent') {
-    return `LBM down ${x.lbm4w?.toFixed(1)} kg over 4 weeks and at least one top lift dropped >5%. Cut is too aggressive.`;
+    return `LBM down ${fmtNum(x.lbm4w, 1)} kg over 4 weeks and at least one top lift dropped >5%. Cut is too aggressive.`;
   }
   if (x.bf4w != null && x.bf4w > 0) {
-    return `Body fat up ${x.bf4w.toFixed(1)} pts over 4 weeks while LBM is ${x.lbm4w == null ? 'unknown' : x.lbm4w >= -0.1 ? 'holding' : `down ${Math.abs(x.lbm4w).toFixed(1)} kg`}. Deficit drift is the likely candidate.`;
+    return `Body fat up ${fmtNum(x.bf4w, 1)} pts over 4 weeks while LBM is ${x.lbm4w == null ? 'unknown' : x.lbm4w >= -0.1 ? 'holding' : `down ${fmtNum(Math.abs(x.lbm4w), 1)} kg`}. Deficit drift is the likely candidate.`;
   }
   return 'Recomp showing mixed signal across LBM, body fat, and strength. Check the inputs.';
 }
