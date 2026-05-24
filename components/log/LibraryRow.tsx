@@ -32,7 +32,7 @@ export function LibraryRow({
         className="flex-1 text-left"
       >
         <div className="flex items-baseline justify-between">
-          <span className="text-sm font-medium text-zinc-100">{label}</span>
+          <span className="text-sm font-medium text-zinc-900">{label}</span>
           {sourceChip && (
             <span className="ml-2 rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-zinc-400 border border-zinc-800">
               {sourceChip}
