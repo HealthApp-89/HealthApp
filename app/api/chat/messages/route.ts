@@ -26,6 +26,7 @@ import { formatSseEvent } from "@/lib/chat/sse";
 import { computeActiveTriggers } from "@/lib/coach/voice/triggers";
 import { getTodayTargets } from "@/lib/morning/brief/get-today-targets";
 import { buildPeterContextBlock } from "@/lib/coach/peter-context";
+import { loadLatestPeterDashboard } from "@/lib/coach/peter-dashboard";
 
 export const dynamic = "force-dynamic";
 
@@ -811,6 +812,14 @@ export async function POST(req: Request) {
             return null;
           })
         : null;
+      const peterDashboardBlock = initialSpeaker === "peter"
+        ? await loadLatestPeterDashboard(sr, user.id, new Date().toISOString().slice(0, 10))
+            .then((row) => row?.narrative_md ?? null)
+            .catch((err) => {
+              console.warn("[chat] loadLatestPeterDashboard failed", err);
+              return null;
+            })
+        : null;
       try {
         // Drain one runChatStream pass, piping all SSE events to the client.
         // Pin to local — TS loses control-flow narrowing through async closures.
@@ -832,6 +841,7 @@ export async function POST(req: Request) {
             draftDocId,
             speaker: streamSpeaker,
             peterContext,
+            peterDashboardBlock,
             mealLogDraftContext: typeof body.hidden_context === "string" && body.hidden_context.length > 0
               ? body.hidden_context
               : null,
