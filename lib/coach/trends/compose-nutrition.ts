@@ -130,17 +130,23 @@ export async function composeNutrition(args: {
     slotTotals[slot].daysObserved += 1;
   }
 
-  // Per-slot targets: kcal via meal_ratios; protein evenly distributed
-  // across slots (25% per slot) — future: pull a per-slot protein ratio
-  // from profiles.nutrition_overrides if/when one is added.
+  // Per-slot targets: kcal via meal_ratios; protein distributed proportional
+  // to the same meal_ratios (so a 5%-kcal snack also targets ~5% of protein).
+  // Future: surface a per-slot protein ratio in profiles.nutrition_overrides
+  // if athletes want protein-weighted differently from kcal.
   const ratios: MealRatios = DEFAULT_MEAL_RATIOS;
   const slotKcalTargets = kcalTarget != null ? targetsForAllSlots(kcalTarget, ratios) : null;
-  const slotProteinTarget = proteinTarget != null ? proteinTarget / 4 : null;
+  const slotProteinTargets = proteinTarget != null ? {
+    breakfast: proteinTarget * ratios.breakfast,
+    lunch:     proteinTarget * ratios.lunch,
+    dinner:    proteinTarget * ratios.dinner,
+    snack:     proteinTarget * ratios.snacks,
+  } : null;
 
   function buildProteinSlot(slot: MealSlot) {
     const t = slotTotals[slot];
     const avg = t.daysObserved > 0 ? t.proteinSum / t.daysObserved : null;
-    const target = slotProteinTarget;
+    const target = slotProteinTargets?.[slot] ?? null;
     const pct = avg != null && target != null && target > 0 ? avg / target : null;
     return { avg_14d: avg, target_g: target, pct_of_target: pct };
   }
