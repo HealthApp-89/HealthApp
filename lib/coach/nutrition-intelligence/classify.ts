@@ -54,7 +54,7 @@ export function classifyCarb(
     const mapped = USDA_CARB_CATEGORY[usdaCategory];
     if (mapped) {
       // "Cereal Grains and Pasta" — promote whole grains by name.
-      if (mapped === "refined_grain" && /\b(oat|brown rice|quinoa|wild rice|barley|farro|whole)/.test(lower)) {
+      if (mapped === "refined_grain" && /\b(oats?\b|oatmeal\b|brown rice|quinoa|wild rice|barley|farro|whole)/.test(lower)) {
         return { category: "whole_grain", confidence: "high" };
       }
       // "Vegetables and Vegetable Products" — promote starchy.
