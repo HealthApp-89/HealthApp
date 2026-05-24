@@ -61,7 +61,7 @@ export const PROTEIN_TOKENS: Array<{ cat: ProteinCategory; tokens: string[] }> =
 
 export const CARB_TOKENS: Array<{ cat: CarbCategory; tokens: string[] }> = [
   { cat: "whole_grain", tokens: [
-    "rolled oats", "steel cut oat", "oatmeal", "oats", "oat",
+    "rolled oats", "steel cut oat", "oatmeal", "oats",
     "brown rice", "wild rice", "quinoa", "barley", "bulgur", "farro",
     "buckwheat", "millet", "whole wheat", "whole grain", "whole-wheat",
     "spelt", "rye bread", "sourdough whole",
@@ -74,7 +74,7 @@ export const CARB_TOKENS: Array<{ cat: CarbCategory; tokens: string[] }> = [
   ]},
   { cat: "starchy_veg", tokens: [
     "sweet potato", "yam", "plantain", "cassava", "yuca",
-    "potato", "fries", "mashed potato", "corn", "peas", "pea",
+    "potato", "fries", "mashed potato", "corn", "peas",
   ]},
   { cat: "fruit", tokens: [
     "apple", "banana", "berry", "berries", "strawberry", "blueberry",

@@ -28,7 +28,7 @@ export function classifyProtein(
     const mapped = USDA_PROTEIN_CATEGORY[usdaCategory];
     if (mapped) {
       // Dairy-and-eggs ambiguity: split by name token.
-      if (mapped === "dairy_protein" && /\begg(s|\b)/.test(lower)) {
+      if (mapped === "dairy_protein" && /\beggs?\b/.test(lower)) {
         return { category: "eggs", confidence: "high" };
       }
       return { category: mapped, confidence: "high" };
