@@ -1,5 +1,7 @@
 // Database row shapes — snake_case, mirrors supabase/schema.sql.
 
+import type { MealSlot } from "@/lib/food/types";
+
 // ── Multi-coach team (coach-team arc) ─────────────────────────────────────────
 
 export const SPEAKERS = ["peter", "carter", "nora", "remi"] as const;
@@ -1226,6 +1228,18 @@ export type NutritionAdherenceTrend = {
     avg_4w: number | null;
     avg_12w: number | null;
   };
+  per_meal_slot: {
+    protein_g: Record<MealSlot, {
+      avg_14d: number | null;
+      target_g: number | null;
+      pct_of_target: number | null;
+    }>;
+    kcal: Record<MealSlot, {
+      avg_14d: number | null;
+      target_kcal: number | null;
+      pct_of_target: number | null;
+    }>;
+  };
 };
 
 export type RecoveryTrend = {
@@ -1261,13 +1275,46 @@ export type CrossInsight = {
   points: Array<{ x: number; y: number; week_start: string }>;
 };
 
-export type CoachTrendsPayload = {
+export type ProteinCategory =
+  | "poultry" | "red_meat" | "fish_seafood" | "eggs"
+  | "dairy_protein" | "plant_protein" | "protein_supplement"
+  | "mixed" | "unknown";
+
+export type CarbCategory =
+  | "whole_grain" | "refined_grain" | "starchy_veg" | "non_starchy_veg"
+  | "fruit" | "legume" | "sugar_sweets" | "unknown";
+
+export type CookingMethod =
+  | "grilled" | "baked" | "pan_fried" | "deep_fried" | "air_fried"
+  | "steamed" | "boiled" | "roasted" | "raw" | "smoked" | "unknown";
+
+export type FoodQualityTrend = {
   schema_version: 1;
+  window_days: 14;
+  protein_sources: Array<{ category: ProteinCategory; grams: number; pct: number }>;
+  carb_sources:    Array<{ category: CarbCategory;    grams: number; pct: number }>;
+  cooking_methods: Array<{ method: CookingMethod;     count: number; pct: number }>;
+  diversity: {
+    distinct_items:      number;
+    fish_meals_per_week: number;
+    veg_servings_per_day: number;
+  };
+  data_completeness: {
+    protein_classified_pct:       number;
+    carb_classified_pct:          number;
+    cooking_method_inferable_pct: number;
+  };
+  total_items: number;
+};
+
+export type CoachTrendsPayload = {
+  schema_version: 2;
   generated_at: string;
   strength: StrengthTrend;
   body: BodyTrend;
   nutrition: NutritionAdherenceTrend;
   recovery: RecoveryTrend;
+  food_quality: FoodQualityTrend;
   cross_insights: CrossInsight[];
   headline: {
     severity: "info" | "warn" | "ok";
@@ -1293,7 +1340,18 @@ export type WeeklyReviewCardUI = {
 export type ProactiveTriggerType =
   | "plateau"
   | "off_pace_weight"
-  | "hrv_below_baseline";
+  | "hrv_below_baseline"
+  // NEW — body comp
+  | "recomp_success"
+  | "recomp_drift"
+  // NEW — adherence
+  | "protein_under"
+  | "glp1_protein_floor"
+  // NEW — quality
+  | "monotone_protein"
+  | "fried_heavy"
+  // NEW — training × nutrition
+  | "training_day_undereat";
 
 /** Internal event shape passed from check-* functions to the orchestrator.
  *  The `payload` field carries trigger-specific data the renderer needs. */
@@ -1309,8 +1367,8 @@ export type ProactiveNudgeCard = {
   trigger_type: ProactiveTriggerType;
   /** Used by the 7-day dedup window — same key for the same episode. */
   trigger_key: string;
-  /** Reserved as union; v1 only emits "warn". */
-  severity: "warn";
+  /** Widened for positive nudges (recomp_success, etc.). Task 13 adds severity palette. */
+  severity: "ok" | "info" | "warn";
   /** ≤60 chars. */
   headline: string;
   /** 1-2 sentences. */
