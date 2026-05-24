@@ -4,10 +4,13 @@
 //   - GLP-1 active mode → glp1_protein_floor (higher threshold 1.8 g/kg,
 //     5-day window, fires on 3+ misses).
 //   - Otherwise → protein_under (60% hit rate over last 7 logged days).
-// Reads profiles.glp1_status to pick the branch.
+// Resolves GLP-1 mode via getTodayTargets (which reads from
+// athlete_profile_documents.plan_payload.nutrition.glp1). Body weight
+// comes from the most recent daily_logs.weight_kg row.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { CoachTrendsPayload, ProactiveEvent } from "@/lib/data/types";
+import { getTodayTargets } from "@/lib/morning/brief/get-today-targets";
 import {
   PROTEIN_UNDER_HIT_RATE,
   PROTEIN_UNDER_MIN_LOGGED,
@@ -22,17 +25,24 @@ export async function checkProteinFloor(
   const events: ProactiveEvent[] = [];
   const { supabase, userId, today } = args;
 
-  // Pull current GLP-1 status from profiles.
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("glp1_status, weight_kg")
-    .eq("id", userId)
-    .maybeSingle();
-  const glp1Status = (profile as { glp1_status?: string } | null)?.glp1_status ?? "none";
-  const bw = (profile as { weight_kg?: number | null } | null)?.weight_kg ?? null;
+  // Resolve GLP-1 mode via the canonical helper (reads athlete_profile_documents).
+  const targets = await getTodayTargets(supabase, userId);
+  const isGlp1Active = targets?.mode === "glp1_active";
 
-  if (glp1Status === "active" && bw != null && bw > 0) {
-    // GLP-1 active branch — fetch last 5 days of daily_logs.protein_g.
+  if (isGlp1Active) {
+    // Fetch current body weight from most recent daily_logs row.
+    const { data: bwRow } = await supabase
+      .from("daily_logs")
+      .select("weight_kg")
+      .eq("user_id", userId)
+      .not("weight_kg", "is", null)
+      .order("date", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const bw = (bwRow as { weight_kg?: number | null } | null)?.weight_kg ?? null;
+    if (bw == null || bw <= 0) return events;  // no weight, can't compute floor
+
+    // Last 5 days of daily_logs.protein_g.
     const fiveAgo = shiftDays(today, -5);
     const { data: logs } = await supabase
       .from("daily_logs")
@@ -59,8 +69,7 @@ export async function checkProteinFloor(
     return events;
   }
 
-  // Classical branch — derive 7d hit rate from trends.nutrition.protein.
-  // The payload already carries 4w hit-rate; we need a tighter 7d cut.
+  // Classical branch — 7d hit rate against the protein target.
   const proteinTarget = trends.nutrition.protein.target_g;
   if (proteinTarget == null) return events;
 
