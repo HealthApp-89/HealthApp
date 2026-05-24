@@ -1,11 +1,12 @@
 import { redirect } from "next/navigation";
 import { HydrationBoundary, dehydrate } from "@tanstack/react-query";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseServerClient, createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { makeServerQueryClient } from "@/lib/query/queryClient";
 import { queryKeys } from "@/lib/query/keys";
 import { fetchFoodEntriesServer } from "@/lib/query/fetchers/foodEntries";
 import { fetchTodayTargetsServer } from "@/lib/query/fetchers/todayTargets";
 import { fetchDailyLogsServer } from "@/lib/query/fetchers/dailyLogs";
+import { fetchCoachTrendsServer } from "@/lib/query/fetchers/coachTrends";
 import { todayInUserTz } from "@/lib/time";
 import { DietJournalClient } from "@/components/diet/DietJournalClient";
 
@@ -14,7 +15,7 @@ export const dynamic = "force-dynamic";
 export default async function DietPage({
   searchParams,
 }: {
-  searchParams: Promise<{ date?: string }>;
+  searchParams: Promise<{ date?: string; view?: string }>;
 }) {
   const supabase = await createSupabaseServerClient();
   const {
@@ -23,12 +24,14 @@ export default async function DietPage({
   if (!user) redirect("/login");
 
   const params = await searchParams;
+  const view: "journal" | "nutrition" = params.view === "nutrition" ? "nutrition" : "journal";
   const today = todayInUserTz();
   const date =
     typeof params.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(params.date)
       ? params.date
       : today;
 
+  const serviceSupabase = createSupabaseServiceRoleClient();
   const qc = makeServerQueryClient();
 
   await Promise.all([
@@ -47,11 +50,16 @@ export default async function DietPage({
       queryKey: queryKeys.dailyLogs.range(user.id, date, date),
       queryFn: () => fetchDailyLogsServer(supabase, user.id, date, date),
     }),
+    // Coach trends for the Nutrition tab
+    qc.prefetchQuery({
+      queryKey: queryKeys.coachTrends.one(user.id),
+      queryFn: () => fetchCoachTrendsServer(serviceSupabase, user.id, today),
+    }),
   ]);
 
   return (
     <HydrationBoundary state={dehydrate(qc)}>
-      <DietJournalClient userId={user.id} initialDate={date} />
+      <DietJournalClient userId={user.id} initialDate={date} initialView={view} />
     </HydrationBoundary>
   );
 }

@@ -9,7 +9,6 @@ import { SectionPills, type TrendsSection } from "./SectionPills";
 import { TrendsHeader } from "./TrendsHeader";
 import { PerformanceSection } from "./PerformanceSection";
 import { BodySection } from "./BodySection";
-import { NutritionSection } from "./NutritionSection";
 import { CrossSection } from "./CrossSection";
 
 export function CoachTrendsView({
@@ -69,14 +68,7 @@ export function CoachTrendsView({
         {activeSection === "body" && (
           <BodySection body={payload.body} userId={userId} />
         )}
-        {activeSection === "nutrition" && (
-          <NutritionSection
-            nutrition={payload.nutrition}
-            foodQuality={payload.food_quality}
-            userId={userId}
-          />
-        )}
-        {activeSection === "cross" && <CrossSection insights={payload.cross_insights} />}
+{activeSection === "cross" && <CrossSection insights={payload.cross_insights} />}
       </div>
     </div>
   );

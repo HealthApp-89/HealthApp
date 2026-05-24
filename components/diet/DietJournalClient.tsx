@@ -2,6 +2,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { NutritionView } from "./NutritionView";
 import { useRouter } from "next/navigation";
 import { useFoodEntries } from "@/lib/query/hooks/useFoodEntries";
 import { useTodayTargets } from "@/lib/query/hooks/useTodayTargets";
@@ -17,10 +18,11 @@ import { todayInUserTz } from "@/lib/time";
 import { COLOR } from "@/lib/ui/theme";
 import type { FoodLogEntry, MealSlot } from "@/lib/food/types";
 
-type Props = { userId: string; initialDate: string };
+type Props = { userId: string; initialDate: string; initialView?: "journal" | "nutrition" };
 
-export function DietJournalClient({ userId, initialDate }: Props) {
+export function DietJournalClient({ userId, initialDate, initialView }: Props) {
   const router = useRouter();
+  const [view, setView] = useState<"journal" | "nutrition">(initialView ?? "journal");
   const [loggerOpen, setLoggerOpen] = useState<MealSlot | null>(null);
   const [editing, setEditing] = useState<FoodLogEntry | null>(null);
   const [historyPickerOpen, setHistoryPickerOpen] = useState<MealSlot | null>(null);
@@ -40,6 +42,15 @@ export function DietJournalClient({ userId, initialDate }: Props) {
     const d = new Date(`${date}T00:00:00Z`);
     d.setUTCDate(d.getUTCDate() + deltaDays);
     router.push(`/diet?date=${d.toISOString().slice(0, 10)}`);
+  };
+
+  const setViewAndUrl = (next: "journal" | "nutrition") => {
+    setView(next);
+    const sp = new URLSearchParams();
+    if (date !== todayInUserTz()) sp.set("date", date);
+    if (next !== "journal") sp.set("view", next);
+    const qs = sp.toString();
+    router.replace(qs ? `/diet?${qs}` : "/diet", { scroll: false });
   };
 
   // Per-meal kcal targets — derive from day target + meal_ratios.
@@ -93,74 +104,108 @@ export function DietJournalClient({ userId, initialDate }: Props) {
 
   return (
     <main className="mx-auto max-w-md px-0 pt-6 pb-32">
-      {/* Inline date scrubber — prev/next chevrons + formatted date display */}
-      <div className="flex items-center justify-between px-4 py-3">
+      {/* Tab bar — Journal / Nutrition */}
+      <div className="flex gap-2 px-4 pt-3 pb-1">
         <button
           type="button"
-          onClick={() => shift(-1)}
-          aria-label="Previous day"
-          className="px-3 py-1 text-lg text-zinc-400 hover:text-zinc-100"
+          onClick={() => setViewAndUrl("journal")}
+          className="rounded-full px-3 py-1 text-xs font-semibold transition-colors"
+          style={{
+            background: view === "journal" ? COLOR.textStrong : "#f3f4f6",
+            color: view === "journal" ? "#fff" : COLOR.textMuted,
+            border: `1px solid ${view === "journal" ? COLOR.textStrong : "#d1d5db"}`,
+          }}
         >
-          ‹
+          Journal
         </button>
-        <div className="text-sm font-semibold text-zinc-100">
-          {weekday}, {monthDay}
-        </div>
         <button
           type="button"
-          onClick={() => shift(1)}
-          disabled={isToday}
-          aria-label="Next day"
-          className="px-3 py-1 text-lg text-zinc-400 hover:text-zinc-100 disabled:opacity-30"
+          onClick={() => setViewAndUrl("nutrition")}
+          className="rounded-full px-3 py-1 text-xs font-semibold transition-colors"
+          style={{
+            background: view === "nutrition" ? COLOR.textStrong : "#f3f4f6",
+            color: view === "nutrition" ? "#fff" : COLOR.textMuted,
+            border: `1px solid ${view === "nutrition" ? COLOR.textStrong : "#d1d5db"}`,
+          }}
         >
-          ›
+          Nutrition
         </button>
       </div>
 
-      {/* kcal ring + macro bars */}
-      <SummaryCard
-        eaten={eaten}
-        target={target}
-        burned={burned}
-        macros={{
-          carbs: {
-            eaten:  macroTotals.carbs_g,
-            target: targets?.carb_g ?? 0,
-          },
-          protein: {
-            eaten:  macroTotals.protein_g,
-            target: targets?.protein_g ?? 0,
-          },
-          fat: {
-            eaten:  macroTotals.fat_g,
-            target: targets?.fat_g ?? 0,
-          },
-        }}
-      />
+      {view === "journal" && (
+        <>
+          {/* Inline date scrubber — prev/next chevrons + formatted date display */}
+          <div className="flex items-center justify-between px-4 py-3">
+            <button
+              type="button"
+              onClick={() => shift(-1)}
+              aria-label="Previous day"
+              className="px-3 py-1 text-lg text-zinc-400 hover:text-zinc-100"
+            >
+              ‹
+            </button>
+            <div className="text-sm font-semibold text-zinc-100">
+              {weekday}, {monthDay}
+            </div>
+            <button
+              type="button"
+              onClick={() => shift(1)}
+              disabled={isToday}
+              aria-label="Next day"
+              className="px-3 py-1 text-lg text-zinc-400 hover:text-zinc-100 disabled:opacity-30"
+            >
+              ›
+            </button>
+          </div>
 
-      {/* Four collapsed meal-slot cards */}
-      <div className="mt-5">
-        <div
-          className="mx-4 mb-2 text-[11px] uppercase tracking-wider"
-          style={{ color: COLOR.textMuted }}
-        >
-          Meals
-        </div>
-        {MEAL_SLOTS.map((slot) => (
-          <MealSlotCardCollapsed
-            key={slot}
-            slot={slot}
-            entries={entriesBySlot[slot]}
-            targetKcal={slotTargets?.[slot] ?? null}
-            date={date}
-            onLog={(s) => setLoggerOpen(s)}
-            onTapEntry={setEditing}
-            onPickFromHistory={() => setHistoryPickerOpen(slot)}
+          {/* kcal ring + macro bars */}
+          <SummaryCard
+            eaten={eaten}
+            target={target}
+            burned={burned}
+            macros={{
+              carbs: {
+                eaten:  macroTotals.carbs_g,
+                target: targets?.carb_g ?? 0,
+              },
+              protein: {
+                eaten:  macroTotals.protein_g,
+                target: targets?.protein_g ?? 0,
+              },
+              fat: {
+                eaten:  macroTotals.fat_g,
+                target: targets?.fat_g ?? 0,
+              },
+            }}
           />
-        ))}
-      </div>
 
-      {/* Sheets — same trio as MealJournalClient */}
+          {/* Four collapsed meal-slot cards */}
+          <div className="mt-5">
+            <div
+              className="mx-4 mb-2 text-[11px] uppercase tracking-wider"
+              style={{ color: COLOR.textMuted }}
+            >
+              Meals
+            </div>
+            {MEAL_SLOTS.map((slot) => (
+              <MealSlotCardCollapsed
+                key={slot}
+                slot={slot}
+                entries={entriesBySlot[slot]}
+                targetKcal={slotTargets?.[slot] ?? null}
+                date={date}
+                onLog={(s) => setLoggerOpen(s)}
+                onTapEntry={setEditing}
+                onPickFromHistory={() => setHistoryPickerOpen(slot)}
+              />
+            ))}
+          </div>
+        </>
+      )}
+
+      {view === "nutrition" && <NutritionView userId={userId} />}
+
+      {/* Sheets — same trio as MealJournalClient; stay mounted regardless of view */}
       {loggerOpen && (
         <MealLoggerSheet
           open

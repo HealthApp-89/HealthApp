@@ -2,12 +2,11 @@
 
 import { COLOR } from "@/lib/ui/theme";
 
-export type TrendsSection = "performance" | "body" | "nutrition" | "cross";
+export type TrendsSection = "performance" | "body" | "cross";
 
 const SECTIONS: Array<{ key: TrendsSection; label: string }> = [
   { key: "performance", label: "Performance" },
   { key: "body",        label: "Body" },
-  { key: "nutrition",   label: "Nutrition" },
   { key: "cross",       label: "Cross" },
 ];
 

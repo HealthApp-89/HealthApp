@@ -20,7 +20,7 @@ type SP = {
   }>;
 };
 
-const VALID_SECTIONS: TrendsSection[] = ["performance", "body", "nutrition", "cross"];
+const VALID_SECTIONS: TrendsSection[] = ["performance", "body", "cross"];
 
 function normalizeSection(raw: string | undefined): TrendsSection {
   if (raw === "composition") return "body"; // back-compat redirect
@@ -43,6 +43,12 @@ export default async function MetricsPage({ searchParams }: SP) {
   if (sp.sub === "log") {
     const dateQs = sp.date ? `&date=${encodeURIComponent(sp.date)}` : "";
     redirect(`/health?tab=log${dateQs}`);
+  }
+
+  // /metrics no longer hosts the Nutrition pill — that content moved to
+  // /diet?view=nutrition. Old bookmarks redirect cleanly.
+  if (sp.section === "nutrition") {
+    redirect("/diet?view=nutrition");
   }
 
   const supabase = await createSupabaseServerClient();
