@@ -3,6 +3,7 @@
 import type { RecoveryIntelligencePayload } from "@/lib/coach/recovery-intelligence/types";
 import { COLOR } from "@/lib/ui/theme";
 import { fmtNum } from "@/lib/ui/score";
+import { formatDateLabel } from "@/components/health/trends/format";
 
 type Props = { payload: RecoveryIntelligencePayload };
 
@@ -96,6 +97,17 @@ function HrvVsBaselineCard({
         )}
         {/* "#7dd3fc" = cyan info color; migrate to COLOR.info when token is added */}
         <polyline points={points} fill="none" stroke="#7dd3fc" strokeWidth={1.5} />
+        {/* Invisible hover targets — one circle per day with native <title> tooltip */}
+        {daily.map((d, i) => {
+          if (d.hrv == null) return null;
+          const x = (i / (daily.length - 1)) * 360;
+          const y = yScale(d.hrv);
+          return (
+            <circle key={d.date} cx={x} cy={y} r={7} fill="transparent" stroke="transparent" style={{ cursor: "pointer" }}>
+              <title>{`${formatDateLabel(d.date)}: ${fmtNum(d.hrv)} ms`}</title>
+            </circle>
+          );
+        })}
       </svg>
       <Legend items={[
         { color: "#7dd3fc", label: "HRV daily" },
@@ -147,6 +159,17 @@ function RhrVsBaselineCard({
         )}
         {/* "#7dd3fc" = cyan info color; migrate to COLOR.info when token is added */}
         <polyline points={points} fill="none" stroke="#7dd3fc" strokeWidth={1.5} />
+        {/* Invisible hover targets with native <title> tooltip */}
+        {daily.map((d, i) => {
+          if (d.rhr == null) return null;
+          const x = (i / (daily.length - 1)) * 360;
+          const y = yScale(d.rhr);
+          return (
+            <circle key={d.date} cx={x} cy={y} r={7} fill="transparent" stroke="transparent" style={{ cursor: "pointer" }}>
+              <title>{`${formatDateLabel(d.date)}: ${fmtNum(d.rhr)} bpm`}</title>
+            </circle>
+          );
+        })}
       </svg>
       <Legend items={[
         { color: COLOR.accent, label: "baseline" },
@@ -198,7 +221,10 @@ function HrvWeeklyCard({
           return (
             <rect key={w.week_start}
               x={x} y={80 - h} width={22} height={h}
-              fill={isRecent ? COLOR.warning : "#7dd3fc"} />
+              fill={isRecent ? COLOR.warning : "#7dd3fc"}
+              style={{ cursor: "pointer" }}>
+              <title>{w.hrv_avg != null ? `Week of ${formatDateLabel(w.week_start)}: ${fmtNum(w.hrv_avg)} ms` : `Week of ${formatDateLabel(w.week_start)}: —`}</title>
+            </rect>
           );
         })}
       </svg>

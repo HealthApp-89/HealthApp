@@ -5,6 +5,7 @@ import { Card, CardHeader, Legend } from "@/components/health/trends/HrvAutonomi
 import { COLOR } from "@/lib/ui/theme";
 import { fmtNum } from "@/lib/ui/score";
 import { SKIN_TEMP_DELTA_C, RR_DELTA_BPM } from "@/lib/coach/recovery-intelligence/thresholds";
+import { formatDateLabel } from "@/components/health/trends/format";
 
 type Props = { payload: RecoveryIntelligencePayload };
 

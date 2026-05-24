@@ -2,6 +2,7 @@
 "use client";
 import type { RecoveryIntelligencePayload } from "@/lib/coach/recovery-intelligence/types";
 import { Card, CardHeader } from "@/components/health/trends/HrvAutonomicSection";
+import { formatDateLabel } from "@/components/health/trends/format";
 import { COLOR } from "@/lib/ui/theme";
 
 type Props = { payload: RecoveryIntelligencePayload };
@@ -38,10 +39,15 @@ export function MobilityCard({ payload }: Props) {
             <div key={ri} style={{ display: "flex", gap: 2, alignItems: "center" }}>
               <div style={{ fontSize: 10, color: COLOR.textMid, width: 60, flexShrink: 0 }}>W{ri + 1}</div>
               {rowCells.map((c, i) => (
-                <div key={i} style={{
-                  flex: 1, height: 14, borderRadius: 2,
-                  background: c?.done ? "rgba(74,222,128,0.65)" : COLOR.divider,
-                }} />
+                <div
+                  key={i}
+                  title={c ? `${formatDateLabel(c.date)}: mobility ${c.done ? "done" : "not done"}` : undefined}
+                  style={{
+                    flex: 1, height: 14, borderRadius: 2,
+                    background: c?.done ? "rgba(74,222,128,0.65)" : COLOR.divider,
+                    cursor: c ? "pointer" : "default",
+                  }}
+                />
               ))}
             </div>
           ))}

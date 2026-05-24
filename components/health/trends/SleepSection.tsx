@@ -7,6 +7,7 @@ import { fmtNum } from "@/lib/ui/score";
 import {
   SLEEP_TARGET_BAND, SLEEP_SCORE_MEANINGFUL, BEDTIME_DRIFT_SD_MINUTES,
 } from "@/lib/coach/recovery-intelligence/thresholds";
+import { formatDateLabel, formatBedtimeLabel } from "@/components/health/trends/format";
 
 type Props = { payload: RecoveryIntelligencePayload };
 
@@ -85,7 +86,11 @@ function SleepHoursCard({
           const w = (360 - 4) / daily.length - 2;
           const h = (d.hours / yMax) * 80;
           const color = d.hours >= lo ? "#7dd3fc" : d.hours >= 6 ? COLOR.warning : COLOR.danger;
-          return <rect key={i} x={x} y={80 - h} width={w} height={h} fill={color} />;
+          return (
+            <rect key={i} x={x} y={80 - h} width={w} height={h} fill={color} style={{ cursor: "pointer" }}>
+              <title>{`${formatDateLabel(d.date)}: ${fmtNum(d.hours)}h`}</title>
+            </rect>
+          );
         })}
         {/* 7d rolling line */}
         <polyline
@@ -95,6 +100,17 @@ function SleepHoursCard({
             .join(" ")}
           fill="none" stroke={COLOR.accent} strokeWidth={1.5}
         />
+        {/* Invisible hover targets for rolling-avg line with native <title> tooltip */}
+        {rolling.map((v, i) => {
+          if (v == null) return null;
+          const x = (i / (rolling.length - 1)) * 360;
+          const y = yScale(v);
+          return (
+            <circle key={`roll-${i}`} cx={x} cy={y} r={7} fill="transparent" stroke="transparent" style={{ cursor: "pointer" }}>
+              <title>{`${formatDateLabel(daily[i].date)}: 7d avg ${fmtNum(v)}h`}</title>
+            </circle>
+          );
+        })}
       </svg>
       <Legend items={[
         { color: "#7dd3fc", label: "nightly" },
@@ -127,6 +143,28 @@ function ScoreVsHoursCard({
         <polyline
           points={daily.map((d, i) => (d.hours == null ? null : `${(i / (daily.length - 1)) * 360},${yH(d.hours)}`)).filter(Boolean).join(" ")}
           fill="none" stroke="#7dd3fc" strokeWidth={1.5} />
+        {/* Invisible hover targets: score points */}
+        {daily.map((d, i) => {
+          if (d.score == null) return null;
+          const x = (i / (daily.length - 1)) * 360;
+          const y = yS(d.score);
+          return (
+            <circle key={`score-${d.date}`} cx={x} cy={y} r={7} fill="transparent" stroke="transparent" style={{ cursor: "pointer" }}>
+              <title>{`${formatDateLabel(d.date)}: score ${Math.round(d.score)}`}</title>
+            </circle>
+          );
+        })}
+        {/* Invisible hover targets: hours points */}
+        {daily.map((d, i) => {
+          if (d.hours == null) return null;
+          const x = (i / (daily.length - 1)) * 360;
+          const y = yH(d.hours);
+          return (
+            <circle key={`hours-${d.date}`} cx={x} cy={y} r={7} fill="transparent" stroke="transparent" style={{ cursor: "pointer" }}>
+              <title>{`${formatDateLabel(d.date)}: ${fmtNum(d.hours)}h`}</title>
+            </circle>
+          );
+        })}
       </svg>
       <Legend items={[
         { color: COLOR.warning, label: "score" },
@@ -154,7 +192,8 @@ function ArchitectureCard({ arch }: { arch: RecoveryIntelligencePayload["sleep_a
           const yRem   = yDeep - yScale(rem);
           const yLight = yRem  - yScale(light);
           return (
-            <g key={i}>
+            <g key={i} style={{ cursor: "pointer" }}>
+              <title>{`${formatDateLabel(a.date)}: deep ${fmtNum(deep)}h · REM ${fmtNum(rem)}h · light ${fmtNum(light)}h`}</title>
               <rect x={x} y={yDeep}  width={w} height={yScale(deep)}  fill={COLOR.accent} />
               <rect x={x} y={yRem}   width={w} height={yScale(rem)}   fill="#7dd3fc" />
               <rect x={x} y={yLight} width={w} height={yScale(light)} fill="#374151" />
@@ -208,10 +247,14 @@ function BedtimeCard({
           return (
             <g key={p.date}>
               {p.bedtime_minutes_after_18 != null && (
-                <circle cx={x} cy={yScale(p.bedtime_minutes_after_18)} r={2.5} fill="#7dd3fc" />
+                <circle cx={x} cy={yScale(p.bedtime_minutes_after_18)} r={2.5} fill="#7dd3fc" style={{ cursor: "pointer" }}>
+                  <title>{`${formatDateLabel(p.date)}: bedtime ${formatBedtimeLabel(p.bedtime_minutes_after_18)}`}</title>
+                </circle>
               )}
               {p.wake_minutes_after_18 != null && (
-                <circle cx={x} cy={yScale(p.wake_minutes_after_18)} r={2.5} fill={COLOR.accent} />
+                <circle cx={x} cy={yScale(p.wake_minutes_after_18)} r={2.5} fill={COLOR.accent} style={{ cursor: "pointer" }}>
+                  <title>{`${formatDateLabel(p.date)}: wake ${formatBedtimeLabel(p.wake_minutes_after_18)}`}</title>
+                </circle>
               )}
             </g>
           );

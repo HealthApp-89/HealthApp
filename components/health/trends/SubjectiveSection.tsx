@@ -2,7 +2,9 @@
 "use client";
 import type { RecoveryIntelligencePayload, SubjectivePoint } from "@/lib/coach/recovery-intelligence/types";
 import { Card, CardHeader, Legend } from "@/components/health/trends/HrvAutonomicSection";
+import { formatDateLabel } from "@/components/health/trends/format";
 import { COLOR } from "@/lib/ui/theme";
+import { fmtNum } from "@/lib/ui/score";
 import { RECURRING_SORENESS_OCCURRENCES, RECURRING_SORENESS_WINDOW_DAYS } from "@/lib/coach/recovery-intelligence/thresholds";
 
 const AREAS = ["chest", "back", "legs", "shoulders", "arms", "core"] as const;
@@ -52,7 +54,14 @@ function SorenessHeatmapCard({ subjective }: { subjective: SubjectivePoint[] }) 
               const bg = !has ? COLOR.divider
                 : p.soreness_severity === "sharp" ? COLOR.dangerSoft
                 : COLOR.warningSoft;
-              return <div key={p.date} style={{ flex: 1, height: 14, borderRadius: 2, background: bg }} />;
+              const sev = !has ? "no soreness" : p.soreness_severity === "sharp" ? "sharp" : "mild";
+              return (
+                <div
+                  key={p.date}
+                  title={`${formatDateLabel(p.date)}: ${area} — ${sev}`}
+                  style={{ flex: 1, height: 14, borderRadius: 2, background: bg, cursor: "pointer" }}
+                />
+              );
             })}
           </div>
         ))}
@@ -90,8 +99,14 @@ function FatigueTimelineCard({ subjective }: { subjective: SubjectivePoint[] }) 
             p.fatigue === "heavy" ? COLOR.dangerSoft :
             p.fatigue === "some"  ? COLOR.warningSoft :
             COLOR.divider;
+          const tier = p.fatigue ?? "none";
+          const sickPart = p.sick ? " · sick" : "";
           return (
-            <div key={p.date} style={{ flex: 1, height: 22, borderRadius: 2, background: bg, position: "relative" }}>
+            <div
+              key={p.date}
+              title={`${formatDateLabel(p.date)}: fatigue ${tier}${sickPart}`}
+              style={{ flex: 1, height: 22, borderRadius: 2, background: bg, position: "relative", cursor: "pointer" }}
+            >
               {p.sick && (
                 <div style={{ position: "absolute", bottom: -3, left: "50%", transform: "translateX(-50%)",
                   width: 6, height: 6, background: COLOR.danger, borderRadius: "50%" }} />
@@ -131,10 +146,25 @@ function SubjVsObjCard({
         <polyline
           points={daily.map((d, i) => (d.hrv == null ? null : `${(i / (daily.length - 1)) * 360},${yHrv(d.hrv, min, max)}`)).filter(Boolean).join(" ")}
           fill="none" stroke="#7dd3fc" strokeWidth={1.5} />
+        {/* Invisible hit-targets for HRV points — native browser tooltip on hover/long-press */}
+        {daily.map((d, i) => {
+          if (d.hrv == null) return null;
+          const x = (i / (daily.length - 1)) * 360;
+          const y = yHrv(d.hrv, min, max);
+          return (
+            <circle key={`hrv-${d.date}`} cx={x} cy={y} r={6} fill="transparent" stroke="transparent" style={{ cursor: "pointer" }}>
+              <title>{`${formatDateLabel(d.date)}: ${fmtNum(d.hrv)} ms`}</title>
+            </circle>
+          );
+        })}
         {subjective.map((s, i) => {
           if (s.fatigue == null) return null;
           const r = s.fatigue === "heavy" ? 5 : s.fatigue === "some" ? 3 : 2;
-          return <circle key={s.date} cx={(i / (subjective.length - 1)) * 360} cy={72} r={r} fill={COLOR.danger} />;
+          return (
+            <circle key={s.date} cx={(i / (subjective.length - 1)) * 360} cy={72} r={r} fill={COLOR.danger} style={{ cursor: "pointer" }}>
+              <title>{`${formatDateLabel(s.date)}: fatigue ${s.fatigue}`}</title>
+            </circle>
+          );
         })}
       </svg>
       <Legend items={[

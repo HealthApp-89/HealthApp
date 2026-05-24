@@ -7,6 +7,7 @@ import { fmtNum } from "@/lib/ui/score";
 import {
   STRAIN_HIGH_AVG_7D, RECOVERY_LOW_AVG_7D,
 } from "@/lib/coach/recovery-intelligence/thresholds";
+import { formatDateLabel } from "@/components/health/trends/format";
 
 type Props = { payload: RecoveryIntelligencePayload };
 
@@ -70,7 +71,8 @@ function RecoveryDistributionCard({
           const hOk   = (w.recovery_ok_days   / tot) * 80;
           const hLow  = (w.recovery_low_days  / tot) * 80;
           return (
-            <g key={w.week_start}>
+            <g key={w.week_start} style={{ cursor: "pointer" }}>
+              <title>{`Week of ${formatDateLabel(w.week_start)}: low ${w.recovery_low_days} · ok ${w.recovery_ok_days} · high ${w.recovery_high_days}`}</title>
               <rect x={x} y={0}              width={60} height={hHigh} fill={COLOR.success} />
               <rect x={x} y={hHigh}          width={60} height={hOk}   fill={COLOR.warning} />
               <rect x={x} y={hHigh + hOk}    width={60} height={hLow}  fill={COLOR.danger} />
@@ -111,6 +113,28 @@ function StrainRecoveryCard({
         <polyline
           points={daily.map((d, i) => (d.recovery == null ? null : `${(i / (daily.length - 1)) * 360},${yScaleRecov(d.recovery)}`)).filter(Boolean).join(" ")}
           fill="none" stroke={COLOR.success} strokeWidth={1.5} />
+        {/* Invisible hover targets: strain points */}
+        {daily.map((d, i) => {
+          if (d.strain == null) return null;
+          const x = (i / (daily.length - 1)) * 360;
+          const y = yScaleStrain(d.strain);
+          return (
+            <circle key={`strain-${d.date}`} cx={x} cy={y} r={7} fill="transparent" stroke="transparent" style={{ cursor: "pointer" }}>
+              <title>{`${formatDateLabel(d.date)}: strain ${fmtNum(d.strain)}`}</title>
+            </circle>
+          );
+        })}
+        {/* Invisible hover targets: recovery points */}
+        {daily.map((d, i) => {
+          if (d.recovery == null) return null;
+          const x = (i / (daily.length - 1)) * 360;
+          const y = yScaleRecov(d.recovery);
+          return (
+            <circle key={`recov-${d.date}`} cx={x} cy={y} r={7} fill="transparent" stroke="transparent" style={{ cursor: "pointer" }}>
+              <title>{`${formatDateLabel(d.date)}: recovery ${fmtNum(d.recovery)}%`}</title>
+            </circle>
+          );
+        })}
       </svg>
       <Legend items={[
         { color: COLOR.warning, label: "strain" },
@@ -151,7 +175,8 @@ function DayOfWeekStrainCard({
           const h = (v / yMax) * 70;
           const color = v >= 15 ? COLOR.danger : v >= 10 ? COLOR.warning : COLOR.textMid;
           return (
-            <g key={i}>
+            <g key={i} style={{ cursor: "pointer" }}>
+              <title>{`${labels[i]}: avg ${fmtNum(v)}`}</title>
               <rect x={x} y={80 - h} width={40} height={h} fill={color} />
               <text x={x + 20} y={78} fontSize={9} fill={COLOR.textMuted} textAnchor="middle">{labels[i]}</text>
             </g>
@@ -166,11 +191,11 @@ function PostStrainScatterCard({
   daily,
 }: { daily: RecoveryIntelligencePayload["daily"] }) {
   // Pairs: (yesterday_strain, today_recovery).
-  const pairs: Array<{ x: number; y: number }> = [];
+  const pairs: Array<{ x: number; y: number; date: string }> = [];
   for (let i = 1; i < daily.length; i++) {
     const xs = daily[i - 1].strain;
     const ys = daily[i].recovery;
-    if (xs != null && ys != null) pairs.push({ x: xs, y: ys });
+    if (xs != null && ys != null) pairs.push({ x: xs, y: ys, date: daily[i].date });
   }
 
   // OLS for trend line.
@@ -200,7 +225,9 @@ function PostStrainScatterCard({
             stroke={COLOR.accent} strokeWidth={1} strokeDasharray="3,3" opacity={0.6} />
         )}
         {pairs.map((p, i) => (
-          <circle key={i} cx={xScale(p.x)} cy={yScale(p.y)} r={3} fill="#7dd3fc" />
+          <circle key={i} cx={xScale(p.x)} cy={yScale(p.y)} r={3} fill="#7dd3fc" style={{ cursor: "pointer" }}>
+            <title>{`${formatDateLabel(p.date)}: strain ${fmtNum(p.x)} → recovery ${fmtNum(p.y)}%`}</title>
+          </circle>
         ))}
       </svg>
     </Card>
