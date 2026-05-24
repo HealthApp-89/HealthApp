@@ -3,6 +3,7 @@
 
 import { useMemo, useState } from "react";
 import { NutritionView } from "./NutritionView";
+import ChatPanel from "@/components/chat/ChatPanel";
 import { useRouter } from "next/navigation";
 import { useFoodEntries } from "@/lib/query/hooks/useFoodEntries";
 import { useTodayTargets } from "@/lib/query/hooks/useTodayTargets";
@@ -18,11 +19,11 @@ import { todayInUserTz } from "@/lib/time";
 import { COLOR } from "@/lib/ui/theme";
 import type { FoodLogEntry, MealSlot } from "@/lib/food/types";
 
-type Props = { userId: string; initialDate: string; initialView?: "journal" | "nutrition" };
+type Props = { userId: string; initialDate: string; initialView?: "journal" | "nutrition" | "coach" };
 
 export function DietJournalClient({ userId, initialDate, initialView }: Props) {
   const router = useRouter();
-  const [view, setView] = useState<"journal" | "nutrition">(initialView ?? "journal");
+  const [view, setView] = useState<"journal" | "nutrition" | "coach">(initialView ?? "journal");
   const [loggerOpen, setLoggerOpen] = useState<MealSlot | null>(null);
   const [editing, setEditing] = useState<FoodLogEntry | null>(null);
   const [historyPickerOpen, setHistoryPickerOpen] = useState<MealSlot | null>(null);
@@ -44,7 +45,7 @@ export function DietJournalClient({ userId, initialDate, initialView }: Props) {
     router.push(`/diet?date=${d.toISOString().slice(0, 10)}`);
   };
 
-  const setViewAndUrl = (next: "journal" | "nutrition") => {
+  const setViewAndUrl = (next: "journal" | "nutrition" | "coach") => {
     setView(next);
     const sp = new URLSearchParams();
     if (date !== todayInUserTz()) sp.set("date", date);
@@ -104,7 +105,7 @@ export function DietJournalClient({ userId, initialDate, initialView }: Props) {
 
   return (
     <main className="mx-auto max-w-md px-0 pt-6 pb-32">
-      {/* Tab bar — Journal / Nutrition */}
+      {/* Tab bar — Journal / Nutrition / Coach */}
       <div className="flex gap-2 px-4 pt-3 pb-1">
         <button
           type="button"
@@ -129,6 +130,18 @@ export function DietJournalClient({ userId, initialDate, initialView }: Props) {
           }}
         >
           Nutrition
+        </button>
+        <button
+          type="button"
+          onClick={() => setViewAndUrl("coach")}
+          className="rounded-full px-3 py-1 text-xs font-semibold transition-colors"
+          style={{
+            background: view === "coach" ? COLOR.textStrong : "#f3f4f6",
+            color: view === "coach" ? "#fff" : COLOR.textMuted,
+            border: `1px solid ${view === "coach" ? COLOR.textStrong : "#d1d5db"}`,
+          }}
+        >
+          Coach
         </button>
       </div>
 
@@ -204,6 +217,18 @@ export function DietJournalClient({ userId, initialDate, initialView }: Props) {
       )}
 
       {view === "nutrition" && <NutritionView userId={userId} />}
+
+      {view === "coach" && (
+        <div style={{ height: "calc(100dvh - 200px)", display: "flex", flexDirection: "column" }}>
+          <ChatPanel
+            userId={userId}
+            embedded
+            initialKind="coach"
+            thread="nora"
+            scopeHours={24}
+          />
+        </div>
+      )}
 
       {/* Sheets — same trio as MealJournalClient; stay mounted regardless of view */}
       {loggerOpen && (

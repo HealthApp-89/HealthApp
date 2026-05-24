@@ -99,8 +99,16 @@ function scopeCoachForRender(
   messages: ChatMessage[],
   todayYmd: string,
   showAll: boolean,
+  scopeHours?: number,
 ): ChatMessage[] {
   if (showAll) return messages;
+  // Strict rolling-hours window — used by per-coach mini-surfaces (Diet/Coach)
+  // that want a tight recent-conversation view instead of the default
+  // today+yesterday calendar-day scope.
+  if (scopeHours != null && scopeHours > 0) {
+    const cutoff = Date.now() - scopeHours * 60 * 60 * 1000;
+    return messages.filter((m) => new Date(m.created_at).getTime() >= cutoff);
+  }
   const yesterdayYmd = shiftYmd(todayYmd, -1);
   return messages.filter((m) => {
     const ymd = ymdInUserTz(new Date(m.created_at));
@@ -238,6 +246,7 @@ export default function ChatPanel({
   draftDocId,
   embedded = false,
   thread,
+  scopeHours,
 }: {
   onClose?: () => void;
   /** Initial conversation lane; tab clicks at runtime override this. */
@@ -261,6 +270,10 @@ export default function ChatPanel({
    *  - Picker UI is hidden — the page IS the coach's page.
    *  When omitted (legacy /coach surface), behavior is unchanged. */
   thread?: Speaker;
+  /** When set, scopes the rendered messages to a rolling N-hour window
+   *  from now instead of the default today+yesterday calendar-day scope.
+   *  Used by /diet's Coach tab to keep the Nora chat tight. */
+  scopeHours?: number;
 }) {
   const [mode, setMode] = useState<ChatMode>(initialMode);
   const [composerHint, setComposerHint] = useState<string | undefined>(undefined);
@@ -1052,9 +1065,9 @@ export default function ChatPanel({
   const renderedMessages = useMemo(
     () =>
       currentMode === "coach"
-        ? scopeCoachForRender(state.messages, today, showAllCoach)
+        ? scopeCoachForRender(state.messages, today, showAllCoach, scopeHours)
         : state.messages,
-    [currentMode, state.messages, today, showAllCoach],
+    [currentMode, state.messages, today, showAllCoach, scopeHours],
   );
   const hiddenEarlierCount = state.messages.length - renderedMessages.length;
 

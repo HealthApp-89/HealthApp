@@ -24,7 +24,10 @@ export default async function DietPage({
   if (!user) redirect("/login");
 
   const params = await searchParams;
-  const view: "journal" | "nutrition" = params.view === "nutrition" ? "nutrition" : "journal";
+  const view: "journal" | "nutrition" | "coach" =
+    params.view === "nutrition" ? "nutrition" :
+    params.view === "coach"     ? "coach"     :
+                                  "journal";
   const today = todayInUserTz();
   const date =
     typeof params.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(params.date)
