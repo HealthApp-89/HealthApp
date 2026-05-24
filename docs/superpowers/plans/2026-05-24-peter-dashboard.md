@@ -198,8 +198,6 @@ export type ThemePayload = {
   /** Numeric/string facts the narrative wrapper may cite. Keys are
    *  composer-defined and stable across regens. */
   facts: Record<string, number | string | null>;
-  /** Route the "Open …" nav chip links to. */
-  drilldown: string;
   /** Mini chart for expanded state; null when no chart fits the theme. */
   sparkline: SparklineSeries | null;
   /** Audit trail of which tables/columns were read. Helps the audit script
@@ -445,7 +443,6 @@ export async function composeRecomp(args: {
       bf_pct_delta_4w_pts: bf4w,
       top_lift_slopes_pct_per_wk_4w: topLiftSlopes.join(','),
     },
-    drilldown: THEME_DRILLDOWN.recomp,
     sparkline,
     inputs_used: ['coach_trends.body', 'coach_trends.strength.per_lift'],
   };
@@ -518,7 +515,7 @@ import type { ThemePayload } from './types';
 import { THEME_DRILLDOWN } from './types';
 import {
   ENERGY_UNDER_TARGET_KCAL,
-  ENERGY_UNDER_DAYS_WARN,
+  ENERGY_UNDER_WINDOW_DAYS_WARN,
   ENERGY_GLP1_DEFICIT_PCT_TDEE_URGENT,
 } from './thresholds';
 import { getTodayTargets } from '@/lib/morning/brief/get-today-targets';
@@ -593,7 +590,7 @@ export async function composeEnergy(args: {
 
   let severity: ThemePayload['severity'];
   if (glp1DeficitUrgent) severity = 'urgent';
-  else if (underDays >= ENERGY_UNDER_DAYS_WARN) severity = 'warn';
+  else if (underDays >= ENERGY_UNDER_WINDOW_DAYS_WARN) severity = 'warn';
   else severity = 'ok';
 
   return {
@@ -609,7 +606,6 @@ export async function composeEnergy(args: {
       kcal_target: kcalTarget,
       glp1_mode_active: isGlp1Active,
     },
-    drilldown: THEME_DRILLDOWN.energy,
     sparkline: kcalTarget == null ? null : {
       label: 'kcal vs target (14d)',
       series: rows
@@ -770,7 +766,6 @@ export async function composeFatigue(args: {
       remi_triggers_fired_14d: uniqueTriggerCount,
       remi_trigger_keys: triggerKeys.join(','),
     },
-    drilldown: THEME_DRILLDOWN.fatigue,
     sparkline: hrvSeries.length > 0
       ? { label: 'HRV vs baseline (28d)', series: hrvSeries }
       : null,
@@ -925,7 +920,6 @@ export async function composePerformance(args: {
       longest_plateau_lift: longestPlateau?.lift ?? null,
       bigfour_plateaued_count: bigFourPlateaued.length,
     },
-    drilldown: THEME_DRILLDOWN.performance,
     sparkline,
     inputs_used: ['coach_trends.strength.per_lift'],
   };
@@ -1067,7 +1061,6 @@ export async function composePlanAdherence(args: {
       food_log_coverage_pct_14d: round2(foodCoveragePct),
       training_weeks_considered: weekly.length,
     },
-    drilldown: THEME_DRILLDOWN.plan_adherence,
     sparkline: weekly.length >= 2
       ? {
           label: 'Weekly adherence',
@@ -1190,7 +1183,6 @@ export async function composeGoalDistance(args: {
       one_line: 'Target date passed',
       body_md: 'Goal target date has passed. Refresh the goal in /profile.',
       facts: { goal_kind: doc.goal_kind, days_past_target: -(daysToTarget ?? 0) },
-      drilldown: THEME_DRILLDOWN.goal_distance,
       sparkline: null,
       inputs_used: ['athlete_profile_documents'],
     };
@@ -1214,7 +1206,6 @@ export async function composeGoalDistance(args: {
         goal_target: doc.goal_target as number,
         days_to_target: daysToTarget,
       },
-      drilldown: THEME_DRILLDOWN.goal_distance,
       sparkline: null,
       inputs_used: ['athlete_profile_documents', 'coach_trends'],
     };
@@ -1268,7 +1259,6 @@ export async function composeGoalDistance(args: {
       pace_ratio: round2(paceRatio),
       eta_miss_days: isFinite(etaMissDays) ? etaMissDays : null,
     },
-    drilldown: THEME_DRILLDOWN.goal_distance,
     sparkline: null,
     inputs_used: ['athlete_profile_documents', 'coach_trends'],
   };
@@ -1281,7 +1271,6 @@ function degradedCard(): ThemePayload {
     one_line: 'Set a structured goal',
     body_md: 'Add goal kind, target value, and target date in /profile to enable projections.',
     facts: { has_structured_goal: false },
-    drilldown: THEME_DRILLDOWN.goal_distance,
     sparkline: null,
     inputs_used: ['athlete_profile_documents'],
   };
