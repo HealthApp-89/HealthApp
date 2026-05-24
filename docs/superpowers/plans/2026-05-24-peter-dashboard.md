@@ -18,8 +18,8 @@
 
 ### New files
 
-- `supabase/migrations/0031_peter_dashboard.sql` — `coach_dashboards` table + RLS
-- `supabase/migrations/0032_athlete_goal_structured.sql` — structured goal columns on `athlete_profile_documents`
+- `supabase/migrations/0034_peter_dashboard.sql` — `coach_dashboards` table + RLS
+- `supabase/migrations/0035_athlete_goal_structured.sql` — structured goal columns on `athlete_profile_documents`
 - `lib/coach/peter-dashboard/types.ts` — `ThemeKey`, `ThemePayload`, `ThemeCluster`, `PeterDashboardFacts`, `PeterDashboardPayload`
 - `lib/coach/peter-dashboard/thresholds.ts` — all severity numeric constants
 - `lib/coach/peter-dashboard/compose-recomp.ts`
@@ -66,15 +66,15 @@
 ## Task 1: Migrations — `coach_dashboards` table + structured goal columns
 
 **Files:**
-- Create: `supabase/migrations/0031_peter_dashboard.sql`
-- Create: `supabase/migrations/0032_athlete_goal_structured.sql`
+- Create: `supabase/migrations/0034_peter_dashboard.sql`
+- Create: `supabase/migrations/0035_athlete_goal_structured.sql`
 
 - [ ] **Step 1: Create migration 0031**
 
-Write to `supabase/migrations/0031_peter_dashboard.sql`:
+Write to `supabase/migrations/0034_peter_dashboard.sql`:
 
 ```sql
--- 0031_peter_dashboard.sql
+-- 0034_peter_dashboard.sql
 -- Versioned cache for Peter's head-coach dashboard payload.
 -- Daily cron writes v1; manual regen bumps version. Both the /coach
 -- dashboard UI and Peter's chat-prompt assembly read the latest row.
@@ -105,10 +105,10 @@ create policy coach_dashboards_select_own
 
 - [ ] **Step 2: Create migration 0032**
 
-Write to `supabase/migrations/0032_athlete_goal_structured.sql`:
+Write to `supabase/migrations/0035_athlete_goal_structured.sql`:
 
 ```sql
--- 0032_athlete_goal_structured.sql
+-- 0035_athlete_goal_structured.sql
 -- Structured goal fields for the Peter Dashboard's Goal-distance theme.
 -- The existing free-form goal narrative on athlete_profile_documents
 -- stays as the "why" text; these columns add the "what + by when" so
@@ -147,7 +147,7 @@ Expected: `coach_dashboards` shows 8 columns + the unique index; `athlete_profil
 - [ ] **Step 5: Commit**
 
 ```bash
-git add supabase/migrations/0031_peter_dashboard.sql supabase/migrations/0032_athlete_goal_structured.sql
+git add supabase/migrations/0034_peter_dashboard.sql supabase/migrations/0035_athlete_goal_structured.sql
 git commit -m "feat(peter): migrations 0031+0032 — coach_dashboards + structured goal fields"
 ```
 
@@ -3167,9 +3167,9 @@ git commit -m "feat(peter): audit-peter-dashboard — dry-run + fabrication chec
 Open `CLAUDE.md`. Find the migrations list (numbered list ending around `30. [supabase/migrations/0030_food_library_dedup.sql]...`) and append:
 
 ```markdown
-31. [supabase/migrations/0031_peter_dashboard.sql](supabase/migrations/0031_peter_dashboard.sql) — adds `coach_dashboards` (versioned `(user_id, generated_on, version)` cache of the head-coach synthesis payload + rendered `narrative_md`). Read by both the `/coach` dashboard UI and Peter's chat-prompt assembly (single source of truth for "what Peter sees this morning").
+31. [supabase/migrations/0034_peter_dashboard.sql](supabase/migrations/0034_peter_dashboard.sql) — adds `coach_dashboards` (versioned `(user_id, generated_on, version)` cache of the head-coach synthesis payload + rendered `narrative_md`). Read by both the `/coach` dashboard UI and Peter's chat-prompt assembly (single source of truth for "what Peter sees this morning").
 
-32. [supabase/migrations/0032_athlete_goal_structured.sql](supabase/migrations/0032_athlete_goal_structured.sql) — adds structured goal columns to `athlete_profile_documents` (`goal_kind`, `goal_metric`, `goal_target`, `goal_target_date`) for the Goal-distance theme's projection math. Existing free-form goal narrative stays as the "why" text. Backfill is user-driven via `/profile`; until populated, Goal-distance card renders a "Set a structured goal" prompt.
+32. [supabase/migrations/0035_athlete_goal_structured.sql](supabase/migrations/0035_athlete_goal_structured.sql) — adds structured goal columns to `athlete_profile_documents` (`goal_kind`, `goal_metric`, `goal_target`, `goal_target_date`) for the Goal-distance theme's projection math. Existing free-form goal narrative stays as the "why" text. Backfill is user-driven via `/profile`; until populated, Goal-distance card renders a "Set a structured goal" prompt.
 ```
 
 Then find the `## Architecture → Coach / AI` section and append a new bullet under it:
