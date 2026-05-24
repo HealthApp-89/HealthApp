@@ -7,13 +7,12 @@
 export const RECOMP_LBM_HOLD_KG_4W = -0.2;       // LBM "holding" if delta_4w_kg >= this
 export const RECOMP_BF_DOWN_PTS_4W = -0.3;       // BF down ≥ this (negative) is "ok"
 export const RECOMP_LIFT_HOLD_SLOPE_PCT_4W = -2.5; // top lifts holding if slope > this
-export const RECOMP_LBM_LOSS_WARN_KG_4W = -0.2;
 export const RECOMP_LBM_LOSS_URGENT_KG_4W = -0.5;
 export const RECOMP_LIFT_DROP_URGENT_PCT_4W = -5;
 
 // Energy
 export const ENERGY_UNDER_TARGET_KCAL = 150;     // |delta| ≥ this counts as "under"
-export const ENERGY_UNDER_DAYS_WARN = 7;
+export const ENERGY_UNDER_WINDOW_DAYS_WARN = 7;
 export const ENERGY_GLP1_DEFICIT_PCT_TDEE_URGENT = 0.25;
 
 // Fatigue

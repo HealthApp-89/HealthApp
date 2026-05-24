@@ -1484,9 +1484,9 @@ export type WorkoutDebriefPayload = {
 export type {
   ThemeKey,
   Severity,
-  SparklineSeries,
+  SparklineSeries as PeterDashboardSparkline,
   ThemePayload,
-  ThemeCluster,
+  ThemeCluster as PeterDashboardThemeCluster,
   PeterDashboardFacts,
   Narrative as PeterDashboardNarrative,
   PeterDashboardPayload,

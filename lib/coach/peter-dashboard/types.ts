@@ -31,8 +31,6 @@ export type ThemePayload = {
   /** Numeric/string facts the narrative wrapper may cite. Keys are
    *  composer-defined and stable across regens. */
   facts: Record<string, number | string | null>;
-  /** Route the "Open …" nav chip links to. */
-  drilldown: string;
   /** Mini chart for expanded state; null when no chart fits the theme. */
   sparkline: SparklineSeries | null;
   /** Audit trail of which tables/columns were read. Helps the audit script
@@ -82,14 +80,14 @@ export type PeterDashboardPayload = {
   narrative_failed: boolean;
 };
 
-export const ALL_THEME_KEYS: ThemeKey[] = [
+export const ALL_THEME_KEYS = [
   'recomp',
   'energy',
   'fatigue',
   'performance',
   'plan_adherence',
   'goal_distance',
-];
+] as const satisfies readonly ThemeKey[];
 
 /** Drilldown route per theme. Single source of truth for the expanded
  *  card's "Open …" chip. */
