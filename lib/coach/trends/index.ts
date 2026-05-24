@@ -1,6 +1,6 @@
 // lib/coach/trends/index.ts
 //
-// Orchestrator: parallel-fetch supabase reads via the 5 composers,
+// Orchestrator: parallel-fetch supabase reads via the 6 composers,
 // pick a headline insight from severity priority, return CoachTrendsPayload.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -10,27 +10,36 @@ import { composeBody } from "./compose-body";
 import { composeNutrition } from "./compose-nutrition";
 import { composeRecovery } from "./compose-recovery";
 import { composeCross } from "./compose-cross";
+import { composeFoodQuality } from "@/lib/coach/nutrition-intelligence/compose-food-quality";
+import {
+  RECOMP_SUCCESS_LBM_DELTA_KG,
+  RECOMP_SUCCESS_BF_DELTA_PTS,
+  RECOMP_DRIFT_WEIGHT_TOL_KG,
+  RECOMP_DRIFT_BF_DELTA_PTS,
+} from "@/lib/coach/nutrition-intelligence/thresholds";
 
 export async function generateCoachTrends(args: {
   supabase: SupabaseClient;
   userId: string;
   today: string;
 }): Promise<CoachTrendsPayload> {
-  const [strength, body, nutrition, recovery, cross_insights] = await Promise.all([
+  const [strength, body, nutrition, recovery, food_quality, cross_insights] = await Promise.all([
     composeStrength(args),
     composeBody(args),
     composeNutrition(args),
     composeRecovery(args),
+    composeFoodQuality(args),
     composeCross(args),
   ]);
 
   return {
-    schema_version: 1,
+    schema_version: 2,
     generated_at: new Date().toISOString(),
     strength,
     body,
     nutrition,
     recovery,
+    food_quality,
     cross_insights,
     headline: pickHeadline({ strength, body, recovery }),
   };
@@ -41,6 +50,21 @@ function pickHeadline(input: {
   body: CoachTrendsPayload["body"];
   recovery: CoachTrendsPayload["recovery"];
 }): CoachTrendsPayload["headline"] {
+  // 1. Recomp success (positive) — wins over any negative headline because
+  //    it's earned good news the athlete should see immediately.
+  const lbm4w = input.body.lbm.delta_4w_kg;
+  const bf4w  = input.body.body_fat_pct.delta_4w_pct;
+  if (
+    lbm4w != null && lbm4w >= RECOMP_SUCCESS_LBM_DELTA_KG &&
+    bf4w  != null && bf4w  <= RECOMP_SUCCESS_BF_DELTA_PTS
+  ) {
+    return {
+      severity: "ok",
+      title: "Recomp working",
+      body_md: `LBM +${lbm4w.toFixed(1)} kg, body fat ${bf4w.toFixed(1)} pts over 4 weeks. Whatever the lever is, keep it.`,
+    };
+  }
+
   const plateauedLifts = input.strength.per_lift.filter((p) => p.plateau_active);
   if (plateauedLifts.length > 0) {
     const longest = plateauedLifts.reduce((a, b) =>
@@ -51,6 +75,19 @@ function pickHeadline(input: {
       severity: "warn",
       title: `${short} plateau — ${longest.plateau_weeks_flat} weeks flat`,
       body_md: `e1RM has not moved on ${short} for ${longest.plateau_weeks_flat} weeks. Coach will propose a rep-shift or deload at the next weekly review.`,
+    };
+  }
+
+  // 2. Recomp drift — scale flat + BF% up.
+  const wRate4w = input.body.weight.rate_kg_per_wk_4w;
+  if (
+    wRate4w != null && Math.abs(wRate4w * 4) <= RECOMP_DRIFT_WEIGHT_TOL_KG &&
+    bf4w != null && bf4w >= RECOMP_DRIFT_BF_DELTA_PTS
+  ) {
+    return {
+      severity: "warn",
+      title: `Recomp drift — body fat +${bf4w.toFixed(1)} pts`,
+      body_md: "Scale weight is roughly flat over 4 weeks but body fat ticked up. The deficit isn't deep enough at maintenance protein — Nora has details.",
     };
   }
 
