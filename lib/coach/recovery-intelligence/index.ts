@@ -47,11 +47,30 @@ export async function generateRecoveryIntelligence(args: {
     supabase.from("profiles").select("whoop_baselines").eq("user_id", userId).maybeSingle(),
   ]);
 
-  type Baselines = { hrv_mean?: number; hrv_sd?: number; resting_hr_mean?: number };
+  // profiles.whoop_baselines is a free-form jsonb. The fields actually
+  // written by the WHOOP snapshot import are `hrv_6mo_avg` / `rhr_6mo_avg`
+  // (six-month averages, the closest thing we have to a personal baseline).
+  // Read the explicit `_mean` keys first for forward compat, fall back to
+  // the 6mo averages, and finally derive a 28d mean from the daily series
+  // if neither is set. This keeps the HRV/RHR cards informative for users
+  // whose profile snapshot is empty or stale.
+  type Baselines = {
+    hrv_mean?: number; hrv_sd?: number; resting_hr_mean?: number;
+    hrv_6mo_avg?: number; rhr_6mo_avg?: number;
+  };
   const b = (profileRes.data?.whoop_baselines as Baselines | null) ?? {};
-  const hrv_mean = b.hrv_mean ?? null;
-  const hrv_sd = b.hrv_sd ?? null;
-  const rhr_mean = b.resting_hr_mean ?? null;
+  const hrv28 = avg(daily.map((d) => d.hrv));
+  const rhr28 = avg(daily.map((d) => d.resting_hr));
+  const hrv_mean = b.hrv_mean ?? b.hrv_6mo_avg ?? hrv28;
+  const rhr_mean = b.resting_hr_mean ?? b.rhr_6mo_avg ?? rhr28;
+  // hrv_sd: prefer explicit, else compute from 28d daily series.
+  const hrv_sd = (() => {
+    if (b.hrv_sd != null) return b.hrv_sd;
+    const xs = daily.map((d) => d.hrv).filter((v): v is number => v != null);
+    if (xs.length < 5 || hrv_mean == null) return null;
+    const variance = xs.reduce((acc, x) => acc + (x - hrv_mean) ** 2, 0) / xs.length;
+    return Math.sqrt(variance);
+  })();
 
   // Personal 28d baselines for skin temp + respiratory rate.
   const skin_temp_baseline_c =
