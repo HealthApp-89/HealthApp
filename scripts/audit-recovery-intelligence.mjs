@@ -11,7 +11,7 @@
 //     scripts/audit-recovery-intelligence.mjs
 
 import { createClient } from "@supabase/supabase-js";
-import { generateRecoveryIntelligence } from "@/lib/coach/recovery-intelligence";
+import { generateRecoveryIntelligence } from "../lib/coach/recovery-intelligence/index.ts";
 
 const userId = process.env.AUDIT_USER_ID;
 if (!userId) {
