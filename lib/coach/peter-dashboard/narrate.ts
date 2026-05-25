@@ -168,6 +168,23 @@ function collectAllowedNumbers(facts: PeterDashboardFacts): Set<string> {
       }
     }
     if (typeof v === 'string') {
+      // ISO date "YYYY-MM-DD" → push year + month + day (with and without
+      // sign / leading zero) so Sonnet's natural "by 2026-06-25" rendering
+      // doesn't trip the fabrication check on the dash-separated tokens.
+      const isoMatch = v.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (isoMatch) {
+        const [, y, m, d] = isoMatch;
+        out.add(y);
+        out.add(m);                       // "06"
+        out.add(String(Number(m)));        // "6"
+        out.add(`-${m}`);                  // "-06" (regex captures as negative)
+        out.add(`-${Number(m)}`);          // "-6"
+        out.add(d);
+        out.add(String(Number(d)));
+        out.add(`-${d}`);
+        out.add(`-${Number(d)}`);
+        return;
+      }
       // String fields may carry comma-separated numerics ("3.2,-1.1,0.4").
       for (const t of v.split(/[,\s]+/)) {
         const n = Number(t);
