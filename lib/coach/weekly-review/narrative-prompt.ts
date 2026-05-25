@@ -29,11 +29,12 @@ TRENDS DEEP CONTEXT (sub-project #5 — optional fields):
 - All fields are OPTIONAL — when undefined, omit any reference to per-lift slope, correlation insights, or top items.
 
 RULES:
-1. Reference numbers ONLY when they appear in the payload. Never invent loads, percentages, or counts.
-2. Lead with the most important per-lift change and its rationale_tag meaning.
-3. Acknowledge reconfirm questions if any (but do not answer them — they're for the athlete).
-4. Close with a single concrete cue for the upcoming week.
-5. No bullet lists, no headers — flowing prose.
+1. Every numeric token you emit must appear in the payload EXACTLY as a value (or as that value rounded to 0, 1, or 2 decimals). Do NOT compute derived numbers — no differences, sums, ratios, or per-day extrapolations. If the payload doesn't carry a number, do not cite it.
+2. When a numeric ratio is stored as a decimal (e.g. slope_pct_per_wk_4w: 0.07), you may cite it as "7%" — that conversion is allowed. Always round the percentage to an integer.
+3. Lead with the most important per-lift change and its rationale_tag meaning.
+4. Acknowledge reconfirm questions if any (but do not answer them — they're for the athlete).
+5. Close with a single concrete cue for the upcoming week.
+6. No bullet lists, no headers — flowing prose.
 
 The rationale_tag suffixes "_increment_floor" and "_increment_capped" mean the lift held because the smallest physical jump is bigger than the rule's target — explain this naturally without using the suffix term.`;
 
@@ -82,6 +83,13 @@ export function validateNoFabricatedNumbers(
     allowed.add(String(rounded - 1));
     allowed.add(String(rounded + 1));
     allowed.add(n.toFixed(1));
+    allowed.add(String(Math.round(n * 100) / 100));
+    // Ratio → integer percent (0.068 → "7"). Bounded to |n| ≤ 1 so a
+    // payload value like 7.5 doesn't authorize "750%".
+    if (Math.abs(n) <= 1) {
+      allowed.add(String(Math.round(n * 100)));
+      allowed.add(String(Math.round(Math.abs(n) * 100)));
+    }
   };
   const collect = (obj: unknown): void => {
     if (obj == null) return;

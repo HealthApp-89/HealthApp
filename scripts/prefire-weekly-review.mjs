@@ -18,7 +18,10 @@
 // Usage:
 //   node --import ./scripts/alias-loader.mjs --experimental-strip-types \
 //     --env-file=.env.local \
-//     scripts/prefire-weekly-review.mjs --week-start=YYYY-MM-DD [--late]
+//     scripts/prefire-weekly-review.mjs --week-start=YYYY-MM-DD [--late] [--force]
+//
+// --force bypasses the plan_week 30-min grace check — only use when the
+// in-flight plan_week session is for a different week than --week-start.
 //
 // Required env (read from .env.local):
 //   NEXT_PUBLIC_SUPABASE_URL
@@ -43,9 +46,11 @@ for (const line of readFileSync(envPath, "utf-8").split("\n")) {
 const args = process.argv.slice(2);
 let weekStart = null;
 let late = false;
+let force = false;
 for (const arg of args) {
   if (arg.startsWith("--week-start=")) weekStart = arg.slice("--week-start=".length);
   else if (arg === "--late") late = true;
+  else if (arg === "--force") force = true;
   else {
     console.error(`Unknown arg: ${arg}`);
     process.exit(1);
@@ -111,8 +116,12 @@ const { data: activePlanWeek } = await sb
   .gte("created_at", thirtyMinAgo)
   .limit(1);
 if (activePlanWeek && activePlanWeek.length > 0) {
-  console.log("✓ skipped: plan_week chat session active within 30min");
-  process.exit(0);
+  if (force) {
+    console.warn("⚠ --force: ignoring active plan_week chat session within 30min");
+  } else {
+    console.log("✓ skipped: plan_week chat session active within 30min (pass --force to bypass)");
+    process.exit(0);
+  }
 }
 
 // ── Compute ────────────────────────────────────────────────────────────────
