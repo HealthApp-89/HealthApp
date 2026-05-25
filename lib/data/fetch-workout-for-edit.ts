@@ -22,7 +22,7 @@ export type WorkoutForEdit = {
   id: string;
   user_id: string;
   date: string;
-  type: string;
+  type: string | null;
   duration_min: number | null;
   external_id: string;
   source: string;

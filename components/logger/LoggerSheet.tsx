@@ -282,7 +282,9 @@ export function LoggerSheet(props: Props) {
 
   function discardAndClose() {
     if (!draft) { props.onClose(); return; }
-    void clearDraft(draft.user_id, draft.session_type);
+    if (!props.editMode) {
+      void clearDraft(draft.user_id, draft.session_type);
+    }
     setCloseConfirmOpen(false);
     props.onClose();
   }
@@ -311,6 +313,11 @@ export function LoggerSheet(props: Props) {
             let restActual: number | null;
             if (s.rest_seconds_actual !== undefined) {
               restActual = s.rest_seconds_actual;
+            } else if (props.editMode) {
+              // New set added during edit — no real rest timer ran. Null is correct per
+              // spec; computing from committed_at deltas would compare against the
+              // original workout's creation timestamp (possibly days ago).
+              restActual = null;
             } else {
               const prev = arr[sIdx - 1];
               restActual = prev?.committed_at && s.committed_at
@@ -506,7 +513,11 @@ export function LoggerSheet(props: Props) {
       {finishOpen && (
         <FinishSummary
           draft={draft}
-          durationMin={getElapsedMs(draft, Date.now()) / 60000}
+          durationMin={
+            props.editMode && draft.duration_min != null
+              ? draft.duration_min
+              : getElapsedMs(draft, Date.now()) / 60000
+          }
           saving={committing}
           onConfirm={commitNow}
           onCancel={() => setFinishOpen(false)}
@@ -517,33 +528,58 @@ export function LoggerSheet(props: Props) {
       {closeConfirmOpen && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 max-w-sm w-full">
-            <h3 className="text-base font-semibold text-zinc-50 mb-1">Close session?</h3>
-            <p className="text-sm text-zinc-400 mb-4">
-              <strong className="text-zinc-200">Pause &amp; close</strong> saves your progress so you can resume from the strength page.{" "}
-              <strong className="text-red-400">Discard</strong> clears all current logs and the timer — this can&apos;t be undone.
-            </p>
-            <div className="flex flex-col gap-2">
-              <button
-                onClick={pauseAndClose}
-                className="w-full bg-green-600 text-white rounded-lg py-2 text-sm font-medium"
-              >
-                Pause &amp; close
-              </button>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setCloseConfirmOpen(false)}
-                  className="flex-1 bg-zinc-800 text-zinc-300 rounded-lg py-2 text-sm"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={discardAndClose}
-                  className="flex-1 bg-red-600/20 text-red-400 border border-red-600/40 rounded-lg py-2 text-sm"
-                >
-                  Discard
-                </button>
-              </div>
-            </div>
+            {props.editMode ? (
+              <>
+                <h3 className="text-base font-semibold text-zinc-50 mb-1">Discard changes?</h3>
+                <p className="text-sm text-zinc-400 mb-4">
+                  Your edits won&apos;t be saved. The original session remains unchanged.
+                </p>
+                <div className="flex flex-col gap-2">
+                  <button
+                    onClick={() => setCloseConfirmOpen(false)}
+                    className="w-full bg-green-600 text-white rounded-lg py-2 text-sm font-medium"
+                  >
+                    Keep editing
+                  </button>
+                  <button
+                    onClick={discardAndClose}
+                    className="w-full bg-red-600/20 text-red-400 border border-red-500/40 rounded-lg py-2 text-sm font-medium"
+                  >
+                    Discard changes
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <h3 className="text-base font-semibold text-zinc-50 mb-1">Close session?</h3>
+                <p className="text-sm text-zinc-400 mb-4">
+                  <strong className="text-zinc-200">Pause &amp; close</strong> saves your progress so you can resume from the strength page.{" "}
+                  <strong className="text-red-400">Discard</strong> clears all current logs and the timer — this can&apos;t be undone.
+                </p>
+                <div className="flex flex-col gap-2">
+                  <button
+                    onClick={pauseAndClose}
+                    className="w-full bg-green-600 text-white rounded-lg py-2 text-sm font-medium"
+                  >
+                    Pause &amp; close
+                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setCloseConfirmOpen(false)}
+                      className="flex-1 bg-zinc-800 text-zinc-300 rounded-lg py-2 text-sm"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={discardAndClose}
+                      className="flex-1 bg-red-600/20 text-red-400 border border-red-600/40 rounded-lg py-2 text-sm"
+                    >
+                      Discard
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

@@ -47,7 +47,7 @@ export function EditSessionButton(props: Props) {
       const resolved = await resolveSessionPlan({
         supabase,
         userId: workout.user_id,
-        sessionType: workout.type,
+        sessionType: workout.type ?? "",
         weekdayLong,
         weekOverrides: null,
       });

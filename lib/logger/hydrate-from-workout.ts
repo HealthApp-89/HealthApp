@@ -42,7 +42,7 @@ export function hydrateWorkoutAsDraft(
 
   return {
     user_id: workout.user_id,
-    session_type: workout.type,
+    session_type: workout.type ?? "Workout",
     date: workout.date,
     duration_min: workout.duration_min,
     started_at: nowIso,
