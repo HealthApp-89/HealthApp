@@ -53,7 +53,7 @@ export function SessionRow({ session, selectedExercise, isLast }: Props) {
         {session.exercises.map((e) => {
           const isSelected = optimisticSelected === e.name;
           const display = e.name.split("(")[0].trim();
-          const href = isSelected ? "/strength" : `/strength&ex=${encodeURIComponent(e.name)}`;
+          const href = isSelected ? "/strength" : `/strength?ex=${encodeURIComponent(e.name)}`;
 
           const onClick = (ev: MouseEvent<HTMLAnchorElement>) => {
             if (
