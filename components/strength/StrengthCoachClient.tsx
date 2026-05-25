@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import ChatPanel from "@/components/chat/ChatPanel";
 import { useMarkThreadSeen } from "@/lib/chat/use-mark-thread-seen";
@@ -56,6 +56,17 @@ export function StrengthCoachClient({ userId }: Props) {
   const initialMode: ChatMode = URL_MODE_ALLOWLIST.has(urlModeRaw as ChatMode)
     ? (urlModeRaw as ChatMode)
     : "default";
+
+  // When the user lands here in a non-default mode (e.g. via the
+  // "PLAN ON COACH" pill on TodayPlanCard), the data card above the chat is
+  // not what they came for — they want the chat surface. Scroll the chat
+  // region into view on mount so the mode banner + composer sit at the top
+  // of the viewport instead of below the strength card.
+  const chatRegionRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (initialMode === "default") return;
+    chatRegionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [initialMode]);
 
   const todayIso = todayInUserTz();
   const currentWeekStart = currentWeekMonday();
@@ -261,6 +272,7 @@ export function StrengthCoachClient({ userId }: Props) {
 
       {/* ── Carter's chat ── */}
       <div
+        ref={chatRegionRef}
         style={{
           flex: "1 1 auto",
           display: "flex",

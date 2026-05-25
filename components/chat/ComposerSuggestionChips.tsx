@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { COLOR } from "@/lib/ui/theme";
 import { TOAST_DISMISS_MS, CHIP_SUBMIT_DEBOUNCE_MS } from "@/lib/ui/constants";
 import { DaySwapSheet } from "@/components/strength/DaySwapSheet";
@@ -10,6 +11,7 @@ import { useWeeklyReview } from "@/lib/query/hooks/useWeeklyReview";
 import { useTrainingWeek } from "@/lib/query/hooks/useTrainingWeek";
 import { weekdayInUserTz, LONG_TO_SHORT_WEEKDAY } from "@/lib/time";
 import { currentWeekMonday } from "@/lib/coach/week";
+import type { ChatMode } from "@/lib/data/types";
 
 /**
  * Four static suggestion chips rendered above the chat composer in default
@@ -26,18 +28,25 @@ export function ComposerSuggestionChips({
   userId,
   todayDate,
   onPrefillAndSubmit,
+  onEnterMode,
 }: {
   userId: string;
   todayDate: string;
   /** Called with text to prefill into the composer and immediately submit. */
   onPrefillAndSubmit: (text: string) => void;
+  /** Flips ChatPanel's mode (e.g. plan_week / setup_block). Chips themselves
+   *  vanish as soon as mode !== "default" — the user sees the ModeBanner
+   *  instead. */
+  onEnterMode: (mode: ChatMode) => void;
 }) {
+  const router = useRouter();
   const currentMonday = currentWeekMonday(new Date(`${todayDate}T12:00:00Z`));
   const { data: trainingWeek } = useTrainingWeek(userId, currentMonday);
   const { data: weeklyReview } = useWeeklyReview(userId, currentMonday);
 
   const hasTrainingWeek = trainingWeek != null;
   const hasDraftReview = weeklyReview != null && weeklyReview.status === "draft";
+  const hasReviewForThisWeek = weeklyReview != null;
 
   const todayLong = weekdayInUserTz();
   const todayShort = LONG_TO_SHORT_WEEKDAY[todayLong] ?? "Mon";
@@ -103,6 +112,30 @@ export function ComposerSuggestionChips({
         hasDraftReview
           ? setAdjustOpen(true)
           : setTooltip("Open a draft weekly review first."),
+    },
+    {
+      // Flips chat into plan_week mode → Carter's tools narrow to weekly
+      // planning. The chips themselves disappear once mode !== "default"
+      // (showSuggestionChips gate in ChatPanel), and ModeBanner replaces them.
+      label: "Plan next week",
+      onClick: () => onEnterMode("plan_week"),
+    },
+    {
+      // Mirror of "Plan next week" but for the 5-week mesocycle goal flow.
+      label: "Setup new block",
+      onClick: () => onEnterMode("setup_block"),
+    },
+    {
+      label: "This week's review",
+      disabled: !hasReviewForThisWeek,
+      onClick: () =>
+        hasReviewForThisWeek
+          ? router.push(`/coach/weeks/${currentMonday}`)
+          : setTooltip("No review for this week yet — first one lands Sunday."),
+    },
+    {
+      label: "Past reviews",
+      onClick: () => router.push("/coach/reviews"),
     },
     {
       // "What can you help with?" — closes the discoverability gap that

@@ -323,6 +323,7 @@ export default function ChatPanel({
   const recommendationRunningRef = useRef(false);
   const startFiredRef = useRef(false);
   const intakeStartFiredRef = useRef(false);
+  const planWeekStartFiredRef = useRef(false);
 
   // Load history on mount or when currentMode / thread changes.
   useEffect(() => {
@@ -944,6 +945,33 @@ export default function ChatPanel({
     void send("Let's start.", []);
   }, [currentMode, mode, state.loaded, state.messages, draftDocId, send]);
 
+  // Same kickoff pattern for plan_week: when the user arrives via the
+  // "PLAN ON COACH" pill (initialMode='plan_week') and there's no in-flight
+  // planning turn, fire an opener so Carter speaks first. Without this the
+  // chat sits empty with only the mode banner — users land on the surface
+  // and have no signal what to do next. Resume window matches the intake
+  // hook so reopening mid-conversation doesn't double-fire.
+  useEffect(() => {
+    if (currentMode !== "coach") return;
+    if (mode !== "plan_week") return;
+    if (!state.loaded) return;
+    if (planWeekStartFiredRef.current) return;
+
+    const last = state.messages[state.messages.length - 1];
+    const RESUME_WINDOW_MS = 24 * 60 * 60 * 1000;
+    const isResume =
+      last &&
+      last.mode === "plan_week" &&
+      Date.now() - new Date(last.created_at).getTime() < RESUME_WINDOW_MS;
+    if (isResume) return;
+
+    planWeekStartFiredRef.current = true;
+    const opener = initialModeContext
+      ? `${initialModeContext}. Let's plan it.`
+      : "Let's plan this week.";
+    void send(opener, []);
+  }, [currentMode, mode, state.loaded, state.messages, initialModeContext, send]);
+
   const onSlotAnswer = useCallback(
     async (slot: string, value: string | number | string[]) => {
       const res = await fetch("/api/chat/morning/intake", {
@@ -1220,6 +1248,7 @@ export default function ChatPanel({
                     setComposerFocused(false);
                     void send(text, []);
                   }}
+                  onEnterMode={setMode}
                 />
               )}
               <ChatComposer

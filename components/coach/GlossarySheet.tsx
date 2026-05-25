@@ -12,7 +12,7 @@ import {
 type CoreCategory = "Periodization" | "Training" | "Recovery";
 
 /** Categorization of CoreTermKey values into the headings shown in the
- *  Glossary sheet. Keying by CoreTermKey makes the grouping decision
+ *  Glossary surface. Keying by CoreTermKey makes the grouping decision
  *  explicit and reviewable — if a future CoreTermKey is added without
  *  being placed in a category, the gap is visible at-a-glance during
  *  code review of this map rather than silently absent from the UI. */
@@ -37,66 +37,77 @@ function buildSections(): Section[] {
   ];
 }
 
-export function GlossarySheet({ onClose }: { onClose: () => void }) {
+/** Pure rendering of the glossary sections. Shared between GlossarySheet
+ *  (JargonPill's "see all terms" link) and the top-level Definitions sub-pill
+ *  on /coach so the two surfaces never drift. */
+export function GlossaryContent() {
   const sections = buildSections();
+  return (
+    <div>
+      {sections.map((section) => (
+        <div key={section.heading} style={{ marginBottom: 20 }}>
+          <div
+            style={{
+              fontSize: 10,
+              color: COLOR.textFaint,
+              fontWeight: 700,
+              letterSpacing: "0.5px",
+              textTransform: "uppercase",
+              marginBottom: 8,
+            }}
+          >
+            {section.heading}
+          </div>
+          {section.entries.map((entry) => (
+            <div
+              key={entry.label}
+              style={{
+                paddingTop: 8,
+                paddingBottom: 8,
+                borderTop: `1px solid ${COLOR.divider}`,
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 13,
+                  color: COLOR.textStrong,
+                  fontWeight: 600,
+                }}
+              >
+                {entry.label}
+              </div>
+              <div
+                style={{
+                  fontSize: 12,
+                  color: COLOR.textMuted,
+                  marginTop: 2,
+                }}
+              >
+                {entry.short}
+              </div>
+              <div
+                style={{
+                  fontSize: 12,
+                  color: COLOR.textMuted,
+                  marginTop: 4,
+                  lineHeight: 1.5,
+                }}
+              >
+                {entry.plain}
+              </div>
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function GlossarySheet({ onClose }: { onClose: () => void }) {
   return (
     <BottomSheet open={true} onClose={onClose} title="Glossary">
       <div style={{ paddingTop: 8 }}>
-        {sections.map((section) => (
-          <div key={section.heading} style={{ marginBottom: 20 }}>
-            <div
-              style={{
-                fontSize: 10,
-                color: COLOR.textFaint,
-                fontWeight: 700,
-                letterSpacing: "0.5px",
-                textTransform: "uppercase",
-                marginBottom: 8,
-              }}
-            >
-              {section.heading}
-            </div>
-            {section.entries.map((entry) => (
-              <div
-                key={entry.label}
-                style={{
-                  paddingTop: 8,
-                  paddingBottom: 8,
-                  borderTop: `1px solid ${COLOR.divider}`,
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: 13,
-                    color: COLOR.textStrong,
-                    fontWeight: 600,
-                  }}
-                >
-                  {entry.label}
-                </div>
-                <div
-                  style={{
-                    fontSize: 12,
-                    color: COLOR.textMuted,
-                    marginTop: 2,
-                  }}
-                >
-                  {entry.short}
-                </div>
-                <div
-                  style={{
-                    fontSize: 12,
-                    color: COLOR.textMuted,
-                    marginTop: 4,
-                    lineHeight: 1.5,
-                  }}
-                >
-                  {entry.plain}
-                </div>
-              </div>
-            ))}
-          </div>
-        ))}
+        <GlossaryContent />
       </div>
     </BottomSheet>
   );
