@@ -98,6 +98,10 @@ export function CustomFoodForm({
       setError("Macros must be ≥ 0.");
       return;
     }
+    if (p === 0 && c === 0 && f === 0) {
+      setError("Enter at least one of protein, carbs, or fat.");
+      return;
+    }
     let servingForReturn: number | null = null;
     if (basis === "per_serving") {
       const sg = parseFloat(servingG);
@@ -255,7 +259,7 @@ export function CustomFoodForm({
             inputMode="decimal"
             value={kcalOverride}
             onChange={(e) => setKcalOverride(e.target.value)}
-            placeholder={fmtNum(atwaterKcal)}
+            placeholder={atwaterKcal > 0 ? fmtNum(atwaterKcal) : "auto"}
             className="w-full rounded-md border border-zinc-800 bg-zinc-900 p-2 text-sm text-zinc-100"
           />
         </div>
