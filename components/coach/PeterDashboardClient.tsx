@@ -70,7 +70,14 @@ export function PeterDashboardClient({ userId, today }: Props) {
       >
         <div style={{ fontSize: 11, color: COLOR.textMuted }}>
           Last refreshed {generatedLabel}
-          {data.payload.narrative_failed ? ' · narrative failed' : ''}
+          {data.payload.narrative_failed ? (
+            <span
+              title={data.payload.narrative_failure_reason ?? 'unknown'}
+              style={{ color: COLOR.warning, marginLeft: 4 }}
+            >
+              · narrative failed ({data.payload.narrative_failure_reason ?? 'unknown'})
+            </span>
+          ) : null}
         </div>
         <PeterDashboardRegenButton userId={userId} />
       </div>

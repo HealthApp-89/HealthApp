@@ -73,6 +73,7 @@ export async function GET(req: Request) {
       version: 1,
       status: payload.narrative_failed ? "failed" : "ready",
       narrative_failed: payload.narrative_failed,
+      narrative_failure_reason: payload.narrative_failure_reason,
       took_ms: tookMs,
     });
 

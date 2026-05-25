@@ -74,6 +74,7 @@ export async function generatePeterDashboard(args: {
     facts,
     narrative,  // always populated; fallback when AI failed
     narrative_failed: narrateResult.failed,
+    narrative_failure_reason: narrateResult.failed ? (narrateResult.failure_reason ?? null) : null,
   };
 }
 

@@ -18,6 +18,7 @@ import { useDailyLogs } from "@/lib/query/hooks/useDailyLogs";
 import { AthleteProfilePanel } from "@/components/profile/AthleteProfilePanel";
 import { LabPromptCard } from "@/components/profile/LabPromptCard";
 import { NutritionTargetsSection } from "@/components/profile/NutritionTargetsSection";
+import { GoalSection } from "@/components/profile/GoalSection";
 import { useAthleteProfile } from "@/lib/query/hooks/useAthleteProfile";
 
 export function ProfileClient({
@@ -155,6 +156,7 @@ export function ProfileClient({
       <SectionLabel>Coaching plan</SectionLabel>
       <div style={{ padding: "0 8px 14px", display: "flex", flexDirection: "column", gap: "8px" }}>
         <AthleteProfilePanel userId={userId} />
+        <GoalSection />
         <NutritionTargetsSection userId={userId} date={today} />
         {showLabCard && <LabPromptCard userId={userId} />}
       </div>

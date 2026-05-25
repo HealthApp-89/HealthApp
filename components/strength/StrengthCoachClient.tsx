@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useSearchParams } from "next/navigation";
 import ChatPanel from "@/components/chat/ChatPanel";
 import { useMarkThreadSeen } from "@/lib/chat/use-mark-thread-seen";
 import { TodayPlanCard } from "@/components/strength/TodayPlanCard";
@@ -19,7 +20,16 @@ import { weekdayInUserTz, todayInUserTz } from "@/lib/time";
 import { currentWeekMonday } from "@/lib/coach/week";
 import { COLOR } from "@/lib/ui/theme";
 import { fmtNum } from "@/lib/ui/score";
-import type { DailyLog, ExerciseOverrides, Weekday } from "@/lib/data/types";
+import type { ChatMode, DailyLog, ExerciseOverrides, Weekday } from "@/lib/data/types";
+
+// Modes Carter's surface honors when deep-linked via ?mode=. plan_week is the
+// load-bearing one (TodayPlanCard's "PLAN ON COACH" pill). setup_block follows
+// the same Carter-led tool flow.
+const URL_MODE_ALLOWLIST: ReadonlySet<ChatMode> = new Set([
+  "default",
+  "plan_week",
+  "setup_block",
+]);
 
 // Map en-US full weekday names to our Weekday keys.
 const WEEKDAY_MAP: Record<string, Weekday> = {
@@ -40,6 +50,12 @@ type Props = { userId: string };
 export function StrengthCoachClient({ userId }: Props) {
   useMarkThreadSeen("carter");
   const [swapOpen, setSwapOpen] = useState(false);
+
+  const searchParams = useSearchParams();
+  const urlModeRaw = searchParams.get("mode");
+  const initialMode: ChatMode = URL_MODE_ALLOWLIST.has(urlModeRaw as ChatMode)
+    ? (urlModeRaw as ChatMode)
+    : "default";
 
   const todayIso = todayInUserTz();
   const currentWeekStart = currentWeekMonday();
@@ -258,6 +274,12 @@ export function StrengthCoachClient({ userId }: Props) {
           userId={userId}
           embedded={true}
           initialKind="coach"
+          initialMode={initialMode}
+          initialModeContext={
+            initialMode === "plan_week"
+              ? `Planning week of ${currentWeekStart}`
+              : undefined
+          }
           thread="carter"
         />
       </div>

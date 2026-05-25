@@ -79,7 +79,7 @@ export function TodayPlanCard({ plan, committedFromPlan, rirTarget, researchPhas
         </div>
         {pillIsLink ? (
           <a
-            href="/coach?mode=plan_week"
+            href="/strength?tab=coach&mode=plan_week"
             style={{
               fontSize: "10px",
               padding: "4px 8px",

@@ -78,6 +78,10 @@ export type PeterDashboardPayload = {
   facts: PeterDashboardFacts;
   narrative: Narrative | null;  // null when narrative wrap failed
   narrative_failed: boolean;
+  /** When narrative_failed=true, the reason from narrate.ts's last attempt
+   *  (JSON parse error, word-cap violation, fabricated number, cluster
+   *  mention missing, API throw, etc.). null when narrative succeeded. */
+  narrative_failure_reason: string | null;
 };
 
 export const ALL_THEME_KEYS = [
