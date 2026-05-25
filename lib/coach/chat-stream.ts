@@ -109,9 +109,9 @@ function shouldPersistResult(name: string): boolean {
   return PERSIST_RESULT_TOOLS.has(name);
 }
 // Cap counts each tool_use block (parallel tool use included), not each round.
-// A realistic Nora batch-save in meal_log/default mode is 2N+2 calls (N search
-// + N save + 1 propose_meal_log + 1 commit_meal_log); 25 covers a 12-item meal comfortably while
-// still floor-limiting runaway loops on cheap query_* tools.
+// A realistic Nora batch-save in default mode is 2N+2 calls (N search + N save
+// + 1 propose_meal_log + 1 commit_meal_log); 25 covers a 12-item meal comfortably
+// while still floor-limiting runaway loops on cheap query_* tools.
 const MAX_TOOL_INVOCATIONS = 25;
 const MAX_TOKENS = 2000;
 
@@ -131,8 +131,7 @@ const WEB_SEARCH_TOOL: Anthropic.Messages.WebSearchTool20250305 = {
   max_uses: 5,
 };
 
-// Modes where coaches may search the web. Hidden in meal_log (Nora's
-// data-entry flow stays focused on resolving items) and intake (Phase 2
+// Modes where coaches may search the web. Hidden in intake (Phase 2
 // plan-builder is deterministic — no web noise during the wizard).
 function webSearchAllowedForMode(mode: ChatMode): boolean {
   return mode === "default" || mode === "plan_week" || mode === "setup_block";
@@ -214,12 +213,6 @@ export type RunChatStreamOpts = {
    *  (apply_*, set_*, propose_plan, commit_plan). Caller sets this when
    *  serving an /onboarding chat turn. Null/undefined in default/planning modes. */
   draftDocId?: string | null;
-  /** Per-turn side-channel context for Nora-in-meal-log. Appended to the
-   *  system prompt so Nora knows which food_log_entries draft she's working
-   *  on (id + item names + per-item confidence + qty) without it ever
-   *  appearing in the user-visible chat_messages thread. Null/empty in any
-   *  other (speaker, mode) combination. */
-  mealLogDraftContext?: string | null;
   /** Mutable totals; the loop adds each round's finalMsg.usage. Read by the
    *  route after the stream ends to log prompt-cache hit rate. */
   usageSink?: ChatUsageTotals;
@@ -266,9 +259,6 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
     systemText = `${systemText}\n\n${opts.peterDashboardBlock}`;
   }
   if (opts.peterContext) systemText = `${systemText}\n\n${opts.peterContext}`;
-  if (opts.mealLogDraftContext && speaker === "nora" && opts.mode === "meal_log") {
-    systemText = `${systemText}\n\n# Active draft\n${opts.mealLogDraftContext}`;
-  }
   const system = [
     { type: "text" as const, text: systemText, cache_control: { type: "ephemeral" as const, ttl: "1h" as const } },
   ];
@@ -294,22 +284,6 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
   //   default — read tools + set_glp1_taper_started + mark_glp1_discontinued
   //     plus regenerate_morning_brief.
   const modeAllowsTool = (name: string): boolean => {
-    if (opts.mode === "meal_log") {
-      // Nora-in-meal-log is clarification-only: server-side append into
-      // food_log_entries (via /api/food/parse with append_to_entry_id) is the
-      // canonical write path, and the Confirm button on the pinned meal card
-      // is the canonical commit. propose_meal_log / commit_meal_log are
-      // explicitly excluded here as defense-in-depth against the prompt-only
-      // steering in NORA_MEAL_LOG_PROMPT — if Nora hallucinates an approval
-      // echo, the tool isn't in the model's surface to call. Default-mode
-      // /coach chat still has those tools (see the explicit allows below).
-      return (
-        name === "search_library" ||
-        name === "pick_library_item" ||
-        name === "save_to_library" ||
-        name === "resolve_food_macros"
-      );
-    }
     if (opts.mode === "plan_week" || opts.mode === "setup_block") {
       return (
         !name.startsWith("apply_") &&
