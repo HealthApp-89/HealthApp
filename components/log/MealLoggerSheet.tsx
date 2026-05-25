@@ -1,7 +1,6 @@
 "use client";
 import { useState } from "react";
 import { BottomSheet } from "@/components/ui/BottomSheet";
-import { MealLoggerChatTab } from "./MealLoggerChatTab";
 import { MealLoggerSearchTab } from "./MealLoggerSearchTab";
 import { MealLoggerLibraryTab } from "./MealLoggerLibraryTab";
 import { HistoryPickerSheet } from "./HistoryPickerSheet";
@@ -9,7 +8,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import type { MealSlot } from "@/lib/food/types";
 import { deriveMealSlot, mealSlotLabel } from "@/lib/food/meal-slot";
 
-type Tab = "chat" | "search" | "library";
+type Tab = "search" | "library";
 
 export function MealLoggerSheet({
   open,
@@ -24,7 +23,7 @@ export function MealLoggerSheet({
   initialMealSlot?: MealSlot;
   initialEatenAt?: string;
 }) {
-  const [tab, setTab] = useState<Tab>("chat");
+  const [tab, setTab] = useState<Tab>("search");
   const [historyPickerOpen, setHistoryPickerOpen] = useState(false);
   const queryClient = useQueryClient();
 
@@ -34,9 +33,9 @@ export function MealLoggerSheet({
     );
   const eatenAt = initialEatenAt ?? new Date().toISOString();
 
-  // Invalidate downstream caches after every commit. Unlike v1.1, do NOT
-  // auto-close the sheet — the chat thread is daily-continuous and the user
-  // commonly logs multiple meals or makes corrections without leaving.
+  // Invalidate downstream caches after every commit. Do NOT auto-close —
+  // the user often logs several items in one sitting and prefers to stay
+  // in the sheet between Confirm taps.
   const onCommitted = async () => {
     await queryClient.invalidateQueries({
       predicate: (q) => q.queryKey[0] === "food-entries",
@@ -55,28 +54,23 @@ export function MealLoggerSheet({
     <>
       <BottomSheet open={open} onClose={onClose} title={title}>
         <div className="flex gap-1 border-b border-zinc-800 px-3 pt-2">
-          {(["chat", "search", "library"] as const).map((t) => (
+          {([
+            { key: "search", label: "Add food" },
+            { key: "library", label: "Library" },
+          ] as const).map((t) => (
             <button
-              key={t}
+              key={t.key}
               type="button"
-              onClick={() => setTab(t)}
-              className={`px-3 py-2 text-xs uppercase tracking-wider ${
-                tab === t ? "text-zinc-100 border-b-2 border-zinc-100" : "text-zinc-500"
+              onClick={() => setTab(t.key)}
+              className={`px-3 py-2 text-sm ${
+                tab === t.key ? "text-zinc-100 border-b-2 border-zinc-100" : "text-zinc-500"
               }`}
             >
-              {t}
+              {t.label}
             </button>
           ))}
         </div>
         <div className="p-4">
-          {tab === "chat" && (
-            <MealLoggerChatTab
-              userId={userId}
-              mealSlot={mealSlot}
-              eatenAt={eatenAt}
-              onCommitted={onCommitted}
-            />
-          )}
           {tab === "search" && (
             <MealLoggerSearchTab
               userId={userId}
