@@ -72,7 +72,7 @@ export async function BodyTile({ userId }: { userId: string }) {
   }
 
   return (
-    <Link href="/metrics?sub=body" style={{ textDecoration: "none", color: "inherit", display: "block" }}>
+    <Link href="/diet?view=body" style={{ textDecoration: "none", color: "inherit", display: "block" }}>
       <Card>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "10px" }}>
           <span style={{ fontSize: "11px", fontWeight: 700, color: COLOR.textMuted, letterSpacing: "0.06em", textTransform: "uppercase" }}>

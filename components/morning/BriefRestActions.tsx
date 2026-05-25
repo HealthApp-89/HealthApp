@@ -27,6 +27,18 @@ export function BriefRestActions({ bedtime }: { bedtime: string }) {
           <li key={item}>{item}</li>
         ))}
       </ul>
+      <a
+        href="/health?tab=log"
+        style={{
+          marginTop: 4,
+          color: "#60a5fa",
+          fontSize: 12,
+          textDecoration: "underline",
+          textUnderlineOffset: 2,
+        }}
+      >
+        Log day data
+      </a>
     </div>
   );
 }

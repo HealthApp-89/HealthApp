@@ -106,6 +106,6 @@ export async function POST(req: Request) {
     );
   }
 
-  revalidatePath("/metrics");
+  revalidatePath("/coach");
   return NextResponse.json({ ok: true, row });
 }

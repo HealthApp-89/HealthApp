@@ -250,7 +250,7 @@ function renderRecompSuccess(event: ProactiveEvent, ctx?: RenderContext): Proact
     severity: "ok",
     headline: "Recomp working — keep this",
     body_md: variants[idx],
-    deep_link: { label: "View Body trends", href: "/metrics?section=body" },
+    deep_link: { label: "View Body trends", href: "/coach?section=body" },
     speaker: "nora",
   };
 }
@@ -269,7 +269,7 @@ function renderRecompDrift(event: ProactiveEvent, ctx?: RenderContext): Proactiv
     severity: "warn",
     headline: "Recomp drifting wrong way",
     body_md: variants[idx],
-    deep_link: { label: "View Body trends", href: "/metrics?section=body" },
+    deep_link: { label: "View Body trends", href: "/coach?section=body" },
     speaker: "nora",
   };
 }
@@ -285,7 +285,7 @@ function renderProteinUnder(event: ProactiveEvent, _ctx?: RenderContext): Proact
     severity: "warn",
     headline: "Protein under target too often",
     body_md: `You hit your ${target}g target on ${hit} of the last ${logged} logged days. Two days of front-loading breakfast usually closes the gap.`,
-    deep_link: { label: "View Nutrition trends", href: "/metrics?section=nutrition" },
+    deep_link: { label: "View Nutrition trends", href: "/coach?section=nutrition" },
     speaker: "nora",
   };
 }
@@ -301,7 +301,7 @@ function renderGlp1ProteinFloor(event: ProactiveEvent, _ctx?: RenderContext): Pr
     severity: "warn",
     headline: "Protein floor missed on your protocol",
     body_md: `On your current protocol the floor is ${Math.round(floor)} g — you came in under that on ${misses} of the last ${observed} logged days. LBM protection drops fast below floor.`,
-    deep_link: { label: "View Nutrition trends", href: "/metrics?section=nutrition" },
+    deep_link: { label: "View Nutrition trends", href: "/coach?section=nutrition" },
     speaker: "nora",
   };
 }
@@ -322,7 +322,7 @@ function renderMonotoneProtein(event: ProactiveEvent, _ctx?: RenderContext): Pro
     severity: "info",
     headline: "Protein has gone monotone",
     body_md: `${human} is ${Math.round(pct * 100)}% of your protein over the last 2 weeks. Cycling in fish (omega-3) and red meat (iron) covers gaps a single source can't.`,
-    deep_link: { label: "View Nutrition trends", href: "/metrics?section=nutrition" },
+    deep_link: { label: "View Nutrition trends", href: "/coach?section=nutrition" },
     speaker: "nora",
   };
 }
@@ -336,7 +336,7 @@ function renderFriedHeavy(event: ProactiveEvent, _ctx?: RenderContext): Proactiv
     severity: "info",
     headline: "Frying-heavy mix lately",
     body_md: `${Math.round(pct * 100)}% of items with a known cooking method were pan-fried or deep-fried over the last 2 weeks. Swapping the top 2-3 to grilled or air-fried trims hidden fat kcal at the same macros.`,
-    deep_link: { label: "View Nutrition trends", href: "/metrics?section=nutrition" },
+    deep_link: { label: "View Nutrition trends", href: "/coach?section=nutrition" },
     speaker: "nora",
   };
 }
@@ -351,7 +351,7 @@ function renderTrainingUndereat(event: ProactiveEvent, _ctx?: RenderContext): Pr
     severity: "warn",
     headline: "Undereating on lift days",
     body_md: `On ${under} of the last ${total} lift days you came in 300+ kcal under target. That's why dinner ends up protein-heavy — a 200 kcal pre-lift snack fixes most of it.`,
-    deep_link: { label: "View Nutrition trends", href: "/metrics?section=nutrition" },
+    deep_link: { label: "View Nutrition trends", href: "/coach?section=nutrition" },
     speaker: "nora",
   };
 }

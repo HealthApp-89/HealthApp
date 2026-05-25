@@ -56,7 +56,7 @@ export function LogClient({
           onChange={(e) => {
             const next = e.target.value;
             if (!next) return;
-            router.push(`/metrics?sub=log&date=${next}`);
+            router.push(`/health?tab=log&date=${next}`);
           }}
           aria-label="Select date"
           style={{

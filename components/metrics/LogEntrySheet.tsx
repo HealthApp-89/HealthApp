@@ -93,19 +93,19 @@ export function LogEntrySheet({ open, onClose, onMealClick }: Props) {
           <Row
             icon={<ClipboardList size={18} aria-hidden="true" />}
             label="Daily metrics"
-            href="/metrics?sub=log"
+            href="/health?tab=log"
             onClick={onClose}
           />
           <Row
             icon={<Dumbbell size={18} aria-hidden="true" />}
             label="Lift / workout"
-            href="/metrics?sub=strength&log=lift"
+            href="/strength?log=lift"
             onClick={onClose}
           />
           <Row
             icon={<Ruler size={18} aria-hidden="true" />}
             label="Body measurement"
-            href="/metrics?sub=body&log=measurement"
+            href="/diet?view=body&log=measurement"
             onClick={onClose}
           />
         </div>

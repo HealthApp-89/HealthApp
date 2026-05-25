@@ -18,29 +18,26 @@ const nextConfig: NextConfig = {
     },
   },
 
-  // 308 redirects for legacy URLs from previous restructures. The coach
-  // mini-apps restructure (PRs 2-6) moved /strength, /diet, /health onto
-  // their own routes and collapsed /coach/* + /meal into /metrics + /diet.
-  // Page-level redirects in app/metrics/page.tsx + app/diet/page.tsx +
-  // app/health/page.tsx handle ?sub= query-string variants; this block
-  // handles bare-URL bookmarks and PWA-cached deep-links.
+  // 308 redirects for legacy URLs.
+  //
+  // Peter Dashboard arc (2026-05-24/25) renamed /metrics → /coach as
+  // Peter's canonical home. The prior /coach → /metrics rules were removed
+  // because they created an infinite redirect loop with the /metrics page
+  // shim that redirects back to /coach. /coach/trends and /coach/weeks/*
+  // are real pages and must serve their own content — do not redirect them.
   async redirects() {
     return [
-      // Slice 7 legacy (trends / log catch-alls)
-      { source: "/trends",          destination: "/metrics", permanent: true },
-      { source: "/trends/:path*",   destination: "/metrics", permanent: true },
+      // Bare-URL bookmarks pointing at the old /metrics surface.
+      { source: "/metrics",                 destination: "/coach",                  permanent: true },
+      { source: "/metrics/reviews",         destination: "/coach/reviews",          permanent: true },
+      { source: "/metrics/weeks/:week_start", destination: "/coach/weeks/:week_start", permanent: true },
+      // Slice 7 legacy.
+      { source: "/trends",          destination: "/coach",          permanent: true },
+      { source: "/trends/:path*",   destination: "/coach",          permanent: true },
       { source: "/log",             destination: "/health?tab=log", permanent: true },
-      // PR 4 — /meal page file deleted in PR 6
+      // PR 4 — /meal page file deleted in PR 6.
       { source: "/meal",            destination: "/diet?tab=log", permanent: true },
       { source: "/meal/:path*",     destination: "/diet?tab=log", permanent: true },
-      // PR 6 — collapse the entire /coach/* legacy surface into /metrics
-      { source: "/coach",                   destination: "/metrics",                 permanent: true },
-      { source: "/coach/progress",          destination: "/metrics",                 permanent: true },
-      { source: "/coach/progress/:path*",   destination: "/metrics",                 permanent: true },
-      { source: "/coach/trends",            destination: "/metrics",                 permanent: true },
-      { source: "/coach/trends/:path*",     destination: "/metrics",                 permanent: true },
-      { source: "/coach/reviews",           destination: "/metrics/reviews",         permanent: true },
-      { source: "/coach/weeks/:week_start", destination: "/metrics/weeks/:week_start", permanent: true },
     ];
   },
 };

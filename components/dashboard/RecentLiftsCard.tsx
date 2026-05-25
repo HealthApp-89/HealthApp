@@ -16,7 +16,7 @@ type RecentLiftsCardProps = {
 
 export function RecentLiftsCard({ sessions }: RecentLiftsCardProps) {
   return (
-    <Link href="/metrics?sub=strength&view=recent" style={{ textDecoration: "none", color: "inherit", display: "block" }}>
+    <Link href="/strength?view=recent" style={{ textDecoration: "none", color: "inherit", display: "block" }}>
       <Card>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "8px" }}>
           <span style={{ fontSize: "11px", fontWeight: 700, color: COLOR.textMuted, letterSpacing: "0.06em", textTransform: "uppercase" }}>

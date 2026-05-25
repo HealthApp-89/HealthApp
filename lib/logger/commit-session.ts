@@ -35,7 +35,7 @@ export async function commitSession(payload: CommitSessionPayload): Promise<{
 
   revalidatePath("/strength");
   revalidatePath("/");
-  revalidatePath("/metrics");
+  revalidatePath("/coach");
 
   return { workout_id: data };
 }

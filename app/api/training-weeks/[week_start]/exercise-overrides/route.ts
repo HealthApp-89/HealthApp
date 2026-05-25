@@ -168,7 +168,7 @@ export async function POST(
   }
 
   revalidatePath("/");
-  revalidatePath("/metrics");
+  revalidatePath("/coach");
 
   return NextResponse.json({ ok: true, exercise_overrides: next });
 }

@@ -198,28 +198,40 @@ export function BriefSessionList({
           }}
         >
           Swapped to {liveType} —{" "}
-          <a href="/metrics?sub=strength" style={{ color: COLOR.accent }}>
+          <a href="/strength" style={{ color: COLOR.accent }}>
             see /strength
           </a>{" "}
           for the new session.
         </p>
       )}
-      <button
-        onClick={() => setLoggerOpen(true)}
-        style={{
-          marginTop: 8,
-          background: "transparent",
-          border: "none",
-          color: "#60a5fa",
-          fontSize: 12,
-          textDecoration: "underline",
-          textUnderlineOffset: 2,
-          cursor: "pointer",
-          padding: 0,
-        }}
-      >
-        {hasDraft ? "Resume this session" : "Log this session"}
-      </button>
+      <div style={{ display: "flex", gap: 16, marginTop: 8, flexWrap: "wrap" }}>
+        <button
+          onClick={() => setLoggerOpen(true)}
+          style={{
+            background: "transparent",
+            border: "none",
+            color: "#60a5fa",
+            fontSize: 12,
+            textDecoration: "underline",
+            textUnderlineOffset: 2,
+            cursor: "pointer",
+            padding: 0,
+          }}
+        >
+          {hasDraft ? "Resume this session" : "Log this session"}
+        </button>
+        <a
+          href="/health?tab=log"
+          style={{
+            color: "#60a5fa",
+            fontSize: 12,
+            textDecoration: "underline",
+            textUnderlineOffset: 2,
+          }}
+        >
+          Log day data
+        </a>
+      </div>
       {loggerOpen && (
         <LoggerSheet
           userId={userId}

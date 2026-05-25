@@ -76,7 +76,7 @@ async function syncForUser(userId: string) {
   // Invalidate ISR caches so the dashboard / metrics / coach pick up new
   // WHOOP data immediately instead of waiting up to 60s for revalidation.
   revalidatePath("/");
-  revalidatePath("/metrics");
+  revalidatePath("/coach");
   revalidatePath("/coach");
   return { ok: true, ...counts, skipped };
 }

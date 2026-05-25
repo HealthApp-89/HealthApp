@@ -61,6 +61,6 @@ export async function DELETE(
     // Best-effort: ignore failure.
   }
 
-  revalidatePath("/metrics");
+  revalidatePath("/coach");
   return NextResponse.json({ ok: true });
 }

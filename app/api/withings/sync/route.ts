@@ -34,7 +34,7 @@ async function syncForUser(userId: string) {
   // Invalidate ISR caches so the dashboard / metrics surface picks up
   // new body comp and exercise minutes immediately.
   revalidatePath("/");
-  revalidatePath("/metrics");
+  revalidatePath("/coach");
   return {
     ok: true,
     upserted: byDate.size,

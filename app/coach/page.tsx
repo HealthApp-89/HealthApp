@@ -6,7 +6,6 @@ import { queryKeys } from '@/lib/query/keys';
 import { fetchPeterDashboardServer } from '@/lib/query/fetchers/peterDashboard';
 import { PeterDashboardClient } from '@/components/coach/PeterDashboardClient';
 import { PeterChatClient } from '@/components/coach/PeterChatClient';
-import { ReplaceStateDebug } from '@/components/coach/ReplaceStateDebug';
 import { SubPillNav } from '@/components/layout/SubPillNav';
 import { todayInUserTz } from '@/lib/time';
 import { COLOR } from '@/lib/ui/theme';
@@ -41,7 +40,6 @@ export default async function CoachPage({ searchParams }: SP) {
 
   return (
     <div style={{ background: COLOR.bg, minHeight: '100dvh' }}>
-      <ReplaceStateDebug />
       <SubPillNav pills={TABS} paramName="tab" defaultKey="dashboard" />
       <HydrationBoundary state={dehydrate(queryClient)}>
         {tab === 'dashboard'

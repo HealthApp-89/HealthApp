@@ -64,7 +64,7 @@ export default async function CoachReviewsPage() {
             return (
               <Link
                 key={`${r.week_start}-${r.version}`}
-                href={`/metrics/weeks/${r.week_start}`}
+                href={`/coach/weeks/${r.week_start}`}
                 style={{ textDecoration: "none", color: "inherit" }}
               >
                 <CoachCard tone="accent">

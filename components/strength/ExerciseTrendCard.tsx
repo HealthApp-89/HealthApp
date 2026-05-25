@@ -36,7 +36,7 @@ export function ExerciseTrendCard({ name, points }: Props) {
   return (
     <div style={{ position: "relative" }}>
       <Link
-        href="/metrics?sub=strength"
+        href="/strength"
         scroll={false}
         aria-label="Close exercise trend"
         style={{

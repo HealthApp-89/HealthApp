@@ -12,9 +12,10 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { loadWorkouts } from "@/lib/data/workouts-server";
 import type { WorkoutSession } from "@/lib/data/workouts";
-import { nowInUserTz, relativeDateLabel, todayInUserTz } from "@/lib/time";
+import { nowInUserTz, relativeDateLabel, todayInUserTz, weekdayInUserTz } from "@/lib/time";
 import { renderProfileSummary } from "@/lib/coach/profile-renderer";
 import { mondayOf } from "@/lib/coach/weekly-review/date-utils";
+import { readSessionForDay } from "@/lib/coach/session-plan-reader";
 import { topSet } from "@/lib/coach/derived";
 import type { IntakePayload, PlanPayload } from "@/lib/data/types";
 
@@ -44,7 +45,6 @@ type ProfileRow = {
   name?: string | null;
   goal?: string | null;
   whoop_baselines?: unknown;
-  training_plan?: unknown;
 } | null;
 
 type DailyLogRow = {
@@ -199,7 +199,7 @@ export async function buildSnapshot(inputs: SnapshotInputs): Promise<SnapshotRes
   const [{ data: profile }, { data: logs }, allWorkouts, { data: athleteProfileRow }] = await Promise.all([
     supabase
       .from("profiles")
-      .select("name, goal, whoop_baselines, training_plan")
+      .select("name, goal, whoop_baselines")
       .eq("user_id", userId)
       .maybeSingle(),
     logsQ,
@@ -276,7 +276,6 @@ export async function buildSnapshot(inputs: SnapshotInputs): Promise<SnapshotRes
   const body = [
     `ATHLETE: ${p?.name ?? "Athlete"}. GOAL: "${p?.goal ?? "general health"}".`,
     `BASELINES: ${JSON.stringify(p?.whoop_baselines ?? {})}`,
-    `TRAINING PLAN: ${JSON.stringify(p?.training_plan ?? {})}`,
     // Live current top set per lift FIRST, so the model anchors on live data
     // before reading the intake-time baselines in the profile body.
     ...(currentTopSetsBlock ? [``, currentTopSetsBlock] : []),
@@ -402,8 +401,10 @@ export async function buildEphemeralHeader(opts: {
   yesterdayDate.setUTCDate(yesterdayDate.getUTCDate() - 1);
   const yesterday = yesterdayDate.toISOString().slice(0, 10);
 
-  // Pull both rows + freshness in parallel.
-  const [{ data: rows }, freshness, n] = await Promise.all([
+  // Pull rows, freshness, and the most-recent training_week in parallel.
+  // The training_week query mirrors lib/morning/brief/data-sources.ts so the
+  // chat and the morning brief see the same source of truth.
+  const [{ data: rows }, freshness, { data: trainingWeek }, n] = await Promise.all([
     supabase
       .from("daily_logs")
       .select(
@@ -412,6 +413,14 @@ export async function buildEphemeralHeader(opts: {
       .eq("user_id", userId)
       .in("date", [today, yesterday]),
     getSyncFreshness(supabase, userId),
+    supabase
+      .from("training_weeks")
+      .select("week_start, session_plan, intensity_modifier")
+      .eq("user_id", userId)
+      .lte("week_start", today)
+      .order("week_start", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
     Promise.resolve(nowInUserTz()),
   ]);
 
@@ -438,11 +447,48 @@ export async function buildEphemeralHeader(opts: {
   return [
     composeNowLine(n),
     ``,
+    renderTodaysPrescribedSession(trainingWeek, today),
+    ``,
     renderRow("TODAY", today),
     ``,
     renderRow("YESTERDAY", yesterday),
     ``,
     `DATA FRESHNESS:`,
     ...freshnessLines,
+  ].join("\n");
+}
+
+/** Resolves today's prescribed session from the most-recent training_weeks
+ *  row that covers today. Mirrors the brief's dual-key reader + coverage
+ *  window. When no covering row exists, emits an explicit "no committed week"
+ *  marker so coaches don't silently fall back to the legacy WEEKLY_SESSIONS
+ *  mapping baked into their training. */
+function renderTodaysPrescribedSession(
+  trainingWeek: { week_start: string; session_plan: unknown; intensity_modifier: unknown } | null,
+  today: string,
+): string {
+  if (!trainingWeek) {
+    return [
+      `THIS WEEK'S PLAN: (no committed training_weeks row — answer "I don't see a committed week" and offer to plan one)`,
+    ].join("\n");
+  }
+  const ws = new Date(`${trainingWeek.week_start}T00:00:00Z`).getTime();
+  const t = new Date(`${today}T00:00:00Z`).getTime();
+  const diffDays = Math.round((t - ws) / 86_400_000);
+  if (diffDays < 0 || diffDays > 6) {
+    return [
+      `THIS WEEK'S PLAN: (most recent committed week starts ${trainingWeek.week_start} — does not cover today; no live plan)`,
+    ].join("\n");
+  }
+  const weekdayLong = weekdayInUserTz(new Date(`${today}T12:00:00Z`));
+  const sessionPlan = (trainingWeek.session_plan ?? {}) as Record<string, string>;
+  const todaysType = readSessionForDay(sessionPlan, weekdayLong) ?? "(no entry for today)";
+  const planLines = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    .map((wd) => `  ${wd}: ${readSessionForDay(sessionPlan, wd) ?? "—"}`)
+    .join("\n");
+  return [
+    `THIS WEEK'S PLAN (committed; week starts ${trainingWeek.week_start}; USE THESE LABELS verbatim — they SUPERSEDE any weekday→session mapping you may have inferred):`,
+    planLines,
+    `TODAY'S PRESCRIBED SESSION: ${todaysType} (${weekdayLong} ${today})`,
   ].join("\n");
 }

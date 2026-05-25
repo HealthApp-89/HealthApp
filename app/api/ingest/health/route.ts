@@ -311,10 +311,10 @@ export async function POST(request: Request) {
   // (Slice 7 folded /trends + /strength into /metrics.)
   if (result.days_upserted > 0) {
     revalidatePath("/");
-    revalidatePath("/metrics");
+    revalidatePath("/coach");
   }
   if (result.workouts_upserted > 0) {
-    revalidatePath("/metrics");
+    revalidatePath("/coach");
   }
   return NextResponse.json({ ok: true, source: sourceParam, ...result });
 }

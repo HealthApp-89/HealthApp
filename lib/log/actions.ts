@@ -1,7 +1,7 @@
 "use server";
 
 // Server actions for the manual /log form (now mounted under
-// /metrics?sub=strength via LogClient). Moved out of app/log/ in Slice 7
+// /strength via LogClient). Moved out of app/log/ in Slice 7
 // when that route folded into /metrics — keeping the module under lib/
 // gives it a stable home that is no longer tied to a route directory.
 
@@ -147,7 +147,7 @@ export async function saveDailyLog(formData: FormData) {
 
   // Old /log route is gone (Slice 7); revalidate the /metrics surface that
   // now owns the log form, plus the dashboard which reads daily_logs.
-  revalidatePath("/metrics");
+  revalidatePath("/coach");
   revalidatePath("/");
 }
 
@@ -173,5 +173,5 @@ export async function saveCheckin(formData: FormData) {
     .upsert(row, { onConflict: "user_id,date" });
   if (error) throw error;
   revalidatePath("/");
-  revalidatePath("/metrics");
+  revalidatePath("/coach");
 }

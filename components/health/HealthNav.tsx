@@ -3,9 +3,9 @@
 import { RangePills } from "@/components/ui/RangePills";
 
 const VIEWS = [
-  { id: "today", label: "Today",  href: "/metrics?sub=body" },
-  { id: "trend", label: "Trend",  href: "/metrics?sub=body&view=trend" },
-  { id: "log",   label: "Log",    href: "/metrics?sub=body&view=log" },
+  { id: "today", label: "Today",  href: "/diet?view=body" },
+  { id: "trend", label: "Trend",  href: "/diet?view=body&trend=1" },
+  { id: "log",   label: "Log",    href: "/diet?view=body&log=1" },
 ] as const;
 
 export type HealthView = (typeof VIEWS)[number]["id"];
