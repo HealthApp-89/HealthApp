@@ -1478,3 +1478,16 @@ export type WorkoutDebriefPayload = {
   narrative_md: string;
   tldr: string;
 };
+
+// Peter Dashboard types — re-exported here so route handlers and components
+// can `import type { PeterDashboardPayload } from '@/lib/data/types'`.
+export type {
+  ThemeKey,
+  Severity,
+  SparklineSeries as PeterDashboardSparkline,
+  ThemePayload,
+  ThemeCluster as PeterDashboardThemeCluster,
+  PeterDashboardFacts,
+  Narrative as PeterDashboardNarrative,
+  PeterDashboardPayload,
+} from '@/lib/coach/peter-dashboard/types';

@@ -18,6 +18,10 @@
       "schedule": "0 4 * * 1"
     },
     {
+      "path": "/api/coach/dashboard/sync",
+      "schedule": "0 4 * * *"
+    },
+    {
       "path": "/api/coach/proactive/check",
       "schedule": "0 11 * * *"
     }

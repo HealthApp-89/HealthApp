@@ -96,7 +96,11 @@ Composers are **synthesis** on top of existing intelligence. They reuse `generat
 
 ## Schema
 
-### Migration `0031_peter_dashboard.sql`
+### Migration `0034_peter_dashboard.sql`
+
+(Spec originally proposed `0031`; slots 0031–0033 were taken by parallel arcs before this work landed, so the actual numbers used at apply-time are **0034** and **0035**. The references below keep the spec's original naming for design clarity — see `docs/superpowers/plans/2026-05-24-peter-dashboard.md` for the actual filenames.)
+
+**Failure-row semantics (important for Task 12 / Task 11 implementers):** a row with `status = 'failed'` is NOT a tombstone. `payload` still carries the full deterministic composer output (six themes' facts, clusters, block context, goal summary) and `narrative_md` still carries a rendered block — built from the deterministic `body_md` fallback via `fallbackNarrative()` in [lib/coach/peter-dashboard/narrate.ts](../../lib/coach/peter-dashboard/narrate.ts). The status discriminator only tells the UI / prompt assembly that the Sonnet wrap failed so the "Narrative generation failed — retry" affordance can show. Writers MUST NOT insert `payload = '{}'::jsonb` or empty `narrative_md` — the orchestrator's fallback path guarantees both fields are populated.
 
 ```sql
 create table coach_dashboards (

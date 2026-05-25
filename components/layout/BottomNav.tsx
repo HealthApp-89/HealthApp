@@ -23,7 +23,7 @@ const TABS: Tab[] = [
   { href: "/strength", label: "Strength", Icon: Dumbbell,        match: (p) => p.startsWith("/strength"), thread: "carter" },
   { href: "/diet",     label: "Diet",     Icon: UtensilsCrossed, match: (p) => p.startsWith("/diet"),     thread: "nora" },
   { href: "/health",   label: "Health",   Icon: HeartPulse,      match: (p) => p.startsWith("/health"),   thread: "remi" },
-  { href: "/metrics",  label: "Metrics",  Icon: BarChart3,       match: (p) => p.startsWith("/metrics"),  thread: "peter" },
+  { href: "/coach",    label: "Coach",    Icon: BarChart3,       match: (p) => p.startsWith("/coach") || p.startsWith("/metrics"), thread: "peter" },
   { href: "/profile",  label: "Profile",  Icon: User,            match: (p) => p.startsWith("/profile") },
 ];
 

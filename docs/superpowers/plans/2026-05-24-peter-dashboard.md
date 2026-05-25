@@ -18,8 +18,8 @@
 
 ### New files
 
-- `supabase/migrations/0031_peter_dashboard.sql` — `coach_dashboards` table + RLS
-- `supabase/migrations/0032_athlete_goal_structured.sql` — structured goal columns on `athlete_profile_documents`
+- `supabase/migrations/0034_peter_dashboard.sql` — `coach_dashboards` table + RLS
+- `supabase/migrations/0035_athlete_goal_structured.sql` — structured goal columns on `athlete_profile_documents`
 - `lib/coach/peter-dashboard/types.ts` — `ThemeKey`, `ThemePayload`, `ThemeCluster`, `PeterDashboardFacts`, `PeterDashboardPayload`
 - `lib/coach/peter-dashboard/thresholds.ts` — all severity numeric constants
 - `lib/coach/peter-dashboard/compose-recomp.ts`
@@ -66,15 +66,15 @@
 ## Task 1: Migrations — `coach_dashboards` table + structured goal columns
 
 **Files:**
-- Create: `supabase/migrations/0031_peter_dashboard.sql`
-- Create: `supabase/migrations/0032_athlete_goal_structured.sql`
+- Create: `supabase/migrations/0034_peter_dashboard.sql`
+- Create: `supabase/migrations/0035_athlete_goal_structured.sql`
 
 - [ ] **Step 1: Create migration 0031**
 
-Write to `supabase/migrations/0031_peter_dashboard.sql`:
+Write to `supabase/migrations/0034_peter_dashboard.sql`:
 
 ```sql
--- 0031_peter_dashboard.sql
+-- 0034_peter_dashboard.sql
 -- Versioned cache for Peter's head-coach dashboard payload.
 -- Daily cron writes v1; manual regen bumps version. Both the /coach
 -- dashboard UI and Peter's chat-prompt assembly read the latest row.
@@ -105,10 +105,10 @@ create policy coach_dashboards_select_own
 
 - [ ] **Step 2: Create migration 0032**
 
-Write to `supabase/migrations/0032_athlete_goal_structured.sql`:
+Write to `supabase/migrations/0035_athlete_goal_structured.sql`:
 
 ```sql
--- 0032_athlete_goal_structured.sql
+-- 0035_athlete_goal_structured.sql
 -- Structured goal fields for the Peter Dashboard's Goal-distance theme.
 -- The existing free-form goal narrative on athlete_profile_documents
 -- stays as the "why" text; these columns add the "what + by when" so
@@ -147,7 +147,7 @@ Expected: `coach_dashboards` shows 8 columns + the unique index; `athlete_profil
 - [ ] **Step 5: Commit**
 
 ```bash
-git add supabase/migrations/0031_peter_dashboard.sql supabase/migrations/0032_athlete_goal_structured.sql
+git add supabase/migrations/0034_peter_dashboard.sql supabase/migrations/0035_athlete_goal_structured.sql
 git commit -m "feat(peter): migrations 0031+0032 — coach_dashboards + structured goal fields"
 ```
 
@@ -198,8 +198,6 @@ export type ThemePayload = {
   /** Numeric/string facts the narrative wrapper may cite. Keys are
    *  composer-defined and stable across regens. */
   facts: Record<string, number | string | null>;
-  /** Route the "Open …" nav chip links to. */
-  drilldown: string;
   /** Mini chart for expanded state; null when no chart fits the theme. */
   sparkline: SparklineSeries | null;
   /** Audit trail of which tables/columns were read. Helps the audit script
@@ -383,7 +381,6 @@ Write to `lib/coach/peter-dashboard/compose-recomp.ts`:
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ThemePayload } from './types';
-import { THEME_DRILLDOWN } from './types';
 import {
   RECOMP_LBM_HOLD_KG_4W,
   RECOMP_BF_DOWN_PTS_4W,
@@ -445,7 +442,6 @@ export async function composeRecomp(args: {
       bf_pct_delta_4w_pts: bf4w,
       top_lift_slopes_pct_per_wk_4w: topLiftSlopes.join(','),
     },
-    drilldown: THEME_DRILLDOWN.recomp,
     sparkline,
     inputs_used: ['coach_trends.body', 'coach_trends.strength.per_lift'],
   };
@@ -515,10 +511,9 @@ Write to `lib/coach/peter-dashboard/compose-energy.ts`:
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ThemePayload } from './types';
-import { THEME_DRILLDOWN } from './types';
 import {
   ENERGY_UNDER_TARGET_KCAL,
-  ENERGY_UNDER_DAYS_WARN,
+  ENERGY_UNDER_WINDOW_DAYS_WARN,
   ENERGY_GLP1_DEFICIT_PCT_TDEE_URGENT,
 } from './thresholds';
 import { getTodayTargets } from '@/lib/morning/brief/get-today-targets';
@@ -593,7 +588,7 @@ export async function composeEnergy(args: {
 
   let severity: ThemePayload['severity'];
   if (glp1DeficitUrgent) severity = 'urgent';
-  else if (underDays >= ENERGY_UNDER_DAYS_WARN) severity = 'warn';
+  else if (underDays >= ENERGY_UNDER_WINDOW_DAYS_WARN) severity = 'warn';
   else severity = 'ok';
 
   return {
@@ -609,7 +604,6 @@ export async function composeEnergy(args: {
       kcal_target: kcalTarget,
       glp1_mode_active: isGlp1Active,
     },
-    drilldown: THEME_DRILLDOWN.energy,
     sparkline: kcalTarget == null ? null : {
       label: 'kcal vs target (14d)',
       series: rows
@@ -697,7 +691,6 @@ Write to `lib/coach/peter-dashboard/compose-fatigue.ts`:
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ThemePayload } from './types';
-import { THEME_DRILLDOWN } from './types';
 import {
   FATIGUE_REMI_TRIGGER_COUNT_WARN,
   FATIGUE_REMI_TRIGGER_COUNT_URGENT,
@@ -770,7 +763,6 @@ export async function composeFatigue(args: {
       remi_triggers_fired_14d: uniqueTriggerCount,
       remi_trigger_keys: triggerKeys.join(','),
     },
-    drilldown: THEME_DRILLDOWN.fatigue,
     sparkline: hrvSeries.length > 0
       ? { label: 'HRV vs baseline (28d)', series: hrvSeries }
       : null,
@@ -856,7 +848,6 @@ Write to `lib/coach/peter-dashboard/compose-performance.ts`:
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ThemePayload } from './types';
-import { THEME_DRILLDOWN } from './types';
 import {
   PERFORMANCE_PLATEAU_WEEKS_WARN,
   PERFORMANCE_LIFT_DROP_URGENT_PCT_4W,
@@ -925,7 +916,6 @@ export async function composePerformance(args: {
       longest_plateau_lift: longestPlateau?.lift ?? null,
       bigfour_plateaued_count: bigFourPlateaued.length,
     },
-    drilldown: THEME_DRILLDOWN.performance,
     sparkline,
     inputs_used: ['coach_trends.strength.per_lift'],
   };
@@ -996,7 +986,6 @@ Write to `lib/coach/peter-dashboard/compose-plan-adherence.ts`:
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ThemePayload } from './types';
-import { THEME_DRILLDOWN } from './types';
 import {
   ADHERENCE_PCT_WARN,
   ADHERENCE_PCT_URGENT,
@@ -1067,7 +1056,6 @@ export async function composePlanAdherence(args: {
       food_log_coverage_pct_14d: round2(foodCoveragePct),
       training_weeks_considered: weekly.length,
     },
-    drilldown: THEME_DRILLDOWN.plan_adherence,
     sparkline: weekly.length >= 2
       ? {
           label: 'Weekly adherence',
@@ -1150,7 +1138,6 @@ Write to `lib/coach/peter-dashboard/compose-goal-distance.ts`:
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ThemePayload } from './types';
-import { THEME_DRILLDOWN } from './types';
 import {
   GOAL_PACE_RATIO_OK,
   GOAL_PACE_RATIO_WARN,
@@ -1190,7 +1177,6 @@ export async function composeGoalDistance(args: {
       one_line: 'Target date passed',
       body_md: 'Goal target date has passed. Refresh the goal in /profile.',
       facts: { goal_kind: doc.goal_kind, days_past_target: -(daysToTarget ?? 0) },
-      drilldown: THEME_DRILLDOWN.goal_distance,
       sparkline: null,
       inputs_used: ['athlete_profile_documents'],
     };
@@ -1214,7 +1200,6 @@ export async function composeGoalDistance(args: {
         goal_target: doc.goal_target as number,
         days_to_target: daysToTarget,
       },
-      drilldown: THEME_DRILLDOWN.goal_distance,
       sparkline: null,
       inputs_used: ['athlete_profile_documents', 'coach_trends'],
     };
@@ -1268,7 +1253,6 @@ export async function composeGoalDistance(args: {
       pace_ratio: round2(paceRatio),
       eta_miss_days: isFinite(etaMissDays) ? etaMissDays : null,
     },
-    drilldown: THEME_DRILLDOWN.goal_distance,
     sparkline: null,
     inputs_used: ['athlete_profile_documents', 'coach_trends'],
   };
@@ -1281,7 +1265,6 @@ function degradedCard(): ThemePayload {
     one_line: 'Set a structured goal',
     body_md: 'Add goal kind, target value, and target date in /profile to enable projections.',
     facts: { has_structured_goal: false },
-    drilldown: THEME_DRILLDOWN.goal_distance,
     sparkline: null,
     inputs_used: ['athlete_profile_documents'],
   };
@@ -2620,7 +2603,7 @@ Write to `components/coach/PeterThemeCard.tsx`:
 import Link from 'next/link';
 import { LineChart, Line, ResponsiveContainer, ReferenceLine, Tooltip } from 'recharts';
 import type { ThemePayload } from '@/lib/data/types';
-import { THEME_LABEL } from '@/lib/coach/peter-dashboard/types';
+import { THEME_LABEL, THEME_DRILLDOWN } from '@/lib/coach/peter-dashboard/types';
 import { COLOR, RADIUS } from '@/lib/ui/theme';
 
 const SEVERITY_COLOR = {
@@ -2723,8 +2706,8 @@ export function PeterThemeCard({ theme, narrative, expanded, onToggle }: Props) 
             >
               Ask Peter →
             </Link>
-            <Link href={theme.drilldown} style={chipStyle}>
-              Open {drilldownLabel(theme.drilldown)} →
+            <Link href={THEME_DRILLDOWN[theme.key]} style={chipStyle}>
+              Open {drilldownLabel(THEME_DRILLDOWN[theme.key])} →
             </Link>
           </div>
         </div>
@@ -3167,9 +3150,9 @@ git commit -m "feat(peter): audit-peter-dashboard — dry-run + fabrication chec
 Open `CLAUDE.md`. Find the migrations list (numbered list ending around `30. [supabase/migrations/0030_food_library_dedup.sql]...`) and append:
 
 ```markdown
-31. [supabase/migrations/0031_peter_dashboard.sql](supabase/migrations/0031_peter_dashboard.sql) — adds `coach_dashboards` (versioned `(user_id, generated_on, version)` cache of the head-coach synthesis payload + rendered `narrative_md`). Read by both the `/coach` dashboard UI and Peter's chat-prompt assembly (single source of truth for "what Peter sees this morning").
+31. [supabase/migrations/0034_peter_dashboard.sql](supabase/migrations/0034_peter_dashboard.sql) — adds `coach_dashboards` (versioned `(user_id, generated_on, version)` cache of the head-coach synthesis payload + rendered `narrative_md`). Read by both the `/coach` dashboard UI and Peter's chat-prompt assembly (single source of truth for "what Peter sees this morning").
 
-32. [supabase/migrations/0032_athlete_goal_structured.sql](supabase/migrations/0032_athlete_goal_structured.sql) — adds structured goal columns to `athlete_profile_documents` (`goal_kind`, `goal_metric`, `goal_target`, `goal_target_date`) for the Goal-distance theme's projection math. Existing free-form goal narrative stays as the "why" text. Backfill is user-driven via `/profile`; until populated, Goal-distance card renders a "Set a structured goal" prompt.
+32. [supabase/migrations/0035_athlete_goal_structured.sql](supabase/migrations/0035_athlete_goal_structured.sql) — adds structured goal columns to `athlete_profile_documents` (`goal_kind`, `goal_metric`, `goal_target`, `goal_target_date`) for the Goal-distance theme's projection math. Existing free-form goal narrative stays as the "why" text. Backfill is user-driven via `/profile`; until populated, Goal-distance card renders a "Set a structured goal" prompt.
 ```
 
 Then find the `## Architecture → Coach / AI` section and append a new bullet under it:
@@ -3216,7 +3199,7 @@ Walking the spec sections vs tasks:
 - `ThemePayload`, `ThemeKey`, `ThemeCluster`, `PeterDashboardFacts`, `PeterDashboardPayload`, `Narrative` defined in Task 2 and referenced consistently throughout Tasks 3-15.
 - `loadLatestPeterDashboard` signature in Task 11 matches what Task 13 (fetcher) imports.
 - `generatePeterDashboard` signature in Task 11 matches what Task 12 (cron + regenerate) and Task 18 (audit) call.
-- `THEME_DRILLDOWN` from Task 2 used by all composers (Tasks 3-8) and ThemeCard (Task 15).
+- `THEME_DRILLDOWN` from Task 2 used by ThemeCard (Task 15) for the nav-chip link — composers no longer carry per-theme route, removing drift risk.
 - `peterDashboardBlock` field name consistent across Task 17 (chat-stream RunChatStreamOpts, route load + pass).
 
 ### Placeholder scan

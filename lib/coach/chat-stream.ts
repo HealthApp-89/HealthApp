@@ -205,6 +205,11 @@ export type RunChatStreamOpts = {
    *  skips the block (specialist turns, empty specialist threads, or callers
    *  that haven't opted in yet). */
   peterContext?: string | null;
+  /** Pre-built "Today's read" markdown from coach_dashboards.narrative_md.
+   *  Appended after the base system prompt for Peter turns only. Null/undefined
+   *  means no dashboard row exists yet — falls back to the snapshot context.
+   *  Composes alongside peterContext (specialist activity); both blocks coexist. */
+  peterDashboardBlock?: string | null;
   /** Athlete-profile draft document id; required for intake-mode tools
    *  (apply_*, set_*, propose_plan, commit_plan). Caller sets this when
    *  serving an /onboarding chat turn. Null/undefined in default/planning modes. */
@@ -257,6 +262,9 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
   // for Peter, draft context for Nora-in-meal-log. They're mutually exclusive
   // in practice but treated as independent appends.
   let systemText = baseSystemText;
+  if (opts.peterDashboardBlock && speaker === "peter") {
+    systemText = `${systemText}\n\n${opts.peterDashboardBlock}`;
+  }
   if (opts.peterContext) systemText = `${systemText}\n\n${opts.peterContext}`;
   if (opts.mealLogDraftContext && speaker === "nora" && opts.mode === "meal_log") {
     systemText = `${systemText}\n\n# Active draft\n${opts.mealLogDraftContext}`;
