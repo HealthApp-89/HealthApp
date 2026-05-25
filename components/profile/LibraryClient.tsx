@@ -16,6 +16,7 @@ import { queryKeys } from "@/lib/query/keys";
 import { fmtNum } from "@/lib/ui/score";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { CustomFoodForm } from "@/components/food/CustomFoodForm";
+import type { SavedItem } from "@/components/food/CustomFoodForm";
 import type { UserFoodItem } from "@/lib/food/types";
 
 export function LibraryClient({ userId }: { userId: string }) {
@@ -34,7 +35,7 @@ export function LibraryClient({ userId }: { userId: string }) {
     setBusyId(null);
   };
 
-  const handleSaved = async () => {
+  const handleSaved = async (_item: SavedItem) => {
     setCreateOpen(false);
     await queryClient.invalidateQueries({ queryKey: queryKeys.userFoodItems.all(userId) });
   };

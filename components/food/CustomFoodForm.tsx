@@ -48,6 +48,7 @@ export function CustomFoodForm({
   const [kcalOverride, setKcalOverride] = useState("");
   const [notes, setNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [duplicateName, setDuplicateName] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const p = parseFloat(proteinG) || 0;
@@ -89,6 +90,7 @@ export function CustomFoodForm({
 
   const submit = async () => {
     setError(null);
+    setDuplicateName(null);
     const trimmedName = name.trim();
     if (!trimmedName) {
       setError("Give your food a name.");
@@ -129,11 +131,11 @@ export function CustomFoodForm({
         const json = await res.json().catch(() => ({ error: "save_failed" }));
         const msg = String(json.error ?? "").toLowerCase();
         if (msg.includes("duplicate") || msg.includes("23505")) {
-          setError(
-            `You already have a "${trimmedName}" saved. Open Manage Library to find it.`,
-          );
+          setDuplicateName(trimmedName);
+          setError(null);
         } else {
           setError(json.error || "save_failed");
+          setDuplicateName(null);
         }
         setBusy(false);
         return;
@@ -294,6 +296,15 @@ export function CustomFoodForm({
       </div>
 
       {error && <p className="text-xs text-red-400">{error}</p>}
+      {duplicateName && (
+        <p className="text-xs text-red-400">
+          You already have a &ldquo;{duplicateName}&rdquo; saved.{" "}
+          <a href="/profile/library" className="underline">
+            Open Manage Library
+          </a>{" "}
+          to find it.
+        </p>
+      )}
 
       <div className="flex gap-2">
         <button

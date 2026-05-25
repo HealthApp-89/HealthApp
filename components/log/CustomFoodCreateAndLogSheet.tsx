@@ -115,7 +115,8 @@ export function CustomFoodCreateAndLogSheet({
       }
       await invalidateLibrary();
       onLogged();
-      handleClose();
+      reset();
+      onClose();
     } catch (e) {
       setError((e as Error).message);
     } finally {
