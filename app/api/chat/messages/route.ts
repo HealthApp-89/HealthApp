@@ -196,12 +196,6 @@ type SendBody = {
    *  Set by ChatPanel's `thread` prop (per-coach pages) — the user is on
    *  Carter's page, so Carter answers. Ignored in intake mode (single-voice). */
   speaker_override?: string;
-  /** Side-channel context for Nora-in-meal-log. Threaded into runChatStream's
-   *  mealLogDraftContext opt so it lands in Nora's system prompt for this
-   *  turn but NEVER becomes a visible chat_messages.content. Used by
-   *  MealLoggerChatTab to tell Nora "you're working on draft entry X with
-   *  these items at these confidences" without leaking into the thread. */
-  hidden_context?: string;
 };
 
 export async function POST(req: Request) {
@@ -226,8 +220,7 @@ export async function POST(req: Request) {
   const requestedMode: ChatMode | null =
     body.mode === "plan_week" ||
     body.mode === "setup_block" ||
-    body.mode === "intake" ||
-    body.mode === "meal_log"
+    body.mode === "intake"
       ? body.mode
       : null;
 
@@ -344,34 +337,13 @@ export async function POST(req: Request) {
     draftDocId = body.doc;
   }
 
-  // Pull the draft entry id out of hidden_context for meal_log mode. The
-  // MealLoggerChatTab includes a line `entry_id: <uuid>` in the hidden
-  // context for every reply turn; we tag both the user and assistant rows
-  // with it so the post-commit DELETE can scope by draft_entry_id.
-  let mealLogDraftEntryId: string | null = null;
-  if (effectiveMode === "meal_log" && typeof body.hidden_context === "string") {
-    const m = body.hidden_context.match(/entry_id:\s*([0-9a-f-]{36})/i);
-    if (m) mealLogDraftEntryId = m[1];
-  }
-
-  // Stamp both rows with the resolved mode + kind + (for meal_log) the
-  // draft entry tag. kind defaults to 'coach' from the table; for meal_log
-  // mode we need 'meal_log' so the MealLoggerChatTab thread query picks up
-  // the assistant reply and the post-commit DELETE-by-draft_entry_id finds
-  // these rows.
-  const stampPatch: {
-    mode: ChatMode;
-    updated_at: string;
-    kind?: "meal_log";
-    draft_entry_id?: string;
-  } = {
+  // Stamp both rows with the resolved mode + updated_at. With the meal-sheet
+  // chat surface removed, no caller sets mode='meal_log' anymore; kind stays
+  // at its 'coach' table default.
+  const stampPatch: { mode: ChatMode; updated_at: string } = {
     mode: effectiveMode,
     updated_at: new Date().toISOString(),
   };
-  if (effectiveMode === "meal_log") {
-    stampPatch.kind = "meal_log";
-    if (mealLogDraftEntryId) stampPatch.draft_entry_id = mealLogDraftEntryId;
-  }
   await sr
     .from("chat_messages")
     .update(stampPatch)
@@ -842,9 +814,6 @@ export async function POST(req: Request) {
             speaker: streamSpeaker,
             peterContext,
             peterDashboardBlock,
-            mealLogDraftContext: typeof body.hidden_context === "string" && body.hidden_context.length > 0
-              ? body.hidden_context
-              : null,
           })) {
             if (req.signal.aborted) {
               aborted = true;
