@@ -139,7 +139,7 @@ export function PeterThemeCard({ theme, narrative, expanded, onToggle }: Props) 
           </div>
 
           {theme.sparkline && theme.sparkline.series.length > 0 && (
-            <div style={{ height: 100 }}>
+            <div style={{ height: 100, width: '100%', minWidth: 0 }}>
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart
                   data={theme.sparkline.series}
