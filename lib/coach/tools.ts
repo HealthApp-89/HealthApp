@@ -3359,10 +3359,9 @@ export async function executeMarkGlp1Discontinued(opts: {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// meal-log mode tools — search_library, pick_library_item, save_to_library.
-// Nora-only, exercised when mode='meal_log' inside MealLoggerSheet's CHAT tab.
-// All three operate on the user_food_items table and (for pick_library_item)
-// patch a draft food_log_entries row in place.
+// Library tools — search_library, pick_library_item, save_to_library.
+// Nora-only. Operate on user_food_items; pick_library_item also patches a
+// draft food_log_entries row in place.
 // ────────────────────────────────────────────────────────────────────────────
 
 export const SEARCH_LIBRARY_TOOL: ToolSchema = {

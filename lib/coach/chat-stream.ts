@@ -251,9 +251,7 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
   const baseSystemText = speaker === "peter"
     ? opts.systemPrompt
     : speakerSystemPromptForMode(speaker, opts.mode ?? "default");
-  // Append per-turn extras: Peter-context block (specialist activity recap)
-  // for Peter, draft context for Nora-in-meal-log. They're mutually exclusive
-  // in practice but treated as independent appends.
+  // Append per-turn extras: Peter dashboard block + specialist activity recap.
   let systemText = baseSystemText;
   if (opts.peterDashboardBlock && speaker === "peter") {
     systemText = `${systemText}\n\n${opts.peterDashboardBlock}`;
