@@ -23,6 +23,9 @@ type Props = {
   weekdayLong: string;     // "Monday"
   weekOverrides: Record<string, PlannedExercise[]> | null;
   onClose: () => void;
+  /** When set, LoggerSheet boots in edit mode: seeds state from initialDraft,
+   *  skips draft-store reads/writes, hides timer controls. */
+  editMode?: { initialDraft: LoggerDraft };
 };
 
 function makeDraftFromPlan(args: {
@@ -146,6 +149,10 @@ export function LoggerSheet(props: Props) {
   //    paused_at) or there are committed sets. Truly-empty open/close cycles
   //    are auto-discarded by handleClose so they don't show here.
   useEffect(() => {
+    if (props.editMode) {
+      setDraft(props.editMode.initialDraft);
+      return;
+    }
     let cancelled = false;
     (async () => {
       const existing = await loadDraft(props.userId, props.sessionType);
@@ -171,14 +178,15 @@ export function LoggerSheet(props: Props) {
       setDraft(fresh);
     })().catch((e) => console.error("LoggerSheet mount failed", e));
     return () => { cancelled = true; };
-  }, [props.userId, props.sessionType, props.date, props.weekdayLong, props.weekOverrides, supabase]);
+  }, [props.userId, props.sessionType, props.date, props.weekdayLong, props.weekOverrides, supabase, props.editMode]);
 
   // 2) Mirror to IndexedDB on every change.
   useEffect(() => {
     if (!draft) return;
+    if (props.editMode) return;       // edit mode: no draft persistence
     const updated = { ...draft, updated_at: new Date().toISOString() };
     void saveDraft(updated);
-  }, [draft]);
+  }, [draft, props.editMode]);
 
   // 3) Tick clock for elapsed. Skip ticks while paused — the displayed value
   //    is derived from draft.paused_at, which doesn't move.
@@ -295,12 +303,20 @@ export function LoggerSheet(props: Props) {
         sets: ex.sets
           .filter((s) => s.committed_at)
           .map((s, sIdx, arr) => {
-            const prev = arr[sIdx - 1];
-            const restActual = prev?.committed_at && s.committed_at
-              ? Math.round(
-                  (new Date(s.committed_at).getTime() - new Date(prev.committed_at).getTime()) / 1000,
-                )
-              : null;
+            // Prefer the value already on the draft set (came from hydration of a
+            // saved workout). Falls through to the timestamp-derived value for
+            // fresh-logger sets where commit_at deltas are the source of truth.
+            let restActual: number | null;
+            if (s.rest_seconds_actual !== undefined) {
+              restActual = s.rest_seconds_actual;
+            } else {
+              const prev = arr[sIdx - 1];
+              restActual = prev?.committed_at && s.committed_at
+                ? Math.round(
+                    (new Date(s.committed_at).getTime() - new Date(prev.committed_at).getTime()) / 1000,
+                  )
+                : null;
+            }
             return {
               set_index: s.set_index,
               kg: s.kg,
@@ -382,25 +398,31 @@ export function LoggerSheet(props: Props) {
       <div className="flex items-center justify-between p-3 border-b border-zinc-900 pt-[env(safe-area-inset-top)]">
         <button onClick={requestClose} className="text-zinc-400 text-lg" aria-label="Close logger">‹</button>
         <div className="text-zinc-300 text-sm flex items-center gap-2">
-          <div className="flex items-center gap-1.5">
-            <span className={`w-1.5 h-1.5 rounded-full ${isPaused ? "bg-yellow-500" : "bg-green-500"}`}></span>
-            <span className="font-mono tabular-nums">{elapsedLabel}</span>
-            <span>· {draft.session_type}</span>
-          </div>
-          <button
-            onClick={togglePause}
-            className="text-[11px] font-semibold uppercase tracking-wide text-zinc-300 bg-zinc-800 hover:bg-zinc-700 px-2 py-1 rounded-md"
-            aria-label={isPaused ? "Resume timer" : "Pause timer"}
-          >
-            {isPaused ? "Resume" : "Pause"}
-          </button>
-          <button
-            onClick={() => setResetConfirmOpen(true)}
-            className="text-[11px] font-semibold uppercase tracking-wide text-zinc-400 hover:text-red-400 px-1 py-1"
-            aria-label="Reset session"
-          >
-            Reset
-          </button>
+          {props.editMode ? (
+            <span className="font-mono tabular-nums text-zinc-400">Editing · {draft.session_type}</span>
+          ) : (
+            <>
+              <div className="flex items-center gap-1.5">
+                <span className={`w-1.5 h-1.5 rounded-full ${isPaused ? "bg-yellow-500" : "bg-green-500"}`}></span>
+                <span className="font-mono tabular-nums">{elapsedLabel}</span>
+                <span>· {draft.session_type}</span>
+              </div>
+              <button
+                onClick={togglePause}
+                className="text-[11px] font-semibold uppercase tracking-wide text-zinc-300 bg-zinc-800 hover:bg-zinc-700 px-2 py-1 rounded-md"
+                aria-label={isPaused ? "Resume timer" : "Pause timer"}
+              >
+                {isPaused ? "Resume" : "Pause"}
+              </button>
+              <button
+                onClick={() => setResetConfirmOpen(true)}
+                className="text-[11px] font-semibold uppercase tracking-wide text-zinc-400 hover:text-red-400 px-1 py-1"
+                aria-label="Reset session"
+              >
+                Reset
+              </button>
+            </>
+          )}
         </div>
         <button onClick={() => setFinishOpen(true)} className="bg-green-600 text-white text-xs font-semibold px-3 py-1.5 rounded-lg">
           Finish
@@ -408,7 +430,7 @@ export function LoggerSheet(props: Props) {
       </div>
 
       <div className="overflow-y-auto p-3 pb-32 flex-1">
-        {diverged && (
+        {!props.editMode && diverged && (
           <button
             onClick={() => setSaveDefaultOpen(true)}
             className="w-full bg-blue-500/10 border border-blue-500/30 text-blue-400 rounded-lg py-2 text-xs mb-3"
@@ -481,6 +503,7 @@ export function LoggerSheet(props: Props) {
           saving={committing}
           onConfirm={commitNow}
           onCancel={() => setFinishOpen(false)}
+          confirmLabel={props.editMode ? "Save changes" : undefined}
         />
       )}
 

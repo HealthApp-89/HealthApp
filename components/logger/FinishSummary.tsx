@@ -9,9 +9,10 @@ type Props = {
   onConfirm: () => void;
   onCancel: () => void;
   saving: boolean;
+  confirmLabel?: string;          // default: "Finish & save"
 };
 
-export function FinishSummary({ draft, durationMin, onConfirm, onCancel, saving }: Props) {
+export function FinishSummary({ draft, durationMin, onConfirm, onCancel, saving, confirmLabel }: Props) {
   let totalSets = 0;
   let totalVolume = 0;
   for (const ex of draft.exercises) {
@@ -34,7 +35,7 @@ export function FinishSummary({ draft, durationMin, onConfirm, onCancel, saving 
         </ul>
         <div className="flex gap-2">
           <button onClick={onConfirm} disabled={saving} className="flex-1 bg-green-600 text-white rounded-lg py-2 text-sm font-medium disabled:opacity-50">
-            {saving ? "Saving…" : "Finish & save"}
+            {saving ? "Saving…" : (confirmLabel ?? "Finish & save")}
           </button>
           <button onClick={onCancel} disabled={saving} className="flex-1 bg-zinc-800 text-zinc-300 rounded-lg py-2 text-sm">Back</button>
         </div>
