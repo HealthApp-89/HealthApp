@@ -15,7 +15,6 @@ import {
   CARTER_BASE,
   NORA_BASE,
   REMI_BASE,
-  NORA_MEAL_LOG_PROMPT,
   SCHEMA_EXPLAINER,
 } from "@/lib/coach/system-prompts";
 import {
@@ -71,11 +70,6 @@ const COACHES: Record<Speaker, CoachSpec> = {
       "Grams, kcal, ratios. Reads the food log liberally to ground advice in actual items rather than guessing.",
     tools: NORA_TOOLS,
     dailyLogsCols: NORA_COLS,
-    modeOverride: {
-      mode: "meal_log",
-      addendum: NORA_MEAL_LOG_PROMPT,
-      note: "Active when you're inside the meal-logging chat thread on /meal. Switches Nora from coach to terse data-entry assistant.",
-    },
   },
   remi: {
     name: "Remi",
