@@ -6,6 +6,7 @@ import { LibraryRow } from "./LibraryRow";
 import { LibrarySection } from "./LibrarySection";
 import type { FoodLibrarySections, FoodMacros, MealSlot } from "@/lib/food/types";
 import { useFoodLibrary } from "@/lib/query/hooks/useFoodLibrary";
+import { COLOR } from "@/lib/ui/theme";
 
 export function MealLoggerLibraryTab({
   userId,
@@ -89,14 +90,16 @@ export function MealLoggerLibraryTab({
         <button
           type="button"
           onClick={onOpenHistoryPicker}
-          className="flex-1 rounded-md border border-zinc-700 py-2 text-sm text-zinc-100"
+          className="flex-1 rounded-md py-2 text-sm font-medium"
+          style={{ border: `1px solid ${COLOR.divider}`, color: COLOR.textStrong, background: COLOR.surfaceAlt }}
         >
           📚 Pick from history
         </button>
         <button
           type="button"
           onClick={onOpenCustomCreate}
-          className="flex-1 rounded-md border border-zinc-700 py-2 text-sm text-zinc-100"
+          className="flex-1 rounded-md py-2 text-sm font-medium"
+          style={{ border: `1px solid ${COLOR.divider}`, color: COLOR.textStrong, background: COLOR.surfaceAlt }}
         >
           + Create custom food
         </button>

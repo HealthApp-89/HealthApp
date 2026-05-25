@@ -8,6 +8,7 @@ import { CustomFoodCreateAndLogSheet } from "./CustomFoodCreateAndLogSheet";
 import { useQueryClient } from "@tanstack/react-query";
 import type { MealSlot } from "@/lib/food/types";
 import { deriveMealSlot, mealSlotLabel } from "@/lib/food/meal-slot";
+import { COLOR } from "@/lib/ui/theme";
 
 type Tab = "search" | "library";
 
@@ -55,22 +56,28 @@ export function MealLoggerSheet({
   return (
     <>
       <BottomSheet open={open} onClose={onClose} title={title}>
-        <div className="flex gap-1 border-b border-zinc-800 px-3 pt-2">
+        <div className="flex gap-1 px-3 pt-2" style={{ borderBottom: `1px solid ${COLOR.divider}` }}>
           {([
             { key: "search", label: "Add food" },
             { key: "library", label: "Library" },
-          ] as const).map((t) => (
-            <button
-              key={t.key}
-              type="button"
-              onClick={() => setTab(t.key)}
-              className={`px-3 py-2 text-sm ${
-                tab === t.key ? "text-zinc-100 border-b-2 border-zinc-100" : "text-zinc-500"
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
+          ] as const).map((t) => {
+            const active = tab === t.key;
+            return (
+              <button
+                key={t.key}
+                type="button"
+                onClick={() => setTab(t.key)}
+                className="px-3 py-2 text-sm"
+                style={{
+                  color: active ? COLOR.textStrong : COLOR.textMuted,
+                  fontWeight: active ? 600 : 500,
+                  borderBottom: active ? `2px solid ${COLOR.textStrong}` : "2px solid transparent",
+                }}
+              >
+                {t.label}
+              </button>
+            );
+          })}
         </div>
         <div className="p-4">
           {tab === "search" && (
