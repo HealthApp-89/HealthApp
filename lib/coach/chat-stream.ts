@@ -295,18 +295,19 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
   //     plus regenerate_morning_brief.
   const modeAllowsTool = (name: string): boolean => {
     if (opts.mode === "meal_log") {
-      // Nora-in-meal-log needs the library tools plus the propose/commit meal
-      // log pair so she can finish the resolve → preview → confirm → log loop
-      // in one mode without bouncing the user back out to the meal sheet. All
-      // other tools are silenced to keep the LLM focused on data entry rather
-      // than wandering into nutrition advice (covered by NORA_MEAL_LOG_PROMPT).
+      // Nora-in-meal-log is clarification-only: server-side append into
+      // food_log_entries (via /api/food/parse with append_to_entry_id) is the
+      // canonical write path, and the Confirm button on the pinned meal card
+      // is the canonical commit. propose_meal_log / commit_meal_log are
+      // explicitly excluded here as defense-in-depth against the prompt-only
+      // steering in NORA_MEAL_LOG_PROMPT — if Nora hallucinates an approval
+      // echo, the tool isn't in the model's surface to call. Default-mode
+      // /coach chat still has those tools (see the explicit allows below).
       return (
         name === "search_library" ||
         name === "pick_library_item" ||
         name === "save_to_library" ||
-        name === "resolve_food_macros" ||
-        name === "propose_meal_log" ||
-        name === "commit_meal_log"
+        name === "resolve_food_macros"
       );
     }
     if (opts.mode === "plan_week" || opts.mode === "setup_block") {
