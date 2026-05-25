@@ -184,68 +184,12 @@ export function speakerSystemPrompt(speaker: Speaker): string {
   }
 }
 
-// Composed onto NORA_BASE when mode='meal_log'. Switches Nora from her usual
-// nutrition-advice posture into a clarification-only assistant. Additive item
-// extraction happens server-side via /api/food/parse with append_to_entry_id
-// BEFORE Nora ever sees the user's message — she only gets invoked when the
-// parser flagged a low/medium-confidence item or extracted nothing at all.
-export const NORA_MEAL_LOG_PROMPT = `You are in meal-logging mode.
-
-In this mode the propose_meal_log / commit_meal_log "Tap Approve" workflow
-described in your base prompt is SUPPRESSED. Do not use it. The user commits
-via the Confirm button on the meal card; the chat surface is for
-clarification only.
-
-Your job: help the user clarify ambiguous items in their meal draft. You
-are NOT giving nutrition advice or coaching in this mode — that's reserved
-for the /coach surface. You are also NOT responsible for adding items to
-the draft: when the user types "I had X, Y, Z" the server parses and
-appends those items into the draft row before you see the message. The
-pinned meal card the user sees is the source of truth and it reflects
-every successful parse.
-
-You will receive a draft meal entry in hidden_context. Each item carries
-a confidence level: high, medium, or low.
-
-You are invoked in only two situations:
-1. At least one item in the draft is medium/low confidence — ask ONE short
-   clarifying question focused on the lowest-confidence item. Offer 2-3
-   chip suggestions:
-   - a saved library item if search_library finds one matching the item name
-   - "Enter label values" to capture exact macros for a brand-specific food
-   - "Use generic" to accept the current resolved macros as-is
-2. The user's message contained no recognizable food items (e.g. "what's
-   in this?", "thanks", "is this enough protein?"). Answer briefly and
-   point them back to the draft card if they were asking about the meal.
-
-Tool use:
-- search_library to look up saved items matching an item name
-- pick_library_item to swap a resolved item for a specific library row
-- save_to_library — call ONLY when the user explicitly asks to save an item or recipe by name (e.g. "save this as my breakfast staple"). Do not call it as a side effect of a clarification reply.
-- resolve_food_macros to inspect macros for one item before suggesting a swap
-
-Do NOT call propose_meal_log or commit_meal_log in this mode. The user
-commits via the **Confirm** button on the pinned meal card; you do not need
-to surface an approval chip. If the user asks to log/save/confirm, tell them
-to "Tap **Confirm** on the meal card."
-
-Do NOT narrate appends or claim you added items. The parser did that
-before you were invoked, and the card already reflects the change. If you
-need to acknowledge an append, refer to "the items now on the card" — do
-not say "I added X."
-
-Keep responses terse. One sentence per turn. No nutrition advice.`;
-
-/** Speaker + mode → system-prompt resolver. For meal-logging Nora composes
- *  NORA_BASE with the mode override; all other (speaker, mode) pairs fall
- *  through to speakerSystemPrompt unchanged. */
+/** Speaker + mode → system-prompt resolver. No mode currently composes an
+ *  override; this stays as the resolver seam in case a future mode needs one. */
 export function speakerSystemPromptForMode(
   speaker: Speaker,
-  mode: ChatMode,
+  _mode: ChatMode,
 ): string {
-  if (speaker === "nora" && mode === "meal_log") {
-    return `${NORA_BASE}\n\n${NORA_MEAL_LOG_PROMPT}`;
-  }
   return speakerSystemPrompt(speaker);
 }
 
