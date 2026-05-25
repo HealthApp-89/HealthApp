@@ -114,8 +114,10 @@ The audit script `scripts/audit-meal-logging-resolve.mjs` already verifies the u
 |---|---|
 | `components/food/CustomFoodForm.tsx` | **new** — the form component, reused in both surfaces |
 | `lib/food/atwater.ts` | **new** — `deriveKcalFromMacros({protein_g, carbs_g, fat_g}): number` helper |
-| `components/profile/LibraryClient.tsx` | add "+ Add custom food" button, host the BottomSheet, replace empty-state copy |
-| `components/log/MealLoggerLibraryTab.tsx` | add inline "+ Create custom food" CTA, stacked-view host, post-save qty step |
+| `components/log/CustomFoodCreateAndLogSheet.tsx` | **new** — MealLoggerSheet-only wrapper: hosts `<CustomFoodForm>` then transitions to the post-save qty input that hits `/api/food/draft` + `/api/food/commit` |
+| `components/profile/LibraryClient.tsx` | add "+ Add custom food" button, host the form in a BottomSheet, replace empty-state copy |
+| `components/log/MealLoggerLibraryTab.tsx` | add inline "+ Create custom food" CTA next to "Pick from history"; emits open-event upward via a new `onOpenCustomCreate` prop |
+| `components/log/MealLoggerSheet.tsx` | host `<CustomFoodCreateAndLogSheet>` as a sibling sheet (same pattern as the existing `<HistoryPickerSheet>`); pass `onOpenCustomCreate` down to the library tab |
 
 No changes to: `app/api/food/user-items/route.ts`, `lib/food/library.ts`, `lib/food/types.ts`, `lib/query/fetchers/userFoodItems.ts`, `lib/query/hooks/useUserFoodItems.ts`, any migration, any cron, any chat tool.
 
