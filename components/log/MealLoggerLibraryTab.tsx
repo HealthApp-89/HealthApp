@@ -13,12 +13,14 @@ export function MealLoggerLibraryTab({
   eatenAt,
   onCommitted,
   onOpenHistoryPicker,
+  onOpenCustomCreate,
 }: {
   userId: string;
   mealSlot: MealSlot;
   eatenAt: string;
   onCommitted: () => void;
   onOpenHistoryPicker: () => void;
+  onOpenCustomCreate: () => void;
 }) {
   const [query, setQuery] = useState("");
   const debouncedQuery = useDebouncedValue(query, 300);
@@ -83,13 +85,22 @@ export function MealLoggerLibraryTab({
 
   return (
     <div className="space-y-3">
-      <button
-        type="button"
-        onClick={onOpenHistoryPicker}
-        className="w-full rounded-md border border-zinc-700 py-2 text-sm text-zinc-100"
-      >
-        📚 Pick from history
-      </button>
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={onOpenHistoryPicker}
+          className="flex-1 rounded-md border border-zinc-700 py-2 text-sm text-zinc-100"
+        >
+          📚 Pick from history
+        </button>
+        <button
+          type="button"
+          onClick={onOpenCustomCreate}
+          className="flex-1 rounded-md border border-zinc-700 py-2 text-sm text-zinc-100"
+        >
+          + Create custom food
+        </button>
+      </div>
 
       <input
         type="text"
