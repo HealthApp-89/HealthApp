@@ -154,9 +154,11 @@ function collectAllowedNumbers(facts: PeterDashboardFacts): Set<string> {
       out.add(String(v));
       out.add(String(Math.round(v)));
       out.add(String(Math.round(v * 10) / 10));
+      out.add(String(Math.round(v * 100) / 100));      // 2-decimal: 0.8917 → 0.89
       out.add(String(Math.abs(v)));
       out.add(String(Math.abs(Math.round(v))));
       out.add(String(Math.round(Math.abs(v) * 10) / 10));
+      out.add(String(Math.round(Math.abs(v) * 100) / 100));
       // Percentages: facts often store ratios (0.07 → "7%"). Only allow the
       // ×100 rendering when the raw value is in the ratio range [-1, 1] —
       // otherwise pushing 750 for 7.5 lets the model freely fabricate "750%".

@@ -26,10 +26,11 @@ Output strictly as JSON matching this shape — no surrounding markdown, no comm
 }
 
 Rules:
-1. Every numeric token you emit must appear in the facts payload. Do not invent.
-2. When a theme is in a cluster, that card's narrative MUST reference the cluster relationship (e.g. "same gap that's stalling your bench").
-3. Cite the most informative fact per card. For 'ok' severity, one short sentence is enough.
-4. No padding, no disclaimers, no "I'd recommend".`;
+1. Every numeric token you emit must appear in the facts payload EXACTLY as a value (or as that value rounded to 0, 1, or 2 decimals). Do NOT compute derived numbers — no differences, sums, ratios, percentages, or per-day extrapolations. If the orchestrator did not compute a number, do not cite it.
+2. When a numeric ratio is stored as a decimal (e.g. 0.07), you may cite it as "7%" — that conversion is allowed.
+3. When a theme is in a cluster, that card's narrative MUST reference the cluster relationship (e.g. "same gap that's stalling your bench").
+4. Cite the most informative fact per card. For 'ok' severity, one short sentence is enough.
+5. No padding, no disclaimers, no "I'd recommend".`;
 
 export function buildUserMessage(facts: PeterDashboardFacts): string {
   return JSON.stringify(facts);
