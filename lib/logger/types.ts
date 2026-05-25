@@ -11,6 +11,10 @@ export type ExerciseSetDraft = {
   warmup: boolean;
   failure: boolean;
   committed_at: string | null; // ISO timestamp on ✓
+  /** Carried across edit cycles: the timer-recorded rest before this set
+   *  when re-committing an edited workout. Undefined on fresh logger sessions
+   *  (computed from committed_at deltas at commit time). */
+  rest_seconds_actual?: number | null;
 };
 
 /**
