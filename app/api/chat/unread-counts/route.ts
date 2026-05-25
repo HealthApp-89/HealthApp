@@ -13,7 +13,7 @@ import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 const THREADS = ["peter", "carter", "nora", "remi"] as const;
-const VISIBLE_KINDS = ["coach", "morning_brief", "weekly_review", "proactive_nudge"];
+const VISIBLE_KINDS = ["coach", "morning_brief", "weekly_review", "proactive_nudge", "workout_debrief"];
 
 export const dynamic = "force-dynamic";
 

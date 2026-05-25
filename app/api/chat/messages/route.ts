@@ -16,7 +16,7 @@ import { executeCommitMealLog } from "@/lib/coach/tools";
 import { SPEAKERS } from "@/lib/data/types";
 import { CHAT_MODEL } from "@/lib/anthropic/models";
 import { findFabricatedNumbers } from "@/lib/coach/fabrication-check";
-import type { ToolCallLog, MorningUI, WeeklyReviewCardUI, Speaker } from "@/lib/data/types";
+import type { ToolCallLog, Speaker } from "@/lib/data/types";
 import { buildSnapshot, buildEphemeralHeader } from "@/lib/coach/snapshot";
 import { todayInUserTz } from "@/lib/time";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -73,7 +73,7 @@ export async function GET(req: Request) {
   const kinds =
     kindRaw === "morning_intake"
       ? ["morning_intake", "morning_brief"]
-      : ["coach", "morning_brief", "weekly_review"];
+      : ["coach", "morning_brief", "weekly_review", "proactive_nudge", "workout_debrief"];
   const limitRaw = parseInt(url.searchParams.get("limit") ?? "", 10);
   const limit = Math.min(MAX_LIMIT, Number.isFinite(limitRaw) && limitRaw > 0 ? limitRaw : DEFAULT_LIMIT);
 
@@ -147,8 +147,8 @@ export async function GET(req: Request) {
     images: imagesByMsg.get(r.id) ?? [],
     speaker: (r as { speaker?: import("@/lib/data/types").ChatSpeaker }).speaker ?? ("peter" as const),
     thread: ((r as { thread?: import("@/lib/data/types").Speaker }).thread ?? "peter") as import("@/lib/data/types").Speaker,
-    kind: (r.kind as "coach" | "morning_intake" | "morning_brief" | "weekly_review") ?? "coach",
-    ui: (r.ui as MorningUI | WeeklyReviewCardUI | null) ?? null,
+    kind: (r.kind as ChatMessage["kind"]) ?? "coach",
+    ui: (r.ui as ChatMessage["ui"]) ?? null,
     tool_calls: (r as { tool_calls?: import("@/lib/data/types").ToolCallLog[] | null }).tool_calls ?? null,
     mode: (r as { mode?: import("@/lib/data/types").ChatMode }).mode ?? "default",
   }));
