@@ -1,16 +1,15 @@
 'use client';
 
 import { useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useRouter } from 'next/navigation';
 import { COLOR, RADIUS } from '@/lib/ui/theme';
-import { queryKeys } from '@/lib/query/keys';
 
 type Props = { userId: string };
 
-export function PeterDashboardRegenButton({ userId }: Props) {
+export function PeterDashboardRegenButton({ userId: _userId }: Props) {
   const [pending, setPending] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const qc = useQueryClient();
+  const router = useRouter();
 
   async function onClick() {
     setPending(true);
@@ -32,8 +31,11 @@ export function PeterDashboardRegenButton({ userId }: Props) {
         }
         return;
       }
-      // Wide-prefix invalidation — evicts every (userId, date) key.
-      await qc.invalidateQueries({ queryKey: queryKeys.peterDashboard.all(userId) });
+      // Re-run the Server Component to SSR-prefetch the new row and rehydrate
+      // the TanStack Query cache. We CANNOT use qc.invalidateQueries here —
+      // that would trigger a refetch via fetchPeterDashboardBrowser which
+      // throws by design (SSR-hydrate-only pattern, see useRecoveryIntelligence).
+      router.refresh();
     } catch (e) {
       setErr(String(e));
     } finally {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
 import { COLOR, RADIUS, SHADOW } from "@/lib/ui/theme";
 
 type GoalKind = "lift_e1rm" | "bodyweight_kg" | "bodyfat_pct";
@@ -28,7 +28,7 @@ const LIFT_OPTIONS = ["bench", "deadlift", "squat", "ohp"] as const;
  * (these columns post-date the immutability rule).
  */
 export function GoalSection() {
-  const qc = useQueryClient();
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -73,8 +73,10 @@ export function GoalSection() {
         return;
       }
       setSaved(true);
-      // Invalidate dashboard cache so the Goal card refreshes.
-      await qc.invalidateQueries({ queryKey: ["peterDashboard"] });
+      // Re-run server components on /coach + /profile so the Goal card picks
+      // up the new structured fields. Avoid qc.invalidateQueries — that
+      // refetches via fetchPeterDashboardBrowser which throws by design.
+      router.refresh();
     } catch (e) {
       setErr(String(e));
     } finally {
