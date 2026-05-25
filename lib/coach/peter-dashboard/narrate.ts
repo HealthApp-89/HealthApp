@@ -198,6 +198,7 @@ function collectAllowedNumbers(facts: PeterDashboardFacts): Set<string> {
   push(facts.block_context.block_number);
   push(facts.block_context.week_of_block);
   push(facts.goal_summary.target);
+  push(facts.goal_summary.target_date);   // ISO date → year/month/day tokens via the string branch
   // Always allow small integers and percentages for general prose.
   for (let i = 0; i <= 100; i++) out.add(String(i));
   return out;
