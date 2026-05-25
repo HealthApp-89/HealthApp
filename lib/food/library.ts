@@ -43,9 +43,13 @@ export type CreateLibraryItemInput =
     };
 
 /** Create a library row. Validates the one-shape constraint up-front so the
- *  Postgres CHECK only fires on programmer error. */
+ *  Postgres CHECK only fires on programmer error. user_id is required because
+ *  the table's INSERT policy is `with check (auth.uid() = user_id)` and the
+ *  column has no DEFAULT — passing the cookie-bound supabase client alone is
+ *  not enough, the row must carry the id explicitly. */
 export async function createLibraryItem(
   supabase: SupabaseClient,
+  userId: string,
   input: CreateLibraryItemInput,
 ): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
   if (input.kind === "item") {
@@ -59,6 +63,7 @@ export async function createLibraryItem(
   const row =
     input.kind === "item"
       ? {
+          user_id: userId,
           name: input.name,
           per_100g: input.per_100g,
           composite_of: null,
@@ -67,6 +72,7 @@ export async function createLibraryItem(
           notes: input.notes ?? null,
         }
       : {
+          user_id: userId,
           name: input.name,
           per_100g: null,
           composite_of: input.composite_of,

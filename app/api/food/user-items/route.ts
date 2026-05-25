@@ -58,7 +58,7 @@ export async function POST(req: Request) {
   const parsed = CreateBodySchema.safeParse(json);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.message }, { status: 400 });
 
-  const result = await createLibraryItem(supabase, parsed.data as CreateLibraryItemInput);
+  const result = await createLibraryItem(supabase, user.id, parsed.data as CreateLibraryItemInput);
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: 500 });
   return NextResponse.json({ id: result.id });
 }
