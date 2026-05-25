@@ -352,7 +352,10 @@ export function LoggerSheet(props: Props) {
       fetch("/api/coach/workout-debrief", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ workout_id: commitResult.workout_id }),
+        body: JSON.stringify({
+          workout_id: commitResult.workout_id,
+          force: !!props.editMode,
+        }),
       }).catch(() => {
         /* fire-and-forget — debrief is best-effort */
       });
