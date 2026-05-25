@@ -13,12 +13,12 @@
 //
 // Composer state machine:
 //   * no active draft → next send POSTs /api/food/parse (new meal entry)
-//   * active draft    → next send POSTs /api/chat/messages with
-//     mode=meal_log, speaker=nora, and hidden_context describing the draft.
-//     The chat-route streams Nora's response over SSE; she may call
-//     search_library / pick_library_item / save_to_library, which mutate
-//     the draft row server-side. On tool_call_done for pick_library_item,
-//     we refetch the draft so the pinned preview reflects the change.
+//   * active draft → next send POSTs /api/food/parse with
+//     append_to_entry_id. The new items append into the draft row server-
+//     side and the pinned card refreshes from the response. Nora is invoked
+//     ONLY if (a) the parser extracted 0 items (treat the message as a
+//     question / clarification reply) OR (b) the appended items include a
+//     low/medium-confidence pick (Nora steps in to clarify).
 //   * "+ New meal" pill (visible only when there's an active draft) cancels
 //     the current draft and returns the composer to parse mode.
 //
@@ -451,9 +451,143 @@ export function MealLoggerChatTab({ userId, mealSlot, eatenAt, onCommitted }: Pr
     return parseJson.needs_clarification ? parseJson.entry : null;
   };
 
+  /** Append-to-draft path: /api/food/parse with append_to_entry_id → merge
+   *  returned items into the local drafts map → conditionally surface the
+   *  user bubble. Returns one of three signals so send() can decide what
+   *  to do next:
+   *    {kind: 'silent'}        → items appended, no Nora needed; we wrote
+   *                              the user bubble locally already
+   *    {kind: 'needs_nora'}    → items appended but low/med confidence; send()
+   *                              calls streamNoraReply (which writes the
+   *                              user row server-side via the chat-route)
+   *    {kind: 'no_items'}      → parser extracted 0 items; treat the message
+   *                              as a question — send() calls streamNoraReply
+   *    {kind: 'error'}         → an error bubble was already pushed; bail
+   */
+  type AppendResult =
+    | { kind: "silent"; entry: FoodLogEntry }
+    | { kind: "needs_nora"; entry: FoodLogEntry }
+    | { kind: "no_items" }
+    | { kind: "error" };
+
+  const parseAppend = async (text: string, draft: FoodLogEntry): Promise<AppendResult> => {
+    let parseRes: Response;
+    try {
+      parseRes = await fetch("/api/food/parse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text,
+          meal_slot: mealSlot,
+          eaten_at: eatenAt,
+          append_to_entry_id: draft.id,
+        }),
+      });
+    } catch (e) {
+      console.error("[meal-log] /api/food/parse (append) fetch threw", e);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `err-${Date.now()}`,
+          speaker: "nora",
+          content: `Network error: ${(e as Error).message}`,
+          ui: null,
+          created_at: new Date().toISOString(),
+        },
+      ]);
+      return { kind: "error" };
+    }
+    if (!parseRes.ok) {
+      const detail = await parseRes.text().catch(() => "");
+      console.error("[meal-log] /api/food/parse (append) non-OK", parseRes.status, detail);
+      let parsedDetail = "";
+      try {
+        const j = JSON.parse(detail) as { error?: string; detail?: string };
+        parsedDetail = [j.error, j.detail].filter(Boolean).join(": ");
+      } catch {
+        parsedDetail = detail.slice(0, 160);
+      }
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `err-${Date.now()}`,
+          speaker: "nora",
+          content: `I couldn't add that (HTTP ${parseRes.status}).${parsedDetail ? `\n${parsedDetail}` : ""}`,
+          ui: null,
+          created_at: new Date().toISOString(),
+        },
+      ]);
+      return { kind: "error" };
+    }
+
+    const json = (await parseRes.json()) as {
+      entry: FoodLogEntry;
+      appended: FoodItem[];
+      needs_clarification: boolean;
+    };
+
+    // Always update the drafts map from the response (no extra DB round-trip).
+    setDrafts((prev) => ({ ...prev, [json.entry.id]: json.entry }));
+
+    if (json.appended.length === 0) {
+      // Parser extracted nothing — the message is a question or clarification
+      // reply. send() will hand it to streamNoraReply, which writes the user
+      // row via the chat-route.
+      return { kind: "no_items" };
+    }
+
+    if (json.needs_clarification) {
+      // Items appended but Nora needs to clarify. streamNoraReply will write
+      // the user row via the chat-route. Return the updated entry so send()
+      // can pass it as hidden_context without waiting on a re-render.
+      return { kind: "needs_nora", entry: json.entry };
+    }
+
+    // Silent append: write the user bubble locally so the conversation shows
+    // what was added. No Nora invocation, no chat-route round-trip — the
+    // updated card is the receipt.
+    const { data: userRow, error: userErr } = await supabase
+      .from("chat_messages")
+      .insert({
+        user_id: userId,
+        role: "user",
+        content: text,
+        status: "done",
+        speaker: "user",
+        kind: "meal_log",
+        mode: "meal_log",
+        draft_entry_id: draft.id,
+        ui: null,
+      })
+      .select("id, speaker, content, ui, created_at, draft_entry_id")
+      .single();
+    if (userErr) {
+      console.error("[meal-log] user insert (append) failed", userErr);
+      // Best-effort: the items DID append server-side; surface a soft warning
+      // but don't pretend the whole append failed.
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `warn-${Date.now()}`,
+          speaker: "nora",
+          content: `Added — but couldn't save your message text. ${userErr.message}`,
+          ui: null,
+          created_at: new Date().toISOString(),
+        },
+      ]);
+      return { kind: "silent", entry: json.entry };
+    }
+    if (userRow) {
+      setMessages((prev) => [...prev, userRow as ThreadMessage]);
+    }
+    return { kind: "silent", entry: json.entry };
+  };
+
   /** Send dispatch:
    *    no active draft  → parseNewMeal()
-   *    active draft     → streamNoraReply() (LLM dialog)
+   *    active draft     → parseAppend() first; fall through to streamNoraReply
+   *                       only when the parser returned 0 items OR flagged
+   *                       low/medium-confidence items needing clarification.
    *  After a new-meal parse that flagged needs_clarification, automatically
    *  trigger Nora's first LLM turn with the draft as hidden_context. */
   const send = async () => {
@@ -463,11 +597,20 @@ export function MealLoggerChatTab({ userId, mealSlot, eatenAt, onCommitted }: Pr
     try {
       const active = findActiveDraft();
       if (active) {
-        await streamNoraReply(text, active);
+        const result = await parseAppend(text, active);
+        if (result.kind === "needs_nora") {
+          // Use the freshly-returned entry from parseAppend, not the drafts
+          // map — setDrafts is async and the closure-captured `drafts` here
+          // may still hold the pre-append snapshot.
+          await streamNoraReply(text, result.entry);
+        } else if (result.kind === "no_items") {
+          // Nothing got appended; original draft is still current.
+          await streamNoraReply(text, active);
+        }
+        // silent / error: nothing else to do.
       } else {
         const entryNeedingChat = await parseNewMeal(text);
         if (entryNeedingChat) {
-          // Nora's first LLM turn — uses the freshly-parsed draft.
           await streamNoraReply(text, entryNeedingChat);
         }
       }
