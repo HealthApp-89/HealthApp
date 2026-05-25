@@ -6,6 +6,7 @@ import { WCOLORS } from "@/lib/ui/colors";
 import { Card } from "@/components/ui/Card";
 import { fmtNum } from "@/lib/ui/score";
 import { COLOR } from "@/lib/ui/theme";
+import { EditSessionButton } from "@/components/logger/EditSessionButton";
 import { useMemo, useState } from "react";
 import {
   aggregateSessionMuscles,
@@ -73,6 +74,11 @@ export function SessionTable({ session }: Props) {
           {allBodyweight && (
             <span style={{ color: wc }}>{session.bwReps} reps total</span>
           )}
+          <EditSessionButton
+            workoutId={session.id}
+            eligible={session.source === "logger"}
+            className="text-[10px] font-mono uppercase tracking-wide hover:opacity-80 disabled:opacity-50"
+          />
         </div>
       </div>
 
