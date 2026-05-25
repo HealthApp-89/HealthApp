@@ -38,6 +38,28 @@ export async function POST(req: Request) {
   try {
     extracted = await extractItems(text);
   } catch (e) {
+    // Append mode: extraction failure usually means the user's message was
+    // not food text (e.g. a reply to a Nora clarification like "use generic",
+    // "yes", a question). Return the existing draft unchanged with empty
+    // appended so the client routes the message to Nora instead of surfacing
+    // a 502. New-draft mode keeps the hard error — typing non-food into the
+    // empty composer is a user error worth showing.
+    if (append_to_entry_id) {
+      const { data: existing } = await supabase
+        .from("food_log_entries")
+        .select("id, eaten_at, meal_slot, kind, items, totals, is_estimated, is_favorite, status")
+        .eq("id", append_to_entry_id)
+        .eq("user_id", user.id)
+        .eq("status", "draft")
+        .single();
+      if (existing) {
+        return NextResponse.json({
+          entry: existing,
+          appended: [],
+          needs_clarification: false,
+        });
+      }
+    }
     return NextResponse.json(
       { error: "extraction_failed", detail: (e as Error).message },
       { status: 502 },
