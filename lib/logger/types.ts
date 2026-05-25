@@ -32,6 +32,10 @@ export type LoggerDraft = {
   user_id: string;
   session_type: string;
   date: string;           // YYYY-MM-DD
+  /** Preserved across edit cycles: the original workout's recorded duration.
+   *  Set by `hydrateWorkoutAsDraft`. Fresh logger sessions leave this
+   *  undefined — `commitNow` then derives duration from elapsed timer. */
+  duration_min?: number | null;
   started_at: string;     // ISO timestamp at sheet open; anchors elapsed timer
   updated_at: string;     // ISO timestamp on every change
   /** ISO timestamp when timer was paused; null = running. */

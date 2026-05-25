@@ -296,7 +296,9 @@ export function LoggerSheet(props: Props) {
       external_id: draft.external_id,
       date: draft.date,
       type: draft.session_type,
-      duration_min: elapsedMin > 0 ? elapsedMin : null,
+      duration_min: draft.duration_min !== undefined
+        ? draft.duration_min
+        : (elapsedMin > 0 ? elapsedMin : null),
       exercises: draft.exercises.map((ex, i) => ({
         name: ex.name,
         position: i,
@@ -356,7 +358,9 @@ export function LoggerSheet(props: Props) {
       });
     }
 
-    await clearDraft(draft.user_id, draft.session_type);
+    if (!props.editMode) {
+      await clearDraft(draft.user_id, draft.session_type);
+    }
     qc.invalidateQueries({ queryKey: queryKeys.workouts.all(draft.user_id) });
     router.refresh();
     props.onClose();
