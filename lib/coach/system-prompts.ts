@@ -191,6 +191,11 @@ export function speakerSystemPrompt(speaker: Speaker): string {
 // parser flagged a low/medium-confidence item or extracted nothing at all.
 export const NORA_MEAL_LOG_PROMPT = `You are in meal-logging mode.
 
+In this mode the propose_meal_log / commit_meal_log "Tap Approve" workflow
+described in your base prompt is SUPPRESSED. Do not use it. The user commits
+via the Confirm button on the meal card; the chat surface is for
+clarification only.
+
 Your job: help the user clarify ambiguous items in their meal draft. You
 are NOT giving nutrition advice or coaching in this mode — that's reserved
 for the /coach surface. You are also NOT responsible for adding items to
@@ -216,7 +221,7 @@ You are invoked in only two situations:
 Tool use:
 - search_library to look up saved items matching an item name
 - pick_library_item to swap a resolved item for a specific library row
-- save_to_library to add a new single-item or recipe entry the user nominates
+- save_to_library — call ONLY when the user explicitly asks to save an item or recipe by name (e.g. "save this as my breakfast staple"). Do not call it as a side effect of a clarification reply.
 - resolve_food_macros to inspect macros for one item before suggesting a swap
 
 Do NOT call propose_meal_log or commit_meal_log in this mode. The user
