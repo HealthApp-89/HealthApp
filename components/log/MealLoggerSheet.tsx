@@ -4,6 +4,7 @@ import { BottomSheet } from "@/components/ui/BottomSheet";
 import { MealLoggerSearchTab } from "./MealLoggerSearchTab";
 import { MealLoggerLibraryTab } from "./MealLoggerLibraryTab";
 import { HistoryPickerSheet } from "./HistoryPickerSheet";
+import { CustomFoodCreateAndLogSheet } from "./CustomFoodCreateAndLogSheet";
 import { useQueryClient } from "@tanstack/react-query";
 import type { MealSlot } from "@/lib/food/types";
 import { deriveMealSlot, mealSlotLabel } from "@/lib/food/meal-slot";
@@ -25,6 +26,7 @@ export function MealLoggerSheet({
 }) {
   const [tab, setTab] = useState<Tab>("search");
   const [historyPickerOpen, setHistoryPickerOpen] = useState(false);
+  const [customCreateOpen, setCustomCreateOpen] = useState(false);
   const queryClient = useQueryClient();
 
   const mealSlot: MealSlot =
@@ -86,6 +88,7 @@ export function MealLoggerSheet({
               eatenAt={eatenAt}
               onCommitted={onCommitted}
               onOpenHistoryPicker={() => setHistoryPickerOpen(true)}
+              onOpenCustomCreate={() => setCustomCreateOpen(true)}
             />
           )}
         </div>
@@ -97,6 +100,13 @@ export function MealLoggerSheet({
         initialDestinationSlot={mealSlot}
         initialEatenAt={eatenAt}
         onCommitted={onCommitted}
+      />
+      <CustomFoodCreateAndLogSheet
+        open={customCreateOpen}
+        onClose={() => setCustomCreateOpen(false)}
+        mealSlot={mealSlot}
+        eatenAt={eatenAt}
+        onLogged={onCommitted}
       />
     </>
   );
