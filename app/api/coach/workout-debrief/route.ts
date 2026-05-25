@@ -21,13 +21,14 @@ export async function POST(req: Request) {
   const { data: { user } } = await userClient.auth.getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-  let body: { workout_id?: string };
+  let body: { workout_id?: string; force?: boolean };
   try {
-    body = (await req.json()) as { workout_id?: string };
+    body = (await req.json()) as { workout_id?: string; force?: boolean };
   } catch {
     return NextResponse.json({ error: "invalid_json" }, { status: 400 });
   }
   const workoutId = body.workout_id;
+  const force = body.force === true;
   if (!workoutId) {
     return NextResponse.json({ error: "workout_id required" }, { status: 400 });
   }
@@ -58,7 +59,18 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: lookupErr.message }, { status: 500 });
   }
   if (existing) {
-    return NextResponse.json({ ok: true, chat_message_id: existing.id, idempotent: true });
+    if (!force) {
+      return NextResponse.json({ ok: true, chat_message_id: existing.id, idempotent: true });
+    }
+    // Force regenerate: drop the stale row so the insert below lands cleanly.
+    const { error: delErr } = await sr
+      .from("chat_messages")
+      .delete()
+      .eq("id", existing.id)
+      .eq("user_id", user.id);
+    if (delErr) {
+      return NextResponse.json({ error: delErr.message }, { status: 500 });
+    }
   }
 
   // Generate.
