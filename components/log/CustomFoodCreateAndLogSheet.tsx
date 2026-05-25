@@ -13,6 +13,7 @@
 // still saved in step 1.
 
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { CustomFoodForm, type SavedItem } from "@/components/food/CustomFoodForm";
 import { fmtNum } from "@/lib/ui/score";
@@ -31,6 +32,8 @@ export function CustomFoodCreateAndLogSheet({
   eatenAt: string;
   onLogged: () => void;
 }) {
+  const queryClient = useQueryClient();
+
   const [step, setStep] = useState<"form" | "qty">("form");
   const [savedItem, setSavedItem] = useState<SavedItem | null>(null);
   const [qtyG, setQtyG] = useState("100");
@@ -45,9 +48,19 @@ export function CustomFoodCreateAndLogSheet({
     setBusy(false);
   };
 
+  const invalidateLibrary = async () => {
+    await queryClient.invalidateQueries({
+      predicate: (q) => q.queryKey[0] === "food-library" || q.queryKey[0] === "user-food-items",
+    });
+  };
+
   const handleClose = () => {
+    const hadSavedItem = savedItem !== null;
     reset();
     onClose();
+    if (hadSavedItem) {
+      void invalidateLibrary();
+    }
   };
 
   const handleSaved = (item: SavedItem) => {
@@ -100,6 +113,7 @@ export function CustomFoodCreateAndLogSheet({
         const json = await commitRes.json().catch(() => ({ error: "commit_failed" }));
         throw new Error(json.error || "commit_failed");
       }
+      await invalidateLibrary();
       onLogged();
       handleClose();
     } catch (e) {
