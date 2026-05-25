@@ -29,6 +29,7 @@ export type WorkoutSession = {
   date: string;
   type: string | null;
   duration_min: number | null;
+  source: string | null;
   exercises: WorkoutExercise[];
   /** Total working volume in kg (kg × reps over weighted working sets). */
   vol: number;
@@ -41,7 +42,7 @@ export type WorkoutSession = {
 /** Shared select string for the workouts query. Exported so the browser-side
  *  fetcher in `lib/query/fetchers/loadWorkouts.ts` can use the same shape. */
 export const WORKOUT_QUERY_COLS =
-  "id, date, type, duration_min, exercises(name, position, exercise_sets(kg, reps, duration_seconds, warmup, failure, set_index))";
+  "id, date, type, duration_min, source, exercises(name, position, exercise_sets(kg, reps, duration_seconds, warmup, failure, set_index))";
 
 /** Raw shape Supabase returns for the workouts join. Exported so the browser
  *  fetcher and server fetcher can both feed `processRawWorkouts`. */
@@ -50,6 +51,7 @@ export type RawWorkoutRow = {
   date: string;
   type: string | null;
   duration_min: number | null;
+  source: string | null;
   exercises:
     | {
         name: string;
@@ -124,6 +126,7 @@ export function processRawWorkouts(raw: RawWorkoutRow[]): WorkoutSession[] {
       date: w.date,
       type: w.type,
       duration_min: w.duration_min,
+      source: w.source,
       exercises,
       vol,
       bwReps,
