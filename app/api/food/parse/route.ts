@@ -16,6 +16,10 @@ const BodySchema = z.object({
   text: z.string().min(1).max(2000),
   meal_slot: z.enum(["breakfast", "lunch", "dinner", "snack"]),
   eaten_at: z.string().datetime().optional(),
+  /** When present, append the parsed items into this existing draft row
+   *  instead of creating a new one. The row must belong to the authed user
+   *  and have status='draft'. */
+  append_to_entry_id: z.string().uuid().optional(),
 });
 
 export async function POST(req: Request) {
@@ -27,7 +31,7 @@ export async function POST(req: Request) {
   const parsed = BodySchema.safeParse(json);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.message }, { status: 400 });
 
-  const { text, eaten_at } = parsed.data;
+  const { text, eaten_at, append_to_entry_id } = parsed.data;
 
   // 1. Extract items via Haiku
   let extracted;
@@ -74,7 +78,53 @@ export async function POST(req: Request) {
     (it) => it.confidence === "medium" || it.confidence === "low",
   );
 
-  // 3. Insert draft entry
+  // 3. Persist: append to existing draft, or insert a fresh one.
+  if (append_to_entry_id) {
+    // Append branch: load row, validate ownership + draft status, merge items,
+    // recompute totals from the combined list, persist in place.
+    const { data: existing, error: loadErr } = await supabase
+      .from("food_log_entries")
+      .select("id, user_id, status, items, is_estimated")
+      .eq("id", append_to_entry_id)
+      .single();
+    if (loadErr || !existing) {
+      return NextResponse.json({ error: "draft_not_found" }, { status: 404 });
+    }
+    if (existing.user_id !== user.id) {
+      // RLS would also reject, but the explicit 403 is clearer in logs.
+      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    }
+    if (existing.status !== "draft") {
+      return NextResponse.json({ error: "not_a_draft" }, { status: 409 });
+    }
+
+    const mergedItems = [...(existing.items as FoodItem[]), ...items];
+    const mergedTotals = sumMacros(mergedItems);
+    const mergedIsEstimated = existing.is_estimated || is_estimated;
+
+    const { data: updated, error: updateErr } = await supabase
+      .from("food_log_entries")
+      .update({
+        items: mergedItems,
+        totals: mergedTotals,
+        is_estimated: mergedIsEstimated,
+      })
+      .eq("id", append_to_entry_id)
+      .select("id, eaten_at, meal_slot, kind, items, totals, is_estimated, is_favorite, status")
+      .single();
+    if (updateErr || !updated) {
+      console.error("[/api/food/parse] append update failed", updateErr);
+      return NextResponse.json({ error: "update_failed" }, { status: 500 });
+    }
+
+    return NextResponse.json({
+      entry: updated,
+      appended: items,
+      needs_clarification,
+    });
+  }
+
+  // 3b. New-draft branch (existing behavior, unchanged).
   const { data: inserted, error } = await supabase
     .from("food_log_entries")
     .insert({
