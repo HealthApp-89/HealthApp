@@ -25,7 +25,7 @@ const CandidateSchema = z.object({
     fat_g: z.number().nonnegative(),
     fiber_g: z.number().nonnegative(),
   }),
-  source: z.enum(["db", "off", "usda"]),
+  source: z.enum(["db", "off", "usda", "user_library"]),
   canonical_id: z.string().uuid().nullable(),
   image_url: z.string().url().nullable(),
 });
@@ -54,9 +54,17 @@ export async function POST(req: Request) {
   const items: FoodItem[] = [];
   for (const { candidate, qty_g } of parsed.data.items) {
     let canonical_id = candidate.canonical_id;
-    let db_source: "usda" | "openfoodfacts" | "manual";
+    let db_source: "usda" | "openfoodfacts" | "manual" | "user_library";
 
-    if (candidate.source === "db") {
+    if (candidate.source === "user_library") {
+      // Library hit — canonical_id IS the user_food_items.id (set by
+      // searchUserLibrary). No cache write; the library is its own canonical
+      // source. Matches log_meal_entry's behavior for library-tagged items.
+      if (!canonical_id) {
+        return NextResponse.json({ error: "user_library_candidate_missing_id" }, { status: 400 });
+      }
+      db_source = "user_library";
+    } else if (candidate.source === "db") {
       if (!canonical_id) {
         return NextResponse.json({ error: "db_candidate_missing_canonical_id" }, { status: 400 });
       }

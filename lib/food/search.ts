@@ -47,7 +47,18 @@ async function searchUserLibrary(query: string, userId: string): Promise<SearchC
     composite_of: unknown[] | null;
     default_serving_g: number | null;
   }>).map((r) => {
-    const per_100g: FoodMacros = r.per_100g ?? { kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0, fiber_g: 0 };
+    // Defensive field-by-field merge. r.per_100g is a jsonb column; older
+    // user_food_items rows can be missing fiber_g entirely, and recipes carry
+    // null. Field defaults to 0 in either case so the candidate passes the
+    // /api/food/draft Zod schema (which requires all five macros).
+    const raw = (r.per_100g ?? {}) as Partial<FoodMacros>;
+    const per_100g: FoodMacros = {
+      kcal: typeof raw.kcal === "number" ? raw.kcal : 0,
+      protein_g: typeof raw.protein_g === "number" ? raw.protein_g : 0,
+      carbs_g: typeof raw.carbs_g === "number" ? raw.carbs_g : 0,
+      fat_g: typeof raw.fat_g === "number" ? raw.fat_g : 0,
+      fiber_g: typeof raw.fiber_g === "number" ? raw.fiber_g : 0,
+    };
     return {
       name: r.name,
       per_100g,
