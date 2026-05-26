@@ -29,8 +29,9 @@ type SweepResult = {
 
 export async function GET(req: Request) {
   // Vercel cron calls GET with `Authorization: Bearer ${CRON_SECRET}`.
-  const auth = req.headers.get("authorization");
-  if (!auth || auth !== `Bearer ${process.env.CRON_SECRET}`) {
+  const auth = req.headers.get("authorization") ?? "";
+  const cronSecret = process.env.CRON_SECRET;
+  if (!cronSecret || !auth.startsWith("Bearer ") || auth.slice(7) !== cronSecret) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
