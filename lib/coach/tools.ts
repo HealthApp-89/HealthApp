@@ -1961,6 +1961,58 @@ export async function executeProposeSessionToday(opts: {
     };
   }
 
+  // Off-grid weight guard. Each library entry carries `increment.step` (per-DB
+  // for paired DBs; total otherwise) and `pairedDb`. baseKg must be a multiple
+  // of step. Free-form exercises not in the library are skipped — Carter
+  // flagged the library gap in the rationale and the athlete will see it on
+  // the chip. See spec 2026-05-26-carter-coherence-design.md §6.
+  for (const ex of i.exercises as Array<Record<string, unknown>>) {
+    const name = typeof ex.name === "string" ? ex.name : null;
+    const baseKg = typeof ex.baseKg === "number" ? ex.baseKg : null;
+    if (!name || baseKg == null) continue;
+
+    const lib = resolveExercise(name);
+    if (!lib || !lib.increment) continue;  // bodyweight / duration / library gap
+
+    const step = lib.increment.step;
+    const intermediate = lib.increment.intermediate;
+    const onPrimaryGrid =
+      Math.abs((baseKg / step) - Math.round(baseKg / step)) < 1e-6;
+    const onIntermediateGrid =
+      intermediate != null &&
+      baseKg >= intermediate &&
+      Math.abs(((baseKg - intermediate) / step) - Math.round((baseKg - intermediate) / step)) < 1e-6;
+    const onGrid = onPrimaryGrid || onIntermediateGrid;
+    if (!onGrid) {
+      const nearest = Math.round(baseKg / step) * step;
+      const next = nearest + step;
+      const prev = Math.max(0, nearest - step);
+      const validNeighbors = Array.from(new Set([prev, nearest, next])).filter((v) => v >= 0);
+      const rule =
+        lib.pairedDb === true
+          ? `Paired DB: step is ${step} kg PER DB (total system load jumps by ${step * 2} kg).`
+          : lib.pairedDb === false
+          ? `Single DB: step is ${step} kg total.`
+          : `Step is ${step} kg.`;
+      return {
+        ok: false,
+        error: {
+          error: "off_grid_weight",
+          code: "off_grid_weight",
+          hint: JSON.stringify({
+            exercise: name,
+            proposed_kg: baseKg,
+            step,
+            paired_db: lib.pairedDb ?? null,
+            valid_neighbors: validNeighbors,
+            rule,
+          }),
+        },
+        meta: { ms: Date.now() - t0, range_days: 0 },
+      };
+    }
+  }
+
   const payload: SessionTodayPayload = {
     weekday: i.weekday as WeekdayLong,
     exercises: i.exercises as PlannedExercise[],
