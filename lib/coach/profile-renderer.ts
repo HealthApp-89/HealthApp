@@ -16,6 +16,7 @@
 import type { IntakePayload, PlanPayload, StrengthMuscleVolume } from "@/lib/data/types";
 import { TARGETED_MUSCLE_GROUPS } from "@/lib/data/types";
 import { targetSetsForWeek } from "@/lib/coach/volume-landmarks";
+import type { TodayTargets, TodayTargetsSourceMap } from "@/lib/morning/brief/get-today-targets";
 
 // ── Public API ───────────────────────────────────────────────────────────────
 
@@ -61,6 +62,7 @@ export function renderProfileSummary(
   version: number,
   plan?: PlanPayload | null,
   currentBlockWeek?: number | null,
+  todayTargets?: TodayTargets | null,
 ): string {
   const g = intake.goals;
   const t = intake.training;
@@ -88,12 +90,19 @@ export function renderProfileSummary(
     ``,
     `Health: ${health}.`,
     ``,
-    `Nutrition baseline: ${n.current_phase}, ${n.current_kcal} kcal target, ${n.current_macros.protein_g}P/${n.current_macros.carb_g}C/${n.current_macros.fat_g}F. Tracking ${n.tracking_experience}.${alcoholLine}`,
+    `Nutrition INTAKE baseline (frozen at v${version}, NOT current — use CURRENT TARGETS line below for live values): ${n.current_phase} phase, ${n.current_kcal} kcal, ${n.current_macros.protein_g}P/${n.current_macros.carb_g}C/${n.current_macros.fat_g}F. Tracking ${n.tracking_experience}.${alcoholLine}`,
+  ];
+
+  if (todayTargets) {
+    lines.push(``, renderCurrentTargetsLine(todayTargets));
+  }
+
+  lines.push(
     ``,
     `Sleep baseline: ${sr.avg_sleep_hours}h, window ${sr.typical_bedtime}-${sr.typical_wake_time}. Soreness ${sr.soreness_frequency}.`,
     ``,
     `Job: ${l.job_demands}, stress ${l.stress_self_rating}/5.${travelLine}`,
-  ];
+  );
 
   if (plan?.strength?.muscle_volume) {
     lines.push("");
@@ -101,6 +110,20 @@ export function renderProfileSummary(
   }
 
   return lines.join("\n");
+}
+
+function describeTargetsSource(s: TodayTargetsSourceMap): string {
+  return s.kcal === s.macros ? s.kcal : `kcal=${s.kcal}, macros=${s.macros}`;
+}
+
+function renderCurrentTargetsLine(t: TodayTargets): string {
+  const trainingDay = t.is_training_day ? " Training day." : "";
+  const phaseMode = t.today_phase_mode ? ` Today's phase: ${t.today_phase_mode}.` : "";
+  const alarm =
+    t.deficit_alarm?.triggered && t.deficit_alarm.rolling_7d_avg_deficit !== null
+      ? ` ⚠ Deficit alarm: 7d avg deficit ${t.deficit_alarm.rolling_7d_avg_deficit} kcal/day > ${t.deficit_alarm.threshold_kcal_per_day} threshold.`
+      : "";
+  return `CURRENT TARGETS (live; source: ${describeTargetsSource(t.source_per_field)}; SUPERSEDES the "Nutrition INTAKE baseline" line above): ${t.kcal} kcal, ${t.protein_g}P/${t.carb_g}C/${t.fat_g}F. Phase: ${t.phase}. Mode: ${t.mode}.${trainingDay}${phaseMode}${alarm}`;
 }
 
 // ── Section helpers ─────────────────────────────────────────────────────────

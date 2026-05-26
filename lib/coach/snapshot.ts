@@ -18,6 +18,7 @@ import { mondayOf } from "@/lib/coach/weekly-review/date-utils";
 import { readSessionForDay } from "@/lib/coach/session-plan-reader";
 import { topSet } from "@/lib/coach/derived";
 import type { IntakePayload, PlanPayload } from "@/lib/data/types";
+import { getTodayTargets } from "@/lib/morning/brief/get-today-targets";
 
 /** Compose the NOW header for the LLM snapshot prefix. Includes an explicit
  *  "current week" anchor (Mon→Sun of the user's current week) because LLMs
@@ -196,7 +197,7 @@ export async function buildSnapshot(inputs: SnapshotInputs): Promise<SnapshotRes
     .order("date", { ascending: true });
   if (until) logsQ = logsQ.lte("date", until);
 
-  const [{ data: profile }, { data: logs }, allWorkouts, { data: athleteProfileRow }] = await Promise.all([
+  const [{ data: profile }, { data: logs }, allWorkouts, { data: athleteProfileRow }, todayTargets] = await Promise.all([
     supabase
       .from("profiles")
       .select("name, goal, whoop_baselines")
@@ -210,6 +211,12 @@ export async function buildSnapshot(inputs: SnapshotInputs): Promise<SnapshotRes
       .eq("user_id", userId)
       .eq("status", "active")
       .maybeSingle(),
+    // Resolve the LIVE kcal/macro targets (override → plan → intake) so the
+    // snapshot prefix carries the same numbers Nora's tools and the morning
+    // brief see, instead of the frozen intake-time baseline. Without this,
+    // Peter cites stale intake values while Nora cites current overrides —
+    // the conflicting-feedback bug audited on 2026-05-26.
+    getTodayTargets(supabase, userId),
   ]);
 
   const workouts = until
@@ -285,6 +292,7 @@ export async function buildSnapshot(inputs: SnapshotInputs): Promise<SnapshotRes
           athleteProfileRow.version as number,
           (athleteProfileRow.plan_payload as PlanPayload | null) ?? null,
           null, // currentBlockWeek — snapshot has no block-week context yet; future PR can thread it
+          todayTargets,
         )]
       : []),
     ``,
