@@ -110,6 +110,23 @@ export function BriefSessionList({
                   }}
                 >
                   {e.name}
+                  {e.video_url && (
+                    <a
+                      href={e.video_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(ev) => ev.stopPropagation()}
+                      style={{
+                        marginLeft: 6,
+                        fontSize: 11,
+                        fontWeight: 500,
+                        color: COLOR.accent,
+                        textDecoration: "none",
+                      }}
+                    >
+                      ▶ video
+                    </a>
+                  )}
                 </div>
                 {e.note && (
                   <div style={{ fontSize: 11, color: COLOR.textFaint, fontStyle: "italic" }}>

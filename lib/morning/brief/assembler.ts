@@ -400,6 +400,7 @@ function composeExercises(
       };
       if (p.note) result.note = p.note;
       if (p.increment) result.min_increment_kg = minNonZeroIncrement(p.increment);
+      if (p.video_url) result.video_url = p.video_url;
       return result;
     });
 }

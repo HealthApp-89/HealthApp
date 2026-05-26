@@ -138,7 +138,26 @@ export function TodayPlanCard({ plan, committedFromPlan, rirTarget, researchPhas
                 }}
               >
                 <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span style={{ opacity: 0.85 }}>{ex.name.split("(")[0].trim()}</span>
+                  <span style={{ opacity: 0.85 }}>
+                    {ex.name.split("(")[0].trim()}
+                    {ex.video_url && (
+                      <a
+                        href={ex.video_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        style={{
+                          marginLeft: 6,
+                          fontSize: 10,
+                          color: "#fff",
+                          opacity: 0.7,
+                          textDecoration: "underline",
+                        }}
+                      >
+                        ▶ video
+                      </a>
+                    )}
+                  </span>
                   <span data-tnum style={{ fontWeight: 600, opacity: 0.95 }}>
                     {ex.target}
                   </span>

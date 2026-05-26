@@ -729,6 +729,10 @@ export type MorningBriefExercise = {
    *  2 for dumbbells). Present only when the exercise has increment metadata.
    *  Surfaced in the AI advice prompt so the coach recommends valid progressions. */
   min_increment_kg?: number;
+  /** Optional YouTube link to a form/technique tutorial. Carried through from
+   *  the SESSION_PLANS PlannedExercise; rendered as a "▶ video" link in the
+   *  brief's session list when present. */
+  video_url?: string;
 };
 
 export type MorningBriefRecap = {

@@ -19,6 +19,10 @@ export type PlannedExercise = {
    *  intermediate pin → valid weights: 0, 2.3, 5, 7.3, 10, 12.3, ...).
    *  Absent = no rounding (e.g., bodyweight/duration exercises). */
   increment?: { step: number; intermediate?: number };
+  /** Optional YouTube link to a form/technique tutorial. Surfaced in the
+   *  morning brief and strength-card exercise lists so the user can review
+   *  technique before the session. */
+  video_url?: string;
 };
 
 // NOTE: `intermediate` on Chest Fly (2.3kg) and Seated Leg Curl (2.3kg) is a
@@ -33,6 +37,8 @@ export const SESSION_PLANS: Record<string, PlannedExercise[]> = {
     { name: "Chest Fly", baseKg: 22, baseReps: 15, sets: 3, key: "chest_fly", increment: { step: 5, intermediate: 2.3 } },
     { name: "Lateral Raise (Dumbbell)", baseKg: 12, baseReps: 12, sets: 4, key: "lateral_raise", note: "Jump from 8kg — next DB is 12kg", increment: { step: 2 } },
     { name: "Triceps Pushdown (Cable)", baseKg: 23, baseReps: 15, sets: 3, key: "triceps", increment: { step: 2.5 } },
+    { name: "Hanging Leg Raise", baseReps: 10, sets: 3, key: "hanging_leg_raise", video_url: "https://www.youtube.com/watch?v=Pr1ieGZ5atk" },
+    { name: "Pallof Press (Cable)", baseKg: 14, baseReps: 10, sets: 2, key: "pallof_press", note: "Per side", increment: { step: 2.5 }, video_url: "https://www.youtube.com/watch?v=dBAmQ9bx3JA" },
   ],
   Legs: [
     { name: "Squat (Barbell)", baseKg: 62.5, baseReps: 6, sets: 3, key: "squat", increment: { step: 2.5 } },
@@ -51,6 +57,20 @@ export const SESSION_PLANS: Record<string, PlannedExercise[]> = {
     { name: "Shrug (Barbell)", baseKg: 45, baseReps: 15, sets: 3, key: "shrug", increment: { step: 2.5 } },
     { name: "Back Extension", reps: "10×3", key: "back_ext" },
   ],
+  Arms: [
+    { name: "Arnold Press (Dumbbell)", baseKg: 24, baseReps: 15, sets: 3, key: "arnold_press", increment: { step: 2 } },
+    { name: "Bicep Curl (Dumbbell)", baseKg: 20, baseReps: 15, sets: 3, key: "bicep_curl", increment: { step: 2 } },
+    { name: "Front Raise (Dumbbell)", baseKg: 16, baseReps: 15, sets: 3, key: "front_raise", increment: { step: 2 } },
+    { name: "Hammer Curl (Dumbbell)", baseKg: 20, baseReps: 15, sets: 3, key: "hammer_curl", increment: { step: 2 } },
+    { name: "Lateral Raise (Dumbbell)", baseKg: 12, baseReps: 15, sets: 3, key: "lateral_raise", increment: { step: 2 } },
+    { name: "Triceps Pushdown (Cable - Straight Bar)", baseKg: 22.5, baseReps: 12, sets: 3, key: "triceps_pushdown", increment: { step: 2.5 } },
+    { name: "Cable External Rotation", baseKg: 9, baseReps: 28, sets: 3, key: "cable_ext_rot", increment: { step: 4.5 } },
+    { name: "Cable Internal Rotation", baseKg: 18, baseReps: 30, sets: 3, key: "cable_int_rot", increment: { step: 4.5 } },
+    { name: "Rear Delt Fly", baseKg: 25, baseReps: 15, sets: 3, key: "rear_delt_fly", increment: { step: 5, intermediate: 2.3 } },
+    { name: "Cable Crunch", baseKg: 25, baseReps: 12, sets: 3, key: "cable_crunch", increment: { step: 2.5 }, video_url: "https://www.youtube.com/watch?v=36HK6uPM_PQ" },
+    { name: "Pallof Press (Cable)", baseKg: 14, baseReps: 10, sets: 2, key: "pallof_press", note: "Per side", increment: { step: 2.5 }, video_url: "https://www.youtube.com/watch?v=dBAmQ9bx3JA" },
+    { name: "Ab Wheel Rollout", baseReps: 8, sets: 2, key: "ab_wheel", note: "Kneeling — progress range slowly", video_url: "https://www.youtube.com/watch?v=PK4n7qJpOhM" },
+  ],
   Mobility: [
     { name: "Diaphragmatic Breathing", reps: "5×2" },
     { name: "Cat-Cow", reps: "8×2" },
@@ -64,11 +84,11 @@ export const SESSION_PLANS: Record<string, PlannedExercise[]> = {
 };
 
 export const WEEKLY_SESSIONS: Record<string, string> = {
-  Monday: "Chest",
-  Tuesday: "Legs",
+  Monday: "Legs",
+  Tuesday: "Chest",
   Wednesday: "Mobility",
   Thursday: "Back",
-  Friday: "Legs",
+  Friday: "Arms",
   Saturday: "REST",
   Sunday: "REST",
 };
