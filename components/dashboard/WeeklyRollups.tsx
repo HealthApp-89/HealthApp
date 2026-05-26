@@ -47,7 +47,7 @@ export async function WeeklyRollups({ userId, today, todayHrv, todayRhr, hrvBase
     )
     .eq("user_id", userId)
     .order("date", { ascending: false })
-    .limit(14);
+    .limit(28);
 
   const logs: DailyLog[] = (logsRaw ?? []) as DailyLog[];
   const week = buildWeekWindow(logs, today);
@@ -57,9 +57,21 @@ export async function WeeklyRollups({ userId, today, todayHrv, todayRhr, hrvBase
   // Health and lives elsewhere; `calories_eaten` is what the user logged via
   // Yazio→HealthKit and what this card semantically tracks.
   const wCals = week.rows.map((r) => r?.calories_eaten ?? null);
-  const wWgt = week.rows.map((r) => r?.weight_kg ?? null);
+
+  // Weight uses a 28-day rolling window (not the 7-day buildWeekWindow shared
+  // by Steps/Calories). Withings sync is sparse — a 7-day chart often shows a
+  // single point. 4 weeks gives the trend a real shape.
+  const weightDates28: string[] = [];
+  const todayDt = new Date(today + "T00:00:00Z");
+  for (let i = 27; i >= 0; i--) {
+    const d = new Date(todayDt);
+    d.setUTCDate(d.getUTCDate() - i);
+    weightDates28.push(d.toISOString().slice(0, 10));
+  }
+  const byDate = new Map(logs.map((l) => [l.date, l] as const));
+  const wWgt28 = weightDates28.map((d) => byDate.get(d)?.weight_kg ?? null);
   const latestWeightRow = logs.find((l) => l.weight_kg !== null);
-  const validWts = wWgt.filter((v): v is number => typeof v === "number");
+  const validWts = wWgt28.filter((v): v is number => typeof v === "number");
   const hasSteps = wSteps.some((v) => v !== null);
   const hasCals = wCals.some((v) => v !== null);
   const hasWeight = validWts.length > 0;
@@ -141,7 +153,7 @@ export async function WeeklyRollups({ userId, today, todayHrv, todayRhr, hrvBase
             })()}
 
             {hasWeight && (() => {
-              const data: MetricDatum[] = week.dates.map((d, i) => ({ date: d, value: wWgt[i] }));
+              const data: MetricDatum[] = weightDates28.map((d, i) => ({ date: d, value: wWgt28[i] }));
               const change =
                 validWts.length > 1
                   ? validWts[validWts.length - 1] - validWts[0]
@@ -151,7 +163,7 @@ export async function WeeklyRollups({ userId, today, todayHrv, todayRhr, hrvBase
                   ? `${fmtNum(Math.min(...validWts))}–${fmtNum(Math.max(...validWts))} kg`
                   : null,
                 change != null
-                  ? `${change > 0 ? "+" : change < 0 ? "−" : ""}${fmtNum(Math.abs(change))} kg over 7d`
+                  ? `${change > 0 ? "+" : change < 0 ? "−" : ""}${fmtNum(Math.abs(change))} kg over 28d`
                   : null,
               ].filter(Boolean).join(" · ") || undefined;
               return (
