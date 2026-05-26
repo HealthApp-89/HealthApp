@@ -16,12 +16,14 @@ import { SESSION_PLANS, type PlannedExercise } from "@/lib/coach/sessionPlans";
 import { resolveExercise } from "@/lib/coach/exercise-library";
 import { fetchUserSessionTemplateServer } from "@/lib/query/fetchers/userSessionTemplates";
 import { currentWeekMonday } from "@/lib/coach/week";
+import { readSessionForDay } from "@/lib/coach/session-plan-reader";
 
 type WeeklyExerciseRow = {
   sessionType: string;
   weekday: string;
   name: string;
   step: number | null;
+  intermediate: number | null;
   pairedDb: boolean | null;
   baseKg: number | null;
   source: "week_override" | "user_template" | "code_default";
@@ -51,10 +53,27 @@ export async function buildThisWeeksExercisesBlock(args: {
   const sessionPlan = (tw.session_plan ?? {}) as Record<string, string>;
   const overrides = (tw.exercise_overrides ?? {}) as Record<string, PlannedExercise[]>;
 
-  const rows: WeeklyExerciseRow[] = [];
   const weekdays = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
+
+  // Issue 1: use readSessionForDay to handle both 3-letter and full-name keys.
+  // Issue 2: pre-resolve distinct session types in parallel before the loop
+  //          to avoid N+1 sequential fetches (dedup covers Fri/Sat same type).
+  const distinctSessionTypes = Array.from(new Set(
+    weekdays
+      .map((d) => readSessionForDay(sessionPlan, d))
+      .filter((t): t is string => !!t && t !== "REST"),
+  ));
+
+  const templates = new Map<string, PlannedExercise[] | null>();
+  await Promise.all(distinctSessionTypes.map(async (st) => {
+    const t = await fetchUserSessionTemplateServer(supabase, userId, st);
+    templates.set(st, t?.exercises && t.exercises.length > 0 ? t.exercises : null);
+  }));
+
+  const rows: WeeklyExerciseRow[] = [];
   for (const weekday of weekdays) {
-    const sessionType = sessionPlan[weekday];
+    // Issue 1 fix applied: readSessionForDay handles 3-letter and full-name keys.
+    const sessionType = readSessionForDay(sessionPlan, weekday);
     if (!sessionType || sessionType === "REST") continue;
 
     let exercises: PlannedExercise[];
@@ -63,9 +82,10 @@ export async function buildThisWeeksExercisesBlock(args: {
       exercises = overrides[weekday];
       source = "week_override";
     } else {
-      const template = await fetchUserSessionTemplateServer(supabase, userId, sessionType);
-      if (template?.exercises?.length) {
-        exercises = template.exercises;
+      // Issue 2 fix applied: read from pre-resolved map, no await in the loop.
+      const templateExercises = templates.get(sessionType);
+      if (templateExercises) {
+        exercises = templateExercises;
         source = "user_template";
       } else {
         exercises = SESSION_PLANS[sessionType] ?? [];
@@ -80,6 +100,9 @@ export async function buildThisWeeksExercisesBlock(args: {
         weekday,
         name: ex.name,
         step: lib?.increment?.step ?? ex.increment?.step ?? null,
+        // Issue 3 fix applied: carry intermediate micro-pin through so Carter
+        // never rejects valid loads like 22.3 kg on a Chest Fly.
+        intermediate: lib?.increment?.intermediate ?? ex.increment?.intermediate ?? null,
         pairedDb: lib?.pairedDb ?? null,
         baseKg: ex.baseKg ?? null,
         source,
@@ -91,7 +114,12 @@ export async function buildThisWeeksExercisesBlock(args: {
 
   const lines = rows.map((r) => {
     const baseKgStr = r.baseKg == null ? "—" : `${r.baseKg} kg`;
-    const stepStr = r.step == null ? "n/a (bodyweight/duration)" : `${r.step} kg`;
+    // Issue 3 fix applied: render intermediate pin when present.
+    const stepStr = r.step == null
+      ? "n/a (bodyweight/duration)"
+      : r.intermediate != null
+        ? `${r.step} kg (intermediate pin: ${r.intermediate} kg)`
+        : `${r.step} kg`;
     const pairedStr =
       r.pairedDb === true ? " paired DB" :
       r.pairedDb === false ? " single DB" :
@@ -101,7 +129,7 @@ export async function buildThisWeeksExercisesBlock(args: {
 
   return [
     "<this_weeks_exercises>",
-    "This week's planned exercises with their library-grounded load increments. Ground every weight you propose in these rows; never quote a kg value that isn't a multiple of the listed step. For dumbbells, step is PER DB (paired = +step per hand). Bodyweight / duration entries (step=n/a) are progressed via reps, tempo, or external load, not kg.",
+    "This week's planned exercises with their library-grounded load increments. Ground every weight you propose in these rows. For standard steps use the listed kg value; for machines with an intermediate micro-pin, valid loads are multiples of the step PLUS the intermediate offset (e.g. step=5, intermediate=2.3 → valid loads include 22.3 kg, 27.3 kg). For dumbbells, step is PER DB (paired = +step per hand). Bodyweight / duration entries (step=n/a) are progressed via reps, tempo, or external load, not kg.",
     "",
     ...lines,
     "</this_weeks_exercises>",
