@@ -261,7 +261,7 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
   if (opts.peterDashboardBlock && speaker === "peter") {
     systemText = `${systemText}\n\n${opts.peterDashboardBlock}`;
   }
-  if (opts.peterContext) systemText = `${systemText}\n\n${opts.peterContext}`;
+  if (opts.peterContext && speaker === "peter") systemText = `${systemText}\n\n${opts.peterContext}`;
   if (opts.carterContext && speaker === "carter") {
     systemText = `${systemText}\n\n${opts.carterContext}`;
   }
