@@ -9,6 +9,7 @@ import type { SessionStructure } from "@/lib/coach/session-structure";
 import { SessionStructureBanner } from "@/components/strength/SessionStructureBanner";
 import { LoggerSheet } from "@/components/logger/LoggerSheet";
 import { useExistingLoggerDraft } from "@/lib/logger/use-existing-draft";
+import { SESSION_PLANS, type PlannedExercise } from "@/lib/coach/sessionPlans";
 
 function fmtRestRange(r: { min: number; max: number }): string {
   if (r.min >= 60 && r.max >= 90 && r.min % 60 === 0 && r.max % 60 === 0) {
@@ -23,6 +24,26 @@ function findAnnotation(
 ): SessionStructure["exercises"][number] | null {
   if (!structure) return null;
   return structure.exercises.find((e) => e.name === name) ?? null;
+}
+
+function sameExerciseNameSet(
+  briefExercises: { name: string }[],
+  planned: PlannedExercise[],
+): boolean {
+  if (briefExercises.length !== planned.length) return false;
+  const briefSet = briefExercises.map((e) => e.name.toLowerCase().trim()).sort().join("|");
+  const planSet = planned.map((p) => p.name.toLowerCase().trim()).sort().join("|");
+  return briefSet === planSet;
+}
+
+function resolveLiveExercises(args: {
+  weekOverrides: ExerciseOverrides | null;
+  weekday: string;
+  sessionType: string;
+}): PlannedExercise[] {
+  const override = args.weekOverrides?.[args.weekday];
+  if (override && override.length > 0) return override;
+  return SESSION_PLANS[args.sessionType] ?? [];
 }
 
 export function BriefSessionList({
@@ -49,6 +70,15 @@ export function BriefSessionList({
   const [draftEpoch, setDraftEpoch] = useState(0);
   const loggerSessionType = liveType ?? session.type;
   const hasDraft = useExistingLoggerDraft(userId, loggerSessionType, draftEpoch);
+  const liveExercises = resolveLiveExercises({
+    weekOverrides,
+    weekday,
+    sessionType: loggerSessionType,
+  });
+  const exercisesDiverged =
+    !isSwapped &&
+    liveExercises.length > 0 &&
+    !sameExerciseNameSet(session.exercises, liveExercises.filter((p) => !p.warmup));
 
   if (exercises.length === 0) {
     return (
@@ -76,7 +106,7 @@ export function BriefSessionList({
           background: COLOR.surfaceAlt,
           borderRadius: 10,
           overflow: "hidden",
-          opacity: isSwapped ? 0.4 : 1,
+          opacity: isSwapped || exercisesDiverged ? 0.4 : 1,
           transition: "opacity 0.2s",
         }}
       >
@@ -202,6 +232,22 @@ export function BriefSessionList({
           );
         })}
       </div>
+      {exercisesDiverged && (
+        <p
+          style={{
+            marginTop: "8px",
+            fontSize: "12px",
+            color: COLOR.textMuted,
+            fontStyle: "italic",
+          }}
+        >
+          Plan updated since this morning —{" "}
+          <a href="/strength" style={{ color: COLOR.accent }}>
+            see /strength
+          </a>{" "}
+          for the current session.
+        </p>
+      )}
       {volume_gaps && volume_gaps.length > 0 && (
         <VolumeGapsBanner gaps={volume_gaps} />
       )}
