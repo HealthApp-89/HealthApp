@@ -27,6 +27,7 @@ import { computeActiveTriggers } from "@/lib/coach/voice/triggers";
 import { getTodayTargets } from "@/lib/morning/brief/get-today-targets";
 import { buildPeterContextBlock } from "@/lib/coach/peter-context";
 import { loadLatestPeterDashboard } from "@/lib/coach/peter-dashboard";
+import { buildThisWeeksExercisesBlock } from "@/lib/coach/carter-context/this-weeks-exercises";
 
 export const dynamic = "force-dynamic";
 
@@ -792,6 +793,12 @@ export async function POST(req: Request) {
               return null;
             })
         : null;
+      const carterContext = initialSpeaker === "carter"
+        ? await buildThisWeeksExercisesBlock({ supabase: sr, userId: user.id }).catch((err) => {
+            console.warn("[chat] buildThisWeeksExercisesBlock failed", err);
+            return null;
+          })
+        : null;
       try {
         // Drain one runChatStream pass, piping all SSE events to the client.
         // Pin to local — TS loses control-flow narrowing through async closures.
@@ -814,6 +821,7 @@ export async function POST(req: Request) {
             speaker: streamSpeaker,
             peterContext,
             peterDashboardBlock,
+            carterContext,
           })) {
             if (req.signal.aborted) {
               aborted = true;
