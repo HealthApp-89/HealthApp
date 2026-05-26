@@ -204,6 +204,11 @@ export type RunChatStreamOpts = {
    *  skips the block (specialist turns, empty specialist threads, or callers
    *  that haven't opted in yet). */
   peterContext?: string | null;
+  /** Pre-built "This week's exercises" markdown from
+   *  buildThisWeeksExercisesBlock(). Appended after the base system
+   *  prompt for Carter turns only. Null/undefined means no training_weeks
+   *  row for the current week — fall back to query_exercise_library. */
+  carterContext?: string | null;
   /** Pre-built "Today's read" markdown from coach_dashboards.narrative_md.
    *  Appended after the base system prompt for Peter turns only. Null/undefined
    *  means no dashboard row exists yet — falls back to the snapshot context.
@@ -257,6 +262,9 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
     systemText = `${systemText}\n\n${opts.peterDashboardBlock}`;
   }
   if (opts.peterContext) systemText = `${systemText}\n\n${opts.peterContext}`;
+  if (opts.carterContext && speaker === "carter") {
+    systemText = `${systemText}\n\n${opts.carterContext}`;
+  }
   const system = [
     { type: "text" as const, text: systemText, cache_control: { type: "ephemeral" as const, ttl: "1h" as const } },
   ];
