@@ -1986,7 +1986,15 @@ export async function executeProposeSessionToday(opts: {
     if (!onGrid) {
       const lower = Math.max(0, Math.floor(baseKg / step) * step);
       const upper = Math.ceil(baseKg / step) * step;
-      const validNeighbors = Array.from(new Set([lower, upper])).filter((v) => v >= 0);
+      const candidates: number[] = [lower, upper];
+      if (intermediate != null) {
+        const offset = baseKg - intermediate;
+        const interLower = intermediate + Math.floor(offset / step) * step;
+        const interUpper = intermediate + Math.ceil(offset / step) * step;
+        if (interLower >= 0) candidates.push(interLower);
+        if (interUpper >= 0) candidates.push(interUpper);
+      }
+      const validNeighbors = Array.from(new Set(candidates)).filter((v) => v >= 0).sort((a, b) => a - b);
       const rule =
         lib.pairedDb === true
           ? `Paired DB: step is ${step} kg PER DB (total system load jumps by ${step * 2} kg).`
