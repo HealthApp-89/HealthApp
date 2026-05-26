@@ -8,6 +8,7 @@ import {
   ResponsiveContainer,
   Tooltip,
   XAxis,
+  YAxis,
 } from "recharts";
 import { COLOR } from "@/lib/ui/theme";
 
@@ -24,6 +25,17 @@ type MetricCardProps = {
   data: MetricDatum[];
   color: string;
   type: "area" | "bar";
+  /** When true, pass through null-valued points so the X axis spans the full
+   *  data window (and the area line bridges missing days). Default false:
+   *  null points are filtered, matching the 7-day sparkline behaviour. */
+  connectNulls?: boolean;
+  /** Y-axis baseline. 'zero' (default) keeps the recharts default starting at
+   *  0; 'data' fits the Y to [dataMin, dataMax] with small padding so subtle
+   *  variation is visible (e.g. weight over 4 weeks). */
+  yAxis?: "zero" | "data";
+  /** X tick label format. 'weekday' (default) for short 7-day windows;
+   *  'monthDay' (e.g. "May 12") reads better on longer windows. */
+  xLabelFormat?: "weekday" | "monthDay";
 };
 
 const WEEKDAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -33,6 +45,17 @@ function weekdayLabel(iso: string): string {
   const [y, m, d] = iso.split("-").map(Number);
   const dt = new Date(Date.UTC(y, m - 1, d));
   return WEEKDAY[dt.getUTCDay()];
+}
+
+function monthDayLabel(iso: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
+  const [y, m, d] = iso.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return dt.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  });
 }
 
 function formatTooltipDate(iso: string): string {
@@ -63,13 +86,36 @@ export function MetricCard({
   data,
   color,
   type,
+  connectNulls = false,
+  yAxis = "zero",
+  xLabelFormat = "weekday",
 }: MetricCardProps) {
-  const numericData = data.filter(
-    (d): d is { date: string; value: number } =>
-      d.value != null && Number.isFinite(d.value),
-  );
-  const hasChart = numericData.length >= 1;
+  // chartData keeps nulls when connectNulls is on so the X axis preserves
+  // the full window; otherwise drop them like the original 7-day sparklines.
+  const chartData = connectNulls
+    ? data
+    : data.filter(
+        (d): d is { date: string; value: number } =>
+          d.value != null && Number.isFinite(d.value),
+      );
+  const numericValues = chartData
+    .map((d) => d.value)
+    .filter((v): v is number => v != null && Number.isFinite(v));
+  const hasChart = numericValues.length >= 1;
   const gid = gradientId(color);
+  const tickFmt = xLabelFormat === "monthDay" ? monthDayLabel : weekdayLabel;
+
+  // Tight Y domain: clamp to [min - 20% span, max + 20% span] so a 1 kg
+  // change over 28 days reads as a real slope instead of a flat line.
+  // Falls back to ±5% of the value (or ±1) when there's only one point.
+  let yDomain: [number | string, number | string] = [0, "auto"];
+  if (yAxis === "data" && hasChart) {
+    const yMin = Math.min(...numericValues);
+    const yMax = Math.max(...numericValues);
+    const span = yMax - yMin;
+    const pad = span > 0 ? span * 0.2 : Math.max(Math.abs(yMax) * 0.05, 1);
+    yDomain = [yMin - pad, yMax + pad];
+  }
 
   return (
     <div
@@ -137,7 +183,7 @@ export function MetricCard({
           <ResponsiveContainer width="100%" height="100%">
             {type === "area" ? (
               <AreaChart
-                data={numericData}
+                data={chartData}
                 margin={{ top: 4, right: 4, bottom: 4, left: 4 }}
               >
                 <defs>
@@ -148,13 +194,14 @@ export function MetricCard({
                 </defs>
                 <XAxis
                   dataKey="date"
-                  tickFormatter={weekdayLabel}
+                  tickFormatter={tickFmt}
                   tick={{ fill: COLOR.textMuted, fontSize: 11 }}
                   axisLine={false}
                   tickLine={false}
                   interval="preserveStartEnd"
-                  minTickGap={20}
+                  minTickGap={xLabelFormat === "monthDay" ? 36 : 20}
                 />
+                {yAxis === "data" ? <YAxis hide domain={yDomain} /> : null}
                 <Tooltip
                   cursor={{ stroke: COLOR.divider, strokeWidth: 1 }}
                   content={<MetricTooltip color={color} unit={unit} />}
@@ -168,23 +215,25 @@ export function MetricCard({
                   isAnimationActive={false}
                   dot={false}
                   activeDot={{ r: 4, fill: color, stroke: COLOR.surface, strokeWidth: 2 }}
+                  connectNulls={connectNulls}
                 />
               </AreaChart>
             ) : (
               <BarChart
-                data={numericData}
+                data={chartData}
                 margin={{ top: 4, right: 4, bottom: 4, left: 4 }}
                 barCategoryGap="30%"
               >
                 <XAxis
                   dataKey="date"
-                  tickFormatter={weekdayLabel}
+                  tickFormatter={tickFmt}
                   tick={{ fill: COLOR.textMuted, fontSize: 11 }}
                   axisLine={false}
                   tickLine={false}
                   interval="preserveStartEnd"
-                  minTickGap={20}
+                  minTickGap={xLabelFormat === "monthDay" ? 36 : 20}
                 />
+                {yAxis === "data" ? <YAxis hide domain={yDomain} /> : null}
                 <Tooltip
                   cursor={{ fill: COLOR.surfaceAlt }}
                   content={<MetricTooltip color={color} unit={unit} />}

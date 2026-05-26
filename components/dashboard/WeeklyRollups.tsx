@@ -175,6 +175,9 @@ export async function WeeklyRollups({ userId, today, todayHrv, todayRhr, hrvBase
                   data={data}
                   color={METRIC_COLOR.weight_kg}
                   type="area"
+                  connectNulls
+                  yAxis="data"
+                  xLabelFormat="monthDay"
                 />
               );
             })()}
