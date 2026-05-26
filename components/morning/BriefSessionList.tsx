@@ -9,7 +9,6 @@ import type { SessionStructure } from "@/lib/coach/session-structure";
 import { SessionStructureBanner } from "@/components/strength/SessionStructureBanner";
 import { LoggerSheet } from "@/components/logger/LoggerSheet";
 import { useExistingLoggerDraft } from "@/lib/logger/use-existing-draft";
-import { useUserSessionTemplate } from "@/lib/query/hooks/useUserSessionTemplate";
 import { SESSION_PLANS, type PlannedExercise } from "@/lib/coach/sessionPlans";
 
 function fmtRestRange(r: { min: number; max: number }): string {
@@ -33,7 +32,7 @@ function sameExerciseNameSet(
 ): boolean {
   if (briefExercises.length !== planned.length) return false;
   const briefSet = briefExercises.map((e) => e.name.toLowerCase().trim()).sort().join("|");
-  const planSet = planned.map((p) => (p.key ?? p.name).toLowerCase().trim()).sort().join("|");
+  const planSet = planned.map((p) => p.name.toLowerCase().trim()).sort().join("|");
   return briefSet === planSet;
 }
 
@@ -41,11 +40,9 @@ function resolveLiveExercises(args: {
   weekOverrides: ExerciseOverrides | null;
   weekday: string;
   sessionType: string;
-  template: { exercises: PlannedExercise[] } | null | undefined;
 }): PlannedExercise[] {
   const override = args.weekOverrides?.[args.weekday];
   if (override && override.length > 0) return override;
-  if (args.template?.exercises && args.template.exercises.length > 0) return args.template.exercises;
   return SESSION_PLANS[args.sessionType] ?? [];
 }
 
@@ -73,17 +70,15 @@ export function BriefSessionList({
   const [draftEpoch, setDraftEpoch] = useState(0);
   const loggerSessionType = liveType ?? session.type;
   const hasDraft = useExistingLoggerDraft(userId, loggerSessionType, draftEpoch);
-  const { data: template } = useUserSessionTemplate(userId, loggerSessionType);
   const liveExercises = resolveLiveExercises({
     weekOverrides,
     weekday,
     sessionType: loggerSessionType,
-    template,
   });
   const exercisesDiverged =
     !isSwapped &&
     liveExercises.length > 0 &&
-    !sameExerciseNameSet(session.exercises, liveExercises);
+    !sameExerciseNameSet(session.exercises, liveExercises.filter((p) => !p.warmup));
 
   if (exercises.length === 0) {
     return (
