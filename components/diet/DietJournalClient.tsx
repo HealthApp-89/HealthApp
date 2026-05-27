@@ -4,6 +4,7 @@
 import { useMemo, useState } from "react";
 import { NutritionView } from "./NutritionView";
 import ChatPanel from "@/components/chat/ChatPanel";
+import { HealthClient } from "@/components/health/HealthClient";
 import { useRouter } from "next/navigation";
 import { useFoodEntries } from "@/lib/query/hooks/useFoodEntries";
 import { useTodayTargets } from "@/lib/query/hooks/useTodayTargets";
@@ -19,11 +20,21 @@ import { todayInUserTz } from "@/lib/time";
 import { COLOR } from "@/lib/ui/theme";
 import type { FoodLogEntry, MealSlot } from "@/lib/food/types";
 
-type Props = { userId: string; initialDate: string; initialView?: "journal" | "nutrition" | "coach" };
+type DietView = "journal" | "nutrition" | "body" | "coach";
 
-export function DietJournalClient({ userId, initialDate, initialView }: Props) {
+type Props = {
+  userId: string;
+  initialDate: string;
+  initialView?: DietView;
+  /** Today, ISO yyyy-mm-dd — passed through to HealthClient for the Body tab. */
+  todayIso: string;
+  /** 12 months before today, ISO — start of the body-comp Trend window. */
+  trendFromIso: string;
+};
+
+export function DietJournalClient({ userId, initialDate, initialView, todayIso, trendFromIso }: Props) {
   const router = useRouter();
-  const [view, setView] = useState<"journal" | "nutrition" | "coach">(initialView ?? "journal");
+  const [view, setView] = useState<DietView>(initialView ?? "journal");
   const [loggerOpen, setLoggerOpen] = useState<MealSlot | null>(null);
   const [editing, setEditing] = useState<FoodLogEntry | null>(null);
   const [historyPickerOpen, setHistoryPickerOpen] = useState<MealSlot | null>(null);
@@ -45,7 +56,7 @@ export function DietJournalClient({ userId, initialDate, initialView }: Props) {
     router.push(`/diet?date=${d.toISOString().slice(0, 10)}`);
   };
 
-  const setViewAndUrl = (next: "journal" | "nutrition" | "coach") => {
+  const setViewAndUrl = (next: DietView) => {
     setView(next);
     const sp = new URLSearchParams();
     if (date !== todayInUserTz()) sp.set("date", date);
@@ -133,6 +144,18 @@ export function DietJournalClient({ userId, initialDate, initialView }: Props) {
         </button>
         <button
           type="button"
+          onClick={() => setViewAndUrl("body")}
+          className="rounded-full px-3 py-1 text-xs font-semibold transition-colors"
+          style={{
+            background: view === "body" ? COLOR.textStrong : "#f3f4f6",
+            color: view === "body" ? "#fff" : COLOR.textMuted,
+            border: `1px solid ${view === "body" ? COLOR.textStrong : "#d1d5db"}`,
+          }}
+        >
+          Body
+        </button>
+        <button
+          type="button"
           onClick={() => setViewAndUrl("coach")}
           className="rounded-full px-3 py-1 text-xs font-semibold transition-colors"
           style={{
@@ -217,6 +240,15 @@ export function DietJournalClient({ userId, initialDate, initialView }: Props) {
       )}
 
       {view === "nutrition" && <NutritionView userId={userId} />}
+
+      {view === "body" && (
+        <HealthClient
+          userId={userId}
+          todayIso={todayIso}
+          trendFromIso={trendFromIso}
+          initialView="today"
+        />
+      )}
 
       {view === "coach" && (
         <div style={{ height: "calc(100dvh - 200px)", display: "flex", flexDirection: "column" }}>

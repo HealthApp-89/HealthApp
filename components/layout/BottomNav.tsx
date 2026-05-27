@@ -21,7 +21,7 @@ type Tab = {
 const TABS: Tab[] = [
   { href: "/",         label: "Today",    Icon: Home,            match: (p) => p === "/" },
   { href: "/strength", label: "Strength", Icon: Dumbbell,        match: (p) => p.startsWith("/strength"), thread: "carter" },
-  { href: "/diet",     label: "Diet",     Icon: UtensilsCrossed, match: (p) => p.startsWith("/diet"),     thread: "nora" },
+  { href: "/diet",     label: "Weight",   Icon: UtensilsCrossed, match: (p) => p.startsWith("/diet"),     thread: "nora" },
   { href: "/health",   label: "Health",   Icon: HeartPulse,      match: (p) => p.startsWith("/health"),   thread: "remi" },
   { href: "/coach",    label: "Coach",    Icon: BarChart3,       match: (p) => p.startsWith("/coach") || p.startsWith("/metrics"), thread: "peter" },
   { href: "/profile",  label: "Profile",  Icon: User,            match: (p) => p.startsWith("/profile") },

@@ -7,6 +7,8 @@ import { fetchFoodEntriesServer } from "@/lib/query/fetchers/foodEntries";
 import { fetchTodayTargetsServer } from "@/lib/query/fetchers/todayTargets";
 import { fetchDailyLogsServer } from "@/lib/query/fetchers/dailyLogs";
 import { fetchCoachTrendsServer } from "@/lib/query/fetchers/coachTrends";
+import { fetchBodyMeasurementsServer } from "@/lib/query/fetchers/bodyMeasurements";
+import { fetchHealthTrendServer } from "@/lib/query/fetchers/healthTrend";
 import { todayInUserTz } from "@/lib/time";
 import { DietJournalClient } from "@/components/diet/DietJournalClient";
 
@@ -24,8 +26,9 @@ export default async function DietPage({
   if (!user) redirect("/login");
 
   const params = await searchParams;
-  const view: "journal" | "nutrition" | "coach" =
+  const view: "journal" | "nutrition" | "body" | "coach" =
     params.view === "nutrition" ? "nutrition" :
+    params.view === "body"      ? "body"      :
     params.view === "coach"     ? "coach"     :
                                   "journal";
   const today = todayInUserTz();
@@ -33,6 +36,12 @@ export default async function DietPage({
     typeof params.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(params.date)
       ? params.date
       : today;
+
+  // 12 months back — body-comp Trend window. Mirrors what the now-defunct
+  // /health page passed to HealthClient.
+  const trendFrom = new Date(`${today}T00:00:00Z`);
+  trendFrom.setUTCMonth(trendFrom.getUTCMonth() - 12);
+  const trendFromIso = trendFrom.toISOString().slice(0, 10);
 
   const serviceSupabase = createSupabaseServiceRoleClient();
   const qc = makeServerQueryClient();
@@ -58,11 +67,26 @@ export default async function DietPage({
       queryKey: queryKeys.coachTrends.one(user.id),
       queryFn: () => fetchCoachTrendsServer(serviceSupabase, user.id, today),
     }),
+    // Body tab — circumference history + 12mo body-comp trend
+    qc.prefetchQuery({
+      queryKey: queryKeys.bodyMeasurements.all(user.id),
+      queryFn: () => fetchBodyMeasurementsServer(supabase, user.id),
+    }),
+    qc.prefetchQuery({
+      queryKey: queryKeys.healthTrend.range(user.id, trendFromIso, today),
+      queryFn: () => fetchHealthTrendServer(supabase, user.id, trendFromIso, today),
+    }),
   ]);
 
   return (
     <HydrationBoundary state={dehydrate(qc)}>
-      <DietJournalClient userId={user.id} initialDate={date} initialView={view} />
+      <DietJournalClient
+        userId={user.id}
+        initialDate={date}
+        initialView={view}
+        todayIso={today}
+        trendFromIso={trendFromIso}
+      />
     </HydrationBoundary>
   );
 }
