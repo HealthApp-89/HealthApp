@@ -13,6 +13,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Weekday } from "@/lib/data/types";
 import { categorize, type ExerciseCategory } from "@/lib/coach/exercise-categories";
 import { workingVolume, type SetRow } from "@/lib/coach/derived";
+import { readSessionForDay } from "@/lib/coach/session-plan-reader";
 
 const WEEKDAYS: Weekday[] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -140,13 +141,18 @@ export async function computeAdherence(
   }
 
   // 3. Adherence counts + per-day breakdown
+  //
+  // session_plan keys may be 3-letter ("Mon") OR full-name ("Monday") form.
+  // The AI planning bot writes the latter; the migration spec assumes the
+  // former. Read via readSessionForDay so both forms resolve. See
+  // lib/coach/session-plan-reader.ts for the historical context.
   let sessions_planned = 0;
   let sessions_done = 0;
   let sessions_on_plan = 0;
   const days: AdherenceDay[] = [];
   for (const wd of WEEKDAYS) {
-    const p = planned[wd] ?? null;
-    const c = currentPlan[wd] ?? null;
+    const p = readSessionForDay(planned as Record<string, string>, wd) ?? null;
+    const c = readSessionForDay(currentPlan as Record<string, string>, wd) ?? null;
     const a = actual[wd] ?? null;
     const pIsRest = !!p && tokens(p).includes("rest");
     if (p && !pIsRest) sessions_planned += 1;

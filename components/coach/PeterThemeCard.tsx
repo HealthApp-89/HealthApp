@@ -8,6 +8,7 @@ import {
   ResponsiveContainer,
   ReferenceLine,
   Tooltip,
+  XAxis,
 } from 'recharts';
 import type { ThemePayload, Severity } from '@/lib/data/types';
 import { THEME_LABEL, THEME_DRILLDOWN } from '@/lib/coach/peter-dashboard/types';
@@ -145,6 +146,10 @@ export function PeterThemeCard({ theme, narrative, expanded, onToggle }: Props) 
                   data={theme.sparkline.series}
                   margin={{ top: 4, right: 4, bottom: 4, left: 4 }}
                 >
+                  {/* Hidden axis exposes the x value to the tooltip so the
+                      label resolves to the date (e.g. "2026-05-27") instead
+                      of the Recharts default of the data-point index. */}
+                  <XAxis dataKey="x" hide />
                   <Line
                     type="monotone"
                     dataKey="y"
@@ -171,6 +176,10 @@ export function PeterThemeCard({ theme, narrative, expanded, onToggle }: Props) 
                       boxShadow: SHADOW.card,
                     }}
                     labelStyle={{ color: COLOR.textMuted }}
+                    formatter={(value) => [
+                      typeof value === 'number' ? fmtNum(value) : String(value),
+                      theme.sparkline?.label ?? '',
+                    ]}
                   />
                 </LineChart>
               </ResponsiveContainer>

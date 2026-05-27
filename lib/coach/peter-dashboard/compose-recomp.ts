@@ -54,6 +54,18 @@ export async function composeRecomp(args: {
   // isn't blocking for v1; the audit script will flag this as a future improvement.
   const sparkline = null;
 
+  // Per-lift slope facts. Each value is %/wk (e.g. 0.04 = 4%/wk). Stored as
+  // discrete numeric keys so the renderer formats them through fmtNum; a
+  // joined string would skip formatting (typeof !== 'number') and leak full
+  // float precision into the UI fact chips.
+  const perLiftFacts: Record<string, number | null> = {};
+  const topLifts = trends.strength.per_lift.slice(0, 3);
+  for (let i = 0; i < topLifts.length; i++) {
+    const p = topLifts[i];
+    perLiftFacts[`${p.lift}_slope_pct_per_wk_4w`] =
+      p.slope_pct_per_wk_4w == null ? null : round1(p.slope_pct_per_wk_4w * 100);
+  }
+
   return {
     key: 'recomp',
     severity,
@@ -62,11 +74,15 @@ export async function composeRecomp(args: {
     facts: {
       lbm_delta_4w_kg: lbm4w,
       bf_pct_delta_4w_pts: bf4w,
-      top_lift_slopes_pct_per_wk_4w: topLiftSlopes.join(','),
+      ...perLiftFacts,
     },
     sparkline,
     inputs_used: ['coach_trends.body', 'coach_trends.strength.per_lift'],
   };
+}
+
+function round1(n: number): number {
+  return Math.round(n * 10) / 10;
 }
 
 function oneLineFor(x: { lbm4w: number | null; bf4w: number | null }): string {

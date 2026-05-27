@@ -1,7 +1,7 @@
 // lib/coach/peter-dashboard/compose-plan-adherence.ts
 //
 // Plan adherence: sessions done vs prescribed (last 4 training_weeks)
-// and food log coverage (% days with committed entries over last 14d).
+// and nutrition coverage (% days with any kcal recorded over last 14d).
 // All deterministic.
 //
 // DEVIATION FROM PLAN: `training_weeks.adherence_pct` does NOT exist as a
@@ -10,6 +10,11 @@
 // lib/coach/adherence.ts, which returns an integer 0-100. We fetch the last
 // 4 week_starts, then Promise.all the per-week computeAdherence calls and
 // store ratios (0-1) for direct comparison against the existing thresholds.
+//
+// Nutrition coverage reads daily_logs.calories_eaten (source-agnostic) instead
+// of counting committed food_log_entries directly. Both Yazio CSV ingest and
+// in-app meal logging eventually update daily_logs.calories_eaten, so this
+// counts a day as "logged" regardless of which entry path the user used.
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ThemePayload } from './types';
@@ -21,7 +26,7 @@ import {
 import { computeAdherence } from '@/lib/coach/adherence';
 import { fmtNum } from '@/lib/ui/score';
 
-const FOOD_WINDOW_DAYS = 14;
+const NUTRITION_WINDOW_DAYS = 14;
 
 export async function composePlanAdherence(args: {
   supabase: SupabaseClient;
@@ -55,20 +60,22 @@ export async function composePlanAdherence(args: {
     pct_ratio: adherenceResults[i].adherence_pct / 100,
   }));
 
-  // Food log coverage in last 14 days.
-  const foodStart = isoDaysAgo(today, FOOD_WINDOW_DAYS - 1);
-  const { data: foodDates, error: fErr } = await supabase
-    .from('food_log_entries')
-    .select('eaten_at')
+  // Nutrition coverage in last 14 days. Source-agnostic: counts any day
+  // with calories_eaten > 0 on daily_logs (Yazio + in-app + manual all land
+  // there). The earlier food_log_entries-only count under-reported users on
+  // the Yazio CSV path by ~70%.
+  const nutritionStart = isoDaysAgo(today, NUTRITION_WINDOW_DAYS - 1);
+  const { data: nutritionRows, error: nErr } = await supabase
+    .from('daily_logs')
+    .select('date, calories_eaten')
     .eq('user_id', userId)
-    .eq('status', 'committed')
-    .gte('eaten_at', `${foodStart}T00:00:00Z`)
-    .lte('eaten_at', `${today}T23:59:59Z`);
-  if (fErr) throw fErr;
-  const foodDays = new Set(
-    (foodDates ?? []).map((f) => (f.eaten_at as string).slice(0, 10)),
-  );
-  const foodCoveragePct = foodDays.size / FOOD_WINDOW_DAYS;
+    .gte('date', nutritionStart)
+    .lte('date', today);
+  if (nErr) throw nErr;
+  const nutritionDays = (nutritionRows ?? []).filter(
+    (r) => (r.calories_eaten as number | null) != null && (r.calories_eaten as number) > 0,
+  ).length;
+  const nutritionCoveragePct = nutritionDays / NUTRITION_WINDOW_DAYS;
 
   // Severity from weekly adherence trend (last N consecutive weeks).
   const recent = weekly.slice(-ADHERENCE_CONSECUTIVE_WEEKS);
@@ -89,11 +96,11 @@ export async function composePlanAdherence(args: {
   return {
     key: 'plan_adherence',
     severity,
-    one_line: oneLineFor({ latestRatio, foodCoveragePct }),
-    body_md: bodyMdFor({ weekly, foodCoveragePct, severity }),
+    one_line: oneLineFor({ latestRatio, nutritionCoveragePct }),
+    body_md: bodyMdFor({ weekly, nutritionCoveragePct, severity }),
     facts: {
       latest_week_adherence_pct: latestRatio == null ? null : round2(latestRatio),
-      food_log_coverage_pct_14d: round2(foodCoveragePct),
+      nutrition_coverage_pct_14d: round2(nutritionCoveragePct),
       training_weeks_considered: weekly.length,
     },
     sparkline:
@@ -106,7 +113,7 @@ export async function composePlanAdherence(args: {
     inputs_used: [
       'training_weeks.week_start',
       'computeAdherence(workouts, training_weeks)',
-      'food_log_entries (status=committed, 14d)',
+      'daily_logs.calories_eaten (14d)',
     ],
   };
 }
@@ -121,20 +128,20 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
-function oneLineFor(x: { latestRatio: number | null; foodCoveragePct: number }): string {
+function oneLineFor(x: { latestRatio: number | null; nutritionCoveragePct: number }): string {
   const adh = x.latestRatio == null ? '—' : `${fmtNum(x.latestRatio * 100, 0)}%`;
-  const food = `${fmtNum(x.foodCoveragePct * 100, 0)}% food`;
+  const food = `${fmtNum(x.nutritionCoveragePct * 100, 0)}% nutrition`;
   return `${adh} sessions · ${food}`;
 }
 
 function bodyMdFor(x: {
   weekly: Array<{ pct_ratio: number }>;
-  foodCoveragePct: number;
+  nutritionCoveragePct: number;
   severity: ThemePayload['severity'];
 }): string {
   if (x.severity === 'ok') {
-    return 'Sessions and food logging on track. Execution is not the issue.';
+    return 'Sessions and nutrition logging on track. Execution is not the issue.';
   }
   const pcts = x.weekly.map((w) => `${fmtNum(w.pct_ratio * 100, 0)}%`).join('/');
-  return `Last weeks ${pcts} adherence. Food coverage ${fmtNum(x.foodCoveragePct * 100, 0)}% over 14d.`;
+  return `Last weeks ${pcts} adherence. Nutrition coverage ${fmtNum(x.nutritionCoveragePct * 100, 0)}% over 14d.`;
 }

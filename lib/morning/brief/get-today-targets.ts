@@ -21,6 +21,8 @@
 // at read time.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { readSessionForDay } from "@/lib/coach/session-plan-reader";
+import { weekdayInUserTz } from "@/lib/time";
 import type {
   IntakePayload,
   PlanPayload,
@@ -109,10 +111,14 @@ async function isTrainingDay(
     .maybeSingle();
   if (!data?.session_plan) return false;
 
-  // session_plan is { Mon: "Chest", Tue: "Legs", ..., Sun: "REST" }
-  const labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-  const todayLabel = labels[daysSinceMonday];
-  const session = (data.session_plan as Record<string, string>)[todayLabel] ?? "REST";
+  // session_plan keys may be 3-letter ("Mon") or full ("Monday"); read
+  // via readSessionForDay so both shapes resolve. weekdayInUserTz returns
+  // the full-name form ("Monday") which is what the AI bot writes.
+  const todayLabel = weekdayInUserTz(todayD);
+  const session = readSessionForDay(
+    data.session_plan as Record<string, string>,
+    todayLabel,
+  ) ?? "REST";
   return session.toUpperCase() !== "REST";
 }
 
