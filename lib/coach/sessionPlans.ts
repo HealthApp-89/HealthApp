@@ -81,9 +81,9 @@ export const SESSION_PLANS: Record<string, PlannedExercise[]> = {
     { name: "90/90 Hip Mobility", reps: "6×3", video_url: "https://www.youtube.com/watch?v=t4Zz6-aG8Iw" },
     { name: "Wall Slides", reps: "10×3", video_url: "https://www.youtube.com/watch?v=rYcH0odwmHc" },
     { name: "Thread the Needle", reps: "8×2 each side", video_url: "https://www.youtube.com/watch?v=MfUx9FCOb1E" },
-    { name: "Glute Bridge", reps: "12×3", video_url: "https://www.youtube.com/watch?v=Q_Bpj91Yiis" },
     { name: "Child's Pose", reps: "Hold 60s×2", video_url: "https://www.youtube.com/watch?v=LMiAZKDNh_Y" },
     { name: "Shoulder CARs", reps: "5 circles each×2", video_url: "https://www.youtube.com/watch?v=Ag1yVYbPXeg" },
+    { name: "Glute Bridge", reps: "12×3", video_url: "https://www.youtube.com/watch?v=Q_Bpj91Yiis" },
   ],
 };
 

@@ -34,7 +34,7 @@ export function TodayPlanCard({ plan, committedFromPlan, rirTarget, researchPhas
   const accent = modeColorLight(plan.mode.color);
   const [loggerOpen, setLoggerOpen] = useState(false);
   const [draftEpoch, setDraftEpoch] = useState(0);
-  const canStartSession = plan.sessionType !== "REST" && plan.sessionType !== "Mobility";
+  const canStartSession = plan.sessionType !== "REST";
   const hasDraft = useExistingLoggerDraft(userId, plan.sessionType, draftEpoch);
 
   // Pill text: prefer committed plan info if present.
