@@ -121,7 +121,7 @@ function renderCurrentTargetsLine(t: TodayTargets): string {
   const phaseMode = t.today_phase_mode ? ` Today's phase: ${t.today_phase_mode}.` : "";
   const alarm =
     t.deficit_alarm?.triggered && t.deficit_alarm.rolling_7d_avg_deficit !== null
-      ? ` ⚠ Deficit alarm: 7d avg deficit ${t.deficit_alarm.rolling_7d_avg_deficit} kcal/day > ${t.deficit_alarm.threshold_kcal_per_day} threshold.`
+      ? ` ⚠ Undereating target: 7d avg intake is ${t.deficit_alarm.rolling_7d_avg_deficit} kcal/day below the ${t.kcal} kcal target (grace ±${t.deficit_alarm.threshold_kcal_per_day} kcal/day).`
       : "";
   return `CURRENT TARGETS (live; source: ${describeTargetsSource(t.source_per_field)}; SUPERSEDES the "Nutrition INTAKE baseline" line above): ${t.kcal} kcal, ${t.protein_g}P/${t.carb_g}C/${t.fat_g}F. Phase: ${t.phase}. Mode: ${t.mode}.${trainingDay}${phaseMode}${alarm}`;
 }

@@ -265,7 +265,7 @@ Cover (in this order, but only what's relevant):
 3. Hydration one-liner.
 
 Conditional rules:
-- If glp1.active is true: in the eating section, note that hunger cues may be blunted; suggest setting a reminder for the pre-workout meal rather than "eat when hungry". If glp1.deficit_alarm_triggered is also true, note that the 7-day rolling deficit (see glp1.rolling_7d_avg_deficit in Flags) is high — recommend adding a carb-heavy meal around the session and prioritising ~30g protein per meal.
+- If glp1.active is true: in the eating section, note that hunger cues may be blunted; suggest setting a reminder for the pre-workout meal rather than "eat when hungry". If glp1.deficit_alarm_triggered is also true, the athlete has been UNDEREATING THEIR CHOSEN KCAL TARGET for the past 7 days (glp1.rolling_7d_avg_deficit in Flags = target − avg intake, in kcal/day). Do NOT call this a "deficit" — they may already be on a chosen cut. Frame it as "intake is running below your target" and recommend a structured fix: a carb-heavy meal around the session and ~30g protein per meal to hit target.
 - If alcohol_low_readiness_warning is true: mention pushing protein earlier in the day to compensate for overnight protein-synthesis suppression.
 - If has_active_injuries is true: note "modify per restriction" on relevant exercises rather than the prescribed weight.
 - If missed_protein_yesterday is true: open the eating section with a brief "yesterday's protein came in short — let's hit it cleanly today" before the timing.
@@ -329,13 +329,16 @@ function buildCoachingContext(flags: AdviceFlags, targets: TodayTargets | null):
   const lines: string[] = [];
 
   if (flags.glp1.mode === "glp1_active" && flags.glp1.deficit_alarm_triggered) {
-    const deficit = flags.glp1.rolling_7d_avg_deficit;
-    const threshold = targets?.deficit_alarm?.threshold_kcal_per_day;
-    const deficitStr = deficit !== null ? `~${deficit} kcal/day` : "elevated";
-    const thresholdStr = threshold !== undefined ? `the ${threshold} kcal/day threshold` : "the alarm threshold";
+    const under = flags.glp1.rolling_7d_avg_deficit;
+    const grace = targets?.deficit_alarm?.threshold_kcal_per_day;
+    const target = targets?.kcal;
+    const underStr = under !== null ? `~${under} kcal/day` : "significant";
+    const targetStr = target !== undefined ? `the ${target} kcal/day target` : "the kcal target";
+    const graceStr = grace !== undefined ? ` (grace ±${grace} kcal/day)` : "";
     lines.push(
-      `GLP-1 deficit alarm: 7-day average deficit ${deficitStr}, above ${thresholdStr}. ` +
-      `Recommend adding ~30g protein + a carb-heavy meal around tomorrow's session. ` +
+      `GLP-1 adherence: 7-day average intake is ${underStr} below ${targetStr}${graceStr}. ` +
+      `Frame as "running below target", not "deficit" — the cut itself is the athlete's chosen plan. ` +
+      `Recommend a structured fix: ~30g protein per meal + a carb-heavy meal around tomorrow's session to hit target. ` +
       `Do not recommend a "diet break".`,
     );
   }

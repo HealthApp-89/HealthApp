@@ -875,9 +875,11 @@ export type AdviceFlags = {
     dose_mg: number | null;
     /** Resolved nutrition mode from TodayTargets. null when no active profile. */
     mode: ResolvedNutritionMode | null;
-    /** True when the 7-day rolling deficit exceeds the GLP-1 alarm threshold. */
+    /** Adherence alarm (since 2026-05-27). True when the 7-day average intake
+     *  is more than the grace below the user's RESOLVED kcal target. */
     deficit_alarm_triggered: boolean;
-    /** Rolling 7-day average deficit in kcal/day; null when insufficient data. */
+    /** kcal/day the user is undereating their target by, averaged over 7 days
+     *  (target − avg_intake; positive = undereating). null when insufficient data. */
     rolling_7d_avg_deficit: number | null;
   };
   alcohol_low_readiness_warning: boolean;

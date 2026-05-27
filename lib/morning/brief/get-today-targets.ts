@@ -52,6 +52,15 @@ export type TodayTargets = {
   // ── GLP-1-aware nutrition fields (Task 4) ──
   mode: ResolvedNutritionMode;
   is_training_day: boolean;
+  /** Adherence-based alarm (GLP-1 modes only).
+   *  Semantics: fires when the 7-day average intake is more than
+   *  `threshold_kcal_per_day` below the user's RESOLVED kcal target
+   *  (post-override). The target is treated as the contract; the alarm
+   *  policies drift from it, not the existence of a deficit the user
+   *  chose. Reframed 2026-05-27 (was TDEE-based, fired on every cut
+   *  whose target itself exceeded the safety floor).
+   *  - rolling_7d_avg_deficit: target − avg_intake (positive = undereating).
+   *  - threshold_kcal_per_day: the grace value; intakes within ±this are fine. */
   deficit_alarm: {
     threshold_kcal_per_day: number;
     rolling_7d_avg_intake: number | null;
@@ -107,12 +116,11 @@ async function isTrainingDay(
   return session.toUpperCase() !== "REST";
 }
 
-async function rolling7dDeficit(
+async function rolling7dAvgIntake(
   supabase: SupabaseClient,
   userId: string,
   today: string,
-  tdee_estimate_kcal: number,
-): Promise<{ avg_intake: number | null; avg_deficit: number | null }> {
+): Promise<number | null> {
   const sevenDaysAgo = new Date(`${today}T00:00:00Z`);
   sevenDaysAgo.setUTCDate(sevenDaysAgo.getUTCDate() - 7);
   const since = sevenDaysAgo.toISOString().slice(0, 10);
@@ -129,13 +137,35 @@ async function rolling7dDeficit(
     .map((r) => r.calories_eaten)
     .filter((v): v is number => typeof v === "number" && v > 0);
 
-  if (samples.length === 0) return { avg_intake: null, avg_deficit: null };
-  const avg_intake = samples.reduce((a, b) => a + b, 0) / samples.length;
-  const avg_deficit = tdee_estimate_kcal - avg_intake;
+  if (samples.length === 0) return null;
+  return Math.round(samples.reduce((a, b) => a + b, 0) / samples.length);
+}
+
+/** Grace band: intakes within ±this of the resolved target are considered
+ *  on-plan. Outside the band (avg intake > grace BELOW target) triggers
+ *  the alarm. Chosen at 300 kcal/day to absorb normal day-to-day variance
+ *  without nagging users hitting their target. */
+const ADHERENCE_GRACE_KCAL = 300;
+
+function buildAdherenceAlarm(
+  targetKcal: number,
+  avgIntake: number | null,
+): TodayTargets["deficit_alarm"] {
+  // target − intake: positive = undereating, negative = overeating.
+  const under = avgIntake === null ? null : targetKcal - avgIntake;
   return {
-    avg_intake: Math.round(avg_intake),
-    avg_deficit: Math.round(avg_deficit),
+    threshold_kcal_per_day: ADHERENCE_GRACE_KCAL,
+    rolling_7d_avg_intake: avgIntake,
+    rolling_7d_avg_deficit: under,
+    triggered: under !== null && under > ADHERENCE_GRACE_KCAL,
   };
+}
+
+/** Returns the effective kcal target AFTER overrides are applied. Mirror
+ *  of the kcal resolution inside applyOverrides, hoisted so the alarm can
+ *  be computed against the post-override target. */
+function resolveEffectiveKcal(baseKcal: number, overrides: NutritionOverrides): number {
+  return overrides?.kcal ?? baseKcal;
 }
 
 type NutritionOverrides = {
@@ -225,11 +255,12 @@ export async function getTodayTargets(
     const is_training_day = await isTrainingDay(supabase, userId, today);
 
     if (mode === "glp1_active" && glp1) {
-      const def = await rolling7dDeficit(supabase, userId, today, glp1.tdee_estimate_kcal);
-      const threshold = Math.max(
-        glp1.deficit_alarm_kcal,
-        Math.round(glp1.tdee_estimate_kcal * glp1.deficit_alarm_pct),
-      );
+      // Alarm fires when avg intake drifts more than ADHERENCE_GRACE_KCAL
+      // below the user's RESOLVED kcal target (post-override). The target
+      // is the contract; the alarm policies drift from it, not the
+      // existence of a deficit the user chose to set up.
+      const effectiveKcal = resolveEffectiveKcal(plan.nutrition.kcal_target, overrides);
+      const avgIntake = await rolling7dAvgIntake(supabase, userId, today);
       const base = {
         kcal: plan.nutrition.kcal_target,
         protein_g: plan.nutrition.protein_g,
@@ -241,12 +272,7 @@ export async function getTodayTargets(
         source: "plan" as const,
         mode: "glp1_active" as const,
         is_training_day,
-        deficit_alarm: {
-          threshold_kcal_per_day: threshold,
-          rolling_7d_avg_intake: def.avg_intake,
-          rolling_7d_avg_deficit: def.avg_deficit,
-          triggered: def.avg_deficit !== null && def.avg_deficit > threshold,
-        },
+        deficit_alarm: buildAdherenceAlarm(effectiveKcal, avgIntake),
         hydration_target_ml: is_training_day ? glp1.hydration_training_day_ml : null,
         sodium_target_mg: is_training_day ? glp1.sodium_training_day_mg : null,
         today_phase_mode: null,
@@ -255,8 +281,8 @@ export async function getTodayTargets(
     }
 
     if (mode === "glp1_tapering" && glp1) {
-      const def = await rolling7dDeficit(supabase, userId, today, glp1.tdee_estimate_kcal);
-      const threshold = Math.round(glp1.deficit_alarm_kcal * 0.85);  // relaxed during taper
+      const effectiveKcal = resolveEffectiveKcal(plan.nutrition.kcal_target, overrides);
+      const avgIntake = await rolling7dAvgIntake(supabase, userId, today);
       const base = {
         kcal: plan.nutrition.kcal_target,    // composer leaves this at active-phase value
         protein_g: plan.nutrition.protein_g,
@@ -268,12 +294,7 @@ export async function getTodayTargets(
         source: "plan" as const,
         mode: "glp1_tapering" as const,
         is_training_day,
-        deficit_alarm: {
-          threshold_kcal_per_day: threshold,
-          rolling_7d_avg_intake: def.avg_intake,
-          rolling_7d_avg_deficit: def.avg_deficit,
-          triggered: def.avg_deficit !== null && def.avg_deficit > threshold,
-        },
+        deficit_alarm: buildAdherenceAlarm(effectiveKcal, avgIntake),
         hydration_target_ml: is_training_day ? glp1.hydration_training_day_ml : null,
         sodium_target_mg: is_training_day ? glp1.sodium_training_day_mg : null,
         today_phase_mode: null,

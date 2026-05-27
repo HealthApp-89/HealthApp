@@ -77,9 +77,11 @@ export async function composeEnergy(args: {
   const trainAvg = avg(trainKcals);
   const restAvg  = avg(restKcals);
 
-  // Delegate the deficit alarm to getTodayTargets, which pre-computes against
-  // glp1.tdee_estimate_kcal (the correct denominator). Re-implementing it here
-  // with kcalTarget — already 20% below TDEE — would silently swallow real alarms.
+  // Delegate the alarm to getTodayTargets, which (since 2026-05-27) fires
+  // ONLY when the 7-day intake drifts more than the grace below the user's
+  // resolved kcal target — adherence-based, not TDEE-based. A chosen cut
+  // hitting its target does NOT escalate severity here; only undereating
+  // beyond the user's plan does.
   const glp1DeficitUrgent =
     isGlp1Active && (targets?.deficit_alarm?.triggered ?? false);
 
