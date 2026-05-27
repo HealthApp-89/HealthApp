@@ -46,6 +46,7 @@ export const SESSION_PLANS: Record<string, PlannedExercise[]> = {
     { name: "Triceps Pushdown (Cable)", baseKg: 23, baseReps: 15, sets: 3, key: "triceps", increment: { step: 2.5 } },
     { name: "Hanging Leg Raise", baseReps: 10, sets: 3, key: "hanging_leg_raise", video_url: "https://www.youtube.com/watch?v=Pr1ieGZ5atk" },
     { name: "Pallof Press (Cable)", baseKg: 14, baseReps: 10, sets: 2, key: "pallof_press", note: "Per side", increment: { step: 2.5 }, video_url: "https://www.youtube.com/watch?v=dBAmQ9bx3JA" },
+    { name: "Forearm Plank", reps: "Hold 45s×2", sets: 2, duration_seconds: 45, key: "forearm_plank", note: "Elbows under shoulders, glutes squeezed, ribs down", video_url: "https://www.youtube.com/watch?v=BjGVnfGk6j8" },
   ],
   Legs: [
     { name: "Squat (Barbell)", baseKg: 62.5, baseReps: 6, sets: 3, key: "squat", increment: { step: 2.5 } },
@@ -77,6 +78,7 @@ export const SESSION_PLANS: Record<string, PlannedExercise[]> = {
     { name: "Cable Crunch", baseKg: 25, baseReps: 12, sets: 3, key: "cable_crunch", increment: { step: 2.5 }, video_url: "https://www.youtube.com/watch?v=36HK6uPM_PQ" },
     { name: "Pallof Press (Cable)", baseKg: 14, baseReps: 10, sets: 2, key: "pallof_press", note: "Per side", increment: { step: 2.5 }, video_url: "https://www.youtube.com/watch?v=dBAmQ9bx3JA" },
     { name: "Ab Wheel Rollout", baseReps: 8, sets: 2, key: "ab_wheel", note: "Kneeling — progress range slowly", video_url: "https://www.youtube.com/watch?v=PK4n7qJpOhM" },
+    { name: "Forearm Plank", reps: "Hold 45s×2", sets: 2, duration_seconds: 45, key: "forearm_plank", note: "Elbows under shoulders, glutes squeezed, ribs down", video_url: "https://www.youtube.com/watch?v=BjGVnfGk6j8" },
   ],
   Mobility: [
     { name: "Diaphragmatic Breathing", reps: "5×2", video_url: "https://www.youtube.com/watch?v=UB3tSaiEbNY" },
