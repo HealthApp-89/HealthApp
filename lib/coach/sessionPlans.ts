@@ -23,6 +23,13 @@ export type PlannedExercise = {
    *  morning brief and strength-card exercise lists so the user can review
    *  technique before the session. */
   video_url?: string;
+  /** Marks the exercise as time-based instead of rep-based. The logger
+   *  renders a countdown timer (start/stop) per set instead of kg/reps
+   *  inputs. Actual seconds achieved persist to exercise_sets.duration_seconds.
+   *  Applies to foam-roll holds, planks, dead hangs, breathing protocols,
+   *  etc. — anything where "did you hit the prescribed seconds" is the
+   *  unit of progress. */
+  duration_seconds?: number;
 };
 
 // NOTE: `intermediate` on Chest Fly (2.3kg) and Seated Leg Curl (2.3kg) is a
@@ -74,14 +81,14 @@ export const SESSION_PLANS: Record<string, PlannedExercise[]> = {
   Mobility: [
     { name: "Diaphragmatic Breathing", reps: "5×2", video_url: "https://www.youtube.com/watch?v=UB3tSaiEbNY" },
     { name: "Foam Roll: T-spine Extension", reps: "8 passes×2", note: "Roller at bra-line, arms behind head, small reps — preps Wall Slides + Thread the Needle", video_url: "https://www.youtube.com/watch?v=qCrYe698zJU" },
-    { name: "Foam Roll: Quads", reps: "60s each side", note: "Recovers Monday squats / leg press", video_url: "https://www.youtube.com/watch?v=fvVua1NNzC4" },
-    { name: "Foam Roll: Lats", reps: "60s each side", note: "Recovers Thursday pulls; primes Shoulder CARs", video_url: "https://www.youtube.com/watch?v=1GaR-a9TWYM" },
-    { name: "Foam Roll: Glutes / Piriformis", reps: "60s each side", note: "Primes 90/90 + Glute Bridge", video_url: "https://www.youtube.com/watch?v=DcnerMGjK_U" },
+    { name: "Foam Roll: Quads", reps: "60s each side", sets: 2, duration_seconds: 60, note: "Recovers Monday squats / leg press", video_url: "https://www.youtube.com/watch?v=fvVua1NNzC4" },
+    { name: "Foam Roll: Lats", reps: "60s each side", sets: 2, duration_seconds: 60, note: "Recovers Thursday pulls; primes Shoulder CARs", video_url: "https://www.youtube.com/watch?v=1GaR-a9TWYM" },
+    { name: "Foam Roll: Glutes / Piriformis", reps: "60s each side", sets: 2, duration_seconds: 60, note: "Primes 90/90 + Glute Bridge", video_url: "https://www.youtube.com/watch?v=DcnerMGjK_U" },
     { name: "Cat-Cow", reps: "8×2", video_url: "https://www.youtube.com/watch?v=xyNwxiuERXc" },
     { name: "90/90 Hip Mobility", reps: "6×3", video_url: "https://www.youtube.com/watch?v=t4Zz6-aG8Iw" },
     { name: "Wall Slides", reps: "10×3", video_url: "https://www.youtube.com/watch?v=rYcH0odwmHc" },
     { name: "Thread the Needle", reps: "8×2 each side", video_url: "https://www.youtube.com/watch?v=MfUx9FCOb1E" },
-    { name: "Child's Pose", reps: "Hold 60s×2", video_url: "https://www.youtube.com/watch?v=LMiAZKDNh_Y" },
+    { name: "Child's Pose", reps: "Hold 60s×2", sets: 2, duration_seconds: 60, video_url: "https://www.youtube.com/watch?v=LMiAZKDNh_Y" },
     { name: "Shoulder CARs", reps: "5 circles each×2", video_url: "https://www.youtube.com/watch?v=Ag1yVYbPXeg" },
     { name: "Glute Bridge", reps: "12×3", video_url: "https://www.youtube.com/watch?v=Q_Bpj91Yiis" },
   ],

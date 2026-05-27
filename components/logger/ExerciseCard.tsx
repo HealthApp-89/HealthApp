@@ -68,10 +68,12 @@ export function ExerciseCard({
 
   function addSet() {
     const last = exercise.sets[exercise.sets.length - 1];
+    const isTimeBased = exercise.prescribed.duration_seconds != null;
     const next: ExerciseSetDraft = {
       set_index: exercise.sets.length,
-      kg: last?.kg ?? exercise.prescribed.baseKg ?? null,
+      kg: isTimeBased ? null : (last?.kg ?? exercise.prescribed.baseKg ?? null),
       reps: null,
+      duration_seconds: null,
       warmup: false,
       failure: false,
       committed_at: null,
@@ -112,8 +114,12 @@ export function ExerciseCard({
           <tr className="text-zinc-500 text-[10px]">
             <th className="text-left font-normal py-1">Set</th>
             <th className="text-left font-normal py-1">Previous</th>
-            <th className="text-left font-normal py-1">kg</th>
-            <th className="text-left font-normal py-1">Reps</th>
+            <th className="text-left font-normal py-1">
+              {exercise.prescribed.duration_seconds != null ? "Timer" : "kg"}
+            </th>
+            <th className="text-left font-normal py-1">
+              {exercise.prescribed.duration_seconds != null ? "Seconds" : "Reps"}
+            </th>
             <th></th>
             <th></th>
           </tr>
@@ -130,6 +136,7 @@ export function ExerciseCard({
                   exercise.sets.slice(0, i).filter((x) => !x.warmup).length + 1
                 }
                 isActive={!s.committed_at && exercise.sets.findIndex((x) => !x.committed_at) === i}
+                targetDurationSeconds={exercise.prescribed.duration_seconds ?? null}
                 onChange={(patch) => patchSet(i, patch)}
                 onCommit={() => commitSet(i)}
                 onUncommit={() => uncommitSet(i)}

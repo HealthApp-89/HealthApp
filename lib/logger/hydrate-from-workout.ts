@@ -32,6 +32,7 @@ export function hydrateWorkoutAsDraft(
       set_index: s.set_index,
       kg: s.kg,
       reps: s.reps,
+      duration_seconds: s.duration_seconds,
       warmup: s.warmup,
       failure: s.failure,
       committed_at: committedAt,

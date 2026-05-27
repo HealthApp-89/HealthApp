@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ExerciseSetDraft } from "@/lib/logger/types";
 import { usePreviousSet } from "@/lib/query/hooks/usePreviousSet";
 import { VoiceMicButton } from "@/components/logger/VoiceMicButton";
 import { fmtNum } from "@/lib/ui/score";
 import { selectOnFocus } from "@/lib/ui/inputs";
+import { fireRestDoneCue } from "@/lib/logger/rest-timer";
 
 type Props = {
   userId: string;
@@ -17,18 +18,53 @@ type Props = {
    *  followed by a normal set show the normal one as "1", not "3". */
   workingSetNumber: number;
   isActive: boolean;
+  /** When present, renders a countdown-timer set row (foam rolls, planks,
+   *  dead hangs, etc.) instead of the kg/reps inputs. Counts down to 0 then
+   *  continues counting up so the user can stop early or run over. */
+  targetDurationSeconds: number | null;
   onChange: (patch: Partial<ExerciseSetDraft>) => void;
   onCommit: () => void;
   onUncommit: () => void;
   onUnparsedVoice: (transcript: string) => void;
 };
 
+function fmtMmSs(totalSeconds: number): string {
+  const s = Math.max(0, Math.floor(totalSeconds));
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return `${m}:${r.toString().padStart(2, "0")}`;
+}
+
 export function SetRow({
   userId, exerciseName, excludeWorkoutExternalId, set, workingSetNumber,
-  isActive, onChange, onCommit, onUncommit, onUnparsedVoice,
+  isActive, targetDurationSeconds, onChange, onCommit, onUncommit, onUnparsedVoice,
 }: Props) {
   const [draftKg, setDraftKg] = useState<string>(set.kg !== null ? String(set.kg) : "");
   const [draftReps, setDraftReps] = useState<string>(set.reps !== null ? String(set.reps) : "");
+
+  // Timer mode: local started_at (ms). Ticks every 250ms while running.
+  // Resets when the set is uncommitted.
+  const [timerStartedAt, setTimerStartedAt] = useState<number | null>(null);
+  const [tick, setTick] = useState(0);
+  const cueFiredRef = useRef(false);
+  useEffect(() => {
+    if (timerStartedAt == null) return;
+    const id = setInterval(() => setTick((t) => t + 1), 250);
+    return () => clearInterval(id);
+  }, [timerStartedAt]);
+  const elapsedSeconds = timerStartedAt != null
+    ? Math.floor((Date.now() - timerStartedAt) / 1000)
+    : 0;
+  useEffect(() => {
+    if (timerStartedAt != null && targetDurationSeconds != null
+        && elapsedSeconds >= targetDurationSeconds && !cueFiredRef.current) {
+      cueFiredRef.current = true;
+      fireRestDoneCue();
+    }
+  }, [timerStartedAt, elapsedSeconds, targetDurationSeconds]);
+  // tick is read by the effects above via Date.now(); reference it so the
+  // 250ms re-renders aren't dead-stripped.
+  void tick;
 
   const prev = usePreviousSet({
     userId,
@@ -46,6 +82,109 @@ export function SetRow({
     : set.failure
       ? "bg-red-500/15 text-red-400"
       : "bg-zinc-800 text-zinc-200";
+
+  // Time-based mode: replace the kg/reps inputs (and mic) with a countdown
+  // timer + stop button. Tap ▶ to start, tap ⏹ to commit the elapsed time.
+  // Counts down to 0 then keeps counting up so the user can run over the
+  // prescribed seconds.
+  if (targetDurationSeconds != null) {
+    const isRunning = timerStartedAt != null && !committed;
+    const targetReached = targetDurationSeconds != null
+      && (isRunning ? elapsedSeconds >= targetDurationSeconds : false);
+    const display = (() => {
+      if (committed) {
+        return `${set.duration_seconds ?? 0}s`;
+      }
+      if (!isRunning) return `${targetDurationSeconds}s`;
+      if (targetReached) {
+        return `+${fmtMmSs(elapsedSeconds - targetDurationSeconds)}`;
+      }
+      return fmtMmSs(targetDurationSeconds - elapsedSeconds);
+    })();
+    const onStart = () => {
+      cueFiredRef.current = false;
+      setTimerStartedAt(Date.now());
+    };
+    const onStop = () => {
+      if (timerStartedAt == null) return;
+      const actual = Math.max(0, Math.floor((Date.now() - timerStartedAt) / 1000));
+      setTimerStartedAt(null);
+      onChange({ duration_seconds: actual });
+      // commitSet on parent reads the latest set; defer by a microtask so the
+      // patch above is applied first.
+      queueMicrotask(onCommit);
+    };
+    return (
+      <tr>
+        <td className="py-1 relative">
+          <button
+            type="button"
+            onClick={() => setBadgeOpen((v) => !v)}
+            className={`w-6 h-6 rounded-md text-[11px] font-semibold ${setBadgeClass}`}
+            aria-label="Change set type"
+          >
+            {setLabel}
+          </button>
+          {badgeOpen && (
+            <>
+              <div className="fixed inset-0 z-10" onClick={() => setBadgeOpen(false)} aria-hidden />
+              <div className="absolute left-0 top-7 z-20 bg-zinc-800 border border-zinc-700 rounded-lg p-1 flex flex-col gap-0.5 min-w-[44px]" role="menu">
+                <button type="button" onClick={() => { onChange({ warmup: false, failure: false }); setBadgeOpen(false); }} className="w-9 h-7 rounded text-[11px] font-semibold bg-zinc-800 text-zinc-200 hover:bg-zinc-700">{workingSetNumber}</button>
+                <button type="button" onClick={() => { onChange({ warmup: true, failure: false }); setBadgeOpen(false); }} className="w-9 h-7 rounded text-[11px] font-semibold bg-yellow-500/15 text-yellow-300 hover:bg-yellow-500/25">W</button>
+                <button type="button" onClick={() => { onChange({ warmup: false, failure: true }); setBadgeOpen(false); }} className="w-9 h-7 rounded text-[11px] font-semibold bg-red-500/15 text-red-400 hover:bg-red-500/25">F</button>
+              </div>
+            </>
+          )}
+        </td>
+        <td className="py-1 text-[10.5px] text-zinc-600">
+          {targetDurationSeconds}s target
+        </td>
+        <td className="py-1">
+          {!committed && (
+            <button
+              type="button"
+              onClick={isRunning ? onStop : onStart}
+              className={`w-9 h-7 rounded-md text-[11px] font-semibold ${
+                isRunning
+                  ? "bg-red-500/20 text-red-300 hover:bg-red-500/30"
+                  : "bg-indigo-500/20 text-indigo-300 hover:bg-indigo-500/30"
+              }`}
+              aria-label={isRunning ? "Stop timer" : "Start timer"}
+            >
+              {isRunning ? "⏹" : "▶"}
+            </button>
+          )}
+        </td>
+        <td className="py-1">
+          <span className={`font-mono tabular-nums text-[12px] ${
+            committed
+              ? "text-green-400"
+              : targetReached
+                ? "text-amber-300"
+                : isRunning
+                  ? "text-zinc-100"
+                  : "text-zinc-500"
+          }`}>
+            {display}
+          </span>
+        </td>
+        <td className="py-1">
+          <button
+            type="button"
+            onClick={committed ? onUncommit : undefined}
+            disabled={!committed}
+            className={`w-6 h-6 rounded-md flex items-center justify-center text-[12px] ${
+              committed ? "bg-green-500 text-green-950" : "bg-zinc-800 text-zinc-600"
+            }`}
+            aria-label={committed ? "Uncommit set" : "Stop the timer first"}
+          >
+            {committed ? "✓" : "○"}
+          </button>
+        </td>
+        <td className="py-1"></td>
+      </tr>
+    );
+  }
 
   return (
     <tr>

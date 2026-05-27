@@ -42,8 +42,9 @@ function makeDraftFromPlan(args: {
     prescribed: p,
     sets: Array.from({ length: p.sets ?? 1 }, (_unused, j) => ({
       set_index: j,
-      kg: p.baseKg ?? null,
+      kg: p.duration_seconds != null ? null : (p.baseKg ?? null),
       reps: null,
+      duration_seconds: null,
       warmup: !!p.warmup && j === 0,
       failure: false,
       committed_at: null,
@@ -82,8 +83,9 @@ function resetDraft(draft: LoggerDraft): LoggerDraft {
       ...ex,
       sets: Array.from({ length: ex.prescribed.sets ?? 1 }, (_unused, j) => ({
         set_index: j,
-        kg: ex.prescribed.baseKg ?? null,
+        kg: ex.prescribed.duration_seconds != null ? null : (ex.prescribed.baseKg ?? null),
         reps: null,
+        duration_seconds: null,
         warmup: !!ex.prescribed.warmup && j === 0,
         failure: false,
         committed_at: null,
@@ -330,7 +332,7 @@ export function LoggerSheet(props: Props) {
               set_index: s.set_index,
               kg: s.kg,
               reps: s.reps,
-              duration_seconds: null,
+              duration_seconds: s.duration_seconds,
               warmup: s.warmup,
               failure: s.failure,
               rest_seconds_actual: restActual,
@@ -485,7 +487,7 @@ export function LoggerSheet(props: Props) {
                 position: draft.exercises.length,
                 prescribed: { name, sets: 3, baseReps: 10 },
                 sets: Array.from({ length: 3 }, (_x, j) => ({
-                  set_index: j, kg: null, reps: null, warmup: false, failure: false, committed_at: null,
+                  set_index: j, kg: null, reps: null, duration_seconds: null, warmup: false, failure: false, committed_at: null,
                 })),
               };
               setDraft({ ...draft, exercises: [...draft.exercises, newEx] });

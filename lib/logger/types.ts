@@ -8,6 +8,10 @@ export type ExerciseSetDraft = {
   set_index: number;
   kg: number | null;
   reps: number | null;
+  /** Actual seconds achieved for time-based exercises (foam rolls, planks,
+   *  dead hangs, etc.). Set on Stop tap; null for rep-based sets and for
+   *  any time-based set the user hasn't yet started. */
+  duration_seconds: number | null;
   warmup: boolean;
   failure: boolean;
   committed_at: string | null; // ISO timestamp on ✓
