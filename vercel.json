@@ -27,7 +27,7 @@
     },
     {
       "path": "/api/coach/debrief/sweep",
-      "schedule": "0 * * * *"
+      "schedule": "0 3 * * *"
     }
   ],
   "functions": {
