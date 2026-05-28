@@ -318,5 +318,73 @@ console.log("\n## pattern-conflict-overlay.ts\n");
   assert("Stiff-Leg Deadlift on Friday flagged", validatePatternConflicts(stiffLegViolation, block, week) !== null);
 }
 
+import { validateWeekPrescription } from "@/lib/coach/prescription/validate-week";
+
+console.log("\n## validate-week.ts\n");
+
+{
+  const block = {
+    id: "fixture", user_id: "fixture", primary_lift: "deadlift", target_metric: "working_weight",
+    target_value: 95, target_unit: "kg", status: "active",
+    start_date: "2026-05-04", end_date: "2026-06-07",
+    target_hit_at_week: 3,
+    diet_goal: null, goal_text: "fixture", notes: null, block_id: null,
+    created_at: "2026-05-04", updated_at: "2026-05-04",
+  };
+  const week = {
+    user_id: "fixture", week_start: "2026-06-01",
+    session_plan: { Monday: "Legs", Tuesday: "Chest", Wednesday: "Mobility", Thursday: "Back", Friday: "Arms", Saturday: "REST", Sunday: "REST" },
+    intensity_modifier: {}, rir_target: 1, research_phase: "accumulate",
+    block_id: "fixture", exercise_overrides: null, session_prescriptions: null,
+    weekly_focus: null, original_session_plan: null,
+  };
+  const prevWeek = {
+    ...week, week_start: "2026-05-25",
+    session_prescriptions: {
+      Thursday: [{ name: "Deadlift (Barbell)", key: "deadlift", baseKg: 97.5, baseReps: 7, sets: 3, increment: { step: 2.5 } }],
+    },
+  };
+
+  const consolidationViolation = validateWeekPrescription({
+    prescription: { Thursday: [{ name: "Deadlift (Barbell)", key: "deadlift", baseKg: 100, baseReps: 7, sets: 3, increment: { step: 2.5 } }] },
+    block, week, prevWeek,
+    maintenanceBaselines: { squat: 80, bench: 72.5, ohp: 40 },
+    nonFocusBaselineSets: { squat: 3, bench: 3, ohp: 3 },
+  });
+  assert("consolidation: deadlift 97.5 → 100 rejected", consolidationViolation !== null && consolidationViolation.code === "consolidation_load_increase");
+
+  const okSameLoad = validateWeekPrescription({
+    prescription: { Thursday: [{ name: "Deadlift (Barbell)", key: "deadlift", baseKg: 97.5, baseReps: 8, sets: 4, increment: { step: 2.5 } }] },
+    block, week, prevWeek,
+    maintenanceBaselines: { squat: 80, bench: 72.5, ohp: 40 },
+    nonFocusBaselineSets: { squat: 3, bench: 3, ohp: 3 },
+  });
+  assert("consolidation: same load + more reps/sets OK", okSameLoad === null);
+
+  const overcooked = validateWeekPrescription({
+    prescription: { Monday: [{ name: "Squat (Barbell)", key: "squat", baseKg: 80, baseReps: 6, sets: 2, increment: { step: 2.5 } }] },
+    block, week, prevWeek,
+    maintenanceBaselines: { squat: 80, bench: 72.5, ohp: 40 },
+    nonFocusBaselineSets: { squat: 3, bench: 3, ohp: 3 },
+  });
+  assert("secondary at baseline (80 kg) > clamp (0.92×80=73.6) rejected", overcooked !== null && overcooked.code === "non_focus_primary_overcooked");
+
+  const okSecondaryAtClamp = validateWeekPrescription({
+    prescription: { Monday: [{ name: "Squat (Barbell)", key: "squat", baseKg: 72.5, baseReps: 6, sets: 2, increment: { step: 2.5 } }] },
+    block, week, prevWeek,
+    maintenanceBaselines: { squat: 80, bench: 72.5, ohp: 40 },
+    nonFocusBaselineSets: { squat: 3, bench: 3, ohp: 3 },
+  });
+  assert("secondary at 72.5 (≤ clamp 73.6) and 2 sets (< baseline 3) OK", okSecondaryAtClamp === null);
+
+  const volumeTooHigh = validateWeekPrescription({
+    prescription: { Monday: [{ name: "Squat (Barbell)", key: "squat", baseKg: 72.5, baseReps: 6, sets: 3, increment: { step: 2.5 } }] },
+    block, week, prevWeek,
+    maintenanceBaselines: { squat: 80, bench: 72.5, ohp: 40 },
+    nonFocusBaselineSets: { squat: 3, bench: 3, ohp: 3 },
+  });
+  assert("secondary at 3 sets (not below baseline 3) rejected", volumeTooHigh !== null && volumeTooHigh.code === "non_focus_primary_volume_too_high");
+}
+
 console.log(`\n${pass} passed, ${fail} failed.`);
 process.exit(fail === 0 ? 0 : 1);
