@@ -254,6 +254,10 @@ export type TrainingBlock = {
   primary_lift: PrimaryLift | null;
   target_metric: TargetMetric | null;
   target_value: number | null;
+  /** Week index (1-5) within the block where target_value was first met or
+   *  surpassed. NULL when not yet hit. Set by the Sunday prescription system
+   *  when computing block progress; never decremented. */
+  target_hit_at_week: number | null;
   target_unit: string;
   /** Reserved-null in v1. v2 populates with calorie/macro targets. */
   diet_goal: Record<string, unknown> | null;
@@ -265,10 +269,30 @@ export type TrainingBlock = {
 // ── training_weeks ───────────────────────────────────────────────────────────
 
 export type Weekday = "Mon" | "Tue" | "Wed" | "Thu" | "Fri" | "Sat" | "Sun";
+/** Full weekday names — matches weekdayInUserTz() output and the AI bot's
+ *  session_plan / session_prescriptions keys. */
+export type WeekdayLong =
+  | "Monday"
+  | "Tuesday"
+  | "Wednesday"
+  | "Thursday"
+  | "Friday"
+  | "Saturday"
+  | "Sunday";
 /** Session-type strings keyed in SESSION_PLANS, plus the literal "REST". */
 export type SessionPlan = Partial<Record<Weekday, string>>;
 /** Per-primary-lift intensity multipliers; missing keys default to 1.0. */
 export type IntensityModifier = Partial<Record<PrimaryLift, number>>;
+
+/** Sunday-prescription system: per-weekday concrete exercise prescriptions for
+ *  the upcoming training week. Distinct from `exercise_overrides` (which is
+ *  permutation-only over SESSION_PLANS) — `session_prescriptions` lets the
+ *  prescription engine set arbitrary working weights, reps, and rest while
+ *  remaining tied to a weekday slot. NULL means no prescription set; the
+ *  resolver falls back to exercise_overrides → SESSION_PLANS. */
+export type SessionPrescriptions = Partial<
+  Record<WeekdayLong, import("@/lib/coach/sessionPlans").PlannedExercise[]>
+>;
 
 export type ResearchPhase = "accumulate" | "deload";
 export type ProposedBy = "coach" | "user";
@@ -309,6 +333,11 @@ export type TrainingWeek = {
   /** Per-day reordered exercise lists. NULL means no overrides set for any day;
    *  resolver falls through to SESSION_PLANS[session_plan[weekday]]. */
   exercise_overrides: ExerciseOverrides | null;
+  /** Sunday-prescription system: per-weekday concrete exercise prescriptions
+   *  (working weights, reps, rest) committed at Sunday planning. NULL means no
+   *  prescription written; resolver falls back to exercise_overrides →
+   *  SESSION_PLANS. */
+  session_prescriptions: SessionPrescriptions | null;
   weekly_focus: string | null;
   intensity_modifier: IntensityModifier;
   rir_target: number | null;
