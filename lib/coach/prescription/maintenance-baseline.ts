@@ -1,41 +1,42 @@
 // lib/coach/prescription/maintenance-baseline.ts
 //
-// Computes the "current working weight" for a lift — the highest clean set
-// in the last N weeks where RPE ≤ rir_target + 1 (or RIR signal indicates
-// clean). This is the value the maintenance multiplier (0.90×) applies to,
-// NOT the stale SESSION_PLANS.baseKg.
+// Computes the "current working weight" for a lift — the highest kg across
+// recent clean working sets. A "clean" set is one the lifter completed
+// without grinding to failure or treating it as warmup. RPE/RIR signals are
+// NOT tracked in this codebase's schema (exercise_sets has no rpe/rir
+// columns); we derive working capacity from reps + warmup + failure flags.
 
 import type { WorkoutSetSample } from "@/lib/coach/prescription/types";
 
 const LOOKBACK_DAYS = 28; // 4 weeks
-const MIN_REPS_FOR_BASELINE = 5;
+const MIN_REPS_FOR_BASELINE = 5; // hypertrophy-range floor; rejects singles/doubles that bias the baseline
 
 /** Returns the max kg across the user's recent clean working sets for the
- *  given exercise. A set is "clean" if either:
- *   - rpe is non-null AND rpe ≤ (11 - rirTarget)
- *     (equivalently: rpe within 1 of the target RPE = 10 - rirTarget;
- *      e.g. rirTarget=2 → target RPE 8 → clean ≤ 9), OR
- *   - rir is non-null AND rir ≥ Math.max(0, rirTarget - 1)
- *  Both branches encode the same "within 1 unit of target effort" rule,
- *  expressed in whichever signal the set recorded.
- *  Returns null when no clean sets found in the window. */
+ *  given exercise. A set is "clean" if all of:
+ *   - performed_on within the lookback window
+ *   - warmup === false
+ *   - failure === false
+ *   - reps >= MIN_REPS_FOR_BASELINE (hypertrophy-range floor)
+ *  Returns null when no clean sets found in the window.
+ *
+ *  The rirTarget parameter is accepted for API symmetry with other rule
+ *  modules but is not used in the filter (rpe/rir columns don't exist in
+ *  the schema). Future migrations could enable rpe-based filtering. */
 export function maintenanceLoadFor(
   exerciseNameOrKey: string,
   rirTarget: number,
   recentSets: WorkoutSetSample[],
   todayIso: string,
 ): number | null {
+  void rirTarget; // reserved for future RPE-aware filtering
   const cutoff = subtractDaysIso(todayIso, LOOKBACK_DAYS);
   const cleanSets = recentSets.filter((s) => {
     if (s.performed_on < cutoff) return false;
     if (s.exercise_name !== exerciseNameOrKey && s.exercise_key !== exerciseNameOrKey) return false;
-    // Reject sub-hypertrophy-range singles/doubles — they bias the maintenance
-    // baseline upward. Standard Israetel/Helms practice: working baselines from
-    // 5+ rep sets only.
+    if (s.warmup) return false;
+    if (s.failure) return false;
     if (s.reps < MIN_REPS_FOR_BASELINE) return false;
-    const rpeOk  = s.rpe != null && s.rpe <= 11 - rirTarget;
-    const rirOk  = s.rir != null && s.rir >= Math.max(0, rirTarget - 1);
-    return rpeOk || rirOk;
+    return true;
   });
   if (cleanSets.length === 0) return null;
   return Math.max(...cleanSets.map((s) => s.kg));

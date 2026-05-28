@@ -22,19 +22,24 @@ console.log("\n## maintenance-baseline.ts\n");
 
 {
   const sets = [
-    { exercise_name: "Deadlift (Barbell)", exercise_key: "deadlift", kg: 95, reps: 7, rpe: 8, rir: null, performed_on: "2026-05-21" },
-    { exercise_name: "Deadlift (Barbell)", exercise_key: "deadlift", kg: 97.5, reps: 6, rpe: 8.5, rir: null, performed_on: "2026-05-28" },
-    { exercise_name: "Deadlift (Barbell)", exercise_key: "deadlift", kg: 100, reps: 1, rpe: 10, rir: null, performed_on: "2026-05-28" }, // dirty — RPE 10 with rir target 2 means rpe > 3, rejected
-    { exercise_name: "Deadlift (Barbell)", exercise_key: "deadlift", kg: 92.5, reps: 6, rpe: 7, rir: null, performed_on: "2026-04-20" }, // outside 28-day window, rejected
+    { exercise_name: "Deadlift (Barbell)", exercise_key: "deadlift", kg: 95,   reps: 7, warmup: false, failure: false, performed_on: "2026-05-21" },
+    { exercise_name: "Deadlift (Barbell)", exercise_key: "deadlift", kg: 97.5, reps: 6, warmup: false, failure: false, performed_on: "2026-05-28" },
+    { exercise_name: "Deadlift (Barbell)", exercise_key: "deadlift", kg: 100,  reps: 1, warmup: false, failure: false, performed_on: "2026-05-28" }, // dirty — reps < 5 (sub-hypertrophy range), rejected
+    { exercise_name: "Deadlift (Barbell)", exercise_key: "deadlift", kg: 50,   reps: 10, warmup: true,  failure: false, performed_on: "2026-05-28" }, // dirty — warmup, rejected
+    { exercise_name: "Deadlift (Barbell)", exercise_key: "deadlift", kg: 92.5, reps: 8, warmup: false, failure: true,  performed_on: "2026-05-21" }, // dirty — failure, rejected
+    { exercise_name: "Deadlift (Barbell)", exercise_key: "deadlift", kg: 92.5, reps: 6, warmup: false, failure: false, performed_on: "2026-04-20" }, // dirty — outside 28-day window
   ];
   const result = maintenanceLoadFor("deadlift", 2, sets, "2026-05-28");
-  assert("max clean kg in window is 97.5 (rejects RPE 10 + outside-window)", result === 97.5, `got ${result}`);
+  assert("max clean kg in window is 97.5 (rejects <5 reps, warmup, failure, out-of-window)", result === 97.5, `got ${result}`);
 
   const noSets = maintenanceLoadFor("squat", 2, sets, "2026-05-28");
   assert("returns null when no matching exercise found", noSets === null);
 
-  const onlyOutOfWindow = maintenanceLoadFor("deadlift", 2, sets.slice(3), "2026-05-28");
+  const onlyOutOfWindow = maintenanceLoadFor("deadlift", 2, sets.slice(5), "2026-05-28");
   assert("returns null when only out-of-window sets exist", onlyOutOfWindow === null);
+
+  const allDirty = maintenanceLoadFor("deadlift", 2, sets.slice(2, 5), "2026-05-28");
+  assert("returns null when all candidate sets are dirty (low-reps / warmup / failure)", allDirty === null);
 }
 
 console.log("\n## block-phase-rule.ts\n");

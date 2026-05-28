@@ -14,8 +14,8 @@ export type WorkoutSetSample = {
   exercise_key: string | null;
   kg: number;
   reps: number;
-  rpe: number | null;
-  rir: number | null;
+  warmup: boolean;
+  failure: boolean;
   performed_on: string; // ISO date
 };
 
