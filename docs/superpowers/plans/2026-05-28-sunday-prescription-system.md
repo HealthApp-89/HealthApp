@@ -273,8 +273,11 @@ const LOOKBACK_DAYS = 28; // 4 weeks
 
 /** Returns the max kg across the user's recent clean working sets for the
  *  given exercise. A set is "clean" if either:
- *   - rpe is non-null AND rpe ≤ rirTarget + 1, OR
- *   - rir is non-null AND rir ≥ rirTargetMinusOne(rirTarget)
+ *   - rir is non-null AND rir ≥ rirTarget - 1, OR
+ *   - rpe is non-null AND rpe ≤ 11 - rirTarget (algebraic equivalent)
+ *  Note: RPE = 10 - RIR. The "within 1 of target effort" tolerance lets the
+ *  baseline reflect realistic working sets — a set at RPE 9 (RIR 1) on a
+ *  rirTarget=2 plan still represents the athlete's actual capacity.
  *  Returns null when no clean sets found in the window. */
 export function maintenanceLoadFor(
   exerciseNameOrKey: string,
@@ -286,7 +289,7 @@ export function maintenanceLoadFor(
   const cleanSets = recentSets.filter((s) => {
     if (s.performed_on < cutoff) return false;
     if (s.exercise_name !== exerciseNameOrKey && s.exercise_key !== exerciseNameOrKey) return false;
-    const rpeOk  = s.rpe != null && s.rpe <= rirTarget + 1;
+    const rpeOk  = s.rpe != null && s.rpe <= 11 - rirTarget;
     const rirOk  = s.rir != null && s.rir >= Math.max(0, rirTarget - 1);
     return rpeOk || rirOk;
   });
@@ -1490,7 +1493,7 @@ function lastWeekClean(sets: ReturnType<typeof fetchRecentSets> extends Promise<
   const lastWeekTop = matching[0]; // recent-first ordering
   if (lastWeekTop == null) return false;
   if (lastWeekTop.rir != null) return lastWeekTop.rir >= rirTarget;
-  if (lastWeekTop.rpe != null) return lastWeekTop.rpe <= rirTarget + 1;
+  if (lastWeekTop.rpe != null) return lastWeekTop.rpe <= 10 - rirTarget;
   return false;
 }
 
@@ -1501,7 +1504,7 @@ function consecutiveMisses(sets: ReturnType<typeof fetchRecentSets> extends Prom
   for (const s of matching) {
     const clean =
       (s.rir != null && s.rir >= rirTarget) ||
-      (s.rpe != null && s.rpe <= rirTarget + 1);
+      (s.rpe != null && s.rpe <= 10 - rirTarget);
     if (clean) break;
     misses++;
   }
