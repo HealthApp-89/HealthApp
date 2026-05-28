@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { commitSession } from "@/lib/logger/commit-session";
 import type { CommitSessionPayload } from "@/lib/logger/types";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { evaluateAndStampTargetHit } from "@/lib/coach/prescription/target-hit-evaluator";
 
 export async function POST(req: Request) {
   let payload: CommitSessionPayload;
@@ -22,6 +24,16 @@ export async function POST(req: Request) {
 
   try {
     const result = await commitSession(payload);
+
+    // Target-hit evaluator: scan active block for primary-lift PR ≥ target_value
+    // and stamp training_blocks.target_hit_at_week. Non-fatal — retries next commit.
+    try {
+      const supabase = await createSupabaseServerClient();
+      await evaluateAndStampTargetHit({ supabase, userId: payload.user_id });
+    } catch (err) {
+      console.error("[logger/session] evaluateAndStampTargetHit failed:", err);
+    }
+
     return NextResponse.json(result);
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Unknown error";
