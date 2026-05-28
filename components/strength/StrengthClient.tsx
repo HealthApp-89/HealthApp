@@ -136,6 +136,7 @@ export function StrengthClient({
     ? getEffectiveSessionPlan(
         committedSessionType,
         fullWeekday,
+        committedWeek?.session_prescriptions ?? null,
         exerciseOverrides,
         userTemplate?.exercises ?? null,
       )
@@ -199,6 +200,7 @@ export function StrengthClient({
             weekday={fullWeekday}
             userId={userId}
             weekOverrides={(committedWeek?.exercise_overrides as ExerciseOverrides | null | undefined) ?? null}
+            weekPrescriptions={committedWeek?.session_prescriptions ?? null}
           />
         ) : activeView === "by_muscle" ? (
           <ByMuscleView userId={userId} todayIso={todayIso} />

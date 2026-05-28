@@ -273,8 +273,11 @@ const LOOKBACK_DAYS = 28; // 4 weeks
 
 /** Returns the max kg across the user's recent clean working sets for the
  *  given exercise. A set is "clean" if either:
- *   - rpe is non-null AND rpe ≤ rirTarget + 1, OR
- *   - rir is non-null AND rir ≥ rirTargetMinusOne(rirTarget)
+ *   - rir is non-null AND rir ≥ rirTarget - 1, OR
+ *   - rpe is non-null AND rpe ≤ 11 - rirTarget (algebraic equivalent)
+ *  Note: RPE = 10 - RIR. The "within 1 of target effort" tolerance lets the
+ *  baseline reflect realistic working sets — a set at RPE 9 (RIR 1) on a
+ *  rirTarget=2 plan still represents the athlete's actual capacity.
  *  Returns null when no clean sets found in the window. */
 export function maintenanceLoadFor(
   exerciseNameOrKey: string,
@@ -286,7 +289,7 @@ export function maintenanceLoadFor(
   const cleanSets = recentSets.filter((s) => {
     if (s.performed_on < cutoff) return false;
     if (s.exercise_name !== exerciseNameOrKey && s.exercise_key !== exerciseNameOrKey) return false;
-    const rpeOk  = s.rpe != null && s.rpe <= rirTarget + 1;
+    const rpeOk  = s.rpe != null && s.rpe <= 11 - rirTarget;
     const rirOk  = s.rir != null && s.rir >= Math.max(0, rirTarget - 1);
     return rpeOk || rirOk;
   });
@@ -1490,7 +1493,7 @@ function lastWeekClean(sets: ReturnType<typeof fetchRecentSets> extends Promise<
   const lastWeekTop = matching[0]; // recent-first ordering
   if (lastWeekTop == null) return false;
   if (lastWeekTop.rir != null) return lastWeekTop.rir >= rirTarget;
-  if (lastWeekTop.rpe != null) return lastWeekTop.rpe <= rirTarget + 1;
+  if (lastWeekTop.rpe != null) return lastWeekTop.rpe <= 10 - rirTarget;
   return false;
 }
 
@@ -1501,7 +1504,7 @@ function consecutiveMisses(sets: ReturnType<typeof fetchRecentSets> extends Prom
   for (const s of matching) {
     const clean =
       (s.rir != null && s.rir >= rirTarget) ||
-      (s.rpe != null && s.rpe <= rirTarget + 1);
+      (s.rpe != null && s.rpe <= 10 - rirTarget);
     if (clean) break;
     misses++;
   }
@@ -2437,8 +2440,8 @@ Follow this 4-beat structure:
    Consult \`get_autoregulation_signals\`. If \`should_deload === true\` (≥2 signals firing), surface the alert and recommend deloading even if it's not week 5.
 
    **Call \`propose_week_plan\` with a FULL per-exercise \`session_prescriptions\` payload.** Each non-REST day must have an array of PlannedExercise shapes:
-   - For the focus lift (the block's primary_lift on its session day): apply the block-phase rule. Pre-target → +step if last week was clean RIR, hold otherwise. Consolidation → hold load, +1 rep target OR +1 set. Off-pace → small jump with set drop. Deload → 0.80× with halved sets.
-   - For non-focus primaries (squat, bench, OHP on their own days during a deadlift block): apply MAINTENANCE — multiplier 0.90 vs current working weight, sets drop by 1 vs non-focus baseline. The server validates: load must be ≤ 0.92 × current_working_weight; sets must be < non-focus baseline.
+   - For the focus lift (the block's primary_lift on its session day): apply the block-phase rule. Pre-target → +step if last week was clean RIR, hold otherwise. Consolidation → hold load, progress reps by +1 (sets stay at baseline; do NOT add a set in the same week — pushing both reps and sets simultaneously is an MRV-breach pattern). Off-pace → hold load AND hold sets; narrate to the user that the block target needs renegotiation (consider closing the block early to reset). Deload → 0.80× with halved sets.
+   - For non-focus primaries (squat, bench, OHP on their own days during a deadlift block): apply MAINTENANCE — multiplier 0.90 vs current working weight, sets drop by 1 vs non-focus baseline. Two consecutive RIR misses → drop 10% (not 5%); standard stall-reset magnitude. The server validates: load must be ≤ 0.92 × current_working_weight; sets must be < non-focus baseline.
    - For accessories: apply per-muscle volume balance. Below MEV → add a set. At MEV → add a set. In band → hold. Near MRV → hold. Above MRV → drop a set or swap to a less-fatiguing variant. Load progresses via autoregulation.
 
    **Pattern conflicts are hard-rejected.** For a deadlift focus block, axial-loaded hinge accessories (Romanian Deadlift, Good Morning, Stiff-Leg Deadlift) must NOT appear on non-Back days. Use low-axial alternatives (Hip Thrust, 45° Hyperextension loaded, Cable Pull-Through) when a hinge-frequency gap needs filling.

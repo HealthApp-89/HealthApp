@@ -314,10 +314,13 @@ function composeSession(
       | ExerciseOverrides
       | null
       | undefined) ?? null;
+  const sessionPrescriptions =
+    inputs.thisWeekPrescription?.trainingWeek?.session_prescriptions ?? null;
   const weekday = weekdayFromDate(inputs.today);
   const effectivePlan = getEffectiveSessionPlan(
     inputs.sessionType,
     weekday,
+    sessionPrescriptions,
     overrides,
   );
   const structure =
