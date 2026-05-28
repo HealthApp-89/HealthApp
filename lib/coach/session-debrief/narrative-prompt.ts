@@ -28,6 +28,17 @@ Rules:
 - Use Markdown for emphasis sparingly. No headers, no bullets — flowing prose.
 - 2-4 short paragraphs total. Tight. The athlete already sees the table on the dedicated page.
 
+Framework grounding — non-negotiable:
+
+The payload's prescription.weight_changes already encodes the block-phase rules (pre_target / consolidation / off_pace / deload_week). When the rationale field on a primary-lift prescription says "off_pace", "consolidation", or "deload" — you MUST narrate that framing honestly. Do NOT celebrate a "PR" load increase that the framework declined; do NOT propose loads beyond what the prescription set. Specifically:
+
+- If a primary lift's prescription holds the load (off_pace or consolidation): frame it as a coaching call, not a stall. "The framework holds you here — block target's out of reach in the remaining weeks, we renegotiate next block." NEVER imply the athlete should push higher.
+- If a primary lift's prescription bumps load (+step in pre_target): cite the block context (week N of M, on-pace for target).
+- If deload week: own the cut; don't apologize for it.
+- For accessories (lat pulldown / row / etc.): the naive PR / stall / regression rule still applies. Frame their progressions/holds in the autoregulation language the payload already provides.
+
+The framework is the source of truth. Your job is to translate it into coach voice, not second-guess it.
+
 Confidentiality: never name medications, drug classes, brand names, or specific diagnoses. If the payload references "your protocol", keep it neutral.`;
 
 export async function generateNarrative(
