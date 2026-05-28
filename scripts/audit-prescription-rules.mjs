@@ -8,6 +8,7 @@
 
 import { maintenanceLoadFor } from "@/lib/coach/prescription/maintenance-baseline";
 import { evaluateBlockPhase, prescribePrimaryFromPhase } from "@/lib/coach/prescription/block-phase-rule";
+import { prescribeSecondaryAutoregulated } from "@/lib/coach/prescription/autoregulation-rule";
 
 let pass = 0;
 let fail = 0;
@@ -148,6 +149,75 @@ console.log("\n## block-phase-rule.ts\n");
   // 97.5 × 0.80 = 78.0; rounded to nearest 2.5 step = 77.5 or 80 (both acceptable)
   assert("deload rounds 80% of 97.5 to step grid", deloaded.baseKg === 77.5 || deloaded.baseKg === 80, `got ${deloaded.baseKg}`);
   assert("deload halves sets (3 → 1)", deloaded.sets === 1);
+}
+
+console.log("\n## autoregulation-rule.ts\n");
+
+{
+  const baseEx = {
+    name: "Squat (Barbell)",
+    key: "squat",
+    baseKg: 62.5,
+    baseReps: 6,
+    sets: 3,
+    increment: { step: 2.5 },
+  };
+
+  const focusClean = prescribeSecondaryAutoregulated({
+    baseExercise: baseEx,
+    currentWorkingKg: 80,
+    lastWeekHitRirTargetCleanly: true,
+    consecutiveRirMisses: 0,
+    maintenanceBaselineKg: 80,
+    focusBlockClampMultiplier: 0.92,
+    baselineSets: 3,
+    baselineReps: 6,
+    isFocusBlock: true,
+  });
+  // autoreg says: clean → 80 + 2.5 = 82.5. Then clamp to 0.92 × 80 = 73.6, rounded to step 2.5 = 72.5 or 75.
+  assert("focus block clean: clamped to ≤ 0.92×80 (round to grid)", focusClean.baseKg === 72.5 || focusClean.baseKg === 75, `got ${focusClean.baseKg}`);
+  assert("focus block drops one set (3→2)", focusClean.sets === 2);
+
+  const focusMissedTwice = prescribeSecondaryAutoregulated({
+    baseExercise: baseEx,
+    currentWorkingKg: 80,
+    lastWeekHitRirTargetCleanly: false,
+    consecutiveRirMisses: 2,
+    maintenanceBaselineKg: 80,
+    focusBlockClampMultiplier: 0.92,
+    baselineSets: 3,
+    baselineReps: 6,
+    isFocusBlock: true,
+  });
+  // autoreg says: missed twice → 80 × 0.95 = 76, rounded to step 2.5 = 75 or 77.5. Clamp = 72.5/75.
+  assert("focus block missed twice: drop 5% then clamp", focusMissedTwice.baseKg === 72.5 || focusMissedTwice.baseKg === 75, `got ${focusMissedTwice.baseKg}`);
+
+  const nonFocusClean = prescribeSecondaryAutoregulated({
+    baseExercise: baseEx,
+    currentWorkingKg: 80,
+    lastWeekHitRirTargetCleanly: true,
+    consecutiveRirMisses: 0,
+    maintenanceBaselineKg: null,
+    focusBlockClampMultiplier: null,
+    baselineSets: 3,
+    baselineReps: 6,
+    isFocusBlock: false,
+  });
+  assert("non-focus block clean: +step (80→82.5)", nonFocusClean.baseKg === 82.5);
+  assert("non-focus block clean: no set drop", nonFocusClean.sets === 3);
+
+  const nonFocusMissed = prescribeSecondaryAutoregulated({
+    baseExercise: baseEx,
+    currentWorkingKg: 80,
+    lastWeekHitRirTargetCleanly: false,
+    consecutiveRirMisses: 1,
+    maintenanceBaselineKg: null,
+    focusBlockClampMultiplier: null,
+    baselineSets: 3,
+    baselineReps: 6,
+    isFocusBlock: false,
+  });
+  assert("non-focus missed once: hold (80)", nonFocusMissed.baseKg === 80);
 }
 
 console.log(`\n${pass} passed, ${fail} failed.`);
