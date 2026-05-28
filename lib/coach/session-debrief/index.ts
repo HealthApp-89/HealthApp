@@ -7,6 +7,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { SetRow } from "@/lib/coach/derived";
+import type { TrainingBlock } from "@/lib/data/types";
 import { computeBlockProgress } from "@/lib/query/fetchers/blockProgress";
 import { todayInUserTz } from "@/lib/time";
 import { composeLifts } from "@/lib/coach/session-debrief/compose-lifts";
@@ -78,7 +79,7 @@ export async function generateWorkoutDebrief(opts: {
   if (totalWorking === 0) return { ok: false, skipped: "no_working_sets" };
 
   // 3. Run composers in parallel where independent.
-  const [lifts, volume, autoregulation, blockProgress] = await Promise.all([
+  const [lifts, volume, autoregulation, blockProgress, activeBlock] = await Promise.all([
     composeLifts({
       supabase,
       userId,
@@ -100,6 +101,7 @@ export async function generateWorkoutDebrief(opts: {
       workoutDate: workout.date as string,
     }),
     computeBlockProgress(supabase, userId),
+    loadActiveBlock(supabase, userId),
   ]);
 
   const block: WorkoutDebriefPayload["block"] = (() => {
@@ -119,6 +121,8 @@ export async function generateWorkoutDebrief(opts: {
     lifts,
     volume,
     todayExercises,
+    block: activeBlock,
+    todayIso: workout.date as string,
   });
 
   // 4. Body comp (best-effort; null if unavailable).
@@ -146,6 +150,19 @@ export async function generateWorkoutDebrief(opts: {
   full.tldr = tldrFromPayload(full);
 
   return { ok: true, payload: full };
+}
+
+async function loadActiveBlock(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<TrainingBlock | null> {
+  const { data } = await supabase
+    .from("training_blocks")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("status", "active")
+    .limit(1);
+  return (data?.[0] as TrainingBlock | undefined) ?? null;
 }
 
 async function loadBodyComp(
