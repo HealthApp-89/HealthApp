@@ -172,6 +172,7 @@ export function StrengthCoachClient({ userId }: Props) {
           weekday={fullWeekday}
           userId={userId}
           weekOverrides={(committedWeek?.exercise_overrides as ExerciseOverrides | null | undefined) ?? null}
+          weekPrescriptions={committedWeek?.session_prescriptions ?? null}
         />
 
         {/* Mesocycle week badge + adherence row */}

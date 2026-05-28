@@ -22,6 +22,7 @@ type Props = {
   date: string;            // YYYY-MM-DD
   weekdayLong: string;     // "Monday"
   weekOverrides: Record<string, PlannedExercise[]> | null;
+  weekPrescriptions?: import("@/lib/data/types").SessionPrescriptions | null;
   onClose: () => void;
   /** When set, LoggerSheet boots in edit mode: seeds state from initialDraft,
    *  skips draft-store reads/writes, hides timer controls. */
@@ -169,6 +170,7 @@ export function LoggerSheet(props: Props) {
         sessionType: props.sessionType,
         weekdayLong: props.weekdayLong,
         weekOverrides: props.weekOverrides ?? null,
+        weekPrescriptions: props.weekPrescriptions ?? null,
       });
       if (cancelled) return;
       const fresh = makeDraftFromPlan({
@@ -229,6 +231,7 @@ export function LoggerSheet(props: Props) {
           const resolved = await resolveSessionPlan({
             supabase, userId: props.userId, sessionType: props.sessionType,
             weekdayLong: props.weekdayLong, weekOverrides: props.weekOverrides ?? null,
+            weekPrescriptions: props.weekPrescriptions ?? null,
           });
           setDraft(makeDraftFromPlan({
             userId: props.userId, sessionType: props.sessionType,
