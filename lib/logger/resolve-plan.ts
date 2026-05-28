@@ -1,17 +1,23 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { SESSION_PLANS, type PlannedExercise } from "@/lib/coach/sessionPlans";
-import type { ExerciseOverrides } from "@/lib/data/types";
+import type { ExerciseOverrides, SessionPrescriptions } from "@/lib/data/types";
+import { discoverEffectiveExercises } from "@/lib/coach/prescription/recent-workouts-discovery";
 
 /**
- * Resolution chain at logger open:
- *   1. training_weeks.exercise_overrides[weekdayLong]  (permutation-only)
- *   2. user_session_templates[session_type]            (per-user persistent)
- *   3. SESSION_PLANS[session_type]                     (code default)
+ * Resolution chain at logger open (mirrors client-side getEffectiveSessionPlan,
+ * with an extra recent-workouts-discovery step before SESSION_PLANS):
+ *   1. training_weeks.session_prescriptions[weekdayLong]  (Sunday prescription)
+ *   2. training_weeks.exercise_overrides[weekdayLong]     (permutation-only)
+ *   3. user_session_templates[session_type]               (per-user persistent)
+ *   4. discoverEffectiveExercises(...)                    (recent-workouts pattern)
+ *   5. SESSION_PLANS[session_type]                        (code default)
  *
- * Pass null `weekOverrides` if no committed training_week exists for the date.
+ * Pass null `weekPrescriptions` / `weekOverrides` if no committed training_week
+ * exists for the date (or the caller hasn't fetched those columns).
  *
  * `weekdayLong` is the full weekday name ("Monday", "Tuesday", ...) — matches
- * how exercise_overrides is keyed (see migration 0022).
+ * how exercise_overrides / session_prescriptions are keyed (see migrations
+ * 0022 and the prescription-system arc).
  */
 export async function resolveSessionPlan(args: {
   supabase: SupabaseClient;
@@ -19,17 +25,26 @@ export async function resolveSessionPlan(args: {
   sessionType: string;
   weekdayLong: string;
   weekOverrides: ExerciseOverrides | null;
+  weekPrescriptions?: SessionPrescriptions | null;
 }): Promise<{
   exercises: PlannedExercise[];
-  source: "week_override" | "user_template" | "code_default";
+  source: "week_prescription" | "week_override" | "user_template" | "recent_discovery" | "code_default";
 }> {
-  const { supabase, userId, sessionType, weekdayLong, weekOverrides } = args;
+  const { supabase, userId, sessionType, weekdayLong, weekOverrides, weekPrescriptions } = args;
 
+  // 1. session_prescriptions (NEW TOP — Sunday-prescription system)
+  const presc = weekPrescriptions?.[weekdayLong as keyof SessionPrescriptions];
+  if (presc && presc.length > 0) {
+    return { exercises: presc, source: "week_prescription" };
+  }
+
+  // 2. exercise_overrides (existing — permutation-only)
   const weekOverride = weekOverrides?.[weekdayLong];
   if (weekOverride && weekOverride.length > 0) {
     return { exercises: weekOverride, source: "week_override" };
   }
 
+  // 3. user_session_templates (existing — per-user persistent)
   const { data, error } = await supabase
     .from("user_session_templates")
     .select("exercises")
@@ -43,6 +58,13 @@ export async function resolveSessionPlan(args: {
     return { exercises: data.exercises as PlannedExercise[], source: "user_template" };
   }
 
+  // 4. recent_workouts discovery (NEW — learned from last 4-8 sessions)
+  const discovered = await discoverEffectiveExercises({ supabase, userId, sessionType });
+  if (discovered && discovered.length > 0) {
+    return { exercises: discovered, source: "recent_discovery" };
+  }
+
+  // 5. SESSION_PLANS (existing fallback — code default)
   return {
     exercises: SESSION_PLANS[sessionType] ?? [],
     source: "code_default",
