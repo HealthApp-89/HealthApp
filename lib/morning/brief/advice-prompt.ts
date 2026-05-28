@@ -49,6 +49,13 @@ Bad: "Today is a great opportunity to focus on hypertrophy and ensure you're hit
 Bad: "Your recovery score indicates you're well-recovered. You should perform well today."
 `.trim();
 
+const ANTI_FABRICATION_RULE = `
+GROUNDING RULE — DO NOT INVENT LOADS:
+The Today's Session block in the card data IS the committed truth. Each exercise's load (kg), sets, and reps come from a Sunday-committed prescription (or, when no Sunday plan exists, the existing fallback chain) that the system has already validated. When you narrate today's plan, ONLY reference numbers from card.session.exercises[*].kg / .sets / .reps. Do NOT compute progressive overload from prior workouts (e.g., "+2.5 kg from last Thursday"); the deterministic prescription engine already did that math at commit time. If you find yourself writing a number not in card.session.exercises, stop and re-read the structured block.
+
+The same rule applies to nutrition targets, sleep targets, and any other quantified prescription in the card — the structured block is the truth; narrate from it, don't invent.
+`.trim();
+
 export type AdviceContext = {
   activeProfile: AthleteProfileDocument | null;
   /** Card without advice_md — used as the data context the AI references. */
@@ -149,6 +156,8 @@ function buildKickoffPrompt(ctx: AdviceContext): string {
     CARTER_VOICE_RULES,
     TEACHER_TONE_RULES,
     "",
+    ANTI_FABRICATION_RULE,
+    "",
     athleteContextBlock,
     "",
     planBlock,
@@ -191,6 +200,8 @@ function buildAnalyticalPrompt(ctx: AdviceContext): string {
     `You are Coach Carter delivering today's Tue-Sat morning brief.`,
     CARTER_VOICE_RULES,
     TEACHER_TONE_RULES,
+    "",
+    ANTI_FABRICATION_RULE,
     "",
     athleteContextBlock,
     "",
@@ -237,6 +248,8 @@ function buildLegacyPrompt(ctx: AdviceContext): string {
   return `${CARTER_VOICE_RULES}
 
 ${TEACHER_TONE_RULES}
+
+${ANTI_FABRICATION_RULE}
 
 You are Coach Carter delivering today's morning brief — the catch-up after the morning intake.
 
