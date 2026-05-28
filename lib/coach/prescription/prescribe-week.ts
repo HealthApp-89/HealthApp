@@ -23,6 +23,13 @@ import { prescribeAccessoryFromVolumeBand, classifyVolumeBand, type VolumeBandPo
 import { maintenanceLoadFor } from "@/lib/coach/prescription/maintenance-baseline";
 import { discoverEffectiveExercises } from "@/lib/coach/prescription/recent-workouts-discovery";
 import type { WorkoutSetSample } from "@/lib/coach/prescription/types";
+import { fetchMuscleVolumeServer } from "@/lib/query/fetchers/muscleVolume";
+import {
+  getExerciseMuscles,
+  TARGET_GROUP_FOR_MUSCLE,
+} from "@/lib/coach/exercise-muscles";
+import { literatureBand } from "@/lib/coach/volume-landmarks";
+import type { TargetedMuscleGroup, MuscleVolumeSnapshot } from "@/lib/data/types";
 
 const FOCUS_BLOCK_CLAMP = 0.92;
 
@@ -62,6 +69,10 @@ export async function prescribeWeek(opts: {
 
   // Fetch recent sets once for all maintenance-baseline + autoreg lookups.
   const recentSets = await fetchRecentSets(supabase, userId, todayIso);
+
+  // Per-muscle weekly-volume snapshot for accessory band classification.
+  // null on fetch failure → callers fall back to "in_band" (no-op).
+  const volumeContext = await fetchVolumeContext(supabase, userId, todayIso);
 
   const isFocusBlock = block != null && block.primary_lift != null;
   const focusLift: PrimaryLift | null = isFocusBlock ? block!.primary_lift : null;
@@ -136,7 +147,7 @@ export async function prescribeWeek(opts: {
           baselineReps: baseEx.baseReps ?? 8,
           isFocusBlock: false,
         });
-        const band: VolumeBandPosition = classifyVolumeBandForMuscle(baseEx);
+        const band: VolumeBandPosition = classifyVolumeBandForMuscle(baseEx, volumeContext);
         exercises.push(
           prescribeAccessoryFromVolumeBand({
             baseExercise: autoreg,
@@ -194,6 +205,20 @@ async function fetchRecentSets(
   return out;
 }
 
+/** Fetch the 8-week rolling per-muscle volume snapshot. Returns null on
+ *  failure — callers degrade gracefully to "in_band" (no-op). */
+async function fetchVolumeContext(
+  supabase: SupabaseClient,
+  userId: string,
+  todayIso: string,
+): Promise<MuscleVolumeSnapshot | null> {
+  try {
+    return await fetchMuscleVolumeServer(supabase, userId, todayIso);
+  } catch {
+    return null;
+  }
+}
+
 // ── pure inference helpers ─────────────────────────────────────────────────
 
 /** Returns true if the most-recent non-warmup set for this exercise was a
@@ -240,12 +265,49 @@ function setsForExercise(sets: WorkoutSetSample[], ex: PlannedExercise): Workout
   return sets.filter((s) => !s.warmup && s.exercise_name.toLowerCase() === target);
 }
 
-// ── volume-band placeholder (Task 11 replaces this) ────────────────────────
+// ── volume-band classification ─────────────────────────────────────────────
 
-/** Placeholder: returns "in_band" until Task 11 wires the muscle-volume
- *  module here. The exercise's effective sets pass through unchanged. */
-function classifyVolumeBandForMuscle(_baseEx: PlannedExercise): VolumeBandPosition {
-  return classifyVolumeBand({ actualWeeklySets: 10, mev: 8, mav: 14, mrv: 20 });
+/** Resolve the accessory's primary targeted-muscle group from its name.
+ *  Walks the static EXERCISE_MUSCLES → first primary MuscleId → collapse via
+ *  TARGET_GROUP_FOR_MUSCLE. Returns null when the exercise is unmapped or
+ *  maps only to non-targeted muscles (Abs / Obliques / FrontDelts / Serratus). */
+function inferPrimaryTargetedMuscle(baseEx: PlannedExercise): TargetedMuscleGroup | null {
+  const mapping = getExerciseMuscles(baseEx.name);
+  if (!mapping) return null;
+  for (const mid of mapping.primary) {
+    const group = TARGET_GROUP_FOR_MUSCLE[mid];
+    if (group) return group;
+  }
+  return null;
+}
+
+/** Classify the accessory's muscle into a VolumeBandPosition using the
+ *  user's 8-week rolling volume vs literature-default MEV/MAV/MRV bands.
+ *  Falls back to "in_band" (no-op) when context is missing or the exercise
+ *  isn't mapped to one of the 10 targeted groups. */
+function classifyVolumeBandForMuscle(
+  baseEx: PlannedExercise,
+  ctx: MuscleVolumeSnapshot | null,
+): VolumeBandPosition {
+  if (ctx == null) return "in_band";
+  const group = inferPrimaryTargetedMuscle(baseEx);
+  if (!group) return "in_band";
+  const actualWeeklySets = ctx.rolling_avg_8wk[group];
+  if (actualWeeklySets == null) return "in_band";
+  // No per-user training-age tier is plumbed through prescribeWeek; use the
+  // intermediate literature default (matches the INTERMEDIATE baseline that
+  // compose-strength.ts scales from). Tier-aware bands are a future upgrade
+  // once plan_payload is available here.
+  const band = literatureBand(group, "intermediate");
+  return classifyVolumeBand({
+    actualWeeklySets,
+    mev: band.mev,
+    // classifyVolumeBand expects a scalar mav; use the upper bound of the
+    // MAV tuple — the function only references mev/mrv operationally so the
+    // mav field is informational, but we pass the meaningful endpoint.
+    mav: band.mav[1],
+    mrv: band.mrv,
+  });
 }
 
 // ── date helpers ───────────────────────────────────────────────────────────
