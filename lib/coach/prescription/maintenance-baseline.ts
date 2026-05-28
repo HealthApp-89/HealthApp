@@ -8,6 +8,7 @@
 import type { WorkoutSetSample } from "@/lib/coach/prescription/types";
 
 const LOOKBACK_DAYS = 28; // 4 weeks
+const MIN_REPS_FOR_BASELINE = 5;
 
 /** Returns the max kg across the user's recent clean working sets for the
  *  given exercise. A set is "clean" if either:
@@ -28,6 +29,10 @@ export function maintenanceLoadFor(
   const cleanSets = recentSets.filter((s) => {
     if (s.performed_on < cutoff) return false;
     if (s.exercise_name !== exerciseNameOrKey && s.exercise_key !== exerciseNameOrKey) return false;
+    // Reject sub-hypertrophy-range singles/doubles — they bias the maintenance
+    // baseline upward. Standard Israetel/Helms practice: working baselines from
+    // 5+ rep sets only.
+    if (s.reps < MIN_REPS_FOR_BASELINE) return false;
     const rpeOk  = s.rpe != null && s.rpe <= 11 - rirTarget;
     const rirOk  = s.rir != null && s.rir >= Math.max(0, rirTarget - 1);
     return rpeOk || rirOk;

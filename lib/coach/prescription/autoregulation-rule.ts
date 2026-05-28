@@ -2,7 +2,7 @@
 //
 // Prescribes a non-focus primary lift (or any non-primary compound lift
 // not under the block-phase rule) using autoregulation: clean RIR → +step;
-// missed once → hold; missed twice → drop 5%. During a focus block, the
+// missed once → hold; missed twice → drop 10%. During a focus block, the
 // effective load is also clamped to 0.92 × maintenance baseline.
 
 import type { PlannedExercise } from "@/lib/coach/sessionPlans";
@@ -28,7 +28,7 @@ export function prescribeSecondaryAutoregulated(input: AutoregInput): PlannedExe
   // Step 1: autoregulation choice
   let nextKg: number;
   if (input.consecutiveRirMisses >= 2) {
-    nextKg = roundToStep(currentWorkingKg * 0.95, step);
+    nextKg = roundToStep(currentWorkingKg * 0.90, step);
   } else if (input.lastWeekHitRirTargetCleanly) {
     nextKg = currentWorkingKg + step;
   } else {

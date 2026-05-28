@@ -66,14 +66,24 @@ export function prescribePrimaryFromPhase(opts: {
       break;
     }
     case "consolidation": {
+      // Consolidation phase: progress ONE variable per week. Reps first; the
+      // orchestrator decides at a later week whether reps have hit the top of
+      // the prescribed range and a set bump is warranted. Pushing both at once
+      // is the classic MRV-breach recipe (Israetel) and defeats the "smallest
+      // effective dose" principle (Helms). See spec 2026-05-28 expert review.
       nextKg = currentWorkingKg; // immutable
-      nextReps = opts.baselineReps + 1; // chase clean reps
-      nextSets = opts.baselineSets + 1; // AND an extra set
+      nextReps = opts.baselineReps + 1;
+      nextSets = opts.baselineSets; // hold sets at baseline
       break;
     }
     case "off_pace": {
-      nextKg = opts.lastWeekHitRirTargetCleanly ? currentWorkingKg + step : currentWorkingKg;
-      nextSets = Math.max(1, opts.baselineSets - 1);
+      // Off-pace means the realistic catch-up rate has decoupled from the block
+      // target. Standard coaching practice (Helms / RP) is to HOLD and signal
+      // upstream that the block target needs renegotiation — NOT add load while
+      // shedding fatigue capacity. Carter's prompt narrates the off_pace signal
+      // and offers to close the block early. The mechanical rule just holds.
+      nextKg = currentWorkingKg;
+      nextSets = opts.baselineSets;
       break;
     }
     case "deload_week": {

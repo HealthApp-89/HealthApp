@@ -113,7 +113,7 @@ console.log("\n## block-phase-rule.ts\n");
   });
   assert("consolidation holds load", consolidated.baseKg === 97.5);
   assert("consolidation progresses reps", consolidated.baseReps === 7);
-  assert("consolidation progresses sets", consolidated.sets === 4);
+  assert("consolidation holds sets at baseline (one-variable-at-a-time)", consolidated.sets === 3);
 
   const progressed = prescribePrimaryFromPhase({
     baseExercise: baseEx,
@@ -189,8 +189,8 @@ console.log("\n## autoregulation-rule.ts\n");
     baselineReps: 6,
     isFocusBlock: true,
   });
-  // autoreg says: missed twice → 80 × 0.95 = 76, rounded to step 2.5 = 75 or 77.5. Clamp = 72.5/75.
-  assert("focus block missed twice: drop 5% then clamp", focusMissedTwice.baseKg === 72.5 || focusMissedTwice.baseKg === 75, `got ${focusMissedTwice.baseKg}`);
+  // autoreg says: missed twice → 80 × 0.90 = 72, rounded to step 2.5 = 72.5. Clamp ceiling = 0.92×80 = 73.6 → 72.5/75. 72.5 ≤ ceiling so 72.5 passes through.
+  assert("focus block missed twice: drop 10% then clamp (72.5)", focusMissedTwice.baseKg === 72.5, `got ${focusMissedTwice.baseKg}`);
 
   const nonFocusClean = prescribeSecondaryAutoregulated({
     baseExercise: baseEx,
