@@ -220,5 +220,41 @@ console.log("\n## autoregulation-rule.ts\n");
   assert("non-focus missed once: hold (80)", nonFocusMissed.baseKg === 80);
 }
 
+import { prescribeAccessoryFromVolumeBand, classifyVolumeBand } from "@/lib/coach/prescription/volume-balance-rule";
+
+console.log("\n## volume-balance-rule.ts\n");
+
+{
+  const baseEx = {
+    name: "Lat Pulldown (Cable)",
+    key: "lat_pulldown",
+    baseKg: 45,
+    baseReps: 10,
+    sets: 4,
+    increment: { step: 5 },
+  };
+
+  const belowMev = prescribeAccessoryFromVolumeBand({ baseExercise: baseEx, currentSets: 3, bandPosition: "below_mev" });
+  assert("below MEV adds a set", belowMev.sets === 4);
+
+  const atMev = prescribeAccessoryFromVolumeBand({ baseExercise: baseEx, currentSets: 3, bandPosition: "at_mev" });
+  assert("at MEV adds a set (push toward MAV)", atMev.sets === 4);
+
+  const inBand = prescribeAccessoryFromVolumeBand({ baseExercise: baseEx, currentSets: 3, bandPosition: "in_band" });
+  assert("in band holds", inBand.sets === 3);
+
+  const nearMrv = prescribeAccessoryFromVolumeBand({ baseExercise: baseEx, currentSets: 4, bandPosition: "near_mrv" });
+  assert("near MRV holds", nearMrv.sets === 4);
+
+  const aboveMrv = prescribeAccessoryFromVolumeBand({ baseExercise: baseEx, currentSets: 4, bandPosition: "above_mrv" });
+  assert("above MRV drops a set", aboveMrv.sets === 3);
+
+  assert("classify 7 with mev=8 → below_mev",  classifyVolumeBand({ actualWeeklySets: 7,  mev: 8, mav: 14, mrv: 20 }) === "below_mev");
+  assert("classify 8 with mev=8 → at_mev",     classifyVolumeBand({ actualWeeklySets: 8,  mev: 8, mav: 14, mrv: 20 }) === "at_mev");
+  assert("classify 12 with mev=8 → in_band",   classifyVolumeBand({ actualWeeklySets: 12, mev: 8, mav: 14, mrv: 20 }) === "in_band");
+  assert("classify 18 with mrv=20 → near_mrv", classifyVolumeBand({ actualWeeklySets: 18, mev: 8, mav: 14, mrv: 20 }) === "near_mrv");
+  assert("classify 20 with mrv=20 → above_mrv",classifyVolumeBand({ actualWeeklySets: 20, mev: 8, mav: 14, mrv: 20 }) === "above_mrv");
+}
+
 console.log(`\n${pass} passed, ${fail} failed.`);
 process.exit(fail === 0 ? 0 : 1);
