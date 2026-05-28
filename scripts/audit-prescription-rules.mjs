@@ -256,5 +256,62 @@ console.log("\n## volume-balance-rule.ts\n");
   assert("classify 20 with mrv=20 → above_mrv",classifyVolumeBand({ actualWeeklySets: 20, mev: 8, mav: 14, mrv: 20 }) === "above_mrv");
 }
 
+import { validatePatternConflicts } from "@/lib/coach/prescription/pattern-conflict-overlay";
+
+console.log("\n## pattern-conflict-overlay.ts\n");
+
+{
+  const block = {
+    id: "fixture", user_id: "fixture", primary_lift: "deadlift", target_metric: "working_weight",
+    target_value: 95, target_unit: "kg", status: "active",
+    start_date: "2026-05-04", end_date: "2026-06-07",
+    target_hit_at_week: null,
+    diet_goal: null, goal_text: "fixture", notes: null, block_id: null,
+    created_at: "2026-05-04", updated_at: "2026-05-04",
+  };
+  const week = {
+    user_id: "fixture", week_start: "2026-05-25",
+    session_plan: { Monday: "Legs", Tuesday: "Chest", Wednesday: "Mobility", Thursday: "Back", Friday: "Arms", Saturday: "REST", Sunday: "REST" },
+    intensity_modifier: {}, rir_target: 2, research_phase: "accumulate",
+    block_id: "fixture", exercise_overrides: null, session_prescriptions: null,
+    weekly_focus: null, original_session_plan: null,
+  };
+
+  const violating = {
+    Monday: [{ name: "Romanian Deadlift (Barbell)", key: "rdl", baseKg: 65, baseReps: 6, sets: 3 }],
+  };
+  const r1 = validatePatternConflicts(violating, block, week);
+  assert("RDL on Monday during deadlift block flagged", r1 !== null && r1.code === "pattern_conflict");
+  assert("offending list points at Monday RDL", r1 && r1.offending[0].weekday === "Monday" && r1.offending[0].exercise === "Romanian Deadlift (Barbell)");
+  assert("hint mentions the focus day (Thursday)", r1 !== null && r1.hint.includes("Thursday"), `got hint: ${r1?.hint}`);
+
+  const okOnFocusDay = {
+    Thursday: [{ name: "Romanian Deadlift (Barbell)", key: "rdl", baseKg: 65, baseReps: 6, sets: 3 }],
+  };
+  assert("RDL on Thursday (focus day) NOT flagged", validatePatternConflicts(okOnFocusDay, block, week) === null);
+
+  const lowAxialOk = {
+    Monday: [{ name: "Hip Thrust", key: "hip_thrust", baseKg: 60, baseReps: 10, sets: 3 }],
+  };
+  assert("Hip Thrust on Monday NOT flagged", validatePatternConflicts(lowAxialOk, block, week) === null);
+
+  const noOpForSquatBlock = validatePatternConflicts(
+    violating,
+    { ...block, primary_lift: "squat" },
+    week,
+  );
+  assert("non-deadlift block: RDL on non-Back day allowed (squat-focus rule not implemented)", noOpForSquatBlock === null);
+
+  const goodMorningViolation = {
+    Tuesday: [{ name: "Good Morning (Barbell)", key: "good_morning", baseKg: 45, baseReps: 8, sets: 3 }],
+  };
+  assert("Good Morning on Tuesday flagged", validatePatternConflicts(goodMorningViolation, block, week) !== null);
+
+  const stiffLegViolation = {
+    Friday: [{ name: "Stiff-Leg Deadlift (Barbell)", key: "stiff_leg_dl", baseKg: 60, baseReps: 8, sets: 3 }],
+  };
+  assert("Stiff-Leg Deadlift on Friday flagged", validatePatternConflicts(stiffLegViolation, block, week) !== null);
+}
+
 console.log(`\n${pass} passed, ${fail} failed.`);
 process.exit(fail === 0 ? 0 : 1);
