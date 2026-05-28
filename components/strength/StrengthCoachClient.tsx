@@ -126,6 +126,7 @@ export function StrengthCoachClient({ userId }: Props) {
     ? getEffectiveSessionPlan(
         committedSessionType,
         fullWeekday,
+        committedWeek?.session_prescriptions ?? null,
         exerciseOverrides,
         userTemplate?.exercises ?? null,
       )

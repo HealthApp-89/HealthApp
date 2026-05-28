@@ -112,10 +112,11 @@ export function getTodaySession(): string {
   return WEEKLY_SESSIONS[weekdayInUserTz()] ?? "REST";
 }
 
-import type { ExerciseOverrides } from "@/lib/data/types";
+import type { ExerciseOverrides, SessionPrescriptions } from "@/lib/data/types";
 
 /** Returns the effective exercise list for a given session type + weekday.
- *  Resolution chain (matches lib/logger/resolve-plan.ts): per-weekday override
+ *  Resolution chain (matches lib/logger/resolve-plan.ts): per-weekday Sunday
+ *  prescription in training_weeks.session_prescriptions → per-weekday override
  *  in training_weeks.exercise_overrides → per-user persistent template in
  *  user_session_templates → static SESSION_PLANS code default. Returns []
  *  when no source has exercises (e.g. an unknown session type with no
@@ -127,9 +128,12 @@ import type { ExerciseOverrides } from "@/lib/data/types";
 export function getEffectiveSessionPlan(
   sessionType: string,
   weekday: string,
+  sessionPrescriptions: SessionPrescriptions | null | undefined,
   overrides: ExerciseOverrides | null | undefined,
   userTemplate?: PlannedExercise[] | null,
 ): PlannedExercise[] {
+  const presc = sessionPrescriptions?.[weekday as keyof SessionPrescriptions];
+  if (presc && presc.length > 0) return presc;
   const override = overrides?.[weekday];
   if (override && override.length > 0) return override;
   if (userTemplate && userTemplate.length > 0) return userTemplate;
