@@ -28,6 +28,7 @@ import { getTodayTargets } from "@/lib/morning/brief/get-today-targets";
 import { buildPeterContextBlock } from "@/lib/coach/peter-context";
 import { loadLatestPeterDashboard } from "@/lib/coach/peter-dashboard";
 import { buildThisWeeksExercisesBlock } from "@/lib/coach/carter-context/this-weeks-exercises";
+import { buildFrameworkStateBlock } from "@/lib/coach/carter-context/framework-state";
 
 export const dynamic = "force-dynamic";
 
@@ -794,10 +795,22 @@ export async function POST(req: Request) {
             })
         : null;
       const carterContext = initialSpeaker === "carter"
-        ? await buildThisWeeksExercisesBlock({ supabase: sr, userId: user.id }).catch((err) => {
-            console.warn("[chat] buildThisWeeksExercisesBlock failed", err);
-            return null;
-          })
+        ? await (async () => {
+            const [exercisesBlock, frameworkBlock] = await Promise.all([
+              buildThisWeeksExercisesBlock({ supabase: sr, userId: user.id }).catch((err) => {
+                console.warn("[chat] buildThisWeeksExercisesBlock failed", err);
+                return null;
+              }),
+              buildFrameworkStateBlock({ supabase: sr, userId: user.id }).catch((err) => {
+                console.warn("[chat] buildFrameworkStateBlock failed", err);
+                return null;
+              }),
+            ]);
+            // Framework state first — it's the higher-authority context;
+            // exercises block grounds load proposals downstream.
+            const parts = [frameworkBlock, exercisesBlock].filter((b): b is string => !!b);
+            return parts.length > 0 ? parts.join("\n\n") : null;
+          })()
         : null;
       try {
         // Drain one runChatStream pass, piping all SSE events to the client.
