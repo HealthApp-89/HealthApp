@@ -76,6 +76,8 @@ Apply in order via Supabase Dashboard → SQL Editor:
 
 35. [supabase/migrations/0035_athlete_goal_structured.sql](supabase/migrations/0035_athlete_goal_structured.sql) — adds structured goal columns to `athlete_profile_documents` (`goal_kind`, `goal_metric`, `goal_target`, `goal_target_date`) for the Goal-distance theme's projection math. Existing free-form goal narrative stays as the "why" text. Backfill is user-driven via `/profile`; until populated, Goal-distance card renders a "Set a structured goal" prompt.
 
+36. [supabase/migrations/0036_sunday_prescriptions.sql](supabase/migrations/0036_sunday_prescriptions.sql) — adds `training_blocks.target_hit_at_week int` (consolidation phase trigger; set by `evaluateAndStampTargetHit` on each workout commit) and `training_weeks.session_prescriptions jsonb` (new top of the per-day exercise resolution chain consumed by `getEffectiveSessionPlan`). Both nullable; pre-migration rows behave unchanged via chain fall-through.
+
 `supabase` CLI is now linked (`supabase link --project-ref eopfwwergisvskxqvsqe`); future migrations apply via `supabase db push` after `repair --status applied <history>` if needed.
 
 Row shapes mirrored in [lib/data/types.ts](lib/data/types.ts). Schema is snake_case; keep DB columns and TS types in sync.
