@@ -2701,6 +2701,21 @@ export const SET_FREE_FORM_CONSTRAINTS_TOOL = {
   },
 };
 
+// ── Persistent profile setters (not intake_payload) ─────────────────────────
+
+export const SET_ROTATION_PRIORITY_LIFT_TOOL = {
+  name: "set_rotation_priority_lift",
+  description:
+    "Set the athlete's persistent rotation priority lift (single value). When set, every other rotation slot becomes this lift, with a non-priority lift between for recovery. Pass 'none' to clear; standard D → B → S → OHP rotation resumes.",
+  input_schema: {
+    type: "object" as const,
+    required: ["lift"],
+    properties: {
+      lift: { type: "string", enum: ["squat", "bench", "deadlift", "ohp", "none"] },
+    },
+  },
+};
+
 // ── End-of-intake — HMAC-gated ──────────────────────────────────────────────
 
 export const PROPOSE_PLAN_TOOL = {
@@ -3413,6 +3428,36 @@ export async function executeSetGlp1Status(opts: {
       },
     }),
   });
+}
+
+export async function executeSetRotationPriorityLift(opts: {
+  supabase: SupabaseClient;
+  userId: string;
+  input: unknown;
+}): Promise<ToolResult<{ rotation_priority_lift: PrimaryLift | null }>> {
+  const t0 = Date.now();
+  const i = (opts.input ?? {}) as Record<string, unknown>;
+  const liftRaw = i.lift;
+  if (typeof liftRaw !== "string") {
+    return { ok: false, error: { error: "lift required" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  const lift = liftRaw === "none" ? null : (liftRaw as PrimaryLift);
+  if (lift !== null && !["squat", "bench", "deadlift", "ohp"].includes(lift)) {
+    return { ok: false, error: { error: "invalid lift" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+
+  const { error } = await opts.supabase
+    .from("profiles")
+    .update({ rotation_priority_lift: lift })
+    .eq("user_id", opts.userId);
+  if (error) {
+    return { ok: false, error: { error: error.message }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  return {
+    ok: true,
+    data: { rotation_priority_lift: lift },
+    meta: { ms: Date.now() - t0, result_rows: 1, range_days: 0, truncated: false },
+  };
 }
 
 export async function executeSetGlp1TaperStarted(opts: {
@@ -4661,6 +4706,7 @@ export const PETER_TOOLS: readonly ToolSchema[] = [
   SET_CHRONOTYPE_TOOL,
   SET_UNPROMPTED_ACTIONS_TOOL,
   SET_FREE_FORM_CONSTRAINTS_TOOL,
+  SET_ROTATION_PRIORITY_LIFT_TOOL,
   PROPOSE_PLAN_TOOL,
   COMMIT_PLAN_TOOL,
   SET_GLP1_STATUS_TOOL,
@@ -4693,6 +4739,7 @@ export const CARTER_TOOLS: readonly ToolSchema[] = [
   COMMIT_SESSION_TEMPLATE_TOOL,
   MARK_MOBILITY_DONE_TOOL,
   UNMARK_MOBILITY_DONE_TOOL,
+  SET_ROTATION_PRIORITY_LIFT_TOOL,
 ];
 
 // Nora: nutrition. Reads food log + nutrition/body-comp daily_logs columns;
