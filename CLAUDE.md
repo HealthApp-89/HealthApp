@@ -78,6 +78,8 @@ Apply in order via Supabase Dashboard → SQL Editor:
 
 36. [supabase/migrations/0036_sunday_prescriptions.sql](supabase/migrations/0036_sunday_prescriptions.sql) — adds `training_blocks.target_hit_at_week int` (consolidation phase trigger; set by `evaluateAndStampTargetHit` on each workout commit) and `training_weeks.session_prescriptions jsonb` (new top of the per-day exercise resolution chain consumed by `getEffectiveSessionPlan`). Both nullable; pre-migration rows behave unchanged via chain fall-through.
 
+37. [supabase/migrations/0037_block_outcomes.sql](supabase/migrations/0037_block_outcomes.sql) — adds `block_outcomes` (per-closed-block deterministic outcome row, keyed `(block_id)` unique, RLS-self), widens `chat_messages.kind` allowlist for `'block_outcome'`, and adds `profiles.rotation_priority_lift` for the persistent priority knob. Cron sweep at 02:00 UTC populates the table; SETUP_BLOCK_PROMPT consumes it.
+
 `supabase` CLI is now linked (`supabase link --project-ref eopfwwergisvskxqvsqe`); future migrations apply via `supabase db push` after `repair --status applied <history>` if needed.
 
 Row shapes mirrored in [lib/data/types.ts](lib/data/types.ts). Schema is snake_case; keep DB columns and TS types in sync.
