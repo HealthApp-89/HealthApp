@@ -7,6 +7,7 @@
 import { evaluateBlockOutcome } from "@/lib/coach/block-outcomes/evaluator";
 import { recommendNextFocus, idealSequence } from "@/lib/coach/block-outcomes/rotation";
 import { recommendNextTargetKg } from "@/lib/coach/block-outcomes/recalibrate-target";
+import { composeLessons } from "@/lib/coach/block-outcomes/lessons";
 
 let pass = 0, fail = 0;
 function assert(name, cond, detail) {
@@ -119,6 +120,38 @@ console.log("\n## recalibrate-target.ts\n");
 
   const t4 = recommendNextTargetKg({ lift: "bench", outcomeHistory: [], fallbackWorkingKg: null });
   assert("no data: null", t4 === null);
+}
+
+console.log("\n## lessons.ts\n");
+{
+  const facts = {
+    end_working_kg: 100,
+    target_hit: false,
+    block_phase_at_end: "off_pace",
+    observed_step_kg_per_wk: 2.5,
+    projected_kg_at_end: null,
+    gap_kg: 15,
+    gap_pct: 13.04,
+  };
+  const lessons = composeLessons({
+    facts,
+    primaryLift: "deadlift",
+    targetValueKg: 115,
+    secondaryLifts: [{ lift: "squat", end_kg: 72.5, clamp_held: true }],
+    rotationDecision: { recommended_lift: "bench", reasoning: "standard_rotation", consecutive_focus_warning: false },
+  });
+  assert("lessons: off_pace calibration_note mentions gap", lessons.calibration_note.includes("13%") || lessons.calibration_note.includes("gap"));
+  assert("lessons: rotation_context.ideal_next = bench", lessons.rotation_context.ideal_next === "bench");
+  assert("lessons: secondary_lifts present", lessons.secondary_lifts.length === 1 && lessons.secondary_lifts[0].clamp_held === true);
+
+  const hitEarlyLessons = composeLessons({
+    facts: { ...facts, block_phase_at_end: "hit_early", target_hit: true, gap_kg: 0, gap_pct: 0 },
+    primaryLift: "deadlift",
+    targetValueKg: 100,
+    secondaryLifts: [],
+    rotationDecision: { recommended_lift: "bench", reasoning: "standard_rotation", consecutive_focus_warning: false },
+  });
+  assert("lessons: hit_early note mentions consolidation", hitEarlyLessons.calibration_note.toLowerCase().includes("consolidation"));
 }
 
 console.log(`\n${pass} passed, ${fail} failed.`);
