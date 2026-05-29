@@ -50,7 +50,7 @@ export type ChatMessage = {
    *  Matches chat_messages.thread; used for per-coach chat surfaces. */
   thread: import("@/lib/data/types").Speaker;
   /** Default 'coach'. ChatPanel filters its render by this. */
-  kind: "coach" | "morning_intake" | "morning_brief" | "weekly_review" | "proactive_nudge" | "system_routing" | "workout_debrief" | "meal_log";
+  kind: "coach" | "morning_intake" | "morning_brief" | "weekly_review" | "proactive_nudge" | "system_routing" | "workout_debrief" | "meal_log" | "block_outcome";
   /** Chips / rendering hints for morning_intake turns; structured card UI
    *  for morning_brief / weekly_review / proactive_nudge turns. */
   ui: MorningUI | MorningBriefCard | WeeklyReviewCardUI | ProactiveNudgeCard | WorkoutDebriefPayload | null;
