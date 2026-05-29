@@ -6,6 +6,7 @@
 
 import { evaluateBlockOutcome } from "@/lib/coach/block-outcomes/evaluator";
 import { recommendNextFocus, idealSequence } from "@/lib/coach/block-outcomes/rotation";
+import { recommendNextTargetKg } from "@/lib/coach/block-outcomes/recalibrate-target";
 
 let pass = 0, fail = 0;
 function assert(name, cond, detail) {
@@ -93,6 +94,31 @@ console.log("\n## rotation.ts\n");
 
   const ideal = idealSequence({ n: 8, priorityLift: "deadlift" });
   assert("ideal sequence with priority deadlift starts D, B, D, S", ideal[0] === "deadlift" && ideal[1] === "bench" && ideal[2] === "deadlift" && ideal[3] === "squat", `got ${JSON.stringify(ideal)}`);
+}
+
+console.log("\n## recalibrate-target.ts\n");
+{
+  const history = [{
+    primary_lift: "deadlift",
+    end_working_kg: 100,
+    lessons: { observed_step_kg_per_wk: 2.5 },
+  }];
+  const t1 = recommendNextTargetKg({ lift: "deadlift", outcomeHistory: history, fallbackWorkingKg: null });
+  assert("history-based: 100 + 2.5×4 = 110", t1 === 110, `got ${t1}`);
+
+  const fastHistory = [{
+    primary_lift: "deadlift",
+    end_working_kg: 100,
+    lessons: { observed_step_kg_per_wk: 3.5 },
+  }];
+  const t2 = recommendNextTargetKg({ lift: "deadlift", outcomeHistory: fastHistory, fallbackWorkingKg: null });
+  assert("history-based: 100 + 3.5×4 = 114 → 115", t2 === 115, `got ${t2}`);
+
+  const t3 = recommendNextTargetKg({ lift: "squat", outcomeHistory: history, fallbackWorkingKg: 80 });
+  assert("fallback: 80 + 2.5×4 = 90", t3 === 90);
+
+  const t4 = recommendNextTargetKg({ lift: "bench", outcomeHistory: [], fallbackWorkingKg: null });
+  assert("no data: null", t4 === null);
 }
 
 console.log(`\n${pass} passed, ${fail} failed.`);
