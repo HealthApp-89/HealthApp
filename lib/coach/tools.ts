@@ -19,7 +19,22 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { signApprovalToken, verifyApprovalToken, payloadHash, ApprovalTokenError, approvalTokenUserMessage } from "@/lib/coach/approval-token";
-import type { IntakePayload, PlanPayload, SessionPrescriptions, Speaker, TrainingBlock, TrainingWeek } from "@/lib/data/types";
+import type {
+  DietaryExclusions,
+  EatingIdentity,
+  IntakePayload,
+  MealSuggestion,
+  PlanPayload,
+  SessionPrescriptions,
+  Speaker,
+  SuggestEngineOutput,
+  TrainingBlock,
+  TrainingWeek,
+} from "@/lib/data/types";
+import { composeEatingIdentity } from "@/lib/coach/nora-suggestions/compose-eating-identity";
+import { suggestMeal } from "@/lib/coach/nora-suggestions/suggest-meal";
+import { getTodayTargets } from "@/lib/morning/brief/get-today-targets";
+import { typedTargetsForAllSlots, DEFAULT_MEAL_RATIOS } from "@/lib/food/meal-targets";
 import { validateWeekPrescription } from "@/lib/coach/prescription/validate-week";
 import { maintenanceLoadFor } from "@/lib/coach/prescription/maintenance-baseline";
 import type { WorkoutSetSample } from "@/lib/coach/prescription/types";
@@ -29,6 +44,7 @@ import {
   type FoodItem,
   type FoodMacros,
   sumMacros,
+  macrosForQty,
 } from "@/lib/food/types";
 import { reaggregateDay, sumFoodEntriesForDate } from "@/lib/food/aggregate";
 import { utcDate } from "@/lib/food/date";
@@ -4221,6 +4237,21 @@ export const COMMIT_MEAL_LOG_TOOL: ToolSchema = {
   },
 };
 
+export const PROPOSE_MEAL_SUGGESTIONS_TOOL: ToolSchema = {
+  name: "propose_meal_suggestions",
+  description:
+    "Generate 2-3 meal options for a slot, grounded in the athlete's 90-day eating identity, with hard dietary exclusions enforced. Each option is one-tap loggable via pre-issued HMAC approval token. Use when the athlete asks 'what should I have for X', 'alternatives to Y', or 'I'm bored of Z' — never improvise meal names in prose.",
+  input_schema: {
+    type: "object" as const,
+    required: ["slot"],
+    properties: {
+      slot: { type: "string", enum: ["breakfast", "lunch", "dinner", "snack"] },
+      count: { type: "number", minimum: 2, maximum: 4, default: 3 },
+      prefer_novelty: { type: "boolean", default: false },
+    },
+  },
+};
+
 export async function executeProposeMealLog(opts: {
   supabase: SupabaseClient;
   userId: string;
@@ -4445,6 +4476,221 @@ export async function executeCommitMealLog(opts: {
       saved_library_ids,
     },
     meta: { ms: Date.now() - t0, result_rows: 1, range_days: 0, truncated: false },
+  };
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// propose_meal_suggestions — Nora's suggestion engine call.
+//
+// Wraps the pure `suggestMeal` engine (lib/coach/nora-suggestions/suggest-meal.ts)
+// with the I/O needed to ground it: loads (and refreshes if stale) the user's
+// 90-day eating identity, computes remaining-macros for the day, derives the
+// per-slot kcal+protein target via typedTargetsForAllSlots, looks up recent
+// recipe-discovery saves for §9.6 boost, then calls the engine. Each surfaced
+// suggestion is paired with a freshly-minted meal_log approval token so the
+// UI card can offer one-tap "Log this" without a round-trip through
+// propose_meal_log.
+// ────────────────────────────────────────────────────────────────────────────
+
+const SUGGESTION_CACHE_STALE_MS = 48 * 3_600_000;
+
+type ProposeMealSuggestionsData = {
+  suggestions: MealSuggestion[];
+  tokens: string[];
+  context: SuggestEngineOutput["context"];
+  filter_stats: SuggestEngineOutput["filter_stats"];
+};
+
+export async function executeProposeMealSuggestions(opts: {
+  supabase: SupabaseClient;
+  userId: string;
+  input: unknown;
+}): Promise<ToolResult<ProposeMealSuggestionsData>> {
+  const t0 = Date.now();
+  const i = (opts.input ?? {}) as Record<string, unknown>;
+
+  const slot = i.slot as MealSlot | undefined;
+  if (!slot || !["breakfast", "lunch", "dinner", "snack"].includes(slot)) {
+    return {
+      ok: false,
+      error: { error: "slot must be one of breakfast|lunch|dinner|snack" },
+      meta: { ms: Date.now() - t0, range_days: 0 },
+    };
+  }
+  const countRaw = typeof i.count === "number" ? Math.floor(i.count) : 3;
+  const count = Math.max(2, Math.min(4, countRaw));
+  const prefer_novelty = i.prefer_novelty === true;
+
+  // 1. Load (and refresh if stale) eating identity + exclusions.
+  const { data: prof } = await opts.supabase
+    .from("profiles")
+    .select("eating_identity_cache, dietary_exclusions")
+    .eq("user_id", opts.userId)
+    .single();
+  let identity = (prof?.eating_identity_cache ?? null) as EatingIdentity | null;
+  const today = todayInUserTz();
+  const staleMs = identity?.generated_on
+    ? Date.now() - new Date(identity.generated_on).getTime()
+    : Infinity;
+  if (!identity || staleMs > SUGGESTION_CACHE_STALE_MS) {
+    identity = await composeEatingIdentity({ supabase: opts.supabase, userId: opts.userId, today });
+    const { error: cacheWriteErr } = await opts.supabase
+      .from("profiles")
+      .update({ eating_identity_cache: identity })
+      .eq("user_id", opts.userId);
+    if (cacheWriteErr) console.error("[propose_meal_suggestions] cache write failed:", cacheWriteErr.message);
+  }
+  const exclusions =
+    (prof?.dietary_exclusions as DietaryExclusions | null) ?? { tags: [], free_text: null, version: 1 };
+
+  // 2. Remaining-macros for today = targets − sum of committed entries.
+  const targets = await getTodayTargets(opts.supabase, opts.userId);
+  const { data: todayEntries } = await opts.supabase
+    .from("food_log_entries")
+    .select("totals")
+    .eq("user_id", opts.userId)
+    .eq("status", "committed")
+    .gte("eaten_at", `${today}T00:00:00Z`)
+    .lte("eaten_at", `${today}T23:59:59Z`);
+  const totals = (todayEntries ?? []).reduce(
+    (
+      acc: { kcal: number; protein_g: number; carbs_g: number; fat_g: number },
+      r: { totals?: Partial<FoodMacros> | null },
+    ) => ({
+      kcal: acc.kcal + (r.totals?.kcal ?? 0),
+      protein_g: acc.protein_g + (r.totals?.protein_g ?? 0),
+      carbs_g: acc.carbs_g + (r.totals?.carbs_g ?? 0),
+      fat_g: acc.fat_g + (r.totals?.fat_g ?? 0),
+    }),
+    { kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0 },
+  );
+  // getTodayTargets uses `carb_g` (singular); the engine expects `carbs_g`.
+  const remainingMacros = {
+    kcal: Math.max(0, (targets?.kcal ?? 2400) - totals.kcal),
+    protein_g: Math.max(0, (targets?.protein_g ?? 180) - totals.protein_g),
+    carbs_g: Math.max(0, (targets?.carb_g ?? 240) - totals.carbs_g),
+    fat_g: Math.max(0, (targets?.fat_g ?? 70) - totals.fat_g),
+  };
+
+  // 3. Per-slot target — use the typed helper (Task 10 fix: the plain
+  //    targetsForAllSlots returns Record<MealSlot, number> and produces NaN
+  //    when the engine reads .protein_g on it).
+  const slotTargetsAll = targets
+    ? typedTargetsForAllSlots(
+        { kcal: targets.kcal, protein_g: targets.protein_g },
+        targets.meal_ratios ?? DEFAULT_MEAL_RATIOS,
+      )
+    : null;
+  const slotTargets = slotTargetsAll?.[slot] ?? { kcal: 600, protein_g: 45 };
+
+  // 4. Recipe-discovery boost (§9.6) — recipes saved in last 7d via the
+  //    recipe-discovery flow pin to rank 1.
+  const sevenDaysAgoIso = new Date(Date.now() - 7 * 86_400_000).toISOString();
+  const { data: recentRecipes } = await opts.supabase
+    .from("user_food_items")
+    .select("id, metadata, created_at")
+    .eq("user_id", opts.userId)
+    .gte("created_at", sevenDaysAgoIso);
+  const newRecipeBoosts = ((recentRecipes ?? []) as Array<{ id: string; metadata: Record<string, unknown> | null }>)
+    .filter((r) => r.metadata && (r.metadata as { source?: string }).source === "recipe_discovery")
+    .map((r) => ({ library_item_id: r.id, weight: 0.15 }));
+
+  // 5. Engine call.
+  const out = suggestMeal({
+    slot,
+    count,
+    eatingIdentity: identity,
+    exclusions,
+    remainingMacros,
+    slotTargets,
+    preferNovelty: prefer_novelty,
+    newRecipeBoosts,
+  });
+
+  if (out.error) {
+    return {
+      ok: false,
+      error: { error: out.error, code: out.error },
+      meta: { ms: Date.now() - t0, range_days: 0 },
+    };
+  }
+
+  // 6. Mint one meal_log approval token per surfaced suggestion. Embedded
+  //    payload form (no chat_message_id ref) — these tokens are issued ahead
+  //    of any "approve" message and are independent of the streaming
+  //    assistant row.
+  //
+  //    v1 token TTL is 30min (inherited from approval-token.ts). Spec §8.1 specified
+  //    24h for the tap-later UX; per-token TTL deferred to v2 (would require widening
+  //    signApprovalToken's envelope + verifyApprovalToken to honor a per-token override).
+  //    User-visible failure mode: card taps after 30min surface the standard
+  //    "approval expired" message and the athlete re-asks Nora — same recovery as
+  //    other propose/commit tools.
+  //
+  //    Payload shape MUST match MealLogPayload exactly — executeCommitMealLog reads
+  //    p.totals, p.raw_text, p.eaten_at, and every per-item macro/source/db_ref field
+  //    directly into the food_log_entries insert. Stub payloads ({name, qty_g, per_100g})
+  //    would write undefined macros and NULL totals → broken aggregation.
+  const eatenAtIso = new Date().toISOString();
+  const tokens = out.suggestions.map((s) => {
+    const items: ProposeMealLogItem[] = s.items.map((it) => {
+      const m = macrosForQty(it.per_100g, it.qty_g);
+      const libraryItemId = it.library_item_id ?? null;
+      return {
+        name: it.name,
+        qty_g: it.qty_g,
+        kcal: m.kcal,
+        protein_g: m.protein_g,
+        carbs_g: m.carbs_g,
+        fat_g: m.fat_g,
+        fiber_g: m.fiber_g,
+        per_100g: it.per_100g,
+        source: libraryItemId ? "db" : "llm",
+        db_ref: libraryItemId
+          ? { source: "user_library", canonical_id: libraryItemId }
+          : null,
+        confidence: null,
+        match_score: null,
+        library_item_id: libraryItemId,
+      };
+    });
+    const payload: MealLogPayload = {
+      items,
+      meal_slot: slot,
+      eaten_at: eatenAtIso,
+      raw_text: "Logged via Nora suggestion",
+      // daily_logs.calories_eaten is INTEGER — round kcal at the totals layer so
+      // the downstream upsert doesn't 500 on a decimal (see reference memory
+      // note: reference_daily_logs_calories_int).
+      totals: {
+        kcal: Math.round(s.total_macros.kcal),
+        protein_g: s.total_macros.protein_g,
+        carbs_g: s.total_macros.carbs_g,
+        fat_g: s.total_macros.fat_g,
+        fiber_g: s.total_macros.fiber_g,
+      },
+    };
+    return signApprovalToken({
+      userId: opts.userId,
+      action: "meal_log",
+      payload,
+    });
+  });
+
+  return {
+    ok: true,
+    data: {
+      suggestions: out.suggestions,
+      tokens,
+      context: out.context,
+      filter_stats: out.filter_stats,
+    },
+    meta: {
+      ms: Date.now() - t0,
+      result_rows: out.suggestions.length,
+      range_days: 0,
+      truncated: false,
+    },
   };
 }
 
@@ -4832,6 +5078,7 @@ export const NORA_TOOLS: readonly ToolSchema[] = [
   RESOLVE_FOOD_MACROS_TOOL,
   PROPOSE_MEAL_LOG_TOOL,
   COMMIT_MEAL_LOG_TOOL,
+  PROPOSE_MEAL_SUGGESTIONS_TOOL,
 ];
 
 // Remi: recovery/sleep/illness. Reads recovery-relevant daily_logs columns;

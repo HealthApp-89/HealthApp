@@ -1,9 +1,9 @@
 // lib/query/fetchers/profile.ts
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import type { PrimaryLift } from "@/lib/data/types";
+import type { PrimaryLift, DietaryExclusions } from "@/lib/data/types";
 
-const COLS = "name, age, height_cm, goal, system_prompt, whoop_baselines, disable_yazio_ingest, disable_strong_ingest, rotation_priority_lift";
+const COLS = "name, age, height_cm, goal, system_prompt, whoop_baselines, disable_yazio_ingest, disable_strong_ingest, rotation_priority_lift, dietary_exclusions";
 
 export type Profile = {
   name: string | null;
@@ -15,6 +15,7 @@ export type Profile = {
   disable_yazio_ingest: boolean;
   disable_strong_ingest: boolean;
   rotation_priority_lift: PrimaryLift | null;
+  dietary_exclusions: DietaryExclusions | null;
 };
 
 export async function fetchProfileServer(

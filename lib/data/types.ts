@@ -75,6 +75,10 @@ export type Profile = {
    *  rotation engine's next-focus recommendation when set. NULL means
    *  follow rotation. Cleared after a block focused on this lift completes. */
   rotation_priority_lift: PrimaryLift | null;
+  /** Hard-NO dietary exclusions Nora's suggestion engine respects. Tags
+   *  drive a deterministic predicate filter; free_text is advisory prose
+   *  Nora reads in chat. NULL = no exclusions configured. */
+  dietary_exclusions: DietaryExclusions | null;
 };
 
 export type WhoopTokensRow = {
@@ -171,7 +175,8 @@ export type ToolCallLog = {
     | "propose_session_template"
     | "commit_session_template"
     | "propose_meal_log"
-    | "commit_meal_log";
+    | "commit_meal_log"
+    | "propose_meal_suggestions";
   input: Record<string, unknown>;
   ms: number;
   result_rows: number;
@@ -1418,6 +1423,122 @@ export type FoodQualityTrend = {
   total_items: number;
 };
 
+// ── Nora suggestion engine ───────────────────────────────────────────────
+
+export type ExclusionTag =
+  | "pork"
+  | "shellfish"
+  | "alcohol"
+  | "gluten"
+  | "dairy"
+  | "eggs"
+  | "peanuts"
+  | "tree_nuts"
+  | "soy"
+  | "red_meat"
+  | "all_meat"
+  | "fish";
+
+export type DietaryExclusions = {
+  tags: ExclusionTag[];
+  free_text: string | null;
+  version: 1;
+};
+
+export type EatingIdentityTopItem = {
+  canonical_name: string;
+  name_variants: string[];
+  log_count: number;
+  typical_qty_g: number;
+  macros_per_100g: { kcal: number; protein_g: number; carbs_g: number; fat_g: number; fiber_g: number };
+  slot_distribution: Record<MealSlot, number>;
+  last_logged: string;
+} & (
+  | { source: "user_library"; library_item_id: string }
+  | { source: "db" | "llm"; library_item_id?: never }
+);
+
+export type EatingIdentitySlotPattern = {
+  typical_kcal_avg: number;
+  typical_protein_g_avg: number;
+  top_items: string[];
+};
+
+export type EatingIdentityCombo = {
+  items: string[];
+  co_occurrence_count: number;
+  last_seen: string;
+  avg_slot: MealSlot;
+};
+
+export type EatingIdentity = {
+  generated_on: string;
+  window_days: 90;
+  top_items: EatingIdentityTopItem[];
+  protein_category_counts: Record<ProteinCategory, number>;
+  carb_category_counts: Record<CarbCategory, number>;
+  cooking_method_counts: Record<CookingMethod, number>;
+  slot_patterns: Record<MealSlot, EatingIdentitySlotPattern>;
+  frequent_combos: EatingIdentityCombo[];
+  monotone_flags: {
+    protein_top_share: number;
+    carb_top_share: number;
+    most_repeated_meal: { items: string[]; count: number } | null;
+  };
+};
+
+export type MealSuggestionSource =
+  | "library_recipe"
+  | "frequent_combo"
+  | "slot_pattern_recombination"
+  | "adjacent_substitution";
+
+export type MealSuggestionItem = {
+  name: string;
+  qty_g: number;
+  per_100g: { kcal: number; protein_g: number; carbs_g: number; fat_g: number; fiber_g: number };
+  library_item_id?: string;
+};
+
+export type MealSuggestionScores = {
+  macro_fit: number;
+  familiarity: number;
+  variety_boost: number;
+  slot_fit: number;
+  final: number;
+};
+
+export type MealSuggestion = {
+  rank: number;
+  source: MealSuggestionSource;
+  source_ref?: { library_item_id?: string; combo_signature?: string };
+  items: MealSuggestionItem[];
+  total_macros: { kcal: number; protein_g: number; carbs_g: number; fat_g: number; fiber_g: number };
+  macro_delta_vs_remaining: { kcal: number; protein_g: number; fits_slot: boolean };
+  rationale: string;
+  scores: MealSuggestionScores;
+};
+
+export type SuggestEngineError = "exclusions_exhausted" | "no_history";
+
+export type SuggestEngineOutput = {
+  suggestions: MealSuggestion[];
+  context: {
+    // fiber_g is intentionally omitted — the scoring formula in suggest-meal.ts
+    // weighs only kcal/protein/carbs/fat. Fiber appears in total_macros for display
+    // but is not part of the remaining-budget signal.
+    remaining_macros_for_day: { kcal: number; protein_g: number; carbs_g: number; fat_g: number };
+    slot_target: { kcal: number; protein_g: number };
+    monotone_signal: { protein_top: string; share: number } | null;
+  };
+  filter_stats: {
+    tier1_candidates: number;
+    after_exclusion: number;
+    surfaced: number;
+  };
+  error?: SuggestEngineError;
+};
+
 export type CoachTrendsPayload = {
   schema_version: 2;
   generated_at: string;
@@ -1476,7 +1597,9 @@ export type ProactiveTriggerType =
   | "bedtime_drift"
   | "respiratory_rate_elevated"
   | "heavy_fatigue_cluster"
-  | "post_strain_undersleep";
+  | "post_strain_undersleep"
+  // NEW — recipe discovery (sub-project: Nora suggestion engine §9)
+  | "save_recipe";
 
 /** Internal event shape passed from check-* functions to the orchestrator.
  *  The `payload` field carries trigger-specific data the renderer needs. */
@@ -1485,6 +1608,31 @@ export type ProactiveEvent = {
   trigger_key: string;
   payload: Record<string, unknown>;
 };
+
+/** Structured payload variants on a proactive nudge card.
+ *  Discriminated by `kind`. The narrative-only variant has no payload at all
+ *  (payload field omitted on the card). Save-recipe variant carries the combo
+ *  data the UI needs to render the editable inputs + Save/Dismiss CTAs.
+ *
+ *  Recipe-discovery nudge: written by /api/coach/recipe-discovery/check (Task 17).
+ *  Lifecycle ends with either POST /api/coach/save-recipe-from-nudge (Save) or
+ *  POST /api/chat/nudge-dismiss (Not this one). Both terminal actions mark the
+ *  proactive_nudge_dedup row so the same combo_signature is gated for 30d. */
+export type ProactiveNudgeCardPayload =
+  | {
+      kind: "save_recipe";
+      combo_signature: string;
+      items: Array<{
+        name: string;
+        qty_g: number;
+        per_100g: { kcal: number; protein_g: number; carbs_g: number; fat_g: number; fiber_g: number };
+      }>;
+      suggested_name: string;
+      co_occurrence_count: number;
+      last_seen: string;
+      avg_slot: "breakfast" | "lunch" | "dinner" | "snack";
+      per_100g: { kcal: number; protein_g: number; carbs_g: number; fat_g: number; fiber_g: number };
+    };
 
 /** Persisted in chat_messages.ui when kind='proactive_nudge'. */
 export type ProactiveNudgeCard = {
@@ -1502,6 +1650,9 @@ export type ProactiveNudgeCard = {
   /** Speaker delivering the nudge. Optional for back-compat with persisted cards
    *  that predate the speaker field; consumers default to 'peter' when missing. */
   speaker?: Speaker;
+  /** Optional structured payload — present only for nudges that render
+   *  interactive UI beyond the headline/body/deep_link chrome (e.g. save_recipe). */
+  payload?: ProactiveNudgeCardPayload;
 };
 
 export type ReconfirmResponse = { chip_value: string; answered_at: string };

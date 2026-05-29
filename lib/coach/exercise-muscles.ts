@@ -164,6 +164,9 @@ export const EXERCISE_MUSCLES: Record<string, MuscleMapping> = {
   "russian twist":          { primary: [M.Obliques], secondary: [M.Abs] },
   "ab wheel":               { primary: [M.Abs], secondary: [] },
   "cable crunch":           { primary: [M.Abs], secondary: [] },
+  "dead bug":               { primary: [M.Abs], secondary: [] },
+  "side plank":             { primary: [M.Abs], secondary: [] },
+  "reverse crunch":         { primary: [M.Abs], secondary: [] },
 };
 
 /**

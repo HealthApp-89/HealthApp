@@ -195,6 +195,14 @@ export type UserFoodItem = {
   default_serving_g: number | null;
   source: UserFoodItemSource;
   notes: string | null;
+  /** Per-row metadata (migration 0039). Recipe-discovery nudges write
+   *  `{ source: "recipe_discovery", combo_signature: "..." }` so the Nora
+   *  suggestion engine can boost newly-saved discovery recipes for 7 days
+   *  (spec §9.6). NULL on manual saves and pre-0039 rows. Optional on the
+   *  type so SELECT lists that don't include `metadata` (e.g. the library
+   *  fetcher's named SELECT) stay compatible — the suggestion-engine query
+   *  selects it explicitly when it needs the boost. */
+  metadata?: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
 };

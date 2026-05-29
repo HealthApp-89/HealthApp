@@ -32,6 +32,14 @@
     {
       "path": "/api/coach/block-outcomes/sweep",
       "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/coach/eating-identity/sync",
+      "schedule": "30 3 * * *"
+    },
+    {
+      "path": "/api/coach/recipe-discovery/check",
+      "schedule": "45 3 * * *"
     }
   ],
   "functions": {

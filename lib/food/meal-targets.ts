@@ -43,3 +43,26 @@ export function targetsForAllSlots(
     snack:     targetForSlot("snack",     dayKcal, ratios),
   };
 }
+
+export type SlotTargets = { kcal: number; protein_g: number };
+
+export function typedTargetsForAllSlots(
+  targets: { kcal: number; protein_g: number },
+  ratios: MealRatios = DEFAULT_MEAL_RATIOS,
+): Record<MealSlot, SlotTargets> {
+  const ratioForSlot: Record<MealSlot, number> = {
+    breakfast: ratios.breakfast,
+    lunch:     ratios.lunch,
+    dinner:    ratios.dinner,
+    snack:     ratios.snacks,
+  };
+  const out = {} as Record<MealSlot, SlotTargets>;
+  for (const s of ["breakfast", "lunch", "dinner", "snack"] as MealSlot[]) {
+    const r = ratioForSlot[s];
+    out[s] = {
+      kcal: Math.round(targets.kcal * r),
+      protein_g: Math.round(targets.protein_g * r),
+    };
+  }
+  return out;
+}

@@ -29,6 +29,8 @@ import { buildPeterContextBlock } from "@/lib/coach/peter-context";
 import { loadLatestPeterDashboard } from "@/lib/coach/peter-dashboard";
 import { buildThisWeeksExercisesBlock } from "@/lib/coach/carter-context/this-weeks-exercises";
 import { buildFrameworkStateBlock } from "@/lib/coach/carter-context/framework-state";
+import { renderEatingIdentityBlock } from "@/lib/coach/nora-suggestions/render-injection";
+import type { EatingIdentity, DietaryExclusions } from "@/lib/data/types";
 
 export const dynamic = "force-dynamic";
 
@@ -812,6 +814,31 @@ export async function POST(req: Request) {
             return parts.length > 0 ? parts.join("\n\n") : null;
           })()
         : null;
+      // Nora's 90d eating-identity injection: top items, category counts,
+      // monotone flags + dietary exclusions. Both reads come from the same
+      // profiles row. Non-blocking — a DB error degrades gracefully to a
+      // "not yet generated" stub so chat still streams.
+      const noraIdentityBlock = initialSpeaker === "nora"
+        ? await (async () => {
+            try {
+              const { data: prof } = await sr
+                .from("profiles")
+                .select("eating_identity_cache, dietary_exclusions")
+                .eq("user_id", user.id)
+                .maybeSingle();
+              const identity = (prof?.eating_identity_cache ?? null) as EatingIdentity | null;
+              const exclusions = (prof?.dietary_exclusions ?? {
+                tags: [],
+                free_text: null,
+                version: 1,
+              }) as DietaryExclusions;
+              return renderEatingIdentityBlock(identity, exclusions);
+            } catch (err) {
+              console.warn("[chat] renderEatingIdentityBlock failed", err);
+              return null;
+            }
+          })()
+        : null;
       try {
         // Drain one runChatStream pass, piping all SSE events to the client.
         // Pin to local — TS loses control-flow narrowing through async closures.
@@ -835,6 +862,7 @@ export async function POST(req: Request) {
             peterContext,
             peterDashboardBlock,
             carterContext,
+            noraIdentityBlock,
           })) {
             if (req.signal.aborted) {
               aborted = true;

@@ -64,7 +64,7 @@ All composers are pure functions. The engine is deterministic. AI is not in the 
 
 ## 5. Section 1 — Data layer: structured exclusions
 
-### 5.1 Migration 0037
+### 5.1 Migration 0038
 
 ```sql
 ALTER TABLE profiles
@@ -214,12 +214,17 @@ Tier 1 fills first; 2/3 only top up.
 
 ```ts
 const EXCLUSION_PREDICATES: Record<ExclusionTag, (item: Item) => boolean> = {
-  pork:       (it) => !/\b(pork|bacon|ham|prosciutto|chorizo|pancetta|jam[oó]n|salami|sausage)\b/i.test(it.name)
+  pork:       (it) => !/\b(pork|bacon|ham|prosciutto|chorizo|pancetta|jam[oó]n|salami|sausage|pepperoni|mortadella|lard(ons?)?|guanciale|speck|carnitas)\b/i.test(it.name)
                       && !(usdaCategoryOf(it) ?? "").match(/^(Pork|Sausages and Luncheon)/),
   shellfish:  (it) => !/\b(shrimp|prawn|lobster|crab|mussels?|oysters?|clams?|scallops?|crayfish)\b/i.test(it.name),
   alcohol:    (it) => !/\b(wine|beer|whisk(e)?y|vodka|rum|gin|tequila|champagne|prosecco|cocktail|spirits?)\b/i.test(it.name),
   gluten:     (it) => !/\b(wheat|barley|rye|bread|pasta|noodles?|couscous|bulgur|semolina|farro)\b/i.test(it.name),
-  dairy:      (it) => !/\b(milk|cheese|yogurt|yoghurt|butter|cream|whey|casein|kefir)\b/i.test(it.name),
+  dairy:      (it) => {
+                       // Plant-based "milk/cream/butter/yoghurt" are NOT dairy — exempt the common prefixes.
+                       if (/\b(coconut|oat|almond|soy|soya|rice|hemp|cashew|hazelnut|pea)\s+(milk|cream|butter|yog(h)?urt)\b/i.test(it.name)) return true;
+                       return !/\b(milk|cheese|yogurt|yoghurt|butter|cream|whey|casein|kefir|lactose|ghee)\b/i.test(it.name)
+                              && !(usdaCategoryOf(it) ?? "").startsWith("Dairy and Egg");
+                     },
   eggs:       (it) => !/\beggs?\b/i.test(it.name),
   peanuts:    (it) => !/\bpeanuts?\b/i.test(it.name),
   tree_nuts:  (it) => !/\b(almonds?|walnuts?|cashews?|pistachios?|hazelnuts?|pecans?|brazil nuts?|macadamia)\b/i.test(it.name),
@@ -229,6 +234,14 @@ const EXCLUSION_PREDICATES: Record<ExclusionTag, (item: Item) => boolean> = {
   fish:       (it) => !/\b(fish|salmon|tuna|sardines?|cod|haddock|mackerel|trout|halibut|anchov(y|ies))\b/i.test(it.name),
 };
 ```
+
+**v1 scope notes for other tags** (deferred for follow-up):
+- `shellfish` covers shrimp/prawn/lobster/crab/mussels/oysters/clams/scallops/crayfish. Squid/calamari/octopus deferred — not in this athlete's repertoire; revisit when adding a second user.
+- `all_meat` is currently NOT a strict superset of `fish` + `shellfish`. Athletes who go full vegetarian/vegan should combine tags. v2 may consolidate.
+- `gluten` covers wheat/barley/rye/bread/pasta/noodles/couscous/bulgur/semolina/farro. `malt`, `spelt`, `kamut` deferred — uncommon in this app's logs.
+- `soy` covers soy/tofu/tempeh/edamame/miso. `soya` (British spelling), `tamari`, `natto` deferred — same rationale.
+- `red_meat` covers beef/lamb/venison/bison. `goat`/`mutton`/`veal` deferred.
+- `tree_nuts` covers almonds/walnuts/cashews/pistachios/hazelnuts/pecans/brazil-nuts/macadamia. Coconut deferred (FDA classifies as tree nut, but most tree-nut-allergic individuals tolerate coconut).
 
 Composite recipes: every component must pass. Any component failure → recipe drops. No partial-suggestion mode in v1.
 
@@ -327,7 +340,13 @@ Server handler in [lib/coach/tools.ts](../../lib/coach/tools.ts):
 2. Load `profiles.dietary_exclusions`.
 3. Compute `remainingMacros = getTodayTargets() − query_food_log(today, today).totals`.
 4. Call `suggestMeal(...)`.
-5. For each surfaced option, mint HMAC approval token via existing `mintApprovalToken({ user_id, action: 'meal_log', payload: { items, meal_slot: slot, eaten_at: now_iso } })`. 24h TTL.
+5. For each surfaced option, mint HMAC approval token via existing `mintApprovalToken({ user_id, action: 'meal_log', payload: { items, meal_slot: slot, eaten_at: now_iso } })`.
+
+   **TTL**: v1 inherits the 30-minute TTL from `approval-token.ts` (global). The spec
+   originally called for 24h to support tap-later UX; per-token TTL plumbing is
+   deferred to v2. Expired tokens produce the standard `"That approval expired before
+   it was committed..."` message and the athlete re-asks for suggestions — same
+   recovery as other propose/commit tools.
 6. Return `{ suggestions, tokens: ApprovalToken[], context, filter_stats, error? }`.
 
 ### 8.2 One-tap log flow
@@ -470,7 +489,7 @@ Extend `ProactiveNudgeCard` payload discriminated union with `kind: 'save_recipe
 ### 9.4 Save flow
 
 - **Save to library** → POST calls existing `save_to_library` tool with `{ name, composite_of, per_100g, metadata: { source: 'recipe_discovery', combo_signature } }`. Existing duplicate-handling (23505 → was_duplicate: true short-circuit) applies.
-- **Not this one** → POST to `/api/chat/nudge-dismiss` → writes `proactive_nudge_dedup` row with `dismissed_at` set → same `trigger_key` blocked for **90 days** (vs. standard 7-day dedup).
+- **Not this one** → POST to `/api/chat/nudge-dismiss` → writes a `proactive_nudge_dedup` row keyed `(user_id, trigger_key, fired_on=today)` → the cron's existing 30-day dedup window prevents re-fires for 30 days. (v1 limitation: an explicit 90-day post-dismiss block was descoped — migration 0017 schema has no `dismissed_at` column. Row existence alone is the dedup signal. A 90-day variant requires a schema migration + cron query update and is deferred to v2.)
 
 ### 9.5 Detection cron
 
@@ -521,7 +540,7 @@ Useful during the first 2-3 weeks for tuning threshold.
 
 | Item | Detail |
 |---|---|
-| Migration 0037 | `profiles.dietary_exclusions jsonb`, `profiles.eating_identity_cache jsonb` |
+| Migration 0038 | `profiles.dietary_exclusions jsonb`, `profiles.eating_identity_cache jsonb` |
 | Migration script | `scripts/migrate-exclusions.mjs` (one-shot backfill from athlete profile free-text) |
 | Cron | `/api/coach/eating-identity/sync` daily at 03:30 UTC |
 | Cron | `/api/coach/recipe-discovery/check` daily at 03:45 UTC |
@@ -590,3 +609,53 @@ This design respects:
 - 1 prompt update
 - 4 audit/migration scripts
 - ~3-5 PRs likely (data layer / engine / surface / discovery / polish)
+
+## 17. v1 known deviations
+
+The following spec sections describe intended behavior; v1 ships with these
+deferred or simplified for cost/scope reasons. Each has a code comment at the
+implementation site referencing this section.
+
+- **§6.1 `slot_patterns.typical_kcal_avg` / `typical_protein_g_avg`** — v1 leaves
+  both at 0. The suggestion engine's `slot_fit` factor falls back to
+  `slotTargets.kcal` (plan target), so "slot shape" matches the plan rather
+  than the athlete's actual per-slot eating pattern. v2 may compute these from
+  the meal-grouped logs in `compose-eating-identity.ts`.
+
+- **§8.1 24h token TTL** — v1 inherits the 30-min default from
+  `lib/coach/approval-token.ts` (already noted in §8.1). Suggestion cards that
+  sit unacked for >30min surface the standard "approval expired" message on
+  tap; athlete re-asks Nora and a fresh card is issued. v2 may plumb per-token
+  TTL through `signApprovalToken` and `verifyApprovalToken`.
+
+- **§9.1 `co_occurrence_count ≥ 4` in last 30 days** — v1's
+  `frequent_combos.co_occurrence_count` (composer output) counts over the full
+  90-day window. The recency filter at the qualifying stage uses
+  `last_seen ≤ 14d`. A combo with sparse historical use but a recent
+  occurrence may still qualify. v2 may add a 30d-scoped count to
+  `EatingIdentityCombo` if false positives surface in audits.
+
+- **§9.4 90-day post-dismiss block** — v1 uses the standard 30-day dedup
+  window (matches existing `proactive_nudge_dedup` convention; the table has
+  no `dismissed_at` column). "Not this one" blocks for 30 days, not 90.
+
+- **§6.5 cache invalidation on save-from-nudge** — v1's `save-recipe-from-nudge`
+  route does not clear `eating_identity_cache`. The 7-day recipe-discovery
+  boost reads `user_food_items.created_at` at runtime so the boost still fires
+  correctly; only the cached frequency rollup is stale until the next 03:30
+  cron tick.
+
+- **Committed-token UI persistence** — `MealSuggestionsCard`'s `committedTokens`
+  prop exists but the `ChatMessage` dispatcher never passes it (token full
+  value isn't recoverable from `chat_messages.tool_calls` where it's truncated
+  for log readability). After a page reload, already-logged options re-render
+  with active Log buttons; tapping triggers `commit_meal_log` which either
+  duplicates the entry or fails with "expired token" depending on the 30-min
+  TTL. v2 may store a suggestion-index↔token mapping for reload-persistent
+  state.
+
+- **Recipe-discovery has no supplement filter** — combos consisting only of
+  supplements (creatine + protein powder, etc.) can qualify and surface as
+  save-recipe nudges. Athlete dismisses → 30-day dedup absorbs it. v2 may add
+  a category-aware filter to `pickDiscoveryCandidate` that skips combos whose
+  items all classify under a "supplement" category.
