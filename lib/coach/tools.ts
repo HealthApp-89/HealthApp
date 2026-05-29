@@ -1785,6 +1785,17 @@ export async function executeCommitBlock(opts: {
       : "Couldn't save the block. Please try again in a moment.";
     return { ok: false, error: { error: msg, code: error.code ?? "insert_failed" }, meta: { ms: Date.now() - t0, range_days: 0 } };
   }
+
+  // Stamp any outstanding unacknowledged block_outcomes row so the
+  // BlockOutcomeCard stops surfacing and framework_state exits between-blocks
+  // mode. Safe no-op when there's no such row (first-ever block, or already
+  // acknowledged). Errors here are non-fatal — the block was saved.
+  await opts.supabase
+    .from("block_outcomes")
+    .update({ athlete_acknowledged_at: new Date().toISOString() })
+    .eq("user_id", opts.userId)
+    .is("athlete_acknowledged_at", null);
+
   return {
     ok: true,
     data: data as TrainingBlock,
@@ -2716,6 +2727,19 @@ export const SET_ROTATION_PRIORITY_LIFT_TOOL = {
   },
 };
 
+export const APPLY_ROTATION_OVERRIDE_TOOL = {
+  name: "apply_rotation_override",
+  description:
+    "When the athlete picks a different lift in SETUP_BLOCK_PROMPT (not the rotation recommendation), mark the most recent unacknowledged block_outcomes row's lessons.rotation_context.athlete_overrode_rotation = true with the reason. Idempotent.",
+  input_schema: {
+    type: "object" as const,
+    required: ["override_reason"],
+    properties: {
+      override_reason: { type: "string", maxLength: 200 },
+    },
+  },
+};
+
 // ── End-of-intake — HMAC-gated ──────────────────────────────────────────────
 
 export const PROPOSE_PLAN_TOOL = {
@@ -3458,6 +3482,51 @@ export async function executeSetRotationPriorityLift(opts: {
     data: { rotation_priority_lift: lift },
     meta: { ms: Date.now() - t0, result_rows: 1, range_days: 0, truncated: false },
   };
+}
+
+export async function executeApplyRotationOverride(opts: {
+  supabase: SupabaseClient;
+  userId: string;
+  input: unknown;
+}): Promise<ToolResult<{ outcome_id: string }>> {
+  const t0 = Date.now();
+  const i = (opts.input ?? {}) as Record<string, unknown>;
+  const reason = typeof i.override_reason === "string" ? i.override_reason : null;
+  if (!reason) {
+    return { ok: false, error: { error: "override_reason required" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+
+  const { data: outcomes } = await opts.supabase
+    .from("block_outcomes")
+    .select("id, lessons")
+    .eq("user_id", opts.userId)
+    .is("athlete_acknowledged_at", null)
+    .order("created_at", { ascending: false })
+    .limit(1);
+  const o = outcomes?.[0];
+  if (!o) {
+    return { ok: false, error: { error: "no unacknowledged outcome to override" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+
+  const oldLessons = (o.lessons as Record<string, unknown>) ?? {};
+  const oldRotation = ((oldLessons.rotation_context as Record<string, unknown>) ?? {});
+  const newLessons = {
+    ...oldLessons,
+    rotation_context: {
+      ...oldRotation,
+      athlete_overrode_rotation: true,
+      override_reason: reason,
+    },
+  };
+
+  const { error } = await opts.supabase
+    .from("block_outcomes")
+    .update({ lessons: newLessons, updated_at: new Date().toISOString() })
+    .eq("id", o.id);
+  if (error) {
+    return { ok: false, error: { error: error.message }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  return { ok: true, data: { outcome_id: o.id }, meta: { ms: Date.now() - t0, result_rows: 1, range_days: 0, truncated: false } };
 }
 
 export async function executeSetGlp1TaperStarted(opts: {
@@ -4707,6 +4776,7 @@ export const PETER_TOOLS: readonly ToolSchema[] = [
   SET_UNPROMPTED_ACTIONS_TOOL,
   SET_FREE_FORM_CONSTRAINTS_TOOL,
   SET_ROTATION_PRIORITY_LIFT_TOOL,
+  APPLY_ROTATION_OVERRIDE_TOOL,
   PROPOSE_PLAN_TOOL,
   COMMIT_PLAN_TOOL,
   SET_GLP1_STATUS_TOOL,
@@ -4740,6 +4810,7 @@ export const CARTER_TOOLS: readonly ToolSchema[] = [
   MARK_MOBILITY_DONE_TOOL,
   UNMARK_MOBILITY_DONE_TOOL,
   SET_ROTATION_PRIORITY_LIFT_TOOL,
+  APPLY_ROTATION_OVERRIDE_TOOL,
 ];
 
 // Nora: nutrition. Reads food log + nutrition/body-comp daily_logs columns;

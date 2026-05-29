@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useState, useTransition, type ReactNode } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Card } from "@/components/ui/Card";
 import { StatusRow } from "@/components/ui/StatusRow";
 import { BottomSheet } from "@/components/ui/BottomSheet";
@@ -8,9 +9,10 @@ import { ProfileForm } from "@/components/profile/ProfileForm";
 import { BaselinesPanel } from "@/components/profile/BaselinesPanel";
 import { ConnectionsPanel } from "@/components/profile/ConnectionsPanel";
 import { IngestPanel } from "@/components/profile/IngestPanel";
-import { COLOR } from "@/lib/ui/theme";
-import type { DailyLog } from "@/lib/data/types";
+import { COLOR, RADIUS } from "@/lib/ui/theme";
+import type { DailyLog, PrimaryLift } from "@/lib/data/types";
 import { useProfile } from "@/lib/query/hooks/useProfile";
+import { queryKeys } from "@/lib/query/keys";
 import { useWhoopTokens } from "@/lib/query/hooks/useWhoopTokens";
 import { useWithingsTokens } from "@/lib/query/hooks/useWithingsTokens";
 import { useIngestToken } from "@/lib/query/hooks/useIngestToken";
@@ -157,6 +159,10 @@ export function ProfileClient({
       <div style={{ padding: "0 8px 14px", display: "flex", flexDirection: "column", gap: "8px" }}>
         <AthleteProfilePanel userId={userId} />
         <GoalSection />
+        <PriorityLiftSection
+          userId={userId}
+          initial={profile?.rotation_priority_lift ?? null}
+        />
         <NutritionTargetsSection userId={userId} date={today} />
         {showLabCard && <LabPromptCard userId={userId} />}
       </div>
@@ -222,5 +228,125 @@ function SectionLabel({ children }: { children: ReactNode }) {
     >
       {children}
     </div>
+  );
+}
+
+/**
+ * Priority-lift dropdown. Persists `profiles.rotation_priority_lift` via
+ * /api/profile/rotation-priority. When set, the block-rotation engine
+ * injects this lift every other slot instead of running the standard
+ * D → B → S → OHP cadence (no two consecutive focuses on the same lift
+ * either way). `null` ("None") falls back to the standard rotation.
+ */
+function PriorityLiftSection({
+  userId,
+  initial,
+}: {
+  userId: string;
+  initial: PrimaryLift | null;
+}) {
+  const queryClient = useQueryClient();
+  const [value, setValue] = useState<string>(initial ?? "none");
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const [savedAt, setSavedAt] = useState<number | null>(null);
+
+  function onChange(e: React.ChangeEvent<HTMLSelectElement>) {
+    const next = e.target.value;
+    setValue(next);
+    setError(null);
+    setSavedAt(null);
+    startTransition(async () => {
+      try {
+        const res = await fetch("/api/profile/rotation-priority", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ lift: next === "none" ? null : next }),
+        });
+        const j = await res.json();
+        if (!res.ok || j.error) {
+          setError(j.error ?? "save_failed");
+          return;
+        }
+        setSavedAt(Date.now());
+        await queryClient.invalidateQueries({
+          queryKey: queryKeys.profile.one(userId),
+        });
+      } catch (err) {
+        setError((err as Error).message);
+      }
+    });
+  }
+
+  return (
+    <Card>
+      <div
+        style={{
+          fontSize: "11px",
+          color: COLOR.textMuted,
+          textTransform: "uppercase",
+          letterSpacing: "0.5px",
+          marginBottom: "6px",
+        }}
+      >
+        Priority lift (optional)
+      </div>
+      <p
+        style={{
+          fontSize: "12px",
+          color: COLOR.textMuted,
+          lineHeight: 1.5,
+          marginTop: 0,
+          marginBottom: "10px",
+        }}
+      >
+        When set, this lift gets ~4 of every 8 block focuses instead of ~2. No
+        two consecutive focuses on the same lift either way.
+      </p>
+      <select
+        value={value}
+        onChange={onChange}
+        disabled={pending}
+        style={{
+          padding: "8px 12px",
+          background: COLOR.surfaceAlt,
+          border: `1px solid ${COLOR.divider}`,
+          borderRadius: RADIUS.input,
+          fontSize: "13px",
+          color: COLOR.textStrong,
+          cursor: pending ? "wait" : "pointer",
+          width: "100%",
+        }}
+      >
+        <option value="none">None — standard rotation</option>
+        <option value="squat">Squat</option>
+        <option value="bench">Bench</option>
+        <option value="deadlift">Deadlift</option>
+        <option value="ohp">Overhead Press</option>
+      </select>
+      {error && (
+        <div
+          style={{
+            fontSize: "11px",
+            fontFamily: "monospace",
+            color: COLOR.danger,
+            marginTop: "6px",
+          }}
+        >
+          ✗ {error}
+        </div>
+      )}
+      {savedAt && !error && (
+        <div
+          style={{
+            fontSize: "11px",
+            color: COLOR.success,
+            marginTop: "6px",
+          }}
+        >
+          Saved
+        </div>
+      )}
+    </Card>
   );
 }

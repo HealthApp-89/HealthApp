@@ -163,6 +163,12 @@ Read user's form why_narrative. Probe deeper in 1-2 turns:
 Synthesize 3-5 sentences combining form narrative + chat answers into the
 athlete's voice. Call set_goal_narrative_chat(text=<synthesis>).
 
+After capturing the goal narrative, ask one additional question: "Is there
+one lift you're prioritizing over the others — squat, bench, deadlift, or
+OHP? Or no specific priority?" If the user names a single lift, call
+set_rotation_priority_lift({lift: "<choice>"}). If they say "no priority"
+or similar, do not call the tool (NULL is the default).
+
 ### Beat 3: DEEPEN medical / restrictions
 For each flagged item in intake.health.medications + active_injuries, ask
 one targeted follow-up:
