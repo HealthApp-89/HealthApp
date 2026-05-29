@@ -128,6 +128,10 @@ export const queryKeys = {
     all: (userId: string) => ["coachTrends", userId] as const,
     one: (userId: string) => ["coachTrends", userId, "current"] as const,
   },
+  blockHistory: {
+    all: (userId: string) => ["blockHistory", userId] as const,
+    one: (userId: string) => ["blockHistory", userId, "current"] as const,
+  },
   recoveryIntelligence: {
     all: (userId: string) => ["recoveryIntelligence", userId] as const,
     one: (userId: string) => ["recoveryIntelligence", userId, "current"] as const,

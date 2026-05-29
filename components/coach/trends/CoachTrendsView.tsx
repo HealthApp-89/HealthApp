@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useCoachTrends } from "@/lib/query/hooks/useCoachTrends";
+import { useBlockHistory } from "@/lib/query/hooks/useBlockHistory";
 import { CHAT, COLOR } from "@/lib/ui/theme";
 import { formatHeaderDate } from "@/lib/time";
 import { SectionPills, type TrendsSection } from "./SectionPills";
@@ -21,6 +22,7 @@ export function CoachTrendsView({
   const router = useRouter();
   const [activeSection, setActiveSection] = useState<TrendsSection>(initialSection);
   const { data: payload } = useCoachTrends(userId);
+  const { data: blockHistory } = useBlockHistory(userId);
 
   if (!payload) return null;
 
@@ -63,7 +65,11 @@ export function CoachTrendsView({
       <div style={{ padding: "0 12px 24px", display: "flex", flexDirection: "column", gap: 10 }}>
         <TrendsHeader headline={payload.headline} />
         {activeSection === "performance" && (
-          <PerformanceSection strength={payload.strength} recovery={payload.recovery} />
+          <PerformanceSection
+            strength={payload.strength}
+            recovery={payload.recovery}
+            blockHistory={blockHistory}
+          />
         )}
         {activeSection === "body" && (
           <BodySection body={payload.body} userId={userId} />
