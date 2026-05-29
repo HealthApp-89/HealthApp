@@ -106,13 +106,14 @@ export async function generateWorkoutDebrief(opts: {
 
   const block: WorkoutDebriefPayload["block"] = (() => {
     if (!blockProgress || "active" in blockProgress) {
-      return { week_num: null, total_weeks: null, phase: null, rir_target: null };
+      return { week_num: null, total_weeks: null, phase: null, rir_target: null, primary_lift: activeBlock?.primary_lift ?? null };
     }
     return {
       week_num: blockProgress.current_week,
       total_weeks: blockProgress.total_weeks,
       phase: blockProgress.research_phase,
       rir_target: blockProgress.rir_target,
+      primary_lift: activeBlock?.primary_lift ?? null,
     };
   })();
 

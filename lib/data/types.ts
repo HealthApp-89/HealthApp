@@ -1694,6 +1694,11 @@ export type WorkoutDebriefPayload = {
     total_weeks: number | null;
     phase: "accumulate" | "deload" | null;
     rir_target: number | null;
+    /** Active block's primary lift (one of 'squat'|'bench'|'deadlift'|'ohp') or
+     *  null when no focus block is active. Fed to the narrative prompt so Carter
+     *  can frame accessory verdicts relative to block focus instead of treating
+     *  every MEV gap as block-critical. */
+    primary_lift: string | null;
   };
 
   lifts: Array<{

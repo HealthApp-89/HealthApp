@@ -71,13 +71,19 @@ export function linkThemes(
     });
   }
 
-  // Rule 4: performance plateau + goal active → off-pace-from-stall cluster.
-  if (perfHasPlateau && isActive(goal)) {
+  // Rule 4: performance plateau on the goal lift + goal active → off-pace-from-
+  // stall cluster. Pre-2026-05-29 this fired on ANY plateau when a goal was
+  // active, which produced false "OHP stall is widening your deadlift gap"
+  // narratives. Now we require the plateau to actually be on the goal lift —
+  // compose-performance.ts emits `goal_lift_plateau_active` (1/0) for this gate.
+  const goalLiftPlateaued =
+    perf != null && (perf.facts['goal_lift_plateau_active'] as number | null) === 1;
+  if (goalLiftPlateaued && isActive(goal)) {
     clusters.push({
       id: 'performance-goal',
       themes: ['performance', 'goal_distance'],
       root_hypothesis:
-        'goal pace slipping because the lifts that drive it have stalled',
+        'goal pace slipping because the goal lift has stalled',
     });
   }
 

@@ -35,14 +35,19 @@ export type PlannedExercise = {
 // NOTE: `intermediate` on Chest Fly (2.3kg) and Seated Leg Curl (2.3kg) is a
 // best-guess from observed machine data — pending user confirmation tomorrow.
 // All other increment values are confirmed from the user's gym equipment.
+//
+// Bilateral-DB convention: `baseKg` is TOTAL load across both hands. The user's
+// dumbbells step by 2kg per DB, so bilateral exercises (one DB per hand) step
+// by 4kg total. Unilateral DB exercises (single DB held with both hands, e.g.
+// Pullover) step by 2kg. See memory equipment-gym-dumbbells.
 export const SESSION_PLANS: Record<string, PlannedExercise[]> = {
   Chest: [
     { name: "Push Up", warmup: true, reps: "12×3" },
     { name: "Decline Bench Press (Barbell)", baseKg: 60, baseReps: 8, sets: 3, key: "decline_bench", increment: { step: 2.5 } },
     { name: "Overhead Press (Barbell)", baseKg: 30, baseReps: 7, sets: 3, key: "ohp", increment: { step: 5 } },
-    { name: "Incline Bench Press (Dumbbell)", baseKg: 32, baseReps: 11, sets: 3, key: "incline_db", increment: { step: 2 } },
+    { name: "Incline Bench Press (Dumbbell)", baseKg: 32, baseReps: 11, sets: 3, key: "incline_db", increment: { step: 4 } },
     { name: "Chest Fly", baseKg: 22, baseReps: 15, sets: 3, key: "chest_fly", increment: { step: 5, intermediate: 2.3 } },
-    { name: "Lateral Raise (Dumbbell)", baseKg: 12, baseReps: 12, sets: 4, key: "lateral_raise", note: "Jump from 8kg — next DB is 12kg", increment: { step: 2 } },
+    { name: "Lateral Raise (Dumbbell)", baseKg: 12, baseReps: 12, sets: 4, key: "lateral_raise", note: "Jump from 8kg — next DB is 12kg", increment: { step: 4 } },
     { name: "Triceps Pushdown (Cable)", baseKg: 23, baseReps: 15, sets: 3, key: "triceps", increment: { step: 2.5 } },
     { name: "Dead Bug", baseReps: 6, sets: 2, key: "dead_bug", note: "Per side — arms relaxed at sides, opposite leg lowers, lumbar pressed to floor", video_url: "https://www.youtube.com/watch?v=bxn9FBrt4-A" },
   ],
@@ -56,7 +61,7 @@ export const SESSION_PLANS: Record<string, PlannedExercise[]> = {
     { name: "Hip Abductor (Machine)", baseKg: 56, baseReps: 15, sets: 3, key: "abductor", increment: { step: 5, intermediate: 2 } },
   ],
   Back: [
-    { name: "Deadlift (Barbell)", baseKg: 82.5, baseReps: 6, sets: 2, key: "deadlift", increment: { step: 2.5 } },
+    { name: "Deadlift (Barbell)", baseKg: 82.5, baseReps: 6, sets: 3, key: "deadlift", increment: { step: 2.5 } },
     { name: "Lat Pulldown (Cable)", baseKg: 45, baseReps: 10, sets: 4, key: "lat_pulldown", increment: { step: 5 } },
     { name: "Seated Row (Machine)", baseKg: 38, baseReps: 12, sets: 3, key: "seated_row", increment: { step: 5 } },
     { name: "Pullover (Dumbbell)", baseKg: 18, baseReps: 12, sets: 3, key: "pullover", increment: { step: 2 } },
@@ -64,11 +69,11 @@ export const SESSION_PLANS: Record<string, PlannedExercise[]> = {
     { name: "Back Extension", reps: "10×3", key: "back_ext" },
   ],
   Arms: [
-    { name: "Arnold Press (Dumbbell)", baseKg: 24, baseReps: 15, sets: 3, key: "arnold_press", increment: { step: 2 } },
-    { name: "Bicep Curl (Dumbbell)", baseKg: 20, baseReps: 15, sets: 3, key: "bicep_curl", increment: { step: 2 } },
-    { name: "Front Raise (Dumbbell)", baseKg: 16, baseReps: 15, sets: 3, key: "front_raise", increment: { step: 2 } },
-    { name: "Hammer Curl (Dumbbell)", baseKg: 20, baseReps: 15, sets: 3, key: "hammer_curl", increment: { step: 2 } },
-    { name: "Lateral Raise (Dumbbell)", baseKg: 12, baseReps: 15, sets: 3, key: "lateral_raise", increment: { step: 2 } },
+    { name: "Arnold Press (Dumbbell)", baseKg: 24, baseReps: 15, sets: 3, key: "arnold_press", increment: { step: 4 } },
+    { name: "Bicep Curl (Dumbbell)", baseKg: 20, baseReps: 15, sets: 3, key: "bicep_curl", increment: { step: 4 } },
+    { name: "Front Raise (Dumbbell)", baseKg: 16, baseReps: 15, sets: 3, key: "front_raise", increment: { step: 4 } },
+    { name: "Hammer Curl (Dumbbell)", baseKg: 20, baseReps: 15, sets: 3, key: "hammer_curl", increment: { step: 4 } },
+    { name: "Lateral Raise (Dumbbell)", baseKg: 12, baseReps: 15, sets: 3, key: "lateral_raise", increment: { step: 4 } },
     { name: "Triceps Pushdown (Cable - Straight Bar)", baseKg: 22.5, baseReps: 12, sets: 3, key: "triceps_pushdown", increment: { step: 2.5 } },
     { name: "Cable External Rotation", baseKg: 9, baseReps: 28, sets: 3, key: "cable_ext_rot", increment: { step: 4.5 } },
     { name: "Cable Internal Rotation", baseKg: 18, baseReps: 30, sets: 3, key: "cable_int_rot", increment: { step: 4.5 } },
