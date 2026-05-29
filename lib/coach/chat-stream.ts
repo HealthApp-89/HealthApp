@@ -70,6 +70,7 @@ import {
   executeResolveFoodMacros,
   executeProposeMealLog,
   executeCommitMealLog,
+  executeProposeMealSuggestions,
   toolsForSpeaker,
   colsForSpeaker,
   type ToolResult,
@@ -106,6 +107,7 @@ const PERSIST_RESULT_TOOLS = new Set([
   "pick_library_item",
   "propose_meal_log",
   "commit_meal_log",
+  "propose_meal_suggestions",
 ]);
 function shouldPersistResult(name: string): boolean {
   return PERSIST_RESULT_TOOLS.has(name);
@@ -216,6 +218,10 @@ export type RunChatStreamOpts = {
    *  means no dashboard row exists yet — falls back to the snapshot context.
    *  Composes alongside peterContext (specialist activity); both blocks coexist. */
   peterDashboardBlock?: string | null;
+  /** Pre-built "Eating identity" markdown from renderEatingIdentityBlock().
+   *  Appended after the base system prompt for Nora turns only. Null/undefined
+   *  means no cache row yet — falls back to the snapshot's nutrition fields. */
+  noraIdentityBlock?: string | null;
   /** Athlete-profile draft document id; required for intake-mode tools
    *  (apply_*, set_*, propose_plan, commit_plan). Caller sets this when
    *  serving an /onboarding chat turn. Null/undefined in default/planning modes. */
@@ -266,6 +272,9 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
   if (opts.peterContext && speaker === "peter") systemText = `${systemText}\n\n${opts.peterContext}`;
   if (opts.carterContext && speaker === "carter") {
     systemText = `${systemText}\n\n${opts.carterContext}`;
+  }
+  if (opts.noraIdentityBlock && speaker === "nora") {
+    systemText = `${systemText}\n\n${opts.noraIdentityBlock}`;
   }
   const system = [
     { type: "text" as const, text: systemText, cache_control: { type: "ephemeral" as const, ttl: "1h" as const } },
@@ -328,6 +337,7 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
     if (name === "commit_nutrition_targets") return true;
     if (name === "propose_meal_log") return true;
     if (name === "commit_meal_log") return true;
+    if (name === "propose_meal_suggestions") return true;
     if (name === "propose_session_today") return true;
     if (name === "commit_session_today") return true;
     if (name === "apply_rotation_override") return true;
@@ -696,6 +706,12 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
           });
         } else if (block.name === "commit_meal_log") {
           result = await executeCommitMealLog({
+            supabase: opts.sr,
+            userId: opts.userId,
+            input: block.input,
+          });
+        } else if (block.name === "propose_meal_suggestions") {
+          result = await executeProposeMealSuggestions({
             supabase: opts.sr,
             userId: opts.userId,
             input: block.input,

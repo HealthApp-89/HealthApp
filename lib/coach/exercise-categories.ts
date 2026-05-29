@@ -134,6 +134,7 @@ export const EXERCISE_CATEGORY: Record<string, ExerciseCategory> = {
   "cable crunch": "core",
   "russian twist": "core",
   "dead bug": "core",
+  "reverse crunch": "core",
   "pallof press": "core",
   "hollow body hold": "core",
   "sit-up": "core",

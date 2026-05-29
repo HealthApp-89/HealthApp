@@ -122,6 +122,7 @@ const FATIGUE_TIER: Record<string, FatigueTier> = {
   "cable crunch": 4,
   "russian twist": 4,
   "dead bug": 4,
+  "reverse crunch": 4,
   "pallof press": 4,
   "hollow body hold": 4,
   "sit-up": 4,

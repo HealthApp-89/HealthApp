@@ -20,6 +20,7 @@ import { useDailyLogs } from "@/lib/query/hooks/useDailyLogs";
 import { AthleteProfilePanel } from "@/components/profile/AthleteProfilePanel";
 import { LabPromptCard } from "@/components/profile/LabPromptCard";
 import { NutritionTargetsSection } from "@/components/profile/NutritionTargetsSection";
+import { DietaryExclusionsSection } from "@/components/profile/DietaryExclusionsSection";
 import { GoalSection } from "@/components/profile/GoalSection";
 import { useAthleteProfile } from "@/lib/query/hooks/useAthleteProfile";
 
@@ -164,6 +165,14 @@ export function ProfileClient({
           initial={profile?.rotation_priority_lift ?? null}
         />
         <NutritionTargetsSection userId={userId} date={today} />
+        <Card>
+          <DietaryExclusionsSection
+            userId={userId}
+            initial={
+              profile?.dietary_exclusions ?? { tags: [], free_text: null, version: 1 }
+            }
+          />
+        </Card>
         {showLabCard && <LabPromptCard userId={userId} />}
       </div>
 

@@ -15,7 +15,15 @@ import { NutritionTargetsProposalCard, type NutritionTargetsProposal } from "./N
 import { SessionTodayProposalCard, type SessionTodayProposal } from "@/components/chat/SessionTodayProposalCard";
 import { SessionTemplateProposalCard, type SessionTemplateProposal } from "@/components/chat/SessionTemplateProposalCard";
 import { MealLogProposalCard, type MealLogProposal } from "@/components/chat/MealLogProposalCard";
-import type { PlanPayload, Speaker } from "@/lib/data/types";
+import { MealSuggestionsCard } from "@/components/chat/MealSuggestionsCard";
+import type {
+  MealSuggestion,
+  PlanPayload,
+  Speaker,
+  SuggestEngineError,
+  SuggestEngineOutput,
+} from "@/lib/data/types";
+import type { MealSlot } from "@/lib/food/types";
 
 export function ChatMessage({
   message,
@@ -252,6 +260,77 @@ export function ChatMessage({
 
           {/* Proposal cards — rendered below the text block, assistant-only. */}
           {toolCalls.map((call, i) => {
+            // propose_meal_suggestions uses a different shape: result is the
+            // engine output directly (suggestions/tokens/context/filter_stats),
+            // with no preview/approval_token at the top level. Also renders
+            // on error so the user sees "log a few more meals" / "exclusions
+            // exhausted" inline instead of bare prose.
+            if (call.name === "propose_meal_suggestions") {
+              const slot = (call.input?.slot as MealSlot | undefined) ?? "snack";
+              const inputCount =
+                typeof call.input?.count === "number" ? (call.input.count as number) : 3;
+              const errorCode =
+                call.error && (call.error === "exclusions_exhausted" || call.error === "no_history")
+                  ? (call.error as SuggestEngineError)
+                  : undefined;
+              // Default fallback context for the error/empty state. The card
+              // only reads slot_target / remaining_macros_for_day / monotone_signal,
+              // and on error these aren't surfaced in the panel anyway.
+              const defaultContext: SuggestEngineOutput["context"] = {
+                slot_target: { kcal: 600, protein_g: 45 },
+                remaining_macros_for_day: { kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0 },
+                monotone_signal: null,
+              };
+              if (errorCode) {
+                return (
+                  <div key={i} style={{ marginTop: 8 }}>
+                    <MealSuggestionsCard
+                      suggestions={[]}
+                      tokens={[]}
+                      context={defaultContext}
+                      slot={slot}
+                      error={errorCode}
+                      onSubmitText={(text) => onSendUserMessage?.(text)}
+                      onTweak={() =>
+                        onFocusComposer?.(
+                          "e.g., 'I have chicken + rice — work with that'",
+                        )
+                      }
+                    />
+                  </div>
+                );
+              }
+              if (!call.result) return null;
+              const r = call.result as {
+                suggestions?: MealSuggestion[];
+                tokens?: string[];
+                context?: SuggestEngineOutput["context"];
+              };
+              if (!r.suggestions || !r.tokens || !r.context) return null;
+              if (r.suggestions.length === 0) return null;
+              // Slice tokens to suggestions length defensively — they should
+              // already match (count clamped 2..4 server-side), but the v1
+              // engine could theoretically return fewer after dedup.
+              const tokens = r.tokens.slice(0, r.suggestions.length);
+              void inputCount; // kept for future telemetry; intentionally unused
+              return (
+                <div key={i} style={{ marginTop: 8 }}>
+                  <MealSuggestionsCard
+                    suggestions={r.suggestions}
+                    tokens={tokens}
+                    context={r.context}
+                    slot={slot}
+                    onSubmitText={(text) => onSendUserMessage?.(text)}
+                    onTweak={() =>
+                      onFocusComposer?.(
+                        "e.g., 'swap the rice for sweet potato' or 'I want something with eggs'",
+                      )
+                    }
+                  />
+                </div>
+              );
+            }
+
             if (!call.result) return null;
             // propose_plan uses a different shape: { approval_token, plan_payload }
             // (no `preview` key). Branch on tool name before destructuring.
