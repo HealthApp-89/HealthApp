@@ -6,6 +6,7 @@
 // effective load is also clamped to 0.92 × maintenance baseline.
 
 import type { PlannedExercise } from "@/lib/coach/sessionPlans";
+import type { BlockPhase } from "@/lib/coach/prescription/types";
 
 export type AutoregInput = {
   baseExercise: PlannedExercise;
@@ -19,15 +20,31 @@ export type AutoregInput = {
   baselineSets: number;
   baselineReps: number;
   isFocusBlock: boolean;
+  /** Block phase governs whole-block discipline. consolidation / off_pace hold
+   *  load on secondaries + accessories (mirrors the primary's hold); deload_week
+   *  applies the 0.80× + sets/2 deload. Omit or pass "pre_target" for default
+   *  autoregulation. */
+  blockPhase?: BlockPhase;
 };
 
 export function prescribeSecondaryAutoregulated(input: AutoregInput): PlannedExercise {
   const { baseExercise: ex, currentWorkingKg } = input;
   const step = ex.increment?.step ?? 2.5;
+  const phase: BlockPhase = input.blockPhase ?? "pre_target";
 
-  // Step 1: autoregulation choice
+  // Step 0: block-phase gate — non-pre_target phases override autoregulation so
+  // the whole block (not just the primary) honors the phase discipline. See
+  // prescribePrimaryFromPhase for the matching primary-lift rules.
   let nextKg: number;
-  if (input.consecutiveRirMisses >= 2) {
+  let setsOverride: number | null = null;
+  if (phase === "consolidation" || phase === "off_pace") {
+    // Mirror primary's hold: chase reps/volume, never push load.
+    nextKg = currentWorkingKg;
+  } else if (phase === "deload_week") {
+    nextKg = roundToStep(currentWorkingKg * 0.80, step);
+    setsOverride = Math.max(1, Math.floor(input.baselineSets / 2));
+  } else if (input.consecutiveRirMisses >= 2) {
+    // Step 1: standard autoregulation (pre_target phase only).
     nextKg = roundToStep(currentWorkingKg * 0.90, step);
   } else if (input.lastWeekHitRirTargetCleanly) {
     nextKg = currentWorkingKg + step;
@@ -35,7 +52,8 @@ export function prescribeSecondaryAutoregulated(input: AutoregInput): PlannedExe
     nextKg = currentWorkingKg;
   }
 
-  // Step 2: focus-block clamp
+  // Step 2: focus-block clamp (still applies in pre_target — protects against
+  // jumping in mid-block at a higher prior load).
   if (
     input.maintenanceBaselineKg != null &&
     input.focusBlockClampMultiplier != null
@@ -47,10 +65,12 @@ export function prescribeSecondaryAutoregulated(input: AutoregInput): PlannedExe
     if (nextKg > ceiling) nextKg = ceiling;
   }
 
-  // Step 3: volume drop during focus block
-  const sets = input.isFocusBlock
-    ? Math.max(1, input.baselineSets - 1)
-    : input.baselineSets;
+  // Step 3: volume drop during focus block (deload_week overrides above).
+  const sets = setsOverride != null
+    ? setsOverride
+    : input.isFocusBlock
+      ? Math.max(1, input.baselineSets - 1)
+      : input.baselineSets;
 
   return {
     ...ex,

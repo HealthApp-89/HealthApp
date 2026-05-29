@@ -22,7 +22,7 @@ import { prescribeSecondaryAutoregulated } from "@/lib/coach/prescription/autore
 import { prescribeAccessoryFromVolumeBand, classifyVolumeBand, type VolumeBandPosition } from "@/lib/coach/prescription/volume-balance-rule";
 import { maintenanceLoadFor } from "@/lib/coach/prescription/maintenance-baseline";
 import { discoverEffectiveExercises } from "@/lib/coach/prescription/recent-workouts-discovery";
-import type { WorkoutSetSample } from "@/lib/coach/prescription/types";
+import type { BlockPhase, WorkoutSetSample } from "@/lib/coach/prescription/types";
 import { fetchMuscleVolumeServer } from "@/lib/query/fetchers/muscleVolume";
 import {
   getExerciseMuscles,
@@ -77,6 +77,16 @@ export async function prescribeWeek(opts: {
   const isFocusBlock = block != null && block.primary_lift != null;
   const focusLift: PrimaryLift | null = isFocusBlock ? block!.primary_lift : null;
 
+  // Block phase is a whole-block signal — compute once using the focus lift's
+  // signals, then apply uniformly to every exercise. Previously phase was
+  // evaluated only inside the focus-lift branch, which meant secondaries and
+  // accessories kept autoregulating during consolidation/off_pace/deload —
+  // silently violating the user's mental model of "block focus = whole-system
+  // discipline".
+  const blockPhase: BlockPhase = isFocusBlock
+    ? computeWholeBlockPhase({ block: block!, focusLift: focusLift!, week, recentSets, rirTarget, todayIso })
+    : "pre_target";
+
   for (const [weekdayStr, sessionType] of Object.entries(week.session_plan ?? {})) {
     const weekday = weekdayStr as WeekdayLong;
     if (sessionType === "REST" || sessionType === "Mobility") continue;
@@ -97,16 +107,10 @@ export async function prescribeWeek(opts: {
         const currentWorkingKg =
           maintenanceLoadFor(baseEx.name, rirTarget, recentSets, todayIso) ??
           baseEx.baseKg ?? 0;
-        const phase = evaluateBlockPhase({
-          block: block!,
-          currentWorkingKg,
-          recentProgressionRatePerWeek: estimateProgressionRate(recentSets, baseEx),
-          todayIso,
-        });
         exercises.push(
           prescribePrimaryFromPhase({
             baseExercise: baseEx,
-            phase,
+            phase: blockPhase,
             currentWorkingKg,
             lastWeekHitRirTargetCleanly: lastWeekClean(recentSets, baseEx),
             rirTarget,
@@ -129,23 +133,28 @@ export async function prescribeWeek(opts: {
             baselineSets: baseEx.sets ?? 3,
             baselineReps: baseEx.baseReps ?? 6,
             isFocusBlock,
+            blockPhase,
           })
         );
       } else {
-        // Accessory — volume-balance for sets; autoreg-derived load. Muscle-volume
-        // context wiring lands in Task 11; for now use a sensible default band.
+        // Accessory — volume-balance for sets; autoreg-derived load. The focus-
+        // block clamp (and the phase gate) also apply here: accessories were
+        // previously left unclamped via isFocusBlock:false, which let them
+        // exceed 92% of maintenance baseline during a focus block.
+        const accessoryWorkingKg =
+          maintenanceLoadFor(baseEx.name, rirTarget, recentSets, todayIso) ??
+          baseEx.baseKg ?? 0;
         const autoreg = prescribeSecondaryAutoregulated({
           baseExercise: baseEx,
-          currentWorkingKg:
-            maintenanceLoadFor(baseEx.name, rirTarget, recentSets, todayIso) ??
-            baseEx.baseKg ?? 0,
+          currentWorkingKg: accessoryWorkingKg,
           lastWeekHitRirTargetCleanly: lastWeekClean(recentSets, baseEx),
           consecutiveRirMisses: 0,
-          maintenanceBaselineKg: null,
-          focusBlockClampMultiplier: null,
+          maintenanceBaselineKg: isFocusBlock ? accessoryWorkingKg : null,
+          focusBlockClampMultiplier: isFocusBlock ? FOCUS_BLOCK_CLAMP : null,
           baselineSets: baseEx.sets ?? 3,
           baselineReps: baseEx.baseReps ?? 8,
-          isFocusBlock: false,
+          isFocusBlock,
+          blockPhase,
         });
         const band: VolumeBandPosition = classifyVolumeBandForMuscle(baseEx, volumeContext);
         exercises.push(
@@ -158,10 +167,126 @@ export async function prescribeWeek(opts: {
       }
     }
 
-    out[weekday] = exercises;
+    out[weekday] = augmentFirstLoadedCompoundWithWarmups(exercises);
   }
 
   return out;
+}
+
+/** Adds two ramped warmup entries before the first loaded compound of a
+ *  lifting day. Encodes the rule from feedback memory `feedback-warmup-sets-
+ *  rule`: Deadlift / Squat / Decline Bench / Arnold Press (the first non-
+ *  warmup compound of each lifting day) get sets+2 warmups.
+ *
+ *  Why two entries rather than mutating `sets` on a single entry: warmup
+ *  loads differ from working load (60% / 80% ramp), and PlannedExercise has
+ *  one `baseKg` per entry. Emitting separate entries also lets the logger
+ *  render warmup cards distinctly via `warmup: true` per memory's "logger
+ *  marks 1-2 as warmup".
+ *
+ *  No-ops when the day has no loaded compound (e.g. Mobility days, where the
+ *  first exercise is a foam-roll without baseKg) or when the first non-
+ *  warmup entry already lacks baseKg. */
+function augmentFirstLoadedCompoundWithWarmups(
+  exercises: PlannedExercise[],
+): PlannedExercise[] {
+  const idx = exercises.findIndex(
+    (e) => !e.warmup && e.baseKg != null && e.baseKg > 0,
+  );
+  if (idx === -1) return exercises;
+
+  const compound = exercises[idx];
+  const workingKg = compound.baseKg!;
+  const step = compound.increment?.step ?? 2.5;
+
+  const w1Kg = roundDownToStep(workingKg * 0.6, step);
+  const w2Kg = roundDownToStep(workingKg * 0.8, step);
+
+  // Skip warmup augmentation if the working weight is so low that the warmup
+  // weights collapse to 0 — e.g. an empty-bar working set. The user's first
+  // working set IS the warmup at that point.
+  if (w1Kg <= 0 || w2Kg <= 0) return exercises;
+
+  const warmup1: PlannedExercise = {
+    ...compound,
+    warmup: true,
+    baseKg: w1Kg,
+    baseReps: 5,
+    sets: 1,
+    note: "Warmup 1 — ramp to working set",
+  };
+  const warmup2: PlannedExercise = {
+    ...compound,
+    warmup: true,
+    baseKg: w2Kg,
+    baseReps: 3,
+    sets: 1,
+    note: "Warmup 2 — ramp to working set",
+  };
+
+  return [
+    ...exercises.slice(0, idx),
+    warmup1,
+    warmup2,
+    ...exercises.slice(idx),
+  ];
+}
+
+function roundDownToStep(kg: number, step: number): number {
+  return Math.floor(kg / step) * step;
+}
+
+/** Whole-block phase: find the focus lift somewhere in the upcoming week's
+ *  session plan, derive its currentWorkingKg + progression rate from recent
+ *  sets, then evaluate the block phase once. Phases not requiring exercise
+ *  data (deload_week from calendar, consolidation from target_hit_at_week)
+ *  fall through correctly even when the focus lift isn't in this week's plan. */
+function computeWholeBlockPhase(opts: {
+  block: TrainingBlock;
+  focusLift: PrimaryLift;
+  week: TrainingWeek;
+  recentSets: WorkoutSetSample[];
+  rirTarget: number;
+  todayIso: string;
+}): BlockPhase {
+  const { block, focusLift, week, recentSets, rirTarget, todayIso } = opts;
+
+  // Find the first occurrence of the focus lift across the week's session plan.
+  const sessionTypes = Object.values(week.session_plan ?? {});
+  let focusEx: PlannedExercise | null = null;
+  for (const sessionType of sessionTypes) {
+    if (sessionType === "REST" || sessionType === "Mobility") continue;
+    const exs = SESSION_PLANS[sessionType] ?? [];
+    for (const ex of exs) {
+      if (inferPrimaryLiftFromName(ex.name) === focusLift) {
+        focusEx = ex;
+        break;
+      }
+    }
+    if (focusEx) break;
+  }
+
+  // If the focus lift isn't in this week's plan, calendar/target signals still
+  // determine deload_week and consolidation. off_pace requires the exercise
+  // signals so it cannot fire here — that's the safe failure mode.
+  if (!focusEx) {
+    return evaluateBlockPhase({
+      block,
+      currentWorkingKg: null,
+      recentProgressionRatePerWeek: null,
+      todayIso,
+    });
+  }
+
+  const currentWorkingKg =
+    maintenanceLoadFor(focusEx.name, rirTarget, recentSets, todayIso) ??
+    focusEx.baseKg ?? 0;
+  return evaluateBlockPhase({
+    block,
+    currentWorkingKg,
+    recentProgressionRatePerWeek: estimateProgressionRate(recentSets, focusEx),
+    todayIso,
+  });
 }
 
 // ── data adapter ──────────────────────────────────────────────────────────

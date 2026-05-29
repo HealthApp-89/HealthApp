@@ -16,6 +16,7 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const loaderSource = `
 import { pathToFileURL } from "node:url";
 import { resolve as resolvePath } from "node:path";
+import { existsSync } from "node:fs";
 
 const ROOT = ${JSON.stringify(repoRoot)};
 
@@ -24,11 +25,13 @@ export async function resolve(specifier, context, nextResolve) {
     const rel = specifier.slice(2);
     const candidates = [
       resolvePath(ROOT, rel + ".ts"),
-      resolvePath(ROOT, rel),
       resolvePath(ROOT, rel + "/index.ts"),
+      resolvePath(ROOT, rel),
     ];
-    // Return the first candidate — Node will throw if the file doesn't exist
-    return { url: pathToFileURL(candidates[0]).href, shortCircuit: true };
+    // Pick the first candidate that exists on disk. Falls back to the first
+    // candidate (Node will throw with a clear error) if none exist.
+    const chosen = candidates.find(existsSync) ?? candidates[0];
+    return { url: pathToFileURL(chosen).href, shortCircuit: true };
   }
 
   // Resolve extensionless relative imports (e.g. "./withings") to .ts files
@@ -39,8 +42,12 @@ export async function resolve(specifier, context, nextResolve) {
     // Decode URL-encoded characters (e.g. %20 for spaces) before resolving the path
     const parentPath = decodeURIComponent(new URL(parentUrl).pathname);
     const parentDir = parentPath.replace(/\\/[^\\/]*$/, "");
-    const resolved = resolvePath(parentDir, specifier + ".ts");
-    return { url: pathToFileURL(resolved).href, shortCircuit: true };
+    const candidates = [
+      resolvePath(parentDir, specifier + ".ts"),
+      resolvePath(parentDir, specifier + "/index.ts"),
+    ];
+    const chosen = candidates.find(existsSync) ?? candidates[0];
+    return { url: pathToFileURL(chosen).href, shortCircuit: true };
   }
 
   return nextResolve(specifier, context);

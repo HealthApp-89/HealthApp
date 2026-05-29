@@ -29,15 +29,31 @@ export async function generatePeterDashboard(args: {
 }): Promise<PeterDashboardPayload> {
   const { supabase, userId, today } = args;
 
-  // Trends payload is the parent dependency for 3 composers.
-  const trends = await generateCoachTrends({ supabase, userId, today });
+  // Trends + block/goal context are parent deps for the composers below.
+  // We fetch block_context + goal_summary up-front (cheap point reads) so
+  // composePerformance can branch on focus_lift / goal_metric — previously
+  // these were fetched only for the narrative wrapper, leaving the
+  // Performance composer block-agnostic and conflating off-focus plateaus
+  // with block-critical stalls.
+  const [trends, blockContext, goalSummary] = await Promise.all([
+    generateCoachTrends({ supabase, userId, today }),
+    fetchBlockContext(supabase, userId, today),
+    fetchGoalSummary(supabase, userId),
+  ]);
 
   const [recomp, energy, fatigue, performance, planAdherence, goalDistance] =
     await Promise.all([
       composeRecomp({ supabase, userId, today, trends }),
       composeEnergy({ supabase, userId, today }),
       composeFatigue({ supabase, userId, today }),
-      composePerformance({ supabase, userId, today, trends }),
+      composePerformance({
+        supabase,
+        userId,
+        today,
+        trends,
+        focusLift: blockContext.primary_lift,
+        goalLiftMetric: goalSummary.metric,
+      }),
       composePlanAdherence({ supabase, userId, today }),
       composeGoalDistance({ supabase, userId, today, trends }),
     ]);
@@ -49,12 +65,6 @@ export async function generatePeterDashboard(args: {
   };
 
   const clusters = linkThemes(themes);
-
-  // Block + goal context for the narrative call.
-  const [blockContext, goalSummary] = await Promise.all([
-    fetchBlockContext(supabase, userId, today),
-    fetchGoalSummary(supabase, userId),
-  ]);
 
   const facts: PeterDashboardFacts = {
     themes,
