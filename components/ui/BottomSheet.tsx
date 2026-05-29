@@ -28,8 +28,8 @@ export function BottomSheet({
   title?: string;
 }) {
   const sheetRef = useRef<HTMLDivElement | null>(null);
+  const keyboardLayerRef = useRef<HTMLDivElement | null>(null);
   const [dragOffset, setDragOffset] = useState(0);
-  const [keyboardIntrusion, setKeyboardIntrusion] = useState(0);
   const dragOffsetRef = useRef(0);
   const touchStartY = useRef<number | null>(null);
 
@@ -43,18 +43,24 @@ export function BottomSheet({
     };
   }, [open]);
 
-  // iOS keyboard handling: without this, focusing the input inside the sheet
-  // shrinks the visual viewport while the fixed-positioned sheet stays pinned
-  // to layout-bottom, so iOS Safari scrolls the page to keep the input
-  // visible — perceived as "the page keeps dropping" on every keystroke
-  // because the predictive bar resizes mid-typing. Mirrors the pattern in
-  // ChatPanel's keyboard handler.
+  // iOS keyboard handling: focusing an input shrinks the visual viewport
+  // while the fixed-positioned sheet stays pinned to layout-bottom, so iOS
+  // scrolls the page to keep the input visible. Translate the sheet up by
+  // the keyboard's intrusion to keep it docked to the visible viewport.
+  //
+  // Applied imperatively on a wrapper layer (not via React state) so each
+  // visualViewport event doesn't trigger a re-render or animate via the
+  // sheet's drag-snap transition — iOS fires resize/scroll on every
+  // keystroke (predictive bar, auto-scroll), which otherwise looks like the
+  // sheet sliding on each key. Mirrors ChatPanel.tsx.
   useEffect(() => {
     if (!open || typeof window === "undefined" || !window.visualViewport) return;
+    const layer = keyboardLayerRef.current;
+    if (!layer) return;
     const vv = window.visualViewport;
     const update = () => {
       const intrusion = window.innerHeight - vv.height - vv.offsetTop;
-      setKeyboardIntrusion(intrusion > 0 ? intrusion : 0);
+      layer.style.transform = intrusion > 0 ? `translateY(${-intrusion}px)` : "";
     };
     vv.addEventListener("resize", update);
     vv.addEventListener("scroll", update);
@@ -62,7 +68,7 @@ export function BottomSheet({
     return () => {
       vv.removeEventListener("resize", update);
       vv.removeEventListener("scroll", update);
-      setKeyboardIntrusion(0);
+      if (layer) layer.style.transform = "";
     };
   }, [open]);
 
@@ -111,104 +117,124 @@ export function BottomSheet({
         }}
       />
 
-      {/* Sheet */}
+      {/* Keyboard-offset layer (transform set imperatively on iOS keyboard show) */}
       <div
-        ref={sheetRef}
-        onTouchStart={onTouchStart}
-        onTouchMove={onTouchMove}
-        onTouchEnd={onTouchEnd}
+        ref={keyboardLayerRef}
         style={{
           position: "relative",
           width: "100%",
           maxWidth: "560px",
-          maxHeight: "60vh",
-          background: COLOR.surface,
-          borderTopLeftRadius: RADIUS.cardHero,
-          borderTopRightRadius: RADIUS.cardHero,
-          boxShadow: SHADOW.floating,
-          paddingBottom: "env(safe-area-inset-bottom)",
-          transform: `translateY(${dragOffset - keyboardIntrusion}px)`,
-          transition: dragOffset === 0 ? "transform 200ms ease-out" : "none",
           display: "flex",
           flexDirection: "column",
-          overflow: "hidden",
         }}
       >
-        {/* Drag handle */}
+        {/* Sheet */}
         <div
+          ref={sheetRef}
           style={{
+            position: "relative",
+            width: "100%",
+            maxHeight: "60vh",
+            background: COLOR.surface,
+            borderTopLeftRadius: RADIUS.cardHero,
+            borderTopRightRadius: RADIUS.cardHero,
+            boxShadow: SHADOW.floating,
+            paddingBottom: "env(safe-area-inset-bottom)",
+            transform: `translateY(${dragOffset}px)`,
+            transition: dragOffset === 0 ? "transform 200ms ease-out" : "none",
             display: "flex",
-            justifyContent: "center",
-            paddingTop: "8px",
-            paddingBottom: title ? "4px" : "8px",
+            flexDirection: "column",
+            overflow: "hidden",
           }}
         >
+          {/* Drag-handle / header region — only this area triggers drag-to-dismiss.
+              Touches on the scrollable content below scroll the list without
+              fighting a sheet-drag gesture (iOS sheet convention). */}
           <div
-            style={{
-              width: "36px",
-              height: "4px",
-              borderRadius: "9999px",
-              background: COLOR.divider,
-            }}
-          />
-        </div>
-
-        {/* Header (optional title + close) */}
-        {title ? (
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              padding: "4px 16px 12px",
-            }}
+            onTouchStart={onTouchStart}
+            onTouchMove={onTouchMove}
+            onTouchEnd={onTouchEnd}
+            style={{ touchAction: "none" }}
           >
-            <div style={{ fontSize: 16, fontWeight: 700, color: COLOR.textStrong }}>
-              {title}
+            {/* Drag handle */}
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "center",
+                paddingTop: "8px",
+                paddingBottom: title ? "4px" : "8px",
+              }}
+            >
+              <div
+                style={{
+                  width: "36px",
+                  height: "4px",
+                  borderRadius: "9999px",
+                  background: COLOR.divider,
+                }}
+              />
             </div>
+
+            {/* Header (optional title + close) */}
+            {title ? (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: "4px 16px 12px",
+                }}
+              >
+                <div style={{ fontSize: 16, fontWeight: 700, color: COLOR.textStrong }}>
+                  {title}
+                </div>
+                <button
+                  type="button"
+                  aria-label="Close"
+                  onClick={onClose}
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    fontSize: 20,
+                    color: COLOR.textMuted,
+                    cursor: "pointer",
+                    lineHeight: 1,
+                    padding: "4px 8px",
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+            ) : null}
+          </div>
+
+          {!title && (
             <button
               type="button"
               aria-label="Close"
               onClick={onClose}
               style={{
+                position: "absolute",
+                top: "10px",
+                right: "12px",
                 background: "transparent",
                 border: "none",
                 fontSize: 20,
                 color: COLOR.textMuted,
                 cursor: "pointer",
-                lineHeight: 1,
                 padding: "4px 8px",
+                lineHeight: 1,
+                zIndex: 1,
               }}
             >
               ×
             </button>
-          </div>
-        ) : (
-          <button
-            type="button"
-            aria-label="Close"
-            onClick={onClose}
-            style={{
-              position: "absolute",
-              top: "10px",
-              right: "12px",
-              background: "transparent",
-              border: "none",
-              fontSize: 20,
-              color: COLOR.textMuted,
-              cursor: "pointer",
-              padding: "4px 8px",
-              lineHeight: 1,
-              zIndex: 1,
-            }}
-          >
-            ×
-          </button>
-        )}
+          )}
 
-        {/* Content (scrollable) */}
-        <div style={{ flex: 1, overflowY: "auto", padding: "0 16px 16px" }}>
-          {children}
+          {/* Content (scrollable) */}
+          <div style={{ flex: 1, overflowY: "auto", padding: "0 16px 16px" }}>
+            {children}
+          </div>
         </div>
       </div>
     </div>

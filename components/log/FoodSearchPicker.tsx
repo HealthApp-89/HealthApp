@@ -19,7 +19,7 @@ export function FoodSearchPicker({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<SearchCandidate | null>(null);
-  const [qty, setQty] = useState<number>(100);
+  const [qty, setQty] = useState<number | "">(100);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -59,10 +59,14 @@ export function FoodSearchPicker({
           <span className="text-xs text-zinc-400">Qty</span>
           <input
             type="number"
+            inputMode="numeric"
             min={1}
             step={1}
             value={qty}
-            onChange={(e) => setQty(Number(e.target.value))}
+            onChange={(e) => {
+              const v = e.target.value;
+              setQty(v === "" ? "" : Number(v));
+            }}
             className="w-20 rounded-md border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm text-zinc-100"
           />
           <span className="text-xs text-zinc-400">g</span>
@@ -85,8 +89,13 @@ export function FoodSearchPicker({
           </button>
           <button
             type="button"
-            onClick={() => { onPicked(selected, qty); setSelected(null); setQty(100); }}
-            disabled={qty <= 0}
+            onClick={() => {
+              if (typeof qty !== "number" || qty <= 0) return;
+              onPicked(selected, qty);
+              setSelected(null);
+              setQty(100);
+            }}
+            disabled={typeof qty !== "number" || qty <= 0}
             className="flex-1 rounded-md bg-zinc-100 py-2 text-sm text-zinc-900 disabled:opacity-50"
           >
             Add

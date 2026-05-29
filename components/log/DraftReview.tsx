@@ -74,7 +74,7 @@ export function DraftReview({
   onDiscard: () => Promise<void>;
 }) {
   const [editing, setEditing] = useState<number | null>(null);
-  const [editQty, setEditQty] = useState<number>(0);
+  const [editQty, setEditQty] = useState<number | "">(0);
   const [editError, setEditError] = useState<string | null>(null);
   const [editBusy, setEditBusy] = useState(false);
   const [pickingFor, setPickingFor] = useState<number | null>(null);
@@ -154,11 +154,12 @@ export function DraftReview({
   };
 
   const saveQty = async () => {
-    if (editing === null || editQty <= 0) return;
+    if (editing === null || typeof editQty !== "number" || editQty <= 0) return;
+    const qty = editQty;
     const updatedItems = entry.items.map((it, idx) => {
       if (idx !== editing) return it;
-      const macros = macrosForQty(it.per_100g, editQty);
-      return { ...it, qty_g: editQty, ...macros };
+      const macros = macrosForQty(it.per_100g, qty);
+      return { ...it, qty_g: qty, ...macros };
     });
     const ok = await patchItems(updatedItems);
     if (ok) setEditing(null);
@@ -251,10 +252,14 @@ export function DraftReview({
                   <span className="text-xs text-zinc-400">Qty</span>
                   <input
                     type="number"
+                    inputMode="numeric"
                     min={1}
                     step={1}
                     value={editQty}
-                    onChange={(e) => setEditQty(Number(e.target.value))}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setEditQty(v === "" ? "" : Number(v));
+                    }}
                     className="w-20 rounded-md border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm text-zinc-100"
                   />
                   <span className="text-xs text-zinc-400">g</span>
@@ -283,7 +288,7 @@ export function DraftReview({
                   <button type="button" onClick={cancelEdit} disabled={editBusy} className="flex-1 rounded-md border border-zinc-700 py-1 text-xs">
                     Cancel
                   </button>
-                  <button type="button" onClick={saveQty} disabled={editBusy || editQty <= 0} className="flex-1 rounded-md bg-zinc-100 py-1 text-xs text-zinc-900">
+                  <button type="button" onClick={saveQty} disabled={editBusy || typeof editQty !== "number" || editQty <= 0} className="flex-1 rounded-md bg-zinc-100 py-1 text-xs text-zinc-900">
                     {editBusy ? "..." : "Save"}
                   </button>
                 </div>
