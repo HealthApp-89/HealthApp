@@ -9,6 +9,8 @@ import { MorningBriefCard as MorningBriefCardComponent } from "@/components/morn
 import { WeeklyReviewCard } from "@/components/chat/WeeklyReviewCard";
 import { ProactiveNudgeCard } from "@/components/chat/ProactiveNudgeCard";
 import { WorkoutDebriefCard } from "@/components/chat/WorkoutDebriefCard";
+import { BlockOutcomeCard } from "@/components/chat/BlockOutcomeCard";
+import { useBlockOutcome } from "@/lib/query/hooks/useBlockOutcome";
 import { isCoachSpeaker } from "@/lib/coach/speakers";
 import type {
   MorningBriefCard,
@@ -237,6 +239,13 @@ function ChatThreadInner({
             />
           );
         }
+        if (it.m.kind === "block_outcome") {
+          const blockId =
+            (it.m.ui as { block_id?: string } | null)?.block_id ?? null;
+          return (
+            <BlockOutcomeCardLoader key={it.m.id} blockId={blockId} />
+          );
+        }
         // Compute grouping: a coach turn is "first in group" when the prior
         // item is a day divider, a special card, or a message from the
         // opposite role. Day dividers and full-bleed cards both reset the
@@ -251,7 +260,8 @@ function ChatThreadInner({
               prevItem.m.kind === "morning_brief" ||
               prevItem.m.kind === "weekly_review" ||
               prevItem.m.kind === "proactive_nudge" ||
-              prevItem.m.kind === "workout_debrief"));
+              prevItem.m.kind === "workout_debrief" ||
+              prevItem.m.kind === "block_outcome"));
 
         // Render a HandoffLine when two adjacent assistant turns belong to
         // different coach speakers. Briefing prose is live-only; replayed
@@ -295,3 +305,14 @@ function ChatThreadInner({
  *  passing stable callbacks (see useCallback in ChatPanel) and a stable
  *  `messages` reference (see useMemo wrapping scopeCoachForRender). */
 export const ChatThread = memo(ChatThreadInner);
+
+/** Bridges a `block_outcome` chat row (which carries only `{block_id}` in its
+ *  `ui` jsonb) to the full `BlockOutcome` row fetched via TanStack Query.
+ *  Renders nothing while loading or when the outcome row is missing — the
+ *  card is purely supplementary; the chat message text still renders above
+ *  (or below, depending on cron flow) when present. */
+function BlockOutcomeCardLoader({ blockId }: { blockId: string | null }) {
+  const { data: outcome } = useBlockOutcome(blockId);
+  if (!outcome) return null;
+  return <BlockOutcomeCard outcome={outcome} />;
+}

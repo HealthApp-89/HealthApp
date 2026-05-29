@@ -106,7 +106,18 @@ We run **5-week blocks** ending in a deload week — research consensus for an i
 
 1. **EXPLAIN** the structure: 5 weeks total, weeks 1-4 accumulate (RIR step-down 4→3→2→1, intensity 0.85→1.0×), week 5 is a deload (volume −50%, intensity ~0.80×). Mention the user can re-plan any week mid-block.
 
-2. **ELICIT** the user's primary-lift focus and target. Single primary lift only (squat / bench / deadlift / ohp). Target metric is e1RM or working_weight in kg. Also ask for free-form goal_text (1-2 sentences) for any nuance the structure can't capture.
+2. **ELICIT.** Before asking the user, check the BLOCK_OUTCOME_CONTEXT block in your system context (provided by the route). If present (unacknowledged block_outcomes row exists), lead with the rotation recommendation rather than asking cold:
+
+   "Your last block (<primary_lift>, <block_phase_at_end>) closed on <end_date>. The 4-lift rotation puts the next focus on <recommended_next_focus> (cycle: deadlift → bench → squat → OHP). My recommended target for <recommended_next_focus> is <recommended_target_value_kg> kg, derived from your last <recommended_next_focus> focus block's end working weight + 4 weeks of normal +step.
+
+   Want to go with that, or do you have a lift you want to prioritize?"
+
+   On override:
+   - Athlete names a different lift that's NOT the lift just finished → respect, call apply_rotation_override({override_reason: "<athlete's stated reason>"}) to log the choice, proceed to PROPOSE with the chosen lift.
+   - Athlete names the SAME lift just finished → push back ONCE: "You just finished a <primary_lift> focus block (ended <end_date>, <block_phase_at_end>). Re-focusing immediately leaves no recovery window — the framework says wait 1 block. Are you sure?" If yes, call apply_rotation_override + proceed; if no, fall back to recommendation.
+   - Athlete asks "why <recommended_next_focus>?" → cite the rotation reasoning + recovery argument (just-focused lift needs 15+ weeks before re-focus; rotation distributes adaptation across all 4 patterns).
+
+   If NO BLOCK_OUTCOME_CONTEXT block is present (first-ever block, OR most recent outcome already acknowledged), fall back to today's behavior: ask the user for their lift focus + target directly. Single primary lift only (squat / bench / deadlift / ohp). Target metric is e1RM or working_weight in kg. Also ask for free-form goal_text (1-2 sentences) for any nuance the structure can't capture.
 
 3. **PROPOSE** the block. Call \`propose_block\` with start_date = next Monday (UTC), end_date = start + 34 days. Surface the preview to the user.
 
@@ -151,6 +162,12 @@ Read user's form why_narrative. Probe deeper in 1-2 turns:
 
 Synthesize 3-5 sentences combining form narrative + chat answers into the
 athlete's voice. Call set_goal_narrative_chat(text=<synthesis>).
+
+After capturing the goal narrative, ask one additional question: "Is there
+one lift you're prioritizing over the others — squat, bench, deadlift, or
+OHP? Or no specific priority?" If the user names a single lift, call
+set_rotation_priority_lift({lift: "<choice>"}). If they say "no priority"
+or similar, do not call the tool (NULL is the default).
 
 ### Beat 3: DEEPEN medical / restrictions
 For each flagged item in intake.health.medications + active_injuries, ask
@@ -283,6 +300,8 @@ export async function buildSystemPrompt(args: {
     if (autoregCtx) sections.push(autoregCtx);
   } else if (args.mode === "setup_block") {
     sections.push(SETUP_BLOCK_PROMPT);
+    const outcomeContext = await fetchSetupBlockContext(args.supabase, args.userId);
+    if (outcomeContext) sections.push(outcomeContext);
   } else if (args.mode === "intake") {
     sections.push(INTAKE_PROMPT);
     const intakeCtx = await fetchIntakeContext(args.supabase, args.userId);
@@ -435,5 +454,33 @@ async function fetchIntakeContext(
     ``,
     `### sanity_findings`,
     findingsBlock,
+  ].join("\n");
+}
+
+async function fetchSetupBlockContext(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<string | null> {
+  const { data: outcomes } = await supabase
+    .from("block_outcomes")
+    .select("primary_lift, block_phase_at_end, target_value_kg, end_working_kg, recommended_next_focus, recommended_target_value_kg, lessons, training_blocks!inner(end_date)")
+    .eq("user_id", userId)
+    .is("athlete_acknowledged_at", null)
+    .order("created_at", { ascending: false })
+    .limit(1);
+  const row = outcomes?.[0];
+  if (!row) return null;
+  const tb = (row as unknown as { training_blocks: { end_date: string } | null }).training_blocks;
+  const calibrationNote = (row.lessons as { calibration_note?: string } | null)?.calibration_note ?? "";
+  return [
+    "BLOCK_OUTCOME_CONTEXT:",
+    `  primary_lift: ${row.primary_lift}`,
+    `  block_phase_at_end: ${row.block_phase_at_end}`,
+    `  target_value_kg: ${row.target_value_kg}`,
+    `  end_working_kg: ${row.end_working_kg}`,
+    `  end_date: ${tb?.end_date ?? "n/a"}`,
+    `  recommended_next_focus: ${row.recommended_next_focus}`,
+    `  recommended_target_value_kg: ${row.recommended_target_value_kg}`,
+    `  calibration_note: ${calibrationNote}`,
   ].join("\n");
 }

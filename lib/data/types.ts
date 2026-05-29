@@ -71,6 +71,10 @@ export type Profile = {
    *  /api/ingest/strong returns 403. Default false. Mirror of
    *  disable_yazio_ingest. */
   disable_strong_ingest: boolean;
+  /** Athlete-pinned priority lift that overrides the deterministic
+   *  rotation engine's next-focus recommendation when set. NULL means
+   *  follow rotation. Cleared after a block focused on this lift completes. */
+  rotation_priority_lift: PrimaryLift | null;
 };
 
 export type WhoopTokensRow = {
@@ -113,7 +117,7 @@ export type ChatMessageRow = {
    *  segregates the daily check-in conversation in ChatPanel; 'morning_brief'
    *  and 'weekly_review' are structured assistant-only cards; 'system_routing'
    *  for system-triggered handoffs between speakers. */
-  kind: "coach" | "morning_intake" | "morning_brief" | "weekly_review" | "proactive_nudge" | "system_routing" | "meal_log" | "workout_debrief";
+  kind: "coach" | "morning_intake" | "morning_brief" | "weekly_review" | "proactive_nudge" | "system_routing" | "meal_log" | "workout_debrief" | "block_outcome";
   /** Chip definitions / rendering hints for the morning intake bot, or
    *  structured card payload for morning_brief / weekly_review / proactive_nudge. NULL on
    *  free-form coach turns. */
@@ -264,6 +268,76 @@ export type TrainingBlock = {
   created_at: string;
   completed_at: string | null;
   updated_at: string;
+};
+
+// ── block_outcomes (0037_block_outcomes) ─────────────────────────────────────
+
+export type BlockPhaseAtEnd = "hit_early" | "hit_on_pace" | "off_pace" | "underperformed";
+
+export type BlockOutcomeLessons = {
+  observed_step_kg_per_wk: number | null;
+  projected_kg_at_end: number | null;
+  gap_kg: number | null;
+  gap_pct: number | null;
+  calibration_note: string;
+  secondary_lifts: Array<{
+    lift: PrimaryLift;
+    end_kg: number | null;
+    clamp_held: boolean;
+  }>;
+  rotation_context: {
+    ideal_next: PrimaryLift | null;
+    athlete_overrode_rotation: boolean;
+    override_reason: string | null;
+  };
+};
+
+export type BlockOutcome = {
+  id: string;
+  block_id: string;
+  user_id: string;
+  primary_lift: PrimaryLift;
+  target_value_kg: number | null;
+  target_metric: TargetMetric | null;
+  end_working_kg: number | null;
+  target_hit: boolean;
+  target_hit_at_week: number | null;
+  block_phase_at_end: BlockPhaseAtEnd;
+  lessons: BlockOutcomeLessons;
+  recommended_next_focus: PrimaryLift | null;
+  recommended_target_value_kg: number | null;
+  athlete_acknowledged_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type BlockTrajectoryPayload = {
+  per_lift: Array<{
+    lift: PrimaryLift;
+    blocks: Array<{
+      block_id: string;
+      window: { start_date: string; end_date: string };
+      target_kg: number | null;
+      end_working_kg: number | null;
+      block_phase_at_end: BlockPhaseAtEnd;
+      calibration_error_pct: number | null;
+    }>;
+    long_term_progression_kg_per_year: number | null;
+    target_calibration_trend: "improving" | "stable" | "drifting" | "insufficient_data";
+    weeks_since_last_focus: number | null;
+  }>;
+  rotation_adherence: {
+    ideal_sequence: PrimaryLift[];
+    actual_sequence: PrimaryLift[];
+    adherence_pct: number;
+    deviations: Array<{
+      block_id: string;
+      expected: PrimaryLift;
+      actual: PrimaryLift;
+      reason: "athlete_choice" | "priority_lift_injection" | "first_block";
+    }>;
+  };
+  next_focus_due: PrimaryLift | null;
 };
 
 // ── training_weeks ───────────────────────────────────────────────────────────

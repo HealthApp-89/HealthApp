@@ -5,10 +5,11 @@ import { Card, SectionLabel } from "@/components/ui/Card";
 import { SpeakerChip } from "@/components/chat/SpeakerChip";
 import { COLOR } from "@/lib/ui/theme";
 import { fmtNum } from "@/lib/ui/score";
-import type { CoachTrendsPayload, TrendWindow } from "@/lib/data/types";
+import type { BlockTrajectoryPayload, CoachTrendsPayload, TrendWindow } from "@/lib/data/types";
 import { SectionSubHeader } from "./SectionSubHeader";
 import { WindowToggle } from "./WindowToggle";
 import { ChangeBadge } from "./ChangeBadge";
+import { BlockHistoryCard } from "@/components/coach/BlockHistoryCard";
 
 function shortLift(name: string): string {
   return name.replace(/\s*\([^)]+\)/, "");
@@ -17,9 +18,11 @@ function shortLift(name: string): string {
 export function PerformanceSection({
   strength,
   recovery,
+  blockHistory,
 }: {
   strength: CoachTrendsPayload["strength"];
   recovery: CoachTrendsPayload["recovery"];
+  blockHistory?: BlockTrajectoryPayload;
 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -28,6 +31,8 @@ export function PerformanceSection({
         <SpeakerChip speaker="carter" size="sm" />
       </div>
       {strength.per_lift.map((p) => <LiftCard key={p.lift} per={p} />)}
+
+      {blockHistory && <BlockHistoryCard payload={blockHistory} />}
 
       <SectionSubHeader label="Recovery" />
       <Card>

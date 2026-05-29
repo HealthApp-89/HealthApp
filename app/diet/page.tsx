@@ -7,6 +7,7 @@ import { fetchFoodEntriesServer } from "@/lib/query/fetchers/foodEntries";
 import { fetchTodayTargetsServer } from "@/lib/query/fetchers/todayTargets";
 import { fetchDailyLogsServer } from "@/lib/query/fetchers/dailyLogs";
 import { fetchCoachTrendsServer } from "@/lib/query/fetchers/coachTrends";
+import { fetchBlockHistoryServer } from "@/lib/query/fetchers/blockHistory";
 import { fetchBodyMeasurementsServer } from "@/lib/query/fetchers/bodyMeasurements";
 import { fetchHealthTrendServer } from "@/lib/query/fetchers/healthTrend";
 import { todayInUserTz } from "@/lib/time";
@@ -66,6 +67,11 @@ export default async function DietPage({
     qc.prefetchQuery({
       queryKey: queryKeys.coachTrends.one(user.id),
       queryFn: () => fetchCoachTrendsServer(serviceSupabase, user.id, today),
+    }),
+    // Block history (macrocycle view) for the trends Performance section
+    qc.prefetchQuery({
+      queryKey: queryKeys.blockHistory.one(user.id),
+      queryFn: () => fetchBlockHistoryServer(serviceSupabase, user.id, today),
     }),
     // Body tab — circumference history + 12mo body-comp trend
     qc.prefetchQuery({

@@ -43,7 +43,43 @@ export async function buildFrameworkStateBlock(args: {
     .limit(1);
 
   const block = (blocks?.[0] as TrainingBlock | undefined) ?? null;
-  if (!block || block.primary_lift == null) return null;
+
+  // Between-blocks fallback (no active block, but possibly an unacknowledged outcome).
+  if (!block || block.primary_lift == null) {
+    const { data: outcomes } = await supabase
+      .from("block_outcomes")
+      .select("*")
+      .eq("user_id", userId)
+      .is("athlete_acknowledged_at", null)
+      .order("created_at", { ascending: false })
+      .limit(1);
+    const outcome = outcomes?.[0] ?? null;
+    if (!outcome) return null;
+
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("rotation_priority_lift")
+      .eq("user_id", userId)
+      .maybeSingle();
+    const priorityLift = (profile?.rotation_priority_lift as string | null) ?? null;
+
+    const lines: string[] = [
+      "<framework_state>",
+      `Status: BETWEEN BLOCKS.`,
+      `Last block: ${outcome.primary_lift} focus, ended ${outcome.block_phase_at_end} (reached ${outcome.end_working_kg ?? "n/a"} kg vs target ${outcome.target_value_kg ?? "n/a"}).`,
+      `Block outcome written; not yet acknowledged by athlete.`,
+      `Rotation recommends: ${outcome.recommended_next_focus} focus next block. Suggested target: ${outcome.recommended_target_value_kg ?? "tbd"} kg.`,
+    ];
+    if (priorityLift != null) {
+      lines.push(`Athlete priority lift: ${priorityLift}.`);
+    }
+    lines.push(``);
+    lines.push(`Framework rule (NON-NEGOTIABLE):`);
+    lines.push(`  Do NOT propose a new ${outcome.primary_lift} block immediately. The 4-lift rotation puts ${outcome.recommended_next_focus} next. If the athlete pushes for consecutive ${outcome.primary_lift} focus, explain the recovery + balance reasoning ONCE and respect their override if they hold firm. Do NOT volunteer a ${outcome.primary_lift} re-focus.`);
+    lines.push(`</framework_state>`);
+
+    return lines.join("\n");
+  }
 
   // Fetch last 28 days of sets for the primary lift to find current working kg.
   const cutoff = subtractDaysIso(todayIso, 28);

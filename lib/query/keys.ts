@@ -81,6 +81,7 @@ export const queryKeys = {
   blockProgress: {
     active: (userId: string) => ["block-progress", userId, "active"] as const,
   },
+  blockOutcome: (blockId: string) => ["block-outcome", blockId] as const,
   recentE1RMs: {
     one: (userId: string, today: string) =>
       ["recent-e1rms", userId, today] as const,
@@ -126,6 +127,10 @@ export const queryKeys = {
   coachTrends: {
     all: (userId: string) => ["coachTrends", userId] as const,
     one: (userId: string) => ["coachTrends", userId, "current"] as const,
+  },
+  blockHistory: {
+    all: (userId: string) => ["blockHistory", userId] as const,
+    one: (userId: string) => ["blockHistory", userId, "current"] as const,
   },
   recoveryIntelligence: {
     all: (userId: string) => ["recoveryIntelligence", userId] as const,

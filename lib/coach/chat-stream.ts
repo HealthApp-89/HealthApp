@@ -57,6 +57,8 @@ import {
   executeProposePlan,
   executeCommitPlan,
   executeSetGlp1Status,
+  executeSetRotationPriorityLift,
+  executeApplyRotationOverride,
   executeSetGlp1TaperStarted,
   executeMarkGlp1Discontinued,
   executeMarkMobilityDone,
@@ -328,10 +330,11 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
     if (name === "commit_meal_log") return true;
     if (name === "propose_session_today") return true;
     if (name === "commit_session_today") return true;
+    if (name === "apply_rotation_override") return true;
     if (name.startsWith("propose_")) return false;
     if (name.startsWith("commit_")) return false;
     if (name.startsWith("apply_")) return false;
-    if (name.startsWith("set_") && name !== "set_glp1_taper_started") return false;
+    if (name.startsWith("set_") && name !== "set_glp1_taper_started" && name !== "set_rotation_priority_lift") return false;
     return true;
   };
 
@@ -620,6 +623,18 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
           });
         } else if (block.name === "set_glp1_taper_started") {
           result = await executeSetGlp1TaperStarted({
+            supabase: opts.sr,
+            userId: opts.userId,
+            input: block.input,
+          });
+        } else if (block.name === "set_rotation_priority_lift") {
+          result = await executeSetRotationPriorityLift({
+            supabase: opts.sr,
+            userId: opts.userId,
+            input: block.input,
+          });
+        } else if (block.name === "apply_rotation_override") {
+          result = await executeApplyRotationOverride({
             supabase: opts.sr,
             userId: opts.userId,
             input: block.input,
