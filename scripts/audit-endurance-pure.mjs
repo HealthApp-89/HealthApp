@@ -29,5 +29,8 @@ check("bucketZones split", bucketZones(stream, 160), { z1_s: 60, z2_s: 60, z3_s:
 // Edge: 0 and negative samples dropped (only 120 → Z1 and 135 → Z2 should count)
 check("bucketZones drops invalid", bucketZones([0, -1, 120, 135], 160), { z1_s: 1, z2_s: 1, z3_s: 0, z4_s: 0, z5_s: 0 });
 
+// Boundary coverage: defaultZ2Cap returns 142 at LTHR=160 AND 142 must NOT land in Z2.
+check("bucketZones boundary 142 lands in Z3", bucketZones([142], 160), { z1_s: 0, z2_s: 0, z3_s: 1, z4_s: 0, z5_s: 0 });
+
 console.log(`\n${pass} pass, ${fail} fail`);
 if (fail > 0) process.exit(1);
