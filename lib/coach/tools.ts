@@ -3959,7 +3959,14 @@ export async function executeCommitEnduranceWeek(opts: {
   } else {
     const { error } = await sb
       .from("training_weeks")
-      .insert({ user_id: opts.userId, week_start: payload.week_start, endurance_session_plan: payload.plan });
+      .insert({
+        user_id: opts.userId,
+        week_start: payload.week_start,
+        // session_plan is NOT NULL on training_weeks — empty object means "no strength prescription at this row";
+        // getEffectiveSessionPlan falls through to static SESSION_PLANS defaults.
+        session_plan: {},
+        endurance_session_plan: payload.plan,
+      });
     if (error) return { ok: false as const, error: { error: error.message }, meta: { ms: Date.now() - t0, range_days: 0 } };
   }
   return { ok: true as const, data: { week_start: payload.week_start, plan: payload.plan }, meta: { ms: Date.now() - t0, result_rows: 1, range_days: 0, truncated: false } };
