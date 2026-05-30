@@ -3686,6 +3686,129 @@ export async function executeMarkGlp1Discontinued(opts: {
   };
 }
 
+// ── Endurance milestone tools (direct write, no HMAC; mirror GLP-1 milestone tools) ──
+
+export const SET_ENDURANCE_PHASE_TOOL = {
+  name: "set_endurance_phase",
+  description:
+    "Update the active athlete profile's endurance_profile.phase in place. Use when the athlete transitions phases (aerobic_base → build, build → race_prep, etc). Optionally update weekly_volume_target_hours in the same call. Phase 1 supports aerobic_base only; other phases will write but the composer won't produce prescriptions for them yet.",
+  input_schema: {
+    type: "object" as const,
+    required: ["phase"],
+    properties: {
+      phase: { type: "string", enum: ["aerobic_base", "build", "race_prep", "taper", "off_season"] },
+      weekly_volume_target_hours: { type: "number", minimum: 0.5, maximum: 20 },
+    },
+  },
+} as const;
+
+export const SET_ENDURANCE_DISCIPLINE_TOOL = {
+  name: "set_endurance_discipline",
+  description:
+    "Update the active athlete profile's endurance_profile.discipline. Use when transitioning from cycling-only to triathlon (or vice versa). Phase 1 ships cycling only; setting 'triathlon' or 'running' is permitted but the composer will return ok:false until Phase 2.",
+  input_schema: {
+    type: "object" as const,
+    required: ["discipline"],
+    properties: {
+      discipline: { type: "string", enum: ["cycling", "running", "triathlon"] },
+    },
+  },
+} as const;
+
+export const SET_THRESHOLD_HR_TOOL = {
+  name: "set_threshold_hr",
+  description:
+    "Set the athlete's lactate-threshold HR (LTHR, bpm). Used as the anchor for HR-based TSS computation and Z2/Z4 zone derivation. Without it, TSS for new activities is null. Calibration sources: 30-minute time trial average HR (gold standard), or recent threshold-effort average HR.",
+  input_schema: {
+    type: "object" as const,
+    required: ["bpm"],
+    properties: { bpm: { type: "integer", minimum: 80, maximum: 220 } },
+  },
+} as const;
+
+export const SET_FTP_TOOL = {
+  name: "set_ftp",
+  description:
+    "Set the athlete's functional threshold power (FTP, watts) for cycling. Phase 2 use — once power data exists in endurance_activities, computeTssForActivity will prefer the power formula over HR. Setting this in Phase 1 is harmless; the column simply isn't read yet.",
+  input_schema: {
+    type: "object" as const,
+    required: ["watts"],
+    properties: { watts: { type: "integer", minimum: 50, maximum: 600 } },
+  },
+} as const;
+
+async function patchEnduranceProfile(
+  userId: string,
+  patch: Partial<import("@/lib/coach/endurance/types").EnduranceProfile>,
+): Promise<import("@/lib/coach/endurance/types").EnduranceProfile> {
+  const sb = (await import("@/lib/supabase/server")).createSupabaseServiceRoleClient();
+  const { data: row, error } = await sb
+    .from("athlete_profile_documents")
+    .select("id, endurance_profile")
+    .eq("user_id", userId)
+    .eq("status", "acknowledged")
+    .order("version", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(`read athlete profile: ${error.message}`);
+  if (!row) throw new Error("No acknowledged athlete profile; complete onboarding first.");
+
+  const existing = (row.endurance_profile ?? {
+    discipline: "cycling",
+    phase: "aerobic_base",
+    threshold_hr: null,
+    hr_max: null,
+    hr_zones: null,
+    ftp_watts: null,
+    threshold_pace_s_per_km: null,
+    weekly_volume_target_hours: 1,
+    current_race: null,
+    set_at: new Date().toISOString(),
+  }) as import("@/lib/coach/endurance/types").EnduranceProfile;
+
+  const merged = { ...existing, ...patch, set_at: new Date().toISOString() };
+  const { error: upErr } = await sb
+    .from("athlete_profile_documents")
+    .update({ endurance_profile: merged })
+    .eq("id", row.id);
+  if (upErr) throw new Error(`update athlete profile: ${upErr.message}`);
+  return merged;
+}
+
+export async function executeSetEndurancePhase(opts: {
+  userId: string;
+  input: { phase: "aerobic_base" | "build" | "race_prep" | "taper" | "off_season"; weekly_volume_target_hours?: number };
+}) {
+  const t0 = Date.now();
+  const patch: Partial<import("@/lib/coach/endurance/types").EnduranceProfile> = { phase: opts.input.phase };
+  if (opts.input.weekly_volume_target_hours != null) {
+    patch.weekly_volume_target_hours = opts.input.weekly_volume_target_hours;
+  }
+  const merged = await patchEnduranceProfile(opts.userId, patch);
+  return { ok: true as const, data: merged, meta: { ms: Date.now() - t0, range_days: 0 } };
+}
+
+export async function executeSetEnduranceDiscipline(opts: {
+  userId: string;
+  input: { discipline: "cycling" | "running" | "triathlon" };
+}) {
+  const t0 = Date.now();
+  const merged = await patchEnduranceProfile(opts.userId, { discipline: opts.input.discipline });
+  return { ok: true as const, data: merged, meta: { ms: Date.now() - t0, range_days: 0 } };
+}
+
+export async function executeSetThresholdHr(opts: { userId: string; input: { bpm: number } }) {
+  const t0 = Date.now();
+  const merged = await patchEnduranceProfile(opts.userId, { threshold_hr: opts.input.bpm });
+  return { ok: true as const, data: merged, meta: { ms: Date.now() - t0, range_days: 0 } };
+}
+
+export async function executeSetFtp(opts: { userId: string; input: { watts: number } }) {
+  const t0 = Date.now();
+  const merged = await patchEnduranceProfile(opts.userId, { ftp_watts: opts.input.watts });
+  return { ok: true as const, data: merged, meta: { ms: Date.now() - t0, range_days: 0 } };
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 // Library tools — search_library, pick_library_item, save_to_library.
 // Nora-only. Operate on user_food_items; pick_library_item also patches a
