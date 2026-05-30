@@ -8,6 +8,8 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { WorkoutDebriefPayload } from "@/lib/coach/session-debrief/payload";
+import { readRolling30d, isMeaningfulDeviation } from "@/lib/whoop/baselines";
+import type { MetricBaseline } from "@/lib/data/types";
 
 type ComposeAutoregulationInput = {
   supabase: SupabaseClient;
@@ -15,7 +17,12 @@ type ComposeAutoregulationInput = {
   workoutDate: string; // YYYY-MM-DD
 };
 
-type Baselines = { hrv?: number; recovery?: number; resting_hr?: number } | null;
+type Baselines = {
+  hrv: number | null;       // mean (rolling_30d preferred, legacy fallback)
+  hrv_metric: MetricBaseline | null;  // null when establishing or pre-cron
+  recovery: number | null;
+  resting_hr: number | null;
+};
 
 export async function composeAutoregulation(
   input: ComposeAutoregulationInput,
@@ -37,7 +44,20 @@ export async function composeAutoregulation(
     .maybeSingle();
   if (pErr) throw new Error(`profile lookup failed: ${pErr.message}`);
 
-  const baselines = (profile?.whoop_baselines as Baselines) ?? null;
+  const wb = profile?.whoop_baselines as Record<string, unknown> | null;
+  const r30 = readRolling30d(wb);
+  type Legacy = {
+    hrv_mean?: number; rhr_mean?: number;
+    hrv_6mo_avg?: number; rhr_6mo_avg?: number;
+    recovery_6mo_avg?: number;
+  };
+  const legacy = (wb as Legacy | null) ?? {};
+  const baselines: Baselines = {
+    hrv: r30?.hrv.mean ?? legacy.hrv_mean ?? legacy.hrv_6mo_avg ?? null,
+    hrv_metric: r30?.hrv ?? null,
+    recovery: legacy.recovery_6mo_avg ?? null,
+    resting_hr: r30?.rhr.mean ?? legacy.rhr_mean ?? legacy.rhr_6mo_avg ?? null,
+  };
 
   const today_hrv = log?.hrv ?? null;
   const today_recovery = log?.recovery ?? null;
@@ -47,7 +67,7 @@ export async function composeAutoregulation(
   const bits: string[] = [];
 
   if (today_recovery != null) {
-    const baseRec = baselines?.recovery ?? null;
+    const baseRec = baselines.recovery ?? null;
     if (baseRec != null) {
       const delta = today_recovery - baseRec;
       const band = today_recovery >= 67 ? "good" : today_recovery >= 34 ? "moderate" : "low";
@@ -59,7 +79,7 @@ export async function composeAutoregulation(
   }
 
   if (today_hrv != null) {
-    const baseHrv = baselines?.hrv ?? null;
+    const baseHrv = baselines.hrv ?? null;
     if (baseHrv != null) {
       const delta = Math.round(today_hrv - baseHrv);
       const dStr = delta >= 0 ? `+${delta}ms` : `${delta}ms`;
@@ -84,8 +104,12 @@ export async function composeAutoregulation(
     interpretation += " This session was performed in a low-recovery band — expect lower top sets and longer rest needs.";
   } else if (
     today_hrv != null &&
-    baselines?.hrv != null &&
-    today_hrv < baselines.hrv - 10
+    baselines.hrv != null &&
+    ((baselines.hrv_metric != null &&
+      baselines.hrv_metric.status !== "establishing" &&
+      isMeaningfulDeviation(today_hrv, baselines.hrv_metric) &&
+      today_hrv < baselines.hrv) ||
+     (baselines.hrv_metric == null && today_hrv < baselines.hrv - 10))
   ) {
     interpretation += " HRV is meaningfully below baseline; treat any underperformance as fatigue-driven, not capacity-driven.";
   }
