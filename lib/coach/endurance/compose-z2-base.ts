@@ -50,7 +50,7 @@ export function composeZ2Base(input: ComposerInput): ComposerResult {
   const perSession = Math.round(totalMinutes / sessionCount);
 
   // Spread days starting from preferredDay, every ⌈7/n⌉ days.
-  const stride = Math.max(1, Math.floor(7 / sessionCount));
+  const stride = Math.max(1, Math.round(7 / sessionCount));
   const days: (0|1|2|3|4|5|6)[] = [];
   for (let i = 0; i < sessionCount; i += 1) {
     days.push(((preferredDay + i * stride) % 7) as 0|1|2|3|4|5|6);

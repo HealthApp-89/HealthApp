@@ -95,6 +95,10 @@ check("1h target → hr_cap 144", r1.ok && r1.plan[3]?.hr_cap, 144);
 const profile4h = { ...profile1h, weekly_volume_target_hours: 4 };
 const r4 = composeZ2Base({ profile: profile4h });
 check("4h target → 4 sessions", r4.ok && Object.keys(r4.plan).length, 4);
+// Day-spread regression: n=4 must not produce consecutive days.
+check("4h target → days spread (Wed/Fri/Sun/Tue)",
+  r4.ok && Object.keys(r4.plan).map(Number).sort((a,b)=>a-b),
+  [0, 2, 3, 5]);
 
 // Discipline guard
 const profileRun = { ...profile1h, discipline: "running" };
