@@ -4,6 +4,7 @@
 
 import { derivedHrZones, bucketZones, defaultZ2Cap } from "@/lib/coach/endurance/hr-zones";
 import { computeHrTss, computeTssForActivity } from "@/lib/coach/endurance/tss";
+import { computeTrainingLoad, computeRampRate } from "@/lib/coach/endurance/training-load";
 
 let pass = 0;
 let fail = 0;
@@ -55,6 +56,23 @@ check("chain: null when uncalibrated",
 check("chain: power preferred",
   computeTssForActivity({ durationS: 3600, avgHr: 132, thresholdHr: 162, avgPowerW: 200, ftpWatts: 250 }),
   64);
+
+console.log("\n── training-load ──");
+// Empty series → all zero
+check("empty → zero", computeTrainingLoad([]), { ctl: 0, atl: 0, tsb: 0 });
+
+// 60 days of 50 TSS/day → steady state, CTL ≈ ATL ≈ 50, TSB ≈ 0
+const steady = Array(60).fill(50);
+const sl = computeTrainingLoad(steady);
+check("steady-state CTL near 50", Math.abs(sl.ctl - 50) < 1, true);
+check("steady-state ATL near 50", Math.abs(sl.atl - 50) < 1, true);
+check("steady-state TSB near 0",  Math.abs(sl.tsb) < 1, true);
+
+// Spike: 60d at 30 then 7d at 100 — ATL > CTL, TSB negative
+const spike = [...Array(60).fill(30), ...Array(7).fill(100)];
+const sp = computeTrainingLoad(spike);
+check("spike: atl > ctl", sp.atl > sp.ctl, true);
+check("spike: tsb negative", sp.tsb < 0, true);
 
 console.log(`\n${pass} pass, ${fail} fail`);
 if (fail > 0) process.exit(1);
