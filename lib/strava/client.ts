@@ -138,7 +138,7 @@ export async function deauthorizeUser(userId: string): Promise<void> {
   await fetch("https://www.strava.com/oauth/deauthorize", {
     method: "POST",
     headers: { authorization: `Bearer ${t.access_token}` },
-  }).catch(() => {/* best-effort */});
+  }).catch((e) => { console.warn("[strava] deauthorize call failed (best-effort):", e); });
   const sb = createSupabaseServiceRoleClient();
   await sb.from("strava_tokens").delete().eq("user_id", userId);
 }
