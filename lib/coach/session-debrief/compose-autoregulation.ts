@@ -55,7 +55,7 @@ export async function composeAutoregulation(
   const baselines: Baselines = {
     hrv: r30?.hrv.mean ?? legacy.hrv_mean ?? legacy.hrv_6mo_avg ?? null,
     hrv_metric: r30?.hrv ?? null,
-    recovery: legacy.recovery_6mo_avg ?? null,
+    recovery: r30?.recovery.mean ?? legacy.recovery_6mo_avg ?? null,
     resting_hr: r30?.rhr.mean ?? legacy.rhr_mean ?? legacy.rhr_6mo_avg ?? null,
   };
 
