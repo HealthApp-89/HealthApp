@@ -1744,6 +1744,54 @@ export type WorkoutDebriefPayload = {
   tldr: string;
 };
 
+// ── WHOOP rolling baselines ──────────────────────────────────────────────
+// See docs/superpowers/specs/2026-05-30-whoop-rolling-baselines-design.md
+
+export type BaselineStatus = "establishing" | "partial" | "stable";
+
+export type MetricBaseline = {
+  mean: number | null;   // null when status === 'establishing'
+  sd: number | null;     // null when status === 'establishing'
+  days: number;          // count of non-null observations in window
+  status: BaselineStatus;
+};
+
+export type Rolling30dBaselines = {
+  computed_at: string;   // ISO 8601 UTC
+  hrv: MetricBaseline;
+  rhr: MetricBaseline;
+  recovery: MetricBaseline;
+  sleep_performance: MetricBaseline;
+  resp_rate: MetricBaseline;
+};
+
+/** Full shape of the profiles.whoop_baselines jsonb after this work lands.
+ *  Legacy keys (hrv_6mo_avg etc.) are preserved as biographical context;
+ *  rolling_30d carries the live comparison anchor used by all consumers. */
+export type WhoopBaselinesJsonb = {
+  // Legacy keys — biographical context, all optional.
+  hrv_6mo_avg?: number;
+  hrv_prior_6mo_avg?: number;
+  hrv_peak_monthly?: number;
+  hrv_peak_period?: string;
+  rhr_6mo_avg?: number;
+  rhr_prior_6mo_avg?: number;
+  rhr_best_monthly?: number;
+  rhr_best_period?: string;
+  recovery_6mo_avg?: number;
+  recovery_prior_6mo_avg?: number;
+  resp_rate_6mo_avg?: number;
+  sleep_performance_6mo_avg?: number;
+  sleep_performance_prior_6mo_avg?: number;
+  green_days_6mo?: number;
+  yellow_days_6mo?: number;
+  red_days_6mo?: number;
+  recorded_at?: string;
+
+  // Live anchor — written by /api/whoop/baselines/sync.
+  rolling_30d?: Rolling30dBaselines;
+};
+
 // Peter Dashboard types — re-exported here so route handlers and components
 // can `import type { PeterDashboardPayload } from '@/lib/data/types'`.
 export type {
