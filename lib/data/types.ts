@@ -1,6 +1,11 @@
 // Database row shapes — snake_case, mirrors supabase/schema.sql.
 
 import type { MealSlot } from "@/lib/food/types";
+import type {
+  EnduranceProfile,
+  EnduranceSessionPlan,
+  EnduranceFocus,
+} from "@/lib/coach/endurance/types";
 
 // ── Multi-coach team (coach-team arc) ─────────────────────────────────────────
 
@@ -47,6 +52,10 @@ export type DailyLog = {
   respiratory_rate: number | null;
   notes: string | null;
   source: string | null;
+  // ── Endurance pillar (migration 0040) ──────────────────────────────────────
+  endurance_load: number | null;
+  endurance_minutes: number | null;
+  endurance_z2_minutes: number | null;
   updated_at: string;
 };
 
@@ -84,6 +93,53 @@ export type Profile = {
 export type WhoopTokensRow = {
   user_id: string;
   whoop_user_id: string | null;
+  updated_at: string;
+};
+
+// ── Endurance pillar tokens + activities (migration 0040) ───────────────────
+
+export type StravaTokens = {
+  user_id: string;
+  access_token: string;
+  refresh_token: string;
+  expires_at: string;
+  scope: string | null;
+  strava_athlete_id: string | null;
+  updated_at: string;
+};
+
+export type HrZoneDistribution = {
+  z1_s: number;
+  z2_s: number;
+  z3_s: number;
+  z4_s: number;
+  z5_s: number;
+};
+
+export type EnduranceActivity = {
+  id: string;
+  user_id: string;
+  source: "strava" | "manual";
+  external_id: string | null;
+  sport: "cycling" | "running" | "swimming" | "other";
+  started_at: string;
+  local_date: string;
+  duration_s: number;
+  distance_m: number | null;
+  elevation_gain_m: number | null;
+  avg_hr: number | null;
+  max_hr: number | null;
+  hr_zone_distribution: HrZoneDistribution | null;
+  avg_power_w: number | null;
+  normalized_power_w: number | null;
+  intensity_factor: number | null;
+  tss: number | null;
+  avg_pace_s_per_km: number | null;
+  avg_speed_kmh: number | null;
+  calories: number | null;
+  raw: unknown;
+  deleted_at: string | null;
+  created_at: string;
   updated_at: string;
 };
 
@@ -270,6 +326,10 @@ export type TrainingBlock = {
   target_unit: string;
   /** Reserved-null in v1. v2 populates with calorie/macro targets. */
   diet_goal: Record<string, unknown> | null;
+  /** Endurance pillar (migration 0040): block-level endurance focus (weekly
+   *  volume target, intensity distribution, expected adaptations). NULL on
+   *  strength-only blocks. */
+  endurance_focus: EnduranceFocus | null;
   created_at: string;
   completed_at: string | null;
   updated_at: string;
@@ -423,6 +483,9 @@ export type TrainingWeek = {
   research_phase: ResearchPhase | null;
   proposed_by: ProposedBy;
   chat_message_id: string | null;
+  /** Endurance pillar (migration 0040): per-weekday endurance session
+   *  prescriptions (keys 0..6 for Sun..Sat). NULL on strength-only weeks. */
+  endurance_session_plan: EnduranceSessionPlan | null;
   committed_at: string;
   created_at: string;
   updated_at: string;
@@ -815,6 +878,10 @@ export type AthleteProfileDocument = {
   acknowledged_at: string | null;
   superseded_at: string | null;
   superseded_by: string | null;
+  /** Endurance pillar (migration 0040): durable endurance profile
+   *  (discipline/phase/threshold HR/zones/FTP/race). NULL until the athlete
+   *  configures the endurance pillar. */
+  endurance_profile: EnduranceProfile | null;
   created_at: string;
   updated_at: string;
 };
