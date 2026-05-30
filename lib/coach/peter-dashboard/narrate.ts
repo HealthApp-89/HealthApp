@@ -142,6 +142,7 @@ function themeMention(k: ThemeKey): string {
     fatigue: 'fatigue',
     performance: 'performance',
     plan_adherence: 'adherence',
+    endurance: 'endurance',
     goal_distance: 'goal',
   } as Record<ThemeKey, string>)[k];
 }
@@ -246,6 +247,7 @@ function themeLabel(k: ThemeKey): string {
     fatigue: 'Fatigue',
     performance: 'Performance',
     plan_adherence: 'Plan adherence',
+    endurance: 'Endurance',
     goal_distance: 'Goal',
   } as Record<ThemeKey, string>)[k];
 }

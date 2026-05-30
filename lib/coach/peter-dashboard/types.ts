@@ -10,7 +10,8 @@ export type ThemeKey =
   | 'fatigue'
   | 'performance'
   | 'plan_adherence'
-  | 'goal_distance';
+  | 'goal_distance'
+  | 'endurance';
 
 export type Severity = 'ok' | 'warn' | 'urgent';
 
@@ -90,6 +91,7 @@ export const ALL_THEME_KEYS = [
   'fatigue',
   'performance',
   'plan_adherence',
+  'endurance',
   'goal_distance',
 ] as const satisfies readonly ThemeKey[];
 
@@ -101,6 +103,7 @@ export const THEME_DRILLDOWN: Record<ThemeKey, string> = {
   fatigue:        '/health?tab=trends',
   performance:    '/strength',
   plan_adherence: '/coach',
+  endurance:      '/profile',
   goal_distance:  '/profile',
 };
 
@@ -110,5 +113,6 @@ export const THEME_LABEL: Record<ThemeKey, string> = {
   fatigue:        'Fatigue',
   performance:    'Performance',
   plan_adherence: 'Plan adherence',
+  endurance:      'Endurance',
   goal_distance:  'Goal',
 };
