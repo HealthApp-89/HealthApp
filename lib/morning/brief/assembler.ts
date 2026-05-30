@@ -38,11 +38,21 @@ export type YesterdayWorkoutSummary = {
   top_e1rm: { lift: string; kg: number } | null;
 };
 
-/** WHOOP baselines from profiles.whoop_baselines. Shape may include other
- *  fields; we read only the SWC band fields here. */
+/** WHOOP baselines from profiles.whoop_baselines. We read:
+ *  - rolling_30d.hrv.{mean,sd,status} — live anchor; SWC = ±0.5×sd
+ *  - legacy hrv_swc_low / hrv_swc_high — pre-existing seed keys (typically
+ *    null in practice). Kept as a fallback for resilience.
+ *  See lib/whoop/baselines.ts and the 2026-05-30 baselines spec. */
 export type WhoopBaselineForBand = {
   hrv_swc_low?: number | null;
   hrv_swc_high?: number | null;
+  rolling_30d?: {
+    hrv?: {
+      mean: number | null;
+      sd: number | null;
+      status: "establishing" | "partial" | "stable";
+    };
+  };
 };
 
 export type BriefInputs = {
@@ -228,15 +238,28 @@ export function pickCoachSuggestion(args: {
 }
 
 /** Two-signal triangulation. Mirrors the convention in
- *  lib/coach/autoregulation.ts — surface, never auto-apply. */
+ *  lib/coach/autoregulation.ts — surface, never auto-apply.
+ *
+ *  HRV SWC bands (low/high) are derived from rolling_30d.hrv.mean ±0.5×sd
+ *  (Hopkins SWC). When the rolling baseline is establishing or unavailable,
+ *  falls back to the legacy hrv_swc_low/high seed keys; if both are absent,
+ *  the HRV signal is suppressed and band is driven by score alone. */
 function deriveReadinessBand(
   score: number | null,
   hrv: number | null,
   baselines: WhoopBaselineForBand | null,
 ): "low" | "moderate" | "high" {
   if (score === null) return "moderate";
-  const hrvLow = baselines?.hrv_swc_low ?? null;
-  const hrvHigh = baselines?.hrv_swc_high ?? null;
+
+  const r30Hrv = baselines?.rolling_30d?.hrv;
+  const swcFromRolling =
+    r30Hrv && r30Hrv.status !== "establishing" && r30Hrv.mean != null && r30Hrv.sd != null
+      ? { low: r30Hrv.mean - 0.5 * r30Hrv.sd, high: r30Hrv.mean + 0.5 * r30Hrv.sd }
+      : null;
+
+  const hrvLow = swcFromRolling?.low ?? baselines?.hrv_swc_low ?? null;
+  const hrvHigh = swcFromRolling?.high ?? baselines?.hrv_swc_high ?? null;
+
   if (score <= 5 || (hrv !== null && hrvLow !== null && hrv < hrvLow)) {
     return "low";
   }
