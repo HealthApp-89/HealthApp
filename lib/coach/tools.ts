@@ -905,8 +905,8 @@ export async function executeQueryFoodLog(opts: {
   }
 
   type FoodLogEntryRowRaw = Omit<FoodLogEntryRow, "recipe_name"> & {
-    // PostgREST embed returns an array (or null when the FK is null)
-    recipe: { name: string }[] | null;
+    // PostgREST many-to-one FK embed returns a single object (or null when the FK is null)
+    recipe: { name: string } | null;
   };
   let rows: FoodLogEntryRow[] = ((data ?? []) as unknown as FoodLogEntryRowRaw[]).map((r) => ({
     eaten_at: r.eaten_at,
@@ -915,7 +915,7 @@ export async function executeQueryFoodLog(opts: {
     items: r.items,
     totals: r.totals,
     recipe_id: r.recipe_id,
-    recipe_name: r.recipe?.[0]?.name ?? null,
+    recipe_name: r.recipe?.name ?? null,
   }));
   if (itemFilter) {
     rows = rows
