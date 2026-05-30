@@ -10,6 +10,7 @@ import { fetchCoachTrendsServer } from "@/lib/query/fetchers/coachTrends";
 import { fetchBlockHistoryServer } from "@/lib/query/fetchers/blockHistory";
 import { fetchBodyMeasurementsServer } from "@/lib/query/fetchers/bodyMeasurements";
 import { fetchHealthTrendServer } from "@/lib/query/fetchers/healthTrend";
+import { fetchUserFoodItemsRecentServer } from "@/lib/query/fetchers/userFoodItems";
 import { todayInUserTz } from "@/lib/time";
 import { DietJournalClient } from "@/components/diet/DietJournalClient";
 
@@ -62,6 +63,11 @@ export default async function DietPage({
     qc.prefetchQuery({
       queryKey: queryKeys.dailyLogs.range(user.id, date, date),
       queryFn: () => fetchDailyLogsServer(supabase, user.id, date, date),
+    }),
+    // Recent saved library items for the Saved strip on the journal view
+    qc.prefetchQuery({
+      queryKey: queryKeys.userFoodItems.recent(user.id),
+      queryFn: () => fetchUserFoodItemsRecentServer(supabase, user.id),
     }),
     // Coach trends for the Nutrition tab
     qc.prefetchQuery({

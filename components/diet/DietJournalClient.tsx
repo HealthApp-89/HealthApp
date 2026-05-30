@@ -14,6 +14,7 @@ import { FoodEntryEditSheet } from "@/components/log/FoodEntryEditSheet";
 import { HistoryPickerSheet } from "@/components/log/HistoryPickerSheet";
 import { SummaryCard } from "./SummaryCard";
 import { MealSlotCardCollapsed } from "./MealSlotCardCollapsed";
+import { JournalLibraryStrip } from "./JournalLibraryStrip";
 import { targetsForAllSlots } from "@/lib/food/meal-targets";
 import { MEAL_SLOTS } from "@/lib/food/meal-slot";
 import { todayInUserTz } from "@/lib/time";
@@ -193,6 +194,8 @@ export function DietJournalClient({ userId, initialDate, initialView, todayIso, 
               ›
             </button>
           </div>
+
+          <JournalLibraryStrip userId={userId} date={date} />
 
           {/* kcal ring + macro bars */}
           <SummaryCard
