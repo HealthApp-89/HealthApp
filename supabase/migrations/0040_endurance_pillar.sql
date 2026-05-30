@@ -94,7 +94,7 @@ as $$
   select
     coalesce(sum(tss), 0)::numeric as tss_sum,
     coalesce(sum(duration_s) / 60, 0)::int as duration_minutes_sum,
-    coalesce(sum( ((hr_zone_distribution->>'z2_s')::int) / 60 ), 0)::int as z2_minutes_sum
+    coalesce(sum( (hr_zone_distribution->>'z2_s')::int ) / 60, 0)::int as z2_minutes_sum
   from public.endurance_activities
   where user_id = p_user_id
     and local_date = p_date
