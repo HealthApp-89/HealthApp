@@ -19,11 +19,16 @@ export function PeterDashboardGrid({ payload }: Props) {
       }}
     >
       {ALL_THEME_KEYS.map((k) => {
+        const theme = payload.facts.themes[k];
+        // Legacy dashboard payloads (cached before a theme was added to
+        // ALL_THEME_KEYS) won't have an entry for the new key. Skip rather
+        // than crash; next regen will fill it in.
+        if (!theme) return null;
         const isOpen = expanded === k;
         return (
           <div key={k} style={{ gridColumn: isOpen ? '1 / -1' : 'auto' }}>
             <PeterThemeCard
-              theme={payload.facts.themes[k]}
+              theme={theme}
               narrative={payload.narrative?.cards[k]?.narrative_md ?? null}
               expanded={isOpen}
               onToggle={() => setExpanded(isOpen ? null : k)}
