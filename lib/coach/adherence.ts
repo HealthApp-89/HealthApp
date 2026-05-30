@@ -208,9 +208,12 @@ export async function computeAdherence(
   //     endurance_status simply falls through to 'missed'/'not_prescribed'.
   const [{ data: profileRow, error: profErr }, { data: enduranceRows, error: actErr }] = await Promise.all([
     supabase
-      .from("profiles")
+      .from("athlete_profile_documents")
       .select("endurance_profile")
       .eq("user_id", userId)
+      .eq("status", "active")
+      .order("version", { ascending: false })
+      .limit(1)
       .maybeSingle(),
     supabase
       .from("endurance_activities")

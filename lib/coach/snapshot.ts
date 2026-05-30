@@ -220,7 +220,7 @@ async function renderEnduranceBlocks(
       .from("athlete_profile_documents")
       .select("endurance_profile")
       .eq("user_id", userId)
-      .eq("status", "acknowledged")
+      .eq("status", "active")
       .order("version", { ascending: false })
       .limit(1)
       .maybeSingle(),

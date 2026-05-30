@@ -141,7 +141,7 @@ export async function composeEndurance(args: {
       .from('athlete_profile_documents')
       .select('endurance_profile')
       .eq('user_id', userId)
-      .not('acknowledged_at', 'is', null)
+      .eq('status', 'active')
       .order('version', { ascending: false })
       .limit(1)
       .maybeSingle(),

@@ -3746,12 +3746,12 @@ async function patchEnduranceProfile(
     .from("athlete_profile_documents")
     .select("id, endurance_profile")
     .eq("user_id", userId)
-    .eq("status", "acknowledged")
+    .eq("status", "active")
     .order("version", { ascending: false })
     .limit(1)
     .maybeSingle();
   if (error) throw new Error(`read athlete profile: ${error.message}`);
-  if (!row) throw new Error("No acknowledged athlete profile; complete onboarding first.");
+  if (!row) throw new Error("No active athlete profile; complete onboarding first.");
 
   const existing = (row.endurance_profile ?? {
     discipline: "cycling",
@@ -3898,7 +3898,7 @@ export async function executeProposeEnduranceWeek(opts: {
     .from("athlete_profile_documents")
     .select("endurance_profile")
     .eq("user_id", opts.userId)
-    .eq("status", "acknowledged")
+    .eq("status", "active")
     .order("version", { ascending: false })
     .limit(1)
     .maybeSingle();
