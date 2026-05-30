@@ -1,15 +1,15 @@
 // lib/coach/endurance/types.ts — shared types for the endurance pillar.
 
-export type EnduranceDiscipline = 'cycling' | 'running' | 'triathlon';
+export type EnduranceDiscipline = "cycling" | "running" | "triathlon";
 
 export type EndurancePhase =
-  | 'aerobic_base'
-  | 'build'
-  | 'race_prep'
-  | 'taper'
-  | 'off_season';
+  | "aerobic_base"
+  | "build"
+  | "race_prep"
+  | "taper"
+  | "off_season";
 
-export type EnduranceSport = 'cycling' | 'running' | 'swimming' | 'other';
+export type EnduranceSport = "cycling" | "running" | "swimming" | "other";
 
 export type HrZoneRanges = {
   z1: [number, number];
@@ -33,13 +33,13 @@ export type EnduranceProfile = {
 };
 
 export type EnduranceSessionType =
-  | 'rest'
-  | 'z2_ride'
-  | 'z2_run'
-  | 'tempo'
-  | 'intervals'
-  | 'long'
-  | 'brick';
+  | "rest"
+  | "z2_ride"
+  | "z2_run"
+  | "tempo"
+  | "intervals"
+  | "long"
+  | "brick";
 
 export type EnduranceSessionEntry = {
   type: EnduranceSessionType;
@@ -55,7 +55,7 @@ export type EnduranceSessionPlan = Partial<Record<0|1|2|3|4|5|6, EnduranceSessio
 
 export type EnduranceFocus = {
   weekly_volume_target_hours: number;
-  intensity_distribution: '100_z2' | '80_20' | 'polarized' | 'pyramidal';
+  intensity_distribution: "100_z2" | "80_20" | "polarized" | "pyramidal";
   expected_adaptations: string[];
   notes?: string;
 };

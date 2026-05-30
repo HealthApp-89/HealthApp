@@ -5,6 +5,7 @@ import type {
   EnduranceProfile,
   EnduranceSessionPlan,
   EnduranceFocus,
+  EnduranceSport,
 } from "@/lib/coach/endurance/types";
 
 // ── Multi-coach team (coach-team arc) ─────────────────────────────────────────
@@ -98,12 +99,8 @@ export type WhoopTokensRow = {
 
 // ── Endurance pillar tokens + activities (migration 0040) ───────────────────
 
-export type StravaTokens = {
+export type StravaTokensRow = {
   user_id: string;
-  access_token: string;
-  refresh_token: string;
-  expires_at: string;
-  scope: string | null;
   strava_athlete_id: string | null;
   updated_at: string;
 };
@@ -121,7 +118,7 @@ export type EnduranceActivity = {
   user_id: string;
   source: "strava" | "manual";
   external_id: string | null;
-  sport: "cycling" | "running" | "swimming" | "other";
+  sport: EnduranceSport;
   started_at: string;
   local_date: string;
   duration_s: number;
