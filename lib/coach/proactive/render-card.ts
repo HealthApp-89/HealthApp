@@ -85,6 +85,7 @@ export function renderCard(
     case "respiratory_rate_elevated":  return renderRespiratoryRate(event, ctx);
     case "heavy_fatigue_cluster":      return renderHeavyFatigue(event, ctx);
     case "post_strain_undersleep":     return renderPostStrainUndersleep(event, ctx);
+    case "endurance_volume_recovery_mismatch": return renderEnduranceVolumeMismatch(event, ctx);
     default: throw new Error(`renderCard: unhandled trigger_type '${(event as ProactiveEvent).trigger_type}'`);
   }
 }
@@ -573,6 +574,28 @@ function renderHeavyFatigue(event: ProactiveEvent, ctx?: RenderContext): Proacti
     headline: `${count} heavy fatigue days in 7`,
     body_md: variants[idx],
     deep_link: { label: "See fatigue timeline →", href: "/health?tab=trends#fatigue-sickness" },
+    speaker: "remi",
+  };
+}
+
+function renderEnduranceVolumeMismatch(event: ProactiveEvent, ctx?: RenderContext): ProactiveNudgeCard {
+  const ratio = event.payload.ratio_7d_vs_avg as number;
+  const z = event.payload.hrv_z as number;
+  const pctOfAvg = Math.round(ratio * 100);
+  const zMagnitude = Math.abs(z).toFixed(1);
+  const variants = [
+    `Endurance load this week is ${pctOfAvg}% of your 4-week average while HRV sits ${zMagnitude} SD below baseline. Consider an easy day or two before the next hard session.`,
+    `7-day endurance volume is ${pctOfAvg}% of the rolling average and HRV is ${zMagnitude} SD under baseline. The body is asking for recovery — easy Z2 only, or a true rest day.`,
+  ];
+  const idx = pickVariant({ userId: ctx?.userId ?? "", triggerKey: event.trigger_key, today: ctx?.today ?? "", count: variants.length });
+  return {
+    schema_version: 1,
+    trigger_type: "endurance_volume_recovery_mismatch",
+    trigger_key: event.trigger_key,
+    severity: "warn",
+    headline: `Endurance load ${pctOfAvg}% of avg · HRV ${zMagnitude} SD low`,
+    body_md: variants[idx],
+    deep_link: { label: "See endurance trend →", href: "/coach?section=endurance" },
     speaker: "remi",
   };
 }

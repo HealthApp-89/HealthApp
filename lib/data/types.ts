@@ -1663,7 +1663,9 @@ export type ProactiveTriggerType =
   | "heavy_fatigue_cluster"
   | "post_strain_undersleep"
   // NEW — recipe discovery (sub-project: Nora suggestion engine §9)
-  | "save_recipe";
+  | "save_recipe"
+  // NEW — endurance pillar (Phase 1, dormant at 1h/wk volume)
+  | "endurance_volume_recovery_mismatch";
 
 /** Internal event shape passed from check-* functions to the orchestrator.
  *  The `payload` field carries trigger-specific data the renderer needs. */
