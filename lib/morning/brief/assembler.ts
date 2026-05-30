@@ -81,6 +81,13 @@ export type BriefInputs = {
    *  current week. Populated by getThisWeekPrescription in data-sources.
    *  Null when either is missing — triggers the legacy 'training' fallback. */
   thisWeekPrescription: { trainingWeek: TrainingWeek; review: WeeklyReviewRow } | null;
+  /** This week's endurance plan, read directly from training_weeks for the
+   *  current Monday — independent of weekly_reviews state. Populated by
+   *  getThisWeekEndurancePlan in data-sources. Null when no training_weeks
+   *  row exists for the week or its endurance_session_plan is null.
+   *  Decoupled from thisWeekPrescription because commit_endurance_week
+   *  doesn't touch weekly_reviews. */
+  thisWeekEndurancePlan: EnduranceSessionPlan | null;
   /** Yesterday's workout in the flat shape the yesterday-vs-plan composer
    *  consumes. Null when no workout logged. */
   yesterdayWorkoutForBlock: YesterdayWorkoutForBlock | null;
@@ -305,15 +312,17 @@ function composeHydration(inputs: BriefInputs): MorningBriefHydration | null {
 
 /** Pulls today's prescribed endurance session from
  *  training_weeks.endurance_session_plan. Null when:
- *   - no committed prescription for this week (no thisWeekPrescription), or
+ *   - no training_weeks row for this week (no thisWeekEndurancePlan), or
  *   - the plan has no entry for today's weekday, or
  *   - the entry is type="rest".
- *  Keys on the plan are 0..6 matching Date#getDay() (0=Sun..6=Sat). */
+ *  Keys on the plan are 0..6 matching Date#getDay() (0=Sun..6=Sat).
+ *
+ *  Reads thisWeekEndurancePlan (decoupled from weekly_reviews) rather than
+ *  thisWeekPrescription, because commit_endurance_week only writes to
+ *  training_weeks — gating on a committed weekly_review would silently drop
+ *  Carter's prescriptions for any week without one. */
 function composeEndurance(inputs: BriefInputs): MorningBriefEndurance | null {
-  const plan =
-    (inputs.thisWeekPrescription?.trainingWeek?.endurance_session_plan ?? null) as
-      | EnduranceSessionPlan
-      | null;
+  const plan = inputs.thisWeekEndurancePlan;
   if (!plan) return null;
   const weekday = new Date(`${inputs.today}T12:00:00Z`).getUTCDay() as 0|1|2|3|4|5|6;
   const entry = plan[weekday];

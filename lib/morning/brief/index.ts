@@ -15,6 +15,7 @@ import type { MorningBriefCard, MuscleVolumeFlag, StrengthMuscleVolume } from "@
 import {
   fetchBriefInputs,
   getThisWeekPrescription,
+  getThisWeekEndurancePlan,
   getYesterdayWorkoutFlat,
   getPreviousCommittedReview,
 } from "@/lib/morning/brief/data-sources";
@@ -46,12 +47,14 @@ export async function prepareBriefExceptAdvice(
   const [
     inputs,
     thisWeekPrescription,
+    thisWeekEndurancePlan,
     yesterdayWorkoutForBlock,
     previousCommittedReview,
     yesterdayFoodEntriesRes,
   ] = await Promise.all([
     fetchBriefInputs(supabase, userId, today),
     getThisWeekPrescription(supabase, userId, today),
+    getThisWeekEndurancePlan(supabase, userId, today),
     getYesterdayWorkoutFlat(supabase, userId, yesterday),
     getPreviousCommittedReview(supabase, userId, weekStart),
     supabase
@@ -140,6 +143,7 @@ export async function prepareBriefExceptAdvice(
     ...inputs,
     muscleVolumeFlags,
     thisWeekPrescription,
+    thisWeekEndurancePlan,
     yesterdayWorkoutForBlock,
     swapAppliedYesterday,
     // Set provisionally to false; flags.ts is the authoritative computation,

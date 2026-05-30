@@ -15,6 +15,7 @@ import type {
   TrainingWeek,
   WeeklyReviewRow,
 } from "@/lib/data/types";
+import type { EnduranceSessionPlan } from "@/lib/coach/endurance/types";
 import { WEEKLY_SESSIONS } from "@/lib/coach/sessionPlans";
 import { readSessionForDay } from "@/lib/coach/session-plan-reader";
 import { mondayOf } from "@/lib/coach/weekly-review/date-utils";
@@ -190,6 +191,7 @@ export async function fetchBriefInputs(
     // base fetcher's return remains a valid `BriefInputs` for typecheck;
     // the orchestrator overwrites these via spread before assembly.
     thisWeekPrescription: null,
+    thisWeekEndurancePlan: null,
     yesterdayWorkoutForBlock: null,
     swapAppliedYesterday: false,
     phaseTransitionThisWeek: false,
@@ -292,6 +294,36 @@ export async function getThisWeekPrescription(
     return null;
   }
   return { trainingWeek, review };
+}
+
+/**
+ * Read this week's prescribed endurance plan from `training_weeks` directly,
+ * keyed only on the current Monday — independent of `weekly_reviews` state.
+ *
+ * Distinct from `getThisWeekPrescription` (above), which gates on a committed
+ * `weekly_reviews` row. `commit_endurance_week` writes to `training_weeks`
+ * without touching `weekly_reviews`, so reading the endurance plan through
+ * the prescription gate would silently drop Carter's prescriptions for any
+ * week without a committed review. The brief's endurance block stands on
+ * its own data source.
+ *
+ * Returns null when no `training_weeks` row exists for this week or when the
+ * row's `endurance_session_plan` is null.
+ */
+export async function getThisWeekEndurancePlan(
+  supabase: SupabaseClient,
+  userId: string,
+  today: string,           // "YYYY-MM-DD"
+): Promise<EnduranceSessionPlan | null> {
+  const weekStart = mondayOf(today);
+  const { data, error } = await supabase
+    .from("training_weeks")
+    .select("endurance_session_plan")
+    .eq("user_id", userId)
+    .eq("week_start", weekStart)
+    .maybeSingle();
+  if (error) throw error;
+  return (data?.endurance_session_plan ?? null) as EnduranceSessionPlan | null;
 }
 
 /** Reads yesterday's workout in the flat shape composeYesterdayVsPlan expects.
