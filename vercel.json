@@ -10,6 +10,10 @@
       "schedule": "0 10 * * *"
     },
     {
+      "path": "/api/whoop/baselines/sync",
+      "schedule": "30 10 * * *"
+    },
+    {
       "path": "/api/coach/weekly-review/sync",
       "schedule": "0 4 * * 0"
     },
