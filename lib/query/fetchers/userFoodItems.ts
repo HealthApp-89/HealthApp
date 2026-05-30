@@ -40,3 +40,31 @@ export async function fetchUserFoodItemsBrowser(
   if (error) throw error;
   return (data ?? []) as unknown as UserFoodItem[];
 }
+
+export async function fetchUserFoodItemsRecentServer(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<UserFoodItem[]> {
+  const { data, error } = await supabase
+    .from("user_food_items")
+    .select(SELECT)
+    .eq("user_id", userId)
+    .order("updated_at", { ascending: false })
+    .limit(8);
+  if (error) throw error;
+  return (data ?? []) as unknown as UserFoodItem[];
+}
+
+export async function fetchUserFoodItemsRecentBrowser(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<UserFoodItem[]> {
+  const { data, error } = await supabase
+    .from("user_food_items")
+    .select(SELECT)
+    .eq("user_id", userId)
+    .order("updated_at", { ascending: false })
+    .limit(8);
+  if (error) throw error;
+  return (data ?? []) as unknown as UserFoodItem[];
+}
