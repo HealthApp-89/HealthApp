@@ -91,6 +91,7 @@ function SaveRecipeBody({
   const [name, setName] = useState<string>(payload.suggested_name);
   const [saving, setSaving] = useState(false);
   const [done, setDone] = useState<"saved" | "dismissed" | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   if (done === "saved") {
     return (
@@ -107,6 +108,7 @@ function SaveRecipeBody({
 
   const save = async () => {
     setSaving(true);
+    setError(null);
     try {
       const res = await fetch("/api/coach/save-recipe-from-nudge", {
         method: "POST",
@@ -122,7 +124,16 @@ function SaveRecipeBody({
           combo_signature: payload.combo_signature,
         }),
       });
-      if (res.ok) setDone("saved");
+      if (res.ok) {
+        setDone("saved");
+      } else {
+        const detail = await res.text().catch(() => "");
+        console.error("[ProactiveNudgeCard] save failed", res.status, detail);
+        setError(`Couldn't save — ${res.status === 401 ? "please sign in again" : "try again"}`);
+      }
+    } catch (err) {
+      console.error("[ProactiveNudgeCard] save threw", err);
+      setError("Couldn't save — network error");
     } finally {
       setSaving(false);
     }
@@ -218,6 +229,11 @@ function SaveRecipeBody({
           Not this one
         </button>
       </div>
+      {error && (
+        <p style={{ margin: 0, fontSize: 11, color: COLOR.danger }}>
+          {error}
+        </p>
+      )}
     </div>
   );
 }
