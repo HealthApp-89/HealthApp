@@ -3,7 +3,15 @@
 **Date:** 2026-05-30
 **Status:** Approved (awaiting implementation plan)
 **Owner:** single-user app, Abdelouahed
-**Relation to other work:** First-class coached pillar parallel to strength. Touches the data model ([daily_logs](../../supabase/migrations), new `endurance_activities` table, `athlete_profile_documents` extension, `training_weeks` extension), the coach team (Carter's mandate expands; Peter's dashboard gains a theme; Nora's fueling rules become endurance-aware; Remi reads endurance load), and the UI (new `/endurance` page, `/profile` setup, morning brief block). Phase-aware design mirrors the existing GLP-1 mode discriminator pattern in [lib/coach/plan-builder/compose-nutrition.ts](../../lib/coach/plan-builder/compose-nutrition.ts) and [lib/morning/brief/get-today-targets.ts](../../lib/morning/brief/get-today-targets.ts).
+**Relation to other work:** First-class coached pillar parallel to strength. Touches the data model ([daily_logs](../../supabase/migrations), new `endurance_activities` table, `athlete_profile_documents` extension, `training_weeks` extension), the coach team (Carter's mandate expands; Peter's dashboard gains a theme; Nora's fueling rules become endurance-aware; Remi reads endurance load), and the UI (Endurance card on Peter dashboard + `/profile` setup + morning brief block in Phase 1; full `/endurance` page deferred to Phase 2 per the [Phase 1 sizing section](#current-operating-reality-phase-1-sizing) below). Phase-aware design mirrors the existing GLP-1 mode discriminator pattern in [lib/coach/plan-builder/compose-nutrition.ts](../../lib/coach/plan-builder/compose-nutrition.ts) and [lib/morning/brief/get-today-targets.ts](../../lib/morning/brief/get-today-targets.ts).
+
+## Current operating reality (Phase 1 sizing)
+
+User's actual current endurance commitment during the fat-loss / Z2-only phase: **1× 60min Z2 ride per week.** Triathlon volume (5-9 sessions/wk across swim/bike/run) is post-target-weight, late-2026.
+
+This drives Phase 1 to be **data-plumbing-heavy and UI-light**: build the integration substrate and coach context, but don't ship UI surfaces sized for triathlon volume that will render empty for months. Specifically: no top-level `/endurance` tab, no `/coach/trends` Endurance section, no sub-pill page layout. A single Endurance card on Peter's existing dashboard + the morning brief block on the prescribed day + Carter's chat awareness via snapshot prefix = the entire UI surface for Phase 1.
+
+Data model, Strava integration, Carter mandate expansion, and all 7 prescription/calibration tools ship unchanged from the more ambitious design — they're future-proof for triathlon and cheap to build now. The sections below describe the full design; the "Phase 1 deliverable scope" section is the source of truth for what actually ships first.
 
 ## Problem
 
@@ -79,7 +87,7 @@ Mutations are milestones, not new acknowledged versions (Phase 1 immutability in
 
 **Phase semantics** in [lib/coach/endurance/compose-z2-base.ts](../../lib/coach/endurance/) and future composers:
 
-- **`aerobic_base` (current):** Z2 only, HR cap = `threshold_hr × 0.83`, weekly target 4-5 rides × 60-90min, intent framed as fat oxidation + mitochondrial density. No intervals.
+- **`aerobic_base` (current):** Z2 only, HR cap = `threshold_hr × 0.83`, intent framed as fat oxidation + mitochondrial density. No intervals. **Phase 1 actual prescription: 1× 60min Z2/wk** during the fat-loss phase. The "4-5 rides × 60-90min" shape is the eventual aerobic-base prescription once weekly volume target ramps; the composer accepts both via the `weekly_volume_target_hours` parameter.
 - **`build`:** polarized 80/20 (80% Z2, 20% Z4/Z5), 2 quality sessions/wk, 1 long ride. Composer = `compose-build.ts` (deferred to Phase 2).
 - **`race_prep`:** sport-specific specificity, race-pace work, brick workouts (tri only). Deferred.
 - **`taper`:** volume cut 40-60%, intensity hold. Deferred.
@@ -360,20 +368,20 @@ Added to [lib/coach/peter-dashboard/index.ts](../../lib/coach/peter-dashboard/) 
 ENDURANCE_PROFILE:
   Discipline: cycling
   Phase: aerobic_base (set 2026-05-30)
-  Weekly volume target: 5h
+  Weekly volume target: 1h
   Threshold HR: 162 bpm (calibrated 2026-05-30)
   HR cap (Z2): 135 bpm
 
 ENDURANCE_LOAD_7D:
-  TSS sum (7d): 412
-  Endurance hours (7d): 4.5
-  vs 28d rolling avg: 0.95× (within normal)
-  Z2 minutes (7d): 268
+  TSS sum (7d): 51
+  Endurance hours (7d): 1.0
+  vs 28d rolling avg: 1.0× (on target)
+  Z2 minutes (7d): 55
 
 LAST_3_ENDURANCE_ACTIVITIES:
-  2026-05-29 | cycling | 75min | avg HR 134 | TSS 65 | Z2:62 Z3:13
-  2026-05-27 | cycling | 90min | avg HR 138 | TSS 82 | Z2:78 Z3:12
-  2026-05-25 | cycling | 60min | avg HR 132 | TSS 51 | Z2:55 Z3:5
+  2026-05-28 | cycling | 60min | avg HR 132 | TSS 51 | Z2:55 Z3:5
+  2026-05-21 | cycling | 60min | avg HR 130 | TSS 48 | Z2:57 Z3:3
+  2026-05-14 | cycling | 60min | avg HR 134 | TSS 53 | Z2:53 Z3:7
 ```
 
 Phase 1: blocks are always present in the snapshot (no flag). When `endurance_profile` is NULL, blocks render as "ENDURANCE_PROFILE: not configured" — coaches are taught to suggest setup.
@@ -414,7 +422,9 @@ Formal rules are out of scope for Phase 1. Land the module, document the seam, s
 
 ## UI surfaces
 
-### New `/endurance` page
+### `/endurance` page (Phase 2 — eventual shape)
+
+**Not shipped in Phase 1** (see [Current operating reality](#current-operating-reality-phase-1-sizing)). The description below documents the eventual shape so the planner can size Phase 2 — Phase 1 ships a single Endurance card on Peter dashboard instead.
 
 Pattern mirrors `/metrics` and `/coach`. SSR-hydrate with TanStack Query per the [client cache convention](../../CLAUDE.md#client-cache-tanstack-query--read-this-before-adding-interactive-queries).
 
@@ -439,7 +449,7 @@ New section component `components/profile/EnduranceSetupSection.tsx`:
 - **Threshold HR input** (numeric, calibration source dropdown: "manual" / "lab test" / "estimated from data" — only "manual" actually does anything in Phase 1).
 - **Phase selector** (radio: aerobic_base / build / race_prep / taper / off_season — Phase 1 ship locks to aerobic_base, others greyed with "Available in Phase 2" tooltip).
 - **Discipline selector** (radio: cycling / running / triathlon — same Phase 1 lock to cycling).
-- **Weekly volume target** (slider, 1-15 hours, Carter-recommended default = 5h for current phase).
+- **Weekly volume target** (slider, range 0.5-15 hours, **Phase 1 default = 1h** for current 1× Z2/wk phase; range leaves room for triathlon scale-up without UI change).
 
 API: `POST /api/profile/endurance-profile` mirrors `POST /api/profile/nutrition-overrides` shape. Partial updates: undefined keeps, null clears, value sets. Writes to `athlete_profile_documents.endurance_profile`.
 
@@ -468,9 +478,11 @@ If today is BOTH a strength day AND an endurance day, both blocks render. Stack 
 
 New theme card in Peter's dashboard. Position: after Plan adherence, before Goal distance (logical grouping with execution metrics).
 
-Theme card shows: severity chip, headline (e.g., "Z2 volume on track — 4.5/5h this week"), 2-3 key facts, deep-link to `/endurance?sub=trends`.
+Phase 1 theme card shows: binary severity chip (Z2 done / not done this week), headline (e.g., "Z2 ride completed Wed, 60min @ avg HR 132"), last activity summary, deep-link to the Strava activity URL (external). Phase 2 swaps the external deep-link for an internal `/endurance?sub=trends` link once that page exists.
 
-### `/coach/trends` — Endurance section
+### `/coach/trends` — Endurance section (Phase 2 — eventual shape)
+
+**Not shipped in Phase 1.** 1 session/wk for ~24 weeks doesn't produce a meaningful trend; description below is for Phase 2.
 
 Add fourth section ([app/coach/trends/page.tsx](../../app/coach/trends/) `?section=performance|composition|cross|endurance`):
 
@@ -483,13 +495,11 @@ Composer [lib/coach/trends/compose-endurance.ts](../../lib/coach/trends/) added 
 
 ### Bottom navigation
 
-`/endurance` added to `BottomNav.tsx`. Tab order: Home / Meal / Coach / **Endurance** / Trends. Endurance icon: heart-with-arrows (or similar — design choice). Tab fits since `/strength` was already collapsed into `/coach` sub-pill.
-
-Or: keep current tab count and stuff `/endurance` under `/coach?tab=endurance` similar to how Peter's dashboard is `/coach?tab=dashboard`. **Recommended:** dedicated `/endurance` top-level tab, because the page has 3 sub-pills and Carter-driven prescriptions — too much weight for a coach sub-tab.
+**Phase 1: no nav change.** No `/endurance` route exists; the Endurance footprint lives entirely on the existing Peter dashboard card + morning brief block + `/profile` setup section. Re-evaluate when discipline transitions to triathlon and the deferred `/endurance` page ships — at that point either a 5th top-level tab or `/coach?tab=endurance` sub-tab.
 
 ## Phase 1 deliverable scope
 
-Concretely buildable in this spec's plan:
+**Reflects the 1×60min Z2/wk reality.** Data + integration + coach plumbing ships in full (cheap, future-proof). UI surface drastically reduced — no top-level page, no sub-pills, no trends section.
 
 **Data:**
 - Migration `0038_endurance_pillar.sql` (table + columns + aggregation function)
@@ -499,28 +509,30 @@ Concretely buildable in this spec's plan:
 - `lib/strava/{client,oauth,ingest}.ts` and `lib/strava/types.ts`
 - `app/api/strava/{auth,callback,sync,backfill,webhook,disconnect}/route.ts`
 - `scripts/strava-subscribe-webhook.mjs`
+- `public/strava-icon-{60,124}.png` already uploaded — both are needed by Strava as app icons during developer-app registration (they appear on the OAuth consent screen and the Strava app directory listing). Not consumed by the app's own UI.
 
 **Coach:**
 - `lib/coach/endurance/{compose-z2-base,tss,hr-zones,training-load}.ts`
+  - `compose-z2-base` Phase 1 default = **1× 60min Z2 ride/wk** (mid-week, day chosen by user/Carter). Volume target on `endurance_profile.weekly_volume_target_hours` defaults to `1`.
 - `lib/coach/endurance/types.ts`
 - `lib/coach/tools.ts` — 7 new tools, partition assignments, HMAC actions for propose/commit
 - `lib/coach/chat-stream.ts` — `PERSIST_RESULT_TOOLS` + `modeAllowsTool` updates
-- `lib/coach/snapshot.ts` — endurance blocks
+- `lib/coach/snapshot.ts` — endurance blocks (ENDURANCE_PROFILE, ENDURANCE_LOAD_7D, LAST_3_ENDURANCE_ACTIVITIES)
 - `lib/coach/system-prompts.ts` — CARTER_BASE, NORA_BASE, REMI_BASE, PETER_BASE updates
+  - CARTER_BASE: explicitly teach the current 1× Z2/wk reality and that aggressive endurance prescribing is wrong for this phase
+  - NORA_BASE: small CHO pre + protein-led post **only on the prescribed Z2 day** (no fueling change for the other 6 days)
 - `lib/coach/peter-dashboard/compose-endurance.ts` + orchestrator hook + link-themes update
-- `lib/coach/proactive/check-endurance-volume-spike.ts` + cron route registration
+  - **Phase 1 severity is binary**: `ok` if the prescribed Z2 happened within HR cap this week, `attention` otherwise. No volume-vs-target grading at 1 session/wk granularity.
+- `lib/coach/proactive/check-endurance-volume-spike.ts` + cron route registration — ships but is dormant at 1h/wk (the spike-detection threshold won't fire). Wakes up automatically when volume scales.
 - `lib/coach/interference/check-interference.ts` (light rule + seam)
+  - Phase 1 rule **always returns `'none'`** at this volume. Seam exists for Phase 2 to fill.
 - `lib/coach/adherence.ts` updates (endurance adherence pass + `endurance_status` field)
 
-**UI:**
-- `app/endurance/page.tsx` + sub-pills
-- `components/endurance/{EnduranceClient,ActivityRow}.tsx`
-- `components/profile/EnduranceSetupSection.tsx`
-- `components/morning/EnduranceBriefBlock.tsx` + brief assembler integration
-- `components/coach/PeterDashboardClient.tsx` — Endurance theme card
-- `app/coach/trends/` — Endurance section
-- `components/layout/BottomNav.tsx` — `/endurance` tab
-- `lib/query/fetchers/enduranceActivities.ts` + `lib/query/hooks/useEnduranceActivities.ts` + `lib/query/keys.ts`
+**UI (drastically reduced from original design):**
+- `components/profile/EnduranceSetupSection.tsx` — Strava connection + threshold HR + phase (locked aerobic_base) + discipline (locked cycling) + weekly volume target (default 1h, slider range 0.5-15h to leave room for triathlon growth)
+- `components/morning/EnduranceBriefBlock.tsx` + brief assembler integration — renders only on prescribed Z2 day (1×/wk)
+- `components/coach/PeterDashboardClient.tsx` — single Endurance theme card on the existing Peter dashboard. Shows: prescribed Z2 day this week, did-it-happen chip, last activity summary (date/duration/avg HR/TSS), deep-link to Strava activity URL.
+- `lib/query/fetchers/enduranceActivities.ts` + `lib/query/hooks/useEnduranceActivities.ts` + `lib/query/keys.ts` — needed for the dashboard card; same pattern as other client-cache hooks
 
 **Cron:**
 - `vercel.json` — `/api/strava/sync` at 09:00 UTC daily
@@ -535,23 +547,37 @@ Concretely buildable in this spec's plan:
 - `STRAVA_VERIFY_TOKEN` (random 32-char, for webhook subscription validation)
 - `STRAVA_WEBHOOK_CALLBACK_URL` (e.g., `https://health-app-delta-ruby.vercel.app/api/strava/webhook`)
 
+**Explicitly removed from Phase 1 deliverable (deferred to Phase 2):**
+- `app/endurance/page.tsx` + `_sub/{ActivitiesSubPill,PlanSubPill,TrendsSubPill}.tsx`
+- `components/endurance/{EnduranceClient,ActivityRow}.tsx`
+- `app/coach/trends/` Endurance section
+- `lib/coach/trends/compose-endurance.ts`
+- `components/layout/BottomNav.tsx` — `/endurance` tab addition
+
+These are the surfaces sized for triathlon-volume usage. Re-evaluated when discipline transitions to `triathlon` and weekly sessions exceed ~3.
+
 ## Phase 2+ deferred scope
 
 Explicitly NOT in Phase 1:
 
+- **`/endurance` top-level page** (activities timeline, plan view, trends view) — re-evaluate when discipline = triathlon and weekly sessions ≥ 3. Build the page module fresh at that point; the data hooks already exist.
+- **Bottom nav `/endurance` tab** — same threshold as the page.
+- **`/coach/trends` Endurance section** — same threshold (needs at least 8 weeks of varied-volume data to plot anything informative).
 - **Triathlon phase composers** (`compose-build`, `compose-race-prep`, `compose-taper`)
 - **Brick workouts** in the planner
 - **Swim metrics** (CSS, SWOLF, pool/OWS distinction)
-- **Power-meter TSS** (formula module is ready, swap on ingest is one branch)
+- **Power-meter TSS** (formula module is ready in Phase 1; swap on ingest is one branch)
 - **Formal interference autoregulation rules** in `lib/coach/interference/`
 - **TrainingPeaks integration** (read prescriptions, write Carter prescriptions)
 - **Garmin Connect API integration**
-- **CTL/ATL/TSB chart on `/endurance?sub=trends`** (math is ready, chart waits for ~6 weeks of data)
+- **CTL/ATL/TSB chart** (math module ships in Phase 1; chart waits for ~6 weeks of post-launch data + ≥3 sessions/wk)
 - **HR drift / aerobic decoupling chart**
 - **Aerobic threshold auto-detection** from data (vs manual entry)
 - **Coach Felix split** — separate endurance specialist coach
 - **Race calendar** (target races + automatic taper trigger)
 - **Sport-specific intensity distribution** in Peter dashboard (3-color triathlon split)
+- **Per-day order preference** (lift before/after ride on same-day overlap) — Phase 1 assumes lift AM / ride PM
+- **Volume-spike proactive nudge** wakes up automatically when training volume scales — code ships in Phase 1 but is dormant at 1h/wk
 
 ## Risks & open questions
 
@@ -565,13 +591,13 @@ Explicitly NOT in Phase 1:
 
 4. **WHOOP strain and Strava-derived TSS coexist without reconciliation.** Risk: user sees two "training load" numbers and gets confused. Mitigation: Peter dashboard's Endurance theme explicitly explains the distinction (WHOOP = whole-body autonomic strain, TSS = endurance-specific training load). Snapshot teaches coaches the same.
 
-5. **Adding `/endurance` as a fifth bottom-nav tab.** 5 tabs is the iOS limit but visually crowded on smaller phones. Acceptable for v1; revisit if user finds it cramped. Alternative is folding it as a `/coach?tab=endurance` sub-tab, rejected because endurance has its own 3-sub-pill page and Carter-driven prescriptions.
+5. ~~**Adding `/endurance` as a fifth bottom-nav tab.**~~ Resolved by Phase 1 scoping: no top-level page, no new tab. Single Endurance card on existing Peter dashboard is the entire UI footprint until triathlon-phase volume justifies a dedicated page.
 
 **Open questions (resolve during plan or first implementation slice):**
 
 1. **Backfill window default.** Strava can return years of history. Sensible default for `/api/strava/backfill` UI button: 90 days (covers training context for coach without overwhelming initial seed). Full history available via `?since=YYYY-MM-DD`.
 
-2. **Z2 prescription default volume.** Carter's `propose_endurance_week` default for `aerobic_base` phase: 4 rides × 75min = 5h/wk OR 5 rides × 60min = 5h/wk? Pick during prescription engine implementation; both work; 4×75 has less workout-management overhead.
+2. ~~**Z2 prescription default volume.**~~ Resolved by Phase 1 scoping: **1× 60min Z2/wk.** Day chosen by user/Carter on first prescription; sticks until told otherwise.
 
 3. **HR cap calculation default.** Two options when user hasn't manually set the HR cap: (a) `threshold_hr × 0.83` (Coggan Z2 upper); (b) `180 - age` (Maffetone MAF). Both have research support. Phase 1 default to Coggan because we already have threshold_hr as the calibration anchor; expose Maffetone as alternative in `/profile` if user prefers.
 
