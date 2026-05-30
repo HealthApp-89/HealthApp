@@ -167,6 +167,7 @@ export const queryKeys = {
   userFoodItems: {
     all: (userId: string) => ["user-food-items", userId] as const,
     search: (userId: string, q: string) =>
-      ["user-food-items", userId, q] as const,
+      ["user-food-items", userId, "search", q] as const,
+    recent: (userId: string) => ["user-food-items", userId, "recent"] as const,
   },
 } as const;

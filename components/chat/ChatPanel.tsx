@@ -557,6 +557,21 @@ export default function ChatPanel({
                 });
               }
             }
+            // Nora's save_to_library tool mutates user_food_items.
+            // Invalidate so the Saved strip on /diet and the library
+            // management page on /profile/library repaint within ~1s
+            // of the chat confirmation chip.
+            const savedToLibrary = (inlineToolCalls ?? []).some(
+              (c) => c.name === "save_to_library" && !c.error,
+            );
+            if (savedToLibrary) {
+              queryClient.invalidateQueries({
+                queryKey: queryKeys.userFoodItems.recent(userId),
+              });
+              queryClient.invalidateQueries({
+                queryKey: queryKeys.userFoodItems.all(userId),
+              });
+            }
           } else if (ev.type === "handoff") {
             // Peter delegated to a specialist. The server resets its own
             // accumulated buffer to "" so only the specialist's reply is
