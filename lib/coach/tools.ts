@@ -807,6 +807,8 @@ type FoodLogEntryRow = {
   kind: string;
   items: FoodLogItem[];
   totals: { kcal: number; protein_g: number; carbs_g: number; fat_g: number; fiber_g: number };
+  recipe_id: string | null;     // back-reference to user_food_items (migration 0028)
+  recipe_name: string | null;   // flattened from PostgREST join
 };
 type FoodLogToolData = { rows: FoodLogEntryRow[] };
 
@@ -882,7 +884,7 @@ export async function executeQueryFoodLog(opts: {
   // --- Query (security invariant 2: .eq("user_id", userId)) ---
   let queryBuilder = opts.supabase
     .from("food_log_entries")
-    .select("eaten_at, meal_slot, kind, items, totals")
+    .select("eaten_at, meal_slot, kind, items, totals, recipe_id, recipe:recipe_id(name)")
     .eq("user_id", opts.userId)
     .eq("status", "committed")
     .gte("eaten_at", `${start}T00:00:00Z`)
@@ -902,7 +904,19 @@ export async function executeQueryFoodLog(opts: {
     };
   }
 
-  let rows = (data ?? []) as FoodLogEntryRow[];
+  type FoodLogEntryRowRaw = Omit<FoodLogEntryRow, "recipe_name"> & {
+    // PostgREST embed returns an array (or null when the FK is null)
+    recipe: { name: string }[] | null;
+  };
+  let rows: FoodLogEntryRow[] = ((data ?? []) as unknown as FoodLogEntryRowRaw[]).map((r) => ({
+    eaten_at: r.eaten_at,
+    meal_slot: r.meal_slot,
+    kind: r.kind,
+    items: r.items,
+    totals: r.totals,
+    recipe_id: r.recipe_id,
+    recipe_name: r.recipe?.[0]?.name ?? null,
+  }));
   if (itemFilter) {
     rows = rows
       .map((r) => ({ ...r, items: r.items.filter((it) => it.name.toLowerCase().includes(itemFilter)) }))
