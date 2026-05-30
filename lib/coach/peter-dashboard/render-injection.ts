@@ -25,9 +25,14 @@ export function renderInjectionBlock(
   lines.push('');
 
   for (const k of ALL_THEME_KEYS) {
-    const sev = payload.facts.themes[k].severity;
-    lines.push(`## ${THEME_LABEL[k]} — ${sev}`);
-    lines.push(n.cards[k].narrative_md);
+    const theme = payload.facts.themes[k];
+    const card = n.cards[k];
+    // Legacy payloads (cached before a theme was added to ALL_THEME_KEYS)
+    // won't have an entry for the new key. Skip rather than crash; next
+    // dashboard regen will fill it in.
+    if (!theme || !card) continue;
+    lines.push(`## ${THEME_LABEL[k]} — ${theme.severity}`);
+    lines.push(card.narrative_md);
     lines.push('');
   }
 
