@@ -169,4 +169,9 @@ export const queryKeys = {
     search: (userId: string, q: string) =>
       ["user-food-items", userId, q] as const,
   },
+  endurance: {
+    all: (userId: string) => ["endurance", userId] as const,
+    activities: (userId: string, from: string, to: string) =>
+      ["endurance", userId, "activities", from, to] as const,
+  },
 } as const;
