@@ -5,6 +5,8 @@
 import { derivedHrZones, bucketZones, defaultZ2Cap } from "@/lib/coach/endurance/hr-zones";
 import { computeHrTss, computeTssForActivity } from "@/lib/coach/endurance/tss";
 import { computeTrainingLoad, computeRampRate } from "@/lib/coach/endurance/training-load";
+import { composeZ2Base } from "@/lib/coach/endurance/compose-z2-base";
+import { strengthVolumeAdjustment } from "@/lib/coach/interference/check-interference";
 
 let pass = 0;
 let fail = 0;
@@ -73,6 +75,44 @@ const spike = [...Array(60).fill(30), ...Array(7).fill(100)];
 const sp = computeTrainingLoad(spike);
 check("spike: atl > ctl", sp.atl > sp.ctl, true);
 check("spike: tsb negative", sp.tsb < 0, true);
+
+console.log("\n── compose-z2-base ──");
+const profile1h = {
+  discipline: "cycling",
+  phase: "aerobic_base",
+  threshold_hr: 162,
+  hr_max: null, hr_zones: null, ftp_watts: null, threshold_pace_s_per_km: null,
+  weekly_volume_target_hours: 1,
+  current_race: null,
+  set_at: "2026-05-30T00:00:00Z",
+};
+const r1 = composeZ2Base({ profile: profile1h });
+check("1h target → ok",         r1.ok, true);
+check("1h target → 1 session",  r1.ok && Object.keys(r1.plan).length, 1);
+check("1h target → 60min",      r1.ok && r1.plan[3]?.duration_min, 60);
+check("1h target → hr_cap 144", r1.ok && r1.plan[3]?.hr_cap, 144);
+
+const profile4h = { ...profile1h, weekly_volume_target_hours: 4 };
+const r4 = composeZ2Base({ profile: profile4h });
+check("4h target → 4 sessions", r4.ok && Object.keys(r4.plan).length, 4);
+
+// Discipline guard
+const profileRun = { ...profile1h, discipline: "running" };
+const rr = composeZ2Base({ profile: profileRun });
+check("running → not implemented", rr.ok, false);
+
+// Phase guard
+const profileBuild = { ...profile1h, phase: "build" };
+const rb = composeZ2Base({ profile: profileBuild });
+check("build → not implemented", rb.ok, false);
+
+console.log("\n── interference ──");
+check("null profile → none",
+  strengthVolumeAdjustment(null, 5).adjustment, "none");
+check("aerobic_base + 1h → none",
+  strengthVolumeAdjustment(profile1h, 1).adjustment, "none");
+check("build + 10h → reduce_15pct",
+  strengthVolumeAdjustment(profileBuild, 10).adjustment, "reduce_15pct");
 
 console.log(`\n${pass} pass, ${fail} fail`);
 if (fail > 0) process.exit(1);
