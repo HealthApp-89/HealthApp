@@ -188,7 +188,7 @@ export function ProfileClient({
 
       <SectionLabel>Baselines</SectionLabel>
       <div style={{ padding: "0 8px 14px" }}>
-        <BaselinesPanel logs={logs as DailyLog[]} />
+        <BaselinesPanel profile={profile ?? null} />
       </div>
 
       <SectionLabel>Ingest tokens</SectionLabel>
