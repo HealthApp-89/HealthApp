@@ -50,16 +50,32 @@ export async function POST(req: Request) {
     );
   }
 
+  // Recipe rows MUST leave per_100g NULL (migration 0028 enforces the XOR
+  // check: exactly one of per_100g / composite_of is set). default_serving_g
+  // is required downstream — expandLibraryRecipe (lib/food/lookup.ts) throws
+  // without it, and /api/food/library/draft's user_recipe branch returns 500.
+  // Sum the ingredient median grams as the canonical "1 serving" weight,
+  // matching what executeSaveToLibrary does for chat-path saves.
+  const default_serving_g = parsed.data.composite_of.reduce(
+    (acc, c) => acc + c.qty_g,
+    0,
+  );
+
   const { error, data } = await supabase
     .from("user_food_items")
     .insert({
       user_id: user.id,
       name: parsed.data.name,
       composite_of: parsed.data.composite_of,
-      per_100g: parsed.data.per_100g,
+      default_serving_g,
+      source: "user_recipe",
       metadata: {
         source: "recipe_discovery",
         combo_signature: parsed.data.combo_signature,
+        // per_100g from the request body is the display-only weighted average
+        // shown on the nudge card; preserved in metadata for traceability,
+        // not persisted to the column (CHECK constraint forbids).
+        per_100g: parsed.data.per_100g,
       },
     })
     .select("id")
