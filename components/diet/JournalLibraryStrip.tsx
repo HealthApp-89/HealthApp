@@ -1,7 +1,7 @@
 // components/diet/JournalLibraryStrip.tsx
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useQueryClient } from "@tanstack/react-query";
 import { useUserFoodItemsRecent } from "@/lib/query/hooks/useUserFoodItems";
@@ -27,13 +27,33 @@ export function JournalLibraryStrip({ userId, date }: Props) {
   const { data: items = [] } = useUserFoodItemsRecent(userId);
   const queryClient = useQueryClient();
   const [toast, setToast] = useState<Toast>(null);
-  const [pendingId, setPendingId] = useState<string | null>(null);
+  const [pendingIds, setPendingIds] = useState<Set<string>>(new Set());
+  const toastTimerRef = useRef<number | null>(null);
+
+  // Cancel any pending toast dismissal on unmount to prevent stale timer fires.
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    };
+  }, []);
+
+  // Show a toast and schedule its automatic dismissal, cancelling any prior timer.
+  const showToast = (next: Toast, dismissAfterMs: number) => {
+    if (toastTimerRef.current) {
+      clearTimeout(toastTimerRef.current);
+    }
+    setToast(next);
+    toastTimerRef.current = window.setTimeout(() => {
+      setToast(null);
+      toastTimerRef.current = null;
+    }, dismissAfterMs);
+  };
 
   if (items.length === 0) return null;
 
   const handleTap = async (item: UserFoodItem) => {
-    if (pendingId) return; // prevent double-tap during in-flight commit
-    setPendingId(item.id);
+    if (pendingIds.has(item.id)) return; // prevent double-tap of THIS card only
+    setPendingIds((prev) => new Set(prev).add(item.id));
     const slot: MealSlot = deriveMealSlot(new Date());
     const kind = item.composite_of !== null ? "user_recipe" : "user_item";
 
@@ -65,23 +85,28 @@ export function JournalLibraryStrip({ userId, date }: Props) {
         queryKey: queryKeys.dailyLogs.range(userId, date, date),
       });
 
-      setToast({ text: `Logged to ${slot}`, entryId: entry.id });
-      window.setTimeout(() => setToast(null), 5000);
+      showToast({ text: `Logged to ${slot}`, entryId: entry.id }, 5000);
     } catch (err) {
       console.error("[JournalLibraryStrip] tap failed", err);
-      setToast({ text: "Couldn't log — try again", entryId: "" });
-      window.setTimeout(() => setToast(null), 3000);
+      showToast({ text: "Couldn't log — try again", entryId: "" }, 3000);
     } finally {
-      setPendingId(null);
+      setPendingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(item.id);
+        return next;
+      });
     }
   };
 
   const handleUndo = async () => {
     if (!toast || !toast.entryId) return;
     const id = toast.entryId;
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = null;
     setToast(null);
     try {
-      await fetch(`/api/food/entries/${id}`, { method: "DELETE" });
+      const res = await fetch(`/api/food/entries/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error(`undo_failed_${res.status}`);
       queryClient.invalidateQueries({
         queryKey: queryKeys.foodEntries.range(userId, date, date),
       });
@@ -90,6 +115,7 @@ export function JournalLibraryStrip({ userId, date }: Props) {
       });
     } catch (err) {
       console.error("[JournalLibraryStrip] undo failed", err);
+      showToast({ text: "Undo failed — entry still logged", entryId: "" }, 3000);
     }
   };
 
@@ -118,17 +144,18 @@ export function JournalLibraryStrip({ userId, date }: Props) {
             : item.per_100g
               ? `${fmtNum(item.per_100g.kcal)} kcal / 100g`
               : "—";
-          const isBusy = pendingId === item.id;
+          const isBusy = pendingIds.has(item.id);
           return (
             <button
               key={item.id}
               type="button"
+              aria-label={`Log ${item.name}`}
               disabled={isBusy}
               onClick={() => handleTap(item)}
               className="snap-start shrink-0 w-[140px] text-left rounded-lg border p-3 transition-opacity"
               style={{
-                background: "#fff",
-                borderColor: "#e5e7eb",
+                background: COLOR.surface,
+                borderColor: COLOR.divider,
                 color: COLOR.textStrong,
                 opacity: isBusy ? 0.5 : 1,
               }}
@@ -147,6 +174,7 @@ export function JournalLibraryStrip({ userId, date }: Props) {
       {toast && (
         <div
           className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 rounded-full px-4 py-2 text-xs shadow-lg"
+          // Inverted surface — intentional dark toast over the light journal
           style={{ background: "#111", color: "#fff" }}
         >
           <span>{toast.text}</span>
