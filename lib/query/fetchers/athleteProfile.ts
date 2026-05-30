@@ -4,7 +4,7 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import type { AthleteProfileDocument } from "@/lib/data/types";
 
 const COLS =
-  "id, user_id, version, status, intake_payload, plan_payload, rendered_md, acknowledged_at, superseded_at, superseded_by, created_at, updated_at";
+  "id, user_id, version, status, intake_payload, plan_payload, rendered_md, acknowledged_at, superseded_at, superseded_by, endurance_profile, created_at, updated_at";
 
 // ── Active doc ──────────────────────────────────────────────────────────────
 

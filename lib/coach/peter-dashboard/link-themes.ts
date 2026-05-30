@@ -19,12 +19,13 @@ export function linkThemes(
 ): ThemeCluster[] {
   const clusters: ThemeCluster[] = [];
 
-  const energy   = themes.energy;
-  const fatigue  = themes.fatigue;
-  const perf     = themes.performance;
-  const recomp   = themes.recomp;
-  const adh      = themes.plan_adherence;
-  const goal     = themes.goal_distance;
+  const energy    = themes.energy;
+  const fatigue   = themes.fatigue;
+  const perf      = themes.performance;
+  const recomp    = themes.recomp;
+  const adh       = themes.plan_adherence;
+  const goal      = themes.goal_distance;
+  const endurance = themes.endurance;
 
   // Rule 1: energy + fatigue + performance plateau → deficit-too-aggressive cluster.
   const perfHasPlateau =
@@ -84,6 +85,48 @@ export function linkThemes(
       themes: ['performance', 'goal_distance'],
       root_hypothesis:
         'goal pace slipping because the goal lift has stalled',
+    });
+  }
+
+  // Rule 5 (endurance ↔ recovery): high endurance volume + fatigue active →
+  // aerobic-base work depressing HRV. Endurance is "high" when prescribed work
+  // happened (did_it_happen=1) — Phase 1 has no separate "volume spike" signal,
+  // so completion of the prescribed Z2 is the proxy.
+  const enduranceDidIt =
+    endurance != null && (endurance.facts['did_it_happen'] as number | null) === 1;
+  if (enduranceDidIt && isActive(fatigue)) {
+    clusters.push({
+      id: 'endurance-fatigue',
+      themes: ['endurance', 'fatigue'],
+      root_hypothesis:
+        'endurance volume layered on existing fatigue — HRV recovery may need an easy day before the next Z2',
+    });
+  }
+
+  // Rule 6 (endurance ↔ recomp): prescribed Z2 missed + recomp BF drift → the
+  // missing cardio is the hole in the deficit. Reuses Rule 2's BF-drift gate.
+  const enduranceMissed =
+    endurance != null &&
+    (endurance.facts['prescribed_this_week'] as number | null) === 1 &&
+    (endurance.facts['did_it_happen'] as number | null) === 0;
+  if (enduranceMissed && recompBfDrift) {
+    clusters.push({
+      id: 'endurance-recomp',
+      themes: ['endurance', 'recomp'],
+      root_hypothesis:
+        'prescribed Z2 missed while body fat drifts — the cardio gap is the hole in the deficit',
+    });
+  }
+
+  // Rule 7 (endurance ↔ performance): missed prescribed Z2 + performance
+  // plateau on a big-four lift → interference cluster. Reuses the plateau
+  // signal from Rule 1's gate.
+  if (enduranceMissed && perfHasPlateau) {
+    clusters.push({
+      id: 'endurance-performance',
+      themes: ['endurance', 'performance'],
+      root_hypothesis:
+        'missed endurance work and a lift plateau in the same week — both miss-the-stimulus, not interference',
     });
   }
 

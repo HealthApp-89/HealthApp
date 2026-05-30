@@ -3700,6 +3700,292 @@ export async function executeMarkGlp1Discontinued(opts: {
   };
 }
 
+// ── Endurance milestone tools (direct write, no HMAC; mirror GLP-1 milestone tools) ──
+
+export const SET_ENDURANCE_PHASE_TOOL = {
+  name: "set_endurance_phase",
+  description:
+    "Update the active athlete profile's endurance_profile.phase in place. Use when the athlete transitions phases (aerobic_base → build, build → race_prep, etc). Optionally update weekly_volume_target_hours in the same call. Phase 1 supports aerobic_base only; other phases will write but the composer won't produce prescriptions for them yet.",
+  input_schema: {
+    type: "object" as const,
+    required: ["phase"],
+    properties: {
+      phase: { type: "string", enum: ["aerobic_base", "build", "race_prep", "taper", "off_season"] },
+      weekly_volume_target_hours: { type: "number", minimum: 0.5, maximum: 20 },
+    },
+  },
+} as const;
+
+export const SET_ENDURANCE_DISCIPLINE_TOOL = {
+  name: "set_endurance_discipline",
+  description:
+    "Update the active athlete profile's endurance_profile.discipline. Use when transitioning from cycling-only to triathlon (or vice versa). Phase 1 ships cycling only; setting 'triathlon' or 'running' is permitted but the composer will return ok:false until Phase 2.",
+  input_schema: {
+    type: "object" as const,
+    required: ["discipline"],
+    properties: {
+      discipline: { type: "string", enum: ["cycling", "running", "triathlon"] },
+    },
+  },
+} as const;
+
+export const SET_THRESHOLD_HR_TOOL = {
+  name: "set_threshold_hr",
+  description:
+    "Set the athlete's lactate-threshold HR (LTHR, bpm). Used as the anchor for HR-based TSS computation and Z2/Z4 zone derivation. Without it, TSS for new activities is null. Calibration sources: 30-minute time trial average HR (gold standard), or recent threshold-effort average HR.",
+  input_schema: {
+    type: "object" as const,
+    required: ["bpm"],
+    properties: { bpm: { type: "integer", minimum: 80, maximum: 220 } },
+  },
+} as const;
+
+export const SET_FTP_TOOL = {
+  name: "set_ftp",
+  description:
+    "Set the athlete's functional threshold power (FTP, watts) for cycling. Phase 2 use — once power data exists in endurance_activities, computeTssForActivity will prefer the power formula over HR. Setting this in Phase 1 is harmless; the column simply isn't read yet.",
+  input_schema: {
+    type: "object" as const,
+    required: ["watts"],
+    properties: { watts: { type: "integer", minimum: 50, maximum: 600 } },
+  },
+} as const;
+
+async function patchEnduranceProfile(
+  userId: string,
+  patch: Partial<import("@/lib/coach/endurance/types").EnduranceProfile>,
+): Promise<import("@/lib/coach/endurance/types").EnduranceProfile> {
+  const sb = (await import("@/lib/supabase/server")).createSupabaseServiceRoleClient();
+  const { data: row, error } = await sb
+    .from("athlete_profile_documents")
+    .select("id, endurance_profile")
+    .eq("user_id", userId)
+    .eq("status", "active")
+    .order("version", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(`read athlete profile: ${error.message}`);
+  if (!row) throw new Error("No active athlete profile; complete onboarding first.");
+
+  const existing = (row.endurance_profile ?? {
+    discipline: "cycling",
+    phase: "aerobic_base",
+    threshold_hr: null,
+    hr_max: null,
+    hr_zones: null,
+    ftp_watts: null,
+    threshold_pace_s_per_km: null,
+    weekly_volume_target_hours: 1,
+    current_race: null,
+    set_at: new Date().toISOString(),
+  }) as import("@/lib/coach/endurance/types").EnduranceProfile;
+
+  const merged = { ...existing, ...patch, set_at: new Date().toISOString() };
+  const { error: upErr } = await sb
+    .from("athlete_profile_documents")
+    .update({ endurance_profile: merged })
+    .eq("id", row.id);
+  if (upErr) throw new Error(`update athlete profile: ${upErr.message}`);
+  return merged;
+}
+
+export async function executeSetEndurancePhase(opts: {
+  userId: string;
+  input: { phase: "aerobic_base" | "build" | "race_prep" | "taper" | "off_season"; weekly_volume_target_hours?: number };
+}) {
+  const t0 = Date.now();
+  const patch: Partial<import("@/lib/coach/endurance/types").EnduranceProfile> = { phase: opts.input.phase };
+  if (opts.input.weekly_volume_target_hours != null) {
+    patch.weekly_volume_target_hours = opts.input.weekly_volume_target_hours;
+  }
+  const merged = await patchEnduranceProfile(opts.userId, patch);
+  return { ok: true as const, data: merged, meta: { ms: Date.now() - t0, result_rows: 1, range_days: 0, truncated: false } };
+}
+
+export async function executeSetEnduranceDiscipline(opts: {
+  userId: string;
+  input: { discipline: "cycling" | "running" | "triathlon" };
+}) {
+  const t0 = Date.now();
+  const merged = await patchEnduranceProfile(opts.userId, { discipline: opts.input.discipline });
+  return { ok: true as const, data: merged, meta: { ms: Date.now() - t0, result_rows: 1, range_days: 0, truncated: false } };
+}
+
+export async function executeSetThresholdHr(opts: { userId: string; input: { bpm: number } }) {
+  const t0 = Date.now();
+  const merged = await patchEnduranceProfile(opts.userId, { threshold_hr: opts.input.bpm });
+  return { ok: true as const, data: merged, meta: { ms: Date.now() - t0, result_rows: 1, range_days: 0, truncated: false } };
+}
+
+export async function executeSetFtp(opts: { userId: string; input: { watts: number } }) {
+  const t0 = Date.now();
+  const merged = await patchEnduranceProfile(opts.userId, { ftp_watts: opts.input.watts });
+  return { ok: true as const, data: merged, meta: { ms: Date.now() - t0, result_rows: 1, range_days: 0, truncated: false } };
+}
+
+// ── Endurance query + propose/commit week (HMAC) ──
+
+export const QUERY_ENDURANCE_ACTIVITIES_TOOL = {
+  name: "query_endurance_activities",
+  description:
+    "Read endurance_activities rows (Strava-ingested rides/runs/swims) for the athlete in a date range. Returns per-activity: started_at, sport, duration_s, distance_m, avg_hr, max_hr, tss, hr_zone_distribution. Distinct from query_daily_logs which returns day-level totals. Use for 'what did I do this week' / 'how many Z2 minutes' / 'show me my last ride' questions. 90-day range cap.",
+  input_schema: {
+    type: "object" as const,
+    required: ["start_date", "end_date"],
+    properties: {
+      start_date: { type: "string", description: "YYYY-MM-DD local date (inclusive)" },
+      end_date:   { type: "string", description: "YYYY-MM-DD local date (inclusive)" },
+      sport:      { type: "string", enum: ["cycling", "running", "swimming", "other"] },
+      min_duration_min: { type: "integer", minimum: 1 },
+    },
+  },
+} as const;
+
+export async function executeQueryEnduranceActivities(opts: {
+  userId: string;
+  input: { start_date: string; end_date: string; sport?: string; min_duration_min?: number };
+}) {
+  const t0 = Date.now();
+  const start = new Date(`${opts.input.start_date}T00:00:00Z`);
+  const end = new Date(`${opts.input.end_date}T00:00:00Z`);
+  const days = Math.ceil((end.getTime() - start.getTime()) / 86400000) + 1;
+  if (days > 90) {
+    return { ok: false as const, error: { error: "range > 90 days" }, meta: { ms: Date.now() - t0, range_days: days } };
+  }
+  const sb = (await import("@/lib/supabase/server")).createSupabaseServiceRoleClient();
+  let q = sb
+    .from("endurance_activities")
+    .select("id, started_at, local_date, sport, duration_s, distance_m, avg_hr, max_hr, tss, hr_zone_distribution, avg_speed_kmh, calories")
+    .eq("user_id", opts.userId)
+    .is("deleted_at", null)
+    .gte("local_date", opts.input.start_date)
+    .lte("local_date", opts.input.end_date)
+    .order("started_at", { ascending: false })
+    .limit(100);
+  if (opts.input.sport) q = q.eq("sport", opts.input.sport);
+  if (opts.input.min_duration_min) q = q.gte("duration_s", opts.input.min_duration_min * 60);
+  const { data, error } = await q;
+  if (error) return { ok: false as const, error: { error: error.message }, meta: { ms: Date.now() - t0, range_days: days } };
+  const rows = data ?? [];
+  return { ok: true as const, data: rows, meta: { ms: Date.now() - t0, result_rows: rows.length, range_days: days, truncated: rows.length >= 100 } };
+}
+
+export const PROPOSE_ENDURANCE_WEEK_TOOL = {
+  name: "propose_endurance_week",
+  description:
+    "Generate a preview of a weekly endurance prescription. Does NOT write. Returns preview + approval_token. Carter calls composeZ2Base internally (Phase 1 supports aerobic_base / cycling only). User must approve via commit_endurance_week.",
+  input_schema: {
+    type: "object" as const,
+    required: ["week_start"],
+    properties: {
+      week_start: { type: "string", description: "YYYY-MM-DD of the Sunday starting the prescribed week" },
+      preferred_day: { type: "integer", minimum: 0, maximum: 6, description: "0=Sun..6=Sat, day to anchor first session on; default Wed (3)" },
+    },
+  },
+} as const;
+
+export const COMMIT_ENDURANCE_WEEK_TOOL = {
+  name: "commit_endurance_week",
+  description:
+    "Commit a previously proposed endurance week. Requires approval_token from propose_endurance_week. Idempotent on (user_id, week_start) — re-committing UPDATEs training_weeks.endurance_session_plan.",
+  input_schema: {
+    type: "object" as const,
+    required: ["approval_token"],
+    properties: { approval_token: { type: "string", minLength: 60 } },
+  },
+} as const;
+
+type ProposeEnduranceInput = { week_start: string; preferred_day?: 0|1|2|3|4|5|6 };
+type EnduranceWeekPayload = {
+  week_start: string;
+  plan: import("@/lib/coach/endurance/types").EnduranceSessionPlan;
+  rationale: string;
+};
+
+export async function executeProposeEnduranceWeek(opts: {
+  userId: string;
+  input: ProposeEnduranceInput;
+}) {
+  const t0 = Date.now();
+  const sb = (await import("@/lib/supabase/server")).createSupabaseServiceRoleClient();
+  const { data: profileRow, error } = await sb
+    .from("athlete_profile_documents")
+    .select("endurance_profile")
+    .eq("user_id", opts.userId)
+    .eq("status", "active")
+    .order("version", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error || !profileRow?.endurance_profile) {
+    return { ok: false as const, error: { error: "No endurance_profile — set up on /profile first." }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  const { composeZ2Base } = await import("@/lib/coach/endurance/compose-z2-base");
+  const result = composeZ2Base({
+    profile: profileRow.endurance_profile as import("@/lib/coach/endurance/types").EnduranceProfile,
+    preferredDay: opts.input.preferred_day,
+  });
+  if (!result.ok) {
+    return { ok: false as const, error: { error: result.reason }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  const payload: EnduranceWeekPayload = {
+    week_start: opts.input.week_start,
+    plan: result.plan,
+    rationale: result.rationale,
+  };
+  const token = signApprovalToken({ userId: opts.userId, action: "endurance_week", payload });
+  return {
+    ok: true as const,
+    data: { preview: payload, approval_token: token },
+    meta: { ms: Date.now() - t0, result_rows: 1, range_days: 0, truncated: false },
+  };
+}
+
+export async function executeCommitEnduranceWeek(opts: {
+  userId: string;
+  input: { approval_token: string };
+}) {
+  const t0 = Date.now();
+  let env;
+  try {
+    env = verifyApprovalToken({ token: opts.input.approval_token, userId: opts.userId, action: "endurance_week" });
+  } catch (e) {
+    if (e instanceof ApprovalTokenError) {
+      return { ok: false as const, error: { error: approvalTokenUserMessage(e.code) }, meta: { ms: Date.now() - t0, range_days: 0 } };
+    }
+    throw e;
+  }
+  const payload = env.payload as EnduranceWeekPayload;
+  const sb = (await import("@/lib/supabase/server")).createSupabaseServiceRoleClient();
+
+  // Upsert: training_weeks may or may not have a row for this week yet.
+  const { data: existing } = await sb
+    .from("training_weeks")
+    .select("id")
+    .eq("user_id", opts.userId)
+    .eq("week_start", payload.week_start)
+    .maybeSingle();
+  if (existing) {
+    const { error } = await sb
+      .from("training_weeks")
+      .update({ endurance_session_plan: payload.plan })
+      .eq("id", existing.id);
+    if (error) return { ok: false as const, error: { error: error.message }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  } else {
+    const { error } = await sb
+      .from("training_weeks")
+      .insert({
+        user_id: opts.userId,
+        week_start: payload.week_start,
+        // session_plan is NOT NULL on training_weeks — empty object means "no strength prescription at this row";
+        // getEffectiveSessionPlan falls through to static SESSION_PLANS defaults.
+        session_plan: {},
+        endurance_session_plan: payload.plan,
+      });
+    if (error) return { ok: false as const, error: { error: error.message }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  return { ok: true as const, data: { week_start: payload.week_start, plan: payload.plan }, meta: { ms: Date.now() - t0, result_rows: 1, range_days: 0, truncated: false } };
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 // Library tools — search_library, pick_library_item, save_to_library.
 // Nora-only. Operate on user_food_items; pick_library_item also patches a
@@ -5071,6 +5357,13 @@ export const CARTER_TOOLS: readonly ToolSchema[] = [
   UNMARK_MOBILITY_DONE_TOOL,
   SET_ROTATION_PRIORITY_LIFT_TOOL,
   APPLY_ROTATION_OVERRIDE_TOOL,
+  QUERY_ENDURANCE_ACTIVITIES_TOOL,
+  PROPOSE_ENDURANCE_WEEK_TOOL,
+  COMMIT_ENDURANCE_WEEK_TOOL,
+  SET_ENDURANCE_PHASE_TOOL,
+  SET_ENDURANCE_DISCIPLINE_TOOL,
+  SET_THRESHOLD_HR_TOOL,
+  SET_FTP_TOOL,
 ];
 
 // Nora: nutrition. Reads food log + nutrition/body-comp daily_logs columns;

@@ -18,6 +18,7 @@ import { composeFatigue } from './compose-fatigue';
 import { composePerformance } from './compose-performance';
 import { composePlanAdherence } from './compose-plan-adherence';
 import { composeGoalDistance } from './compose-goal-distance';
+import { composeEndurance } from './compose-endurance';
 import { linkThemes } from './link-themes';
 import { narrate, fallbackNarrative } from './narrate';
 import { generateCoachTrends } from '@/lib/coach/trends';
@@ -41,7 +42,7 @@ export async function generatePeterDashboard(args: {
     fetchGoalSummary(supabase, userId),
   ]);
 
-  const [recomp, energy, fatigue, performance, planAdherence, goalDistance] =
+  const [recomp, energy, fatigue, performance, planAdherence, endurance, goalDistance] =
     await Promise.all([
       composeRecomp({ supabase, userId, today, trends }),
       composeEnergy({ supabase, userId, today }),
@@ -55,12 +56,14 @@ export async function generatePeterDashboard(args: {
         goalLiftMetric: goalSummary.metric,
       }),
       composePlanAdherence({ supabase, userId, today }),
+      composeEndurance({ supabase, userId, today }),
       composeGoalDistance({ supabase, userId, today, trends }),
     ]);
 
   const themes: Record<ThemeKey, ThemePayload> = {
     recomp, energy, fatigue, performance,
     plan_adherence: planAdherence,
+    endurance,
     goal_distance: goalDistance,
   };
 

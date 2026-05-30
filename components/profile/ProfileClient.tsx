@@ -22,6 +22,7 @@ import { LabPromptCard } from "@/components/profile/LabPromptCard";
 import { NutritionTargetsSection } from "@/components/profile/NutritionTargetsSection";
 import { DietaryExclusionsSection } from "@/components/profile/DietaryExclusionsSection";
 import { GoalSection } from "@/components/profile/GoalSection";
+import { EnduranceSetupSection } from "@/components/profile/EnduranceSetupSection";
 import { useAthleteProfile } from "@/lib/query/hooks/useAthleteProfile";
 
 export function ProfileClient({
@@ -31,6 +32,7 @@ export function ProfileClient({
   baselineTo,
   today,
   appUrl,
+  stravaConnected,
 }: {
   userId: string;
   userEmail: string | null;
@@ -42,6 +44,9 @@ export function ProfileClient({
    *  so NutritionTargetsSection keys its useTodayTargets hook deterministically. */
   today: string;
   appUrl: string;
+  /** Server-fetched flag for the EnduranceSetupSection's Strava
+   *  connect/disconnect CTA. */
+  stravaConnected: boolean;
 }) {
   const { data: profile } = useProfile(userId);
   const { data: whoopTokens = null } = useWhoopTokens(userId);
@@ -173,6 +178,10 @@ export function ProfileClient({
             }
           />
         </Card>
+        <EnduranceSetupSection
+          initial={activeProfile?.endurance_profile ?? null}
+          stravaConnected={stravaConnected}
+        />
         {showLabCard && <LabPromptCard userId={userId} />}
       </div>
 

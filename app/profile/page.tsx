@@ -84,6 +84,17 @@ export default async function ProfilePage() {
     }),
   ]);
 
+  // Strava connection state — small one-shot read for the EnduranceSetupSection.
+  // Not worth a TanStack fetcher: there's only ever one row per user, and the
+  // connect/disconnect CTAs are server-rendered links/forms that trigger a
+  // navigation, so a stale value is naturally refreshed on the next paint.
+  // RLS scopes the read to the current user.
+  const { data: stravaRow } = await supabase
+    .from("strava_tokens")
+    .select("user_id")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
   return (
     <HydrationBoundary state={dehydrate(queryClient)}>
       <ProfileClient
@@ -93,6 +104,7 @@ export default async function ProfilePage() {
         baselineTo={today}
         today={todayUserTz}
         appUrl={appUrl}
+        stravaConnected={!!stravaRow}
       />
     </HydrationBoundary>
   );

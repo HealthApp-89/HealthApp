@@ -71,6 +71,13 @@ import {
   executeProposeMealLog,
   executeCommitMealLog,
   executeProposeMealSuggestions,
+  executeQueryEnduranceActivities,
+  executeProposeEnduranceWeek,
+  executeCommitEnduranceWeek,
+  executeSetEndurancePhase,
+  executeSetEnduranceDiscipline,
+  executeSetThresholdHr,
+  executeSetFtp,
   toolsForSpeaker,
   colsForSpeaker,
   type ToolResult,
@@ -108,6 +115,10 @@ const PERSIST_RESULT_TOOLS = new Set([
   "propose_meal_log",
   "commit_meal_log",
   "propose_meal_suggestions",
+  // Endurance week proposal + commit (Carter): preview chip + commit
+  // confirmation must survive history reload.
+  "propose_endurance_week",
+  "commit_endurance_week",
 ]);
 function shouldPersistResult(name: string): boolean {
   return PERSIST_RESULT_TOOLS.has(name);
@@ -301,7 +312,26 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
   //   default — read tools + set_glp1_taper_started + mark_glp1_discontinued
   //     plus regenerate_morning_brief.
   const modeAllowsTool = (name: string): boolean => {
+    // Endurance set_* milestone tools (Carter) — allowed across the active
+    // chat modes so Carter can update threshold HR / FTP / phase / discipline
+    // mid-conversation. Block in intake (onboarding has its own capture path).
+    const isEnduranceMilestone =
+      name === "set_endurance_phase" ||
+      name === "set_endurance_discipline" ||
+      name === "set_threshold_hr" ||
+      name === "set_ftp";
     if (opts.mode === "plan_week" || opts.mode === "setup_block") {
+      // propose_endurance_week / commit_endurance_week are propose/commit-shaped
+      // and follow the same allowance as propose_week_plan in these modes.
+      // The 4 set_endurance_* milestone tools are also allowed (the blanket
+      // set_* exclusion below skips them via the explicit exemption).
+      if (
+        name === "propose_endurance_week" ||
+        name === "commit_endurance_week" ||
+        isEnduranceMilestone
+      ) {
+        return true;
+      }
       return (
         !name.startsWith("apply_") &&
         !name.startsWith("set_") &&
@@ -318,7 +348,7 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
         name === "query_daily_logs" ||
         name === "query_workouts" ||
         name.startsWith("apply_") ||
-        (name.startsWith("set_") && name !== "set_glp1_taper_started") ||
+        (name.startsWith("set_") && name !== "set_glp1_taper_started" && !isEnduranceMilestone) ||
         name === "propose_plan" ||
         name === "commit_plan"
       );
@@ -341,6 +371,13 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
     if (name === "propose_session_today") return true;
     if (name === "commit_session_today") return true;
     if (name === "apply_rotation_override") return true;
+    // Endurance write tools (Carter): athlete legitimately asks for a Z2
+    // week or updates threshold HR / FTP from default chat. Without these
+    // explicit allows the prefix guards below strip them, the model invents
+    // a commit in prose, and no DB write happens.
+    if (name === "propose_endurance_week") return true;
+    if (name === "commit_endurance_week") return true;
+    if (isEnduranceMilestone) return true;
     if (name.startsWith("propose_")) return false;
     if (name.startsWith("commit_")) return false;
     if (name.startsWith("apply_")) return false;
@@ -715,6 +752,49 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
             supabase: opts.sr,
             userId: opts.userId,
             input: block.input,
+          });
+        } else if (block.name === "query_endurance_activities") {
+          result = await executeQueryEnduranceActivities({
+            userId: opts.userId,
+            input: block.input as {
+              start_date: string;
+              end_date: string;
+              sport?: string;
+              min_duration_min?: number;
+            },
+          });
+        } else if (block.name === "propose_endurance_week") {
+          result = await executeProposeEnduranceWeek({
+            userId: opts.userId,
+            input: block.input as { week_start: string; preferred_day?: 0|1|2|3|4|5|6 },
+          });
+        } else if (block.name === "commit_endurance_week") {
+          result = await executeCommitEnduranceWeek({
+            userId: opts.userId,
+            input: block.input as { approval_token: string },
+          });
+        } else if (block.name === "set_endurance_phase") {
+          result = await executeSetEndurancePhase({
+            userId: opts.userId,
+            input: block.input as {
+              phase: "aerobic_base" | "build" | "race_prep" | "taper" | "off_season";
+              weekly_volume_target_hours?: number;
+            },
+          });
+        } else if (block.name === "set_endurance_discipline") {
+          result = await executeSetEnduranceDiscipline({
+            userId: opts.userId,
+            input: block.input as { discipline: "cycling" | "running" | "triathlon" },
+          });
+        } else if (block.name === "set_threshold_hr") {
+          result = await executeSetThresholdHr({
+            userId: opts.userId,
+            input: block.input as { bpm: number },
+          });
+        } else if (block.name === "set_ftp") {
+          result = await executeSetFtp({
+            userId: opts.userId,
+            input: block.input as { watts: number },
           });
         } else if (
           block.name === "apply_goal_target" ||

@@ -44,6 +44,10 @@
     {
       "path": "/api/coach/recipe-discovery/check",
       "schedule": "45 3 * * *"
+    },
+    {
+      "path": "/api/strava/sync",
+      "schedule": "0 9 * * *"
     }
   ],
   "functions": {

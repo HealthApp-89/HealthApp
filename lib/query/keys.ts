@@ -170,4 +170,9 @@ export const queryKeys = {
       ["user-food-items", userId, "search", q] as const,
     recent: (userId: string) => ["user-food-items", userId, "recent"] as const,
   },
+  endurance: {
+    all: (userId: string) => ["endurance", userId] as const,
+    activities: (userId: string, from: string, to: string) =>
+      ["endurance", userId, "activities", from, to] as const,
+  },
 } as const;

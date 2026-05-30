@@ -122,10 +122,10 @@ export function PeterThemeCard({ theme, narrative, expanded, onToggle }: Props) 
             {narrative ?? theme.body_md}
           </p>
 
-          {/* Fact chips */}
+          {/* Fact chips. URLs surface as a dedicated nav chip below — exclude them here. */}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
             {Object.entries(theme.facts)
-              .filter(([, v]) => v !== null && v !== '')
+              .filter(([k, v]) => v !== null && v !== '' && !k.endsWith('_url'))
               .slice(0, 6)
               .map(([k, v]) => (
                 <span key={k} style={factChipStyle}>
@@ -197,6 +197,17 @@ export function PeterThemeCard({ theme, narrative, expanded, onToggle }: Props) 
             <Link href={THEME_DRILLDOWN[theme.key]} style={chipStyle}>
               Open {drilldownLabel(THEME_DRILLDOWN[theme.key])} →
             </Link>
+            {typeof theme.facts['strava_activity_url'] === 'string' &&
+              theme.facts['strava_activity_url'] !== '' && (
+                <a
+                  href={theme.facts['strava_activity_url'] as string}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={chipStyle}
+                >
+                  View on Strava →
+                </a>
+              )}
           </div>
         </div>
       )}

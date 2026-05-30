@@ -42,6 +42,7 @@ import { checkBedtimeDrift }        from "./check-bedtime-drift";
 import { checkRespiratoryRate }     from "./check-respiratory-rate";
 import { checkHeavyFatigue }        from "./check-heavy-fatigue";
 import { checkPostStrainUndersleep } from "./check-post-strain-undersleep";
+import { checkEnduranceVolumeSpike } from "./check-endurance-volume-spike";
 import { renderCard } from "./render-card";
 import { todayInUserTz } from "@/lib/time";
 
@@ -86,6 +87,8 @@ const TRIGGER_OWNER: Record<string, Speaker> = {
   respiratory_rate_elevated: "remi",
   heavy_fatigue_cluster:     "remi",
   post_strain_undersleep:    "remi",
+  // Endurance pillar (Phase 1: dormant at 1h/wk; wakes when triathlon scales).
+  endurance_volume_recovery_mismatch: "remi",
 };
 
 function ownerForTrigger(triggerKey: string): Speaker {
@@ -142,6 +145,8 @@ export async function runProactiveChecks(args: {
     ...checkRespiratoryRate(recoveryIntelligence),
     ...checkHeavyFatigue(recoveryIntelligence),
     ...checkPostStrainUndersleep(recoveryIntelligence),
+    // Endurance pillar — joins daily_logs.endurance_load + whoop rolling baseline.
+    ...await checkEnduranceVolumeSpike({ supabase, userId, today }),
   ];
 
   const fired: ProactiveRunResult["fired"] = [];

@@ -7,6 +7,7 @@
 import type {
   MorningBriefCard,
   MorningBriefCoachSuggestion,
+  MorningBriefEndurance,
   MorningBriefExercise,
   MorningBriefHydration,
   MorningBriefVariant,
@@ -24,6 +25,7 @@ import type {
   WeeklyReviewRow,
   ThisWeekPlanBlock,
 } from "@/lib/data/types";
+import type { EnduranceSessionPlan } from "@/lib/coach/endurance/types";
 import { SESSION_PLANS, type PlannedExercise, getEffectiveSessionPlan } from "@/lib/coach/sessionPlans";
 import { muscleOverlap } from "@/lib/morning/brief/session-muscles";
 import { annotateSession } from "@/lib/coach/session-structure";
@@ -79,6 +81,13 @@ export type BriefInputs = {
    *  current week. Populated by getThisWeekPrescription in data-sources.
    *  Null when either is missing — triggers the legacy 'training' fallback. */
   thisWeekPrescription: { trainingWeek: TrainingWeek; review: WeeklyReviewRow } | null;
+  /** This week's endurance plan, read directly from training_weeks for the
+   *  current Monday — independent of weekly_reviews state. Populated by
+   *  getThisWeekEndurancePlan in data-sources. Null when no training_weeks
+   *  row exists for the week or its endurance_session_plan is null.
+   *  Decoupled from thisWeekPrescription because commit_endurance_week
+   *  doesn't touch weekly_reviews. */
+  thisWeekEndurancePlan: EnduranceSessionPlan | null;
   /** Yesterday's workout in the flat shape the yesterday-vs-plan composer
    *  consumes. Null when no workout logged. */
   yesterdayWorkoutForBlock: YesterdayWorkoutForBlock | null;
@@ -123,6 +132,7 @@ export function assembleBriefExceptAdvice(
     recap: composeRecap(inputs),
     session: composeSession(variant, inputs),
     hydration: composeHydration(inputs),
+    endurance: composeEndurance(inputs),
     macros: composeMacros(inputs),
     tonight: composeTonight(inputs),
     coach_suggestion: pickCoachSuggestion({
@@ -298,6 +308,59 @@ function composeHydration(inputs: BriefInputs): MorningBriefHydration | null {
     sodium_mg: t.sodium_target_mg ?? 0,
     note: "Your protocol can suppress thirst — front-load water & sodium around session.",
   };
+}
+
+/** Pulls today's prescribed endurance session from
+ *  training_weeks.endurance_session_plan. Null when:
+ *   - no training_weeks row for this week (no thisWeekEndurancePlan), or
+ *   - the plan has no entry for today's weekday, or
+ *   - the entry is type="rest".
+ *  Keys on the plan are 0..6 matching Date#getDay() (0=Sun..6=Sat).
+ *
+ *  Reads thisWeekEndurancePlan (decoupled from weekly_reviews) rather than
+ *  thisWeekPrescription, because commit_endurance_week only writes to
+ *  training_weeks — gating on a committed weekly_review would silently drop
+ *  Carter's prescriptions for any week without one. */
+function composeEndurance(inputs: BriefInputs): MorningBriefEndurance | null {
+  const plan = inputs.thisWeekEndurancePlan;
+  if (!plan) return null;
+  const weekday = new Date(`${inputs.today}T12:00:00Z`).getUTCDay() as 0|1|2|3|4|5|6;
+  const entry = plan[weekday];
+  if (!entry || entry.type === "rest") return null;
+  const result: MorningBriefEndurance = {
+    session_type: entry.type,
+    sport: entry.sport,
+    duration_min: entry.duration_min,
+    description: entry.description,
+    intent: enduranceIntentFor(entry.type),
+  };
+  if (entry.hr_cap !== undefined) result.hr_cap = entry.hr_cap;
+  if (entry.hr_target_range !== undefined) result.hr_target_range = entry.hr_target_range;
+  return result;
+}
+
+/** Per-session-type intent line for the endurance block. Phase 1 only ships
+ *  the Z2 composer (z2_ride / z2_run); the others are pre-wired for future
+ *  Phase 2 composers (build/race_prep). Falls back to the aerobic-base line
+ *  for unknown types. */
+function enduranceIntentFor(
+  type: NonNullable<MorningBriefEndurance>["session_type"],
+): string {
+  switch (type) {
+    case "z2_ride":
+    case "z2_run":
+      return "Fat oxidation + aerobic base";
+    case "long":
+      return "Aerobic capacity + durability";
+    case "tempo":
+      return "Lactate threshold work";
+    case "intervals":
+      return "VO2max + top-end power";
+    case "brick":
+      return "Discipline transition under fatigue";
+    default:
+      return "Fat oxidation + aerobic base";
+  }
 }
 
 function composeMacros(inputs: BriefInputs): MorningBriefMacros {

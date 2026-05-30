@@ -10,12 +10,29 @@
 // Arms", "Chest Triceps", etc., not always matching plan strings exactly).
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Weekday } from "@/lib/data/types";
+import type { EnduranceActivity, Weekday } from "@/lib/data/types";
 import { categorize, type ExerciseCategory } from "@/lib/coach/exercise-categories";
 import { workingVolume, type SetRow } from "@/lib/coach/derived";
 import { readSessionForDay } from "@/lib/coach/session-plan-reader";
+import type {
+  EnduranceProfile,
+  EnduranceSessionPlan,
+} from "@/lib/coach/endurance/types";
+import { defaultZ2Cap } from "@/lib/coach/endurance/hr-zones";
 
 const WEEKDAYS: Weekday[] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+/** Mon-first Weekday → numeric 0=Sun..6=Sat (matches Date#getDay() and
+ *  EnduranceSessionPlan key shape). */
+const WEEKDAY_TO_NUM: Record<Weekday, 0 | 1 | 2 | 3 | 4 | 5 | 6> = {
+  Mon: 1,
+  Tue: 2,
+  Wed: 3,
+  Thu: 4,
+  Fri: 5,
+  Sat: 6,
+  Sun: 0,
+};
 
 /** UTC weekday from YYYY-MM-DD. Returns one of WEEKDAYS. Mirrors the Mon-first
  *  ordering used everywhere else in the app. */
@@ -66,6 +83,24 @@ function matches(planned: string | null, actual: string | null): boolean {
  *  - 'missed': nothing else — the athlete committed to something and didn't deliver. */
 export type AdherenceDayStatus = "as_planned" | "swapped" | "missed" | "rest";
 
+/** Per-day endurance verdict, parallel to AdherenceDayStatus but anchored to
+ *  the week's `endurance_session_plan` + `endurance_activities` rows.
+ *  - 'not_prescribed': no plan for the day or explicit `rest` entry.
+ *  - 'as_planned': matching activity by sport + ±15min duration tolerance,
+ *    with avg_hr (when available) not exceeding the Z2 cap derived from
+ *    `endurance_profile.threshold_hr`.
+ *  - 'over_intensity': sport+duration matches but avg_hr > hr_cap.
+ *  - 'under_volume': any non-trivial endurance activity (>=10min) was logged
+ *    on the day but it doesn't match the prescribed sport/duration shape —
+ *    partial credit, not a missed day.
+ *  - 'missed': prescribed day, nothing logged. */
+export type EnduranceStatus =
+  | "as_planned"
+  | "over_intensity"
+  | "under_volume"
+  | "missed"
+  | "not_prescribed";
+
 /** One row per day in the AdherenceResult.days array. AI consumers use this to
  *  produce prose like "you planned Chest, swapped to Mobility, did the walk"
  *  rather than just "Tuesday: planned Chest, actual nothing". */
@@ -80,6 +115,9 @@ export type AdherenceDay = {
   /** workouts[date].type for this day, or null if no workout was logged. */
   actual: string | null;
   status: AdherenceDayStatus;
+  /** Endurance-pillar verdict. Optional: omitted on weeks with no
+   *  endurance_session_plan to keep pre-endurance consumers unchanged. */
+  endurance_status?: EnduranceStatus;
 };
 
 export type AdherenceResult = {
@@ -97,6 +135,45 @@ export type AdherenceResult = {
   muscle_volume_vs_4w_avg: Record<ExerciseCategory, number>; // proportional delta, e.g. -0.12 = -12%
 };
 
+/** Pure endurance-adherence verdict for a single day.
+ *
+ *  Matching rule: any activity on the day with the prescribed sport whose
+ *  duration is within ±15 min of the prescribed duration is the "matching"
+ *  activity. With a match: avg_hr > hr_cap → 'over_intensity', else
+ *  'as_planned'. Without a match but ≥10min of any endurance work →
+ *  'under_volume'. Otherwise: 'missed'. Null/rest plan → 'not_prescribed'. */
+export function computeEnduranceStatus(args: {
+  prescribed: EnduranceSessionPlan | null;
+  weekday: 0 | 1 | 2 | 3 | 4 | 5 | 6;
+  activitiesOnDay: ReadonlyArray<
+    Pick<EnduranceActivity, "duration_s" | "avg_hr" | "sport">
+  >;
+  hrCap: number | null;
+}): EnduranceStatus {
+  const entry = args.prescribed ? args.prescribed[args.weekday] : null;
+  if (!entry || entry.type === "rest") return "not_prescribed";
+
+  const targetSeconds = entry.duration_min * 60;
+  const tolerance = 15 * 60;
+  const match = args.activitiesOnDay.find(
+    (a) =>
+      a.sport === entry.sport &&
+      Math.abs(a.duration_s - targetSeconds) <= tolerance,
+  );
+  if (!match) {
+    const anyActivity = args.activitiesOnDay.find((a) => a.duration_s >= 600);
+    if (anyActivity) return "under_volume";
+    return "missed";
+  }
+  // Prefer per-entry hr_cap when present; fall back to the profile-derived
+  // Z2 cap. The HR check is only meaningful when both numbers exist.
+  const effectiveCap = entry.hr_cap ?? args.hrCap;
+  if (effectiveCap && match.avg_hr && match.avg_hr > effectiveCap) {
+    return "over_intensity";
+  }
+  return "as_planned";
+}
+
 /** Compute adherence for a single Mon-Sun window. */
 export async function computeAdherence(
   supabase: SupabaseClient,
@@ -112,7 +189,7 @@ export async function computeAdherence(
   // 1. Plan
   const { data: weekRow, error: weekErr } = await supabase
     .from("training_weeks")
-    .select("session_plan, original_session_plan")
+    .select("session_plan, original_session_plan, endurance_session_plan")
     .eq("user_id", userId)
     .eq("week_start", weekStart)
     .maybeSingle();
@@ -123,6 +200,50 @@ export async function computeAdherence(
    *  swaps populate original_session_plan via the /swap endpoint, so this read
    *  ensures adherence math doesn't retroactively flatter the recap. */
   const planned = (originalPlan ?? currentPlan) as Partial<Record<Weekday, string>>;
+  const endurancePlan =
+    (weekRow?.endurance_session_plan ?? null) as EnduranceSessionPlan | null;
+
+  // 1b. Endurance profile (for HR cap) + endurance activities in the window.
+  //     Both are optional — if no profile or no activities exist, the per-day
+  //     endurance_status simply falls through to 'missed'/'not_prescribed'.
+  const [{ data: profileRow, error: profErr }, { data: enduranceRows, error: actErr }] = await Promise.all([
+    supabase
+      .from("athlete_profile_documents")
+      .select("endurance_profile")
+      .eq("user_id", userId)
+      .eq("status", "active")
+      .order("version", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    supabase
+      .from("endurance_activities")
+      .select("local_date, duration_s, avg_hr, sport")
+      .eq("user_id", userId)
+      .is("deleted_at", null)
+      .gte("local_date", weekStart)
+      .lte("local_date", endStr),
+  ]);
+  if (profErr) throw profErr;
+  if (actErr) throw actErr;
+  const enduranceProfile = (profileRow?.endurance_profile ?? null) as EnduranceProfile | null;
+  const hrCap =
+    enduranceProfile?.threshold_hr != null
+      ? defaultZ2Cap(enduranceProfile.threshold_hr)
+      : null;
+
+  // Group activities by local_date for O(1) per-day lookup.
+  type ActivityRow = Pick<EnduranceActivity, "duration_s" | "avg_hr" | "sport">;
+  const activitiesByDate = new Map<string, ActivityRow[]>();
+  for (const row of (enduranceRows ?? []) as Array<{
+    local_date: string;
+    duration_s: number;
+    avg_hr: number | null;
+    sport: EnduranceActivity["sport"];
+  }>) {
+    const list = activitiesByDate.get(row.local_date) ?? [];
+    list.push({ duration_s: row.duration_s, avg_hr: row.avg_hr, sport: row.sport });
+    activitiesByDate.set(row.local_date, list);
+  }
 
   // 2. Actual workouts in window with sets for volume math
   const { data: workouts, error: woErr } = await supabase
@@ -150,7 +271,12 @@ export async function computeAdherence(
   let sessions_done = 0;
   let sessions_on_plan = 0;
   const days: AdherenceDay[] = [];
-  for (const wd of WEEKDAYS) {
+  for (let i = 0; i < WEEKDAYS.length; i++) {
+    const wd = WEEKDAYS[i];
+    const dayDate = new Date(start);
+    dayDate.setUTCDate(start.getUTCDate() + i);
+    const dayStr = dayDate.toISOString().slice(0, 10);
+
     const p = readSessionForDay(planned as Record<string, string>, wd) ?? null;
     const c = readSessionForDay(currentPlan as Record<string, string>, wd) ?? null;
     const a = actual[wd] ?? null;
@@ -175,12 +301,26 @@ export async function computeAdherence(
       status = "missed";
     }
 
+    // Endurance pass — only attach the field when an endurance plan exists for
+    // the week. Otherwise the field stays absent and pre-endurance consumers
+    // see no behavior change.
+    let endurance_status: EnduranceStatus | undefined;
+    if (endurancePlan) {
+      endurance_status = computeEnduranceStatus({
+        prescribed: endurancePlan,
+        weekday: WEEKDAY_TO_NUM[wd],
+        activitiesOnDay: activitiesByDate.get(dayStr) ?? [],
+        hrCap,
+      });
+    }
+
     days.push({
       day: wd,
       planned: p ?? "",
       swapped_to,
       actual: a,
       status,
+      ...(endurance_status !== undefined ? { endurance_status } : {}),
     });
   }
   const adherence_pct = sessions_planned === 0 ? 0 : Math.round((sessions_on_plan / sessions_planned) * 100);

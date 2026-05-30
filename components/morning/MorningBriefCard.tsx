@@ -15,6 +15,7 @@ import { BriefTonight } from "@/components/morning/BriefTonight";
 import { BriefCoachSuggestion } from "@/components/morning/BriefCoachSuggestion";
 import { BriefThisWeekPlan } from "@/components/morning/BriefThisWeekPlan";
 import { BriefYesterdayVsPlan } from "@/components/morning/BriefYesterdayVsPlan";
+import { EnduranceBriefBlock } from "@/components/morning/EnduranceBriefBlock";
 import { useTrainingWeek } from "@/lib/query/hooks/useTrainingWeek";
 import { readSessionForDay } from "@/lib/coach/session-plan-reader";
 import { todayInUserTz, weekdayInUserTz } from "@/lib/time";
@@ -138,6 +139,16 @@ export function MorningBriefCard({
               <SpeakerChip speaker="carter" size="sm" />
             </div>
             <BriefRestActions bedtime={card.tonight.bedtime_target} />
+          </>
+        )}
+        {card.endurance && (
+          <>
+            <Divider />
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <SectionLabel>Endurance today</SectionLabel>
+              <SpeakerChip speaker="carter" size="sm" />
+            </div>
+            <EnduranceBriefBlock data={card.endurance} />
           </>
         )}
         {card.hydration && (

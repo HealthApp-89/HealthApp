@@ -17,8 +17,10 @@ import { renderProfileSummary } from "@/lib/coach/profile-renderer";
 import { mondayOf } from "@/lib/coach/weekly-review/date-utils";
 import { readSessionForDay } from "@/lib/coach/session-plan-reader";
 import { topSet } from "@/lib/coach/derived";
-import type { IntakePayload, PlanPayload } from "@/lib/data/types";
+import type { EnduranceActivity, IntakePayload, PlanPayload } from "@/lib/data/types";
 import { getTodayTargets } from "@/lib/morning/brief/get-today-targets";
+import { defaultZ2Cap } from "@/lib/coach/endurance/hr-zones";
+import type { EnduranceProfile } from "@/lib/coach/endurance/types";
 
 /** Compose the NOW header for the LLM snapshot prefix. Includes an explicit
  *  "current week" anchor (Mon→Sun of the user's current week) because LLMs
@@ -195,6 +197,111 @@ function buildCurrentTopSetsBlock(
   ].join("\n");
 }
 
+/** Renders three endurance-pillar blocks for the snapshot prefix:
+ *  ENDURANCE_PROFILE, ENDURANCE_LOAD_7D, LAST_3_ENDURANCE_ACTIVITIES.
+ *
+ *  Always-on — when no `endurance_profile` is set, the first block explicitly
+ *  renders "not configured" so coaches see the absence rather than silently
+ *  inferring it. The 7d/28d ratio carries a "(spike)" / "(below)" marker so
+ *  Peter/Carter/Remi can cite ramp risk without computing it themselves.
+ *
+ *  Reads from the snapshot's user-bound supabase client; RLS-respecting. */
+async function renderEnduranceBlocks(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<string> {
+  const today = new Date();
+  const d28 = new Date(today.getTime() - 28 * 86_400_000);
+  const d7 = new Date(today.getTime() - 7 * 86_400_000);
+  const fmtDate = (d: Date) => d.toISOString().slice(0, 10);
+
+  const [{ data: profileRow }, { data: dailyRows }, { data: lastActs }] = await Promise.all([
+    supabase
+      .from("athlete_profile_documents")
+      .select("endurance_profile")
+      .eq("user_id", userId)
+      .eq("status", "active")
+      .order("version", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    supabase
+      .from("daily_logs")
+      .select("date, endurance_load, endurance_minutes, endurance_z2_minutes")
+      .eq("user_id", userId)
+      .gte("date", fmtDate(d28))
+      .lte("date", fmtDate(today))
+      .order("date", { ascending: false }),
+    supabase
+      .from("endurance_activities")
+      .select("local_date, sport, duration_s, avg_hr, tss, hr_zone_distribution")
+      .eq("user_id", userId)
+      .is("deleted_at", null)
+      .order("started_at", { ascending: false })
+      .limit(3),
+  ]);
+
+  const profile = (profileRow?.endurance_profile as EnduranceProfile | null) ?? null;
+
+  let out = "";
+
+  if (profile) {
+    out += `ENDURANCE_PROFILE:\n`;
+    out += `  Discipline: ${profile.discipline}\n`;
+    out += `  Phase: ${profile.phase} (set ${profile.set_at.slice(0, 10)})\n`;
+    out += `  Weekly volume target: ${profile.weekly_volume_target_hours}h\n`;
+    if (profile.threshold_hr) {
+      out += `  Threshold HR: ${profile.threshold_hr} bpm\n`;
+      out += `  HR cap (Z2): ${defaultZ2Cap(profile.threshold_hr)} bpm\n`;
+    } else {
+      out += `  Threshold HR: uncalibrated (TSS computation disabled)\n`;
+    }
+  } else {
+    out += `ENDURANCE_PROFILE: not configured (user has not completed /profile endurance setup)\n`;
+  }
+
+  const d7Iso = fmtDate(d7);
+  const rows = (dailyRows ?? []) as Array<{
+    date: string;
+    endurance_load: number | null;
+    endurance_minutes: number | null;
+    endurance_z2_minutes: number | null;
+  }>;
+  const tss7 = rows
+    .filter((r) => r.date >= d7Iso)
+    .reduce((s, r) => s + (Number(r.endurance_load) || 0), 0);
+  const min7 = rows
+    .filter((r) => r.date >= d7Iso)
+    .reduce((s, r) => s + (Number(r.endurance_minutes) || 0), 0);
+  const z2_7 = rows
+    .filter((r) => r.date >= d7Iso)
+    .reduce((s, r) => s + (Number(r.endurance_z2_minutes) || 0), 0);
+  const tss28 = rows.reduce((s, r) => s + (Number(r.endurance_load) || 0), 0);
+  const avgWeekly = tss28 / 4; // 28-day mean weekly TSS
+  const ratio = avgWeekly > 0 ? tss7 / avgWeekly : 0;
+  const marker = ratio > 1.4 ? "(spike)" : ratio < 0.6 && avgWeekly > 0 ? "(below)" : "(within normal)";
+  out += `\nENDURANCE_LOAD_7D:\n`;
+  out += `  TSS sum (7d): ${Math.round(tss7)}\n`;
+  out += `  Endurance hours (7d): ${(min7 / 60).toFixed(1)}\n`;
+  out += `  vs 28d rolling avg: ${ratio.toFixed(2)}x ${marker}\n`;
+  out += `  Z2 minutes (7d): ${z2_7}\n`;
+
+  out += `\nLAST_3_ENDURANCE_ACTIVITIES:\n`;
+  const acts = (lastActs ?? []) as Array<
+    Pick<EnduranceActivity, "local_date" | "sport" | "duration_s" | "avg_hr" | "tss" | "hr_zone_distribution">
+  >;
+  if (acts.length === 0) {
+    out += `  (none yet)\n`;
+  } else {
+    for (const a of acts) {
+      const mins = Math.round(a.duration_s / 60);
+      const zd = a.hr_zone_distribution;
+      const zsum = zd ? `Z2:${Math.round(zd.z2_s / 60)} Z3:${Math.round(zd.z3_s / 60)}` : "";
+      out += `  ${a.local_date} | ${a.sport} | ${mins}min | avg HR ${a.avg_hr ?? "—"} | TSS ${a.tss ?? "—"} | ${zsum}\n`;
+    }
+  }
+  return out;
+}
+
 export async function buildSnapshot(inputs: SnapshotInputs): Promise<SnapshotResult> {
   const { supabase, userId, since, until, workoutLimit = 5 } = inputs;
   const today = todayInUserTz();
@@ -209,7 +316,7 @@ export async function buildSnapshot(inputs: SnapshotInputs): Promise<SnapshotRes
     .order("date", { ascending: true });
   if (until) logsQ = logsQ.lte("date", until);
 
-  const [{ data: profile }, { data: logs }, allWorkouts, { data: athleteProfileRow }, todayTargets] = await Promise.all([
+  const [{ data: profile }, { data: logs }, allWorkouts, { data: athleteProfileRow }, todayTargets, enduranceBlocks] = await Promise.all([
     supabase
       .from("profiles")
       .select("name, goal, whoop_baselines")
@@ -229,6 +336,10 @@ export async function buildSnapshot(inputs: SnapshotInputs): Promise<SnapshotRes
     // Peter cites stale intake values while Nora cites current overrides —
     // the conflicting-feedback bug audited on 2026-05-26.
     getTodayTargets(supabase, userId),
+    // Endurance pillar: profile + 28d load + last 3 activities, rendered as
+    // three blocks. Hoisted into Promise.all so its 3 internal reads don't
+    // serialize behind the other queries.
+    renderEnduranceBlocks(supabase, userId),
   ]);
 
   const workouts = until
@@ -296,6 +407,11 @@ export async function buildSnapshot(inputs: SnapshotInputs): Promise<SnapshotRes
     `ATHLETE: ${p?.name ?? "Athlete"}. GOAL: "${p?.goal ?? "general health"}".`,
     `BASELINES_LIVE_30D: ${JSON.stringify((p?.whoop_baselines as { rolling_30d?: unknown } | null)?.rolling_30d ?? {})}`,
     `BASELINES_HISTORICAL: ${JSON.stringify(stripRolling30d(p?.whoop_baselines))}`,
+    // Endurance pillar blocks. Always present (sits between baselines and the
+    // strength-side current-top-sets block) so every coach — Peter / Carter /
+    // Nora / Remi — sees the same endurance context block-position.
+    ``,
+    enduranceBlocks,
     // Live current top set per lift FIRST, so the model anchors on live data
     // before reading the intake-time baselines in the profile body.
     ...(currentTopSetsBlock ? [``, currentTopSetsBlock] : []),
