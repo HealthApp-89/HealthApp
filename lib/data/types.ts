@@ -944,6 +944,20 @@ export type MorningBriefHydration = {
   note: string;
 };
 
+/** Endurance session block — populated when training_weeks.endurance_session_plan
+ *  has a non-rest entry for today's weekday. Rendered after the session block
+ *  and before macros. Mirrors the EnduranceSessionEntry shape but adds an
+ *  `intent` line so the renderer doesn't need to know the session-type taxonomy. */
+export type MorningBriefEndurance = {
+  session_type: "z2_ride" | "z2_run" | "tempo" | "intervals" | "long" | "brick";
+  sport: "cycling" | "running" | "swimming" | "other";
+  duration_min: number;
+  hr_cap?: number;
+  hr_target_range?: [number, number];
+  description: string;
+  intent: string;
+};
+
 export type ThisWeekPlanBlock = {
   schema_version: 1;
   week_n: number;
@@ -1009,6 +1023,10 @@ export type MorningBriefCard = {
   /** Present when GLP-1 mode is active and today is a training day.
    *  Rendered above the Macros section. null/undefined otherwise. */
   hydration?: MorningBriefHydration | null;
+  /** Present when training_weeks.endurance_session_plan has a non-rest entry
+   *  for today's weekday. Rendered after the strength session block and
+   *  before macros. null/undefined when no endurance is prescribed. */
+  endurance?: MorningBriefEndurance | null;
   macros: MorningBriefMacros;
   advice_md: string;                          // AI-generated 2-4 sentences markdown
   /** Deterministically set by lib/morning/brief/assembler.ts when band='low'
