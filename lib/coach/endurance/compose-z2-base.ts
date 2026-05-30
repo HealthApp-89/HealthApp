@@ -31,7 +31,11 @@ export type ComposerResult =
  *  - Days chosen starting from preferredDay (default Wed), spread evenly across the week.
  */
 export function composeZ2Base(input: ComposerInput): ComposerResult {
-  const { profile, preferredDay = 3 } = input;
+  const { profile } = input;
+  // Explicit override (Carter's tool call) wins; otherwise profile preference;
+  // otherwise Wed default.
+  const preferredDay: 0 | 1 | 2 | 3 | 4 | 5 | 6 =
+    input.preferredDay ?? profile.preferred_endurance_day ?? 3;
   if (profile.discipline !== "cycling") {
     return { ok: false, reason: `Composer Phase 1 supports cycling only; got ${profile.discipline}` };
   }

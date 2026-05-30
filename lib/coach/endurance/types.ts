@@ -28,6 +28,12 @@ export type EnduranceProfile = {
   ftp_watts: number | null;
   threshold_pace_s_per_km: number | null;
   weekly_volume_target_hours: number;
+  /**
+   * Preferred weekday for the first prescribed endurance session, encoded
+   * 0=Sun..6=Sat matching Date#getDay(). Composer falls back to Wed (3) when
+   * null. At Phase 1 volume (1×/wk), this is effectively "always this day."
+   */
+  preferred_endurance_day: 0 | 1 | 2 | 3 | 4 | 5 | 6 | null;
   current_race: { date: string; distance: string } | null;
   set_at: string;
 };
