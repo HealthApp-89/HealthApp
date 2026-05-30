@@ -11,6 +11,7 @@ import { composeSleepArchitecture } from "./compose-sleep-architecture";
 import { composeSleepConsistency } from "./compose-sleep-consistency";
 import { composeSubjective } from "./compose-subjective";
 import { SLEEP_TARGET_HOURS, SLEEP_DEBT_WINDOW_DAYS } from "./thresholds";
+import { readRolling30d } from "@/lib/whoop/baselines";
 
 function avg(xs: Array<number | null | undefined>): number | null {
   const v = xs.filter((x): x is number => x != null);
@@ -47,24 +48,25 @@ export async function generateRecoveryIntelligence(args: {
     supabase.from("profiles").select("whoop_baselines").eq("user_id", userId).maybeSingle(),
   ]);
 
-  // profiles.whoop_baselines is a free-form jsonb. The fields actually
-  // written by the WHOOP snapshot import are `hrv_6mo_avg` / `rhr_6mo_avg`
-  // (six-month averages, the closest thing we have to a personal baseline).
-  // Read the explicit `_mean` keys first for forward compat, fall back to
-  // the 6mo averages, and finally derive a 28d mean from the daily series
-  // if neither is set. This keeps the HRV/RHR cards informative for users
-  // whose profile snapshot is empty or stale.
+  // Prefer rolling 30d mean (live anchor, reflects current training modality);
+  // fall back to legacy keys and finally to a 28d derivation from the daily
+  // series, so HRV/RHR cards stay informative during the first cron run or
+  // when WHOOP sync gaps. See lib/whoop/baselines.ts and the 2026-05-30
+  // baselines spec.
   type Baselines = {
     hrv_mean?: number; hrv_sd?: number; resting_hr_mean?: number;
     hrv_6mo_avg?: number; rhr_6mo_avg?: number;
   };
   const b = (profileRes.data?.whoop_baselines as Baselines | null) ?? {};
+  const r30 = readRolling30d(profileRes.data?.whoop_baselines as Record<string, unknown> | null);
   const hrv28 = avg(daily.map((d) => d.hrv));
   const rhr28 = avg(daily.map((d) => d.resting_hr));
-  const hrv_mean = b.hrv_mean ?? b.hrv_6mo_avg ?? hrv28;
-  const rhr_mean = b.resting_hr_mean ?? b.rhr_6mo_avg ?? rhr28;
-  // hrv_sd: prefer explicit, else compute from 28d daily series.
+  const hrv_mean = r30?.hrv.mean ?? b.hrv_mean ?? b.hrv_6mo_avg ?? hrv28;
+  const rhr_mean = r30?.rhr.mean ?? b.resting_hr_mean ?? b.rhr_6mo_avg ?? rhr28;
+  // hrv_sd: prefer the rolling-30d SD (consistent with hrv_mean source);
+  // fall back to legacy explicit hrv_sd, then a 28d derivation.
   const hrv_sd = (() => {
+    if (r30?.hrv.sd != null) return r30.hrv.sd;
     if (b.hrv_sd != null) return b.hrv_sd;
     const xs = daily.map((d) => d.hrv).filter((v): v is number => v != null);
     if (xs.length < 5 || hrv_mean == null) return null;
@@ -76,7 +78,7 @@ export async function generateRecoveryIntelligence(args: {
   const skin_temp_baseline_c =
     avg(daily.map((d) => d.skin_temp_c));
   const respiratory_rate_baseline_bpm =
-    avg(daily.map((d) => d.respiratory_rate));
+    r30?.resp_rate.mean ?? avg(daily.map((d) => d.respiratory_rate));
 
   // Derived rolling stats.
   const last7 = lastN(daily, 7);

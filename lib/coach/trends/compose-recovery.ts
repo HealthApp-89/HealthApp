@@ -4,6 +4,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { RecoveryTrend } from "@/lib/data/types";
+import { readRolling30d } from "@/lib/whoop/baselines";
 
 export async function composeRecovery(args: {
   supabase: SupabaseClient;
@@ -37,9 +38,16 @@ export async function composeRecovery(args: {
     .select("whoop_baselines")
     .eq("user_id", userId)
     .maybeSingle();
-  type WB = { hrv_mean?: number | null } & Record<string, unknown>;
-  const wb = (profile?.whoop_baselines as WB | null) ?? null;
-  const hrvBaseline = (wb?.hrv_mean as number | undefined) ?? null;
+  const wb = (profile?.whoop_baselines as Record<string, unknown> | null) ?? null;
+  // Prefer rolling 30d mean (live anchor, reflects current training modality);
+  // fall back to legacy hrv_mean / hrv_6mo_avg for resilience during the first
+  // cron run. See lib/whoop/baselines.ts and the 2026-05-30 baselines spec.
+  const r30 = readRolling30d(wb);
+  const hrvBaseline =
+    r30?.hrv.mean ??
+    (wb?.hrv_mean as number | undefined) ??
+    (wb?.hrv_6mo_avg as number | undefined) ??
+    null;
 
   const avg = (xs: number[]) =>
     xs.length > 0 ? xs.reduce((s, x) => s + x, 0) / xs.length : null;

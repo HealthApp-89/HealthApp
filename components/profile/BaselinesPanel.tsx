@@ -1,78 +1,131 @@
+"use client";
+
+import { useState } from "react";
 import { Card, SectionLabel } from "@/components/ui/Card";
 import { StatusRow } from "@/components/ui/StatusRow";
 import { COLOR } from "@/lib/ui/theme";
-import type { DailyLog } from "@/lib/data/types";
-import { avg } from "@/lib/ui/score";
+import type { Profile, Rolling30dBaselines, MetricBaseline } from "@/lib/data/types";
+import { fmtNum } from "@/lib/ui/score";
 
-export function BaselinesPanel({ logs }: { logs: DailyLog[] }) {
-  const window = 180;
-  const recent = logs.slice(-window);
-  const hrv = avg(recent.map((l) => l.hrv));
-  const rhr = avg(recent.map((l) => l.resting_hr));
-  const rec = avg(recent.map((l) => l.recovery));
-  const slp = avg(recent.map((l) => l.sleep_score));
-  const days = recent.length;
-  const fmt = (v: number | null, fixed = 1) => (v === null ? "—" : v.toFixed(fixed));
+type Props = {
+  profile: Pick<Profile, "whoop_baselines"> | null;
+};
+
+const STATUS_GLYPH: Record<MetricBaseline["status"], string> = {
+  establishing: "…",
+  partial: "●",
+  stable: "✓",
+};
+
+const STATUS_COLOR: Record<MetricBaseline["status"], string> = {
+  establishing: COLOR.textFaint,
+  partial: COLOR.warning,
+  stable: COLOR.success,
+};
+
+function MetricRow({ label, unit, m }: { label: string; unit: string; m: MetricBaseline | undefined }) {
+  if (!m) {
+    return <StatusRow label={label} value={<span style={{ color: COLOR.textFaint }}>—</span>} />;
+  }
+  return (
+    <StatusRow
+      label={label}
+      value={
+        <span style={{ fontFamily: "monospace", color: COLOR.textStrong }}>
+          {m.mean == null ? "—" : `${fmtNum(m.mean)} ± ${fmtNum(m.sd ?? 0)}`}{" "}
+          <span style={{ color: COLOR.textFaint, fontSize: "11px" }}>{unit}</span>
+          {"  "}
+          <span style={{ color: STATUS_COLOR[m.status], fontSize: "11px" }}>
+            {m.days}/30 {STATUS_GLYPH[m.status]}
+          </span>
+        </span>
+      }
+    />
+  );
+}
+
+export function BaselinesPanel({ profile }: Props) {
+  const wb = (profile?.whoop_baselines as { rolling_30d?: Rolling30dBaselines } & Record<string, unknown> | null) ?? null;
+  const r = wb?.rolling_30d ?? null;
+  const [showHistorical, setShowHistorical] = useState(false);
+  const [recalibrating, setRecalibrating] = useState(false);
+  const [recalibrateError, setRecalibrateError] = useState<string | null>(null);
+
+  async function onRecalibrate() {
+    setRecalibrating(true);
+    setRecalibrateError(null);
+    try {
+      const res = await fetch("/api/profile/baselines/recalibrate", { method: "POST" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      // Hard refresh — the profile query cache is keyed elsewhere; full reload
+      // is simpler than threading invalidation here.
+      window.location.reload();
+    } catch (e) {
+      setRecalibrateError(e instanceof Error ? e.message : String(e));
+      setRecalibrating(false);
+    }
+  }
 
   return (
     <Card>
-      <SectionLabel>BASELINES (last 180 days)</SectionLabel>
-      <div
-        style={{
-          borderRadius: "12px",
-          overflow: "hidden",
-          border: `1px solid ${COLOR.divider}`,
-        }}
-      >
-        <StatusRow
-          label="HRV baseline"
-          value={
-            <span style={{ fontFamily: "monospace", color: COLOR.textStrong }}>
-              {fmt(hrv)}{" "}
-              <span style={{ color: COLOR.textFaint, fontSize: "11px" }}>ms</span>
-            </span>
-          }
-        />
-        <div style={{ height: "1px", background: COLOR.divider }} />
-        <StatusRow
-          label="Resting HR baseline"
-          value={
-            <span style={{ fontFamily: "monospace", color: COLOR.textStrong }}>
-              {fmt(rhr, 0)}{" "}
-              <span style={{ color: COLOR.textFaint, fontSize: "11px" }}>bpm</span>
-            </span>
-          }
-        />
-        <div style={{ height: "1px", background: COLOR.divider }} />
-        <StatusRow
-          label="Recovery baseline"
-          value={
-            <span style={{ fontFamily: "monospace", color: COLOR.textStrong }}>
-              {fmt(rec, 0)}{" "}
-              <span style={{ color: COLOR.textFaint, fontSize: "11px" }}>%</span>
-            </span>
-          }
-        />
-        <div style={{ height: "1px", background: COLOR.divider }} />
-        <StatusRow
-          label="Sleep score baseline"
-          value={
-            <span style={{ fontFamily: "monospace", color: COLOR.textStrong }}>
-              {fmt(slp, 0)}{" "}
-              <span style={{ color: COLOR.textFaint, fontSize: "11px" }}>/100</span>
-            </span>
-          }
-        />
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <SectionLabel>ROLLING 30-DAY BASELINES</SectionLabel>
+        <button
+          onClick={onRecalibrate}
+          disabled={recalibrating}
+          style={{
+            fontSize: "11px",
+            color: COLOR.textFaint,
+            background: "none",
+            border: `1px solid ${COLOR.divider}`,
+            borderRadius: "6px",
+            padding: "4px 8px",
+            cursor: recalibrating ? "default" : "pointer",
+          }}
+        >
+          {recalibrating ? "Recalibrating…" : "Recalibrate now"}
+        </button>
       </div>
-      <div
+      <div style={{ fontSize: "10px", color: COLOR.textFaint, marginBottom: "8px" }}>
+        {r ? `Updated ${r.computed_at.slice(0, 16).replace("T", " ")} UTC` : "Awaiting first cron run"}
+        {recalibrateError ? ` · error: ${recalibrateError}` : ""}
+      </div>
+      <div style={{ borderRadius: "12px", overflow: "hidden", border: `1px solid ${COLOR.divider}` }}>
+        <MetricRow label="HRV" unit="ms" m={r?.hrv} />
+        <div style={{ height: "1px", background: COLOR.divider }} />
+        <MetricRow label="Resting HR" unit="bpm" m={r?.rhr} />
+        <div style={{ height: "1px", background: COLOR.divider }} />
+        <MetricRow label="Recovery score" unit="%" m={r?.recovery} />
+        <div style={{ height: "1px", background: COLOR.divider }} />
+        <MetricRow label="Sleep performance" unit="%" m={r?.sleep_performance} />
+        <div style={{ height: "1px", background: COLOR.divider }} />
+        <MetricRow label="Respiratory rate" unit="rpm" m={r?.resp_rate} />
+      </div>
+
+      <button
+        onClick={() => setShowHistorical((v) => !v)}
         style={{
-          fontSize: "10px",
+          marginTop: "16px",
+          background: "none",
+          border: "none",
           color: COLOR.textFaint,
-          marginTop: "10px",
+          fontSize: "11px",
+          cursor: "pointer",
+          textAlign: "left" as const,
+          padding: 0,
         }}
       >
-        Based on {days} log days
-      </div>
+        {showHistorical ? "▾" : "▸"} Historical anchors (biographical context)
+      </button>
+      {showHistorical && wb ? (
+        <pre style={{ fontSize: "10px", color: COLOR.textFaint, marginTop: "8px", whiteSpace: "pre-wrap" }}>
+          {JSON.stringify(
+            Object.fromEntries(Object.entries(wb).filter(([k]) => k !== "rolling_30d")),
+            null,
+            2,
+          )}
+        </pre>
+      ) : null}
     </Card>
   );
 }

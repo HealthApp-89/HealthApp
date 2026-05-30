@@ -48,6 +48,18 @@ type ProfileRow = {
   whoop_baselines?: unknown;
 } | null;
 
+/** Returns `whoop_baselines` minus the `rolling_30d` key (the live anchor).
+ *  What remains is the historical/biographical block (6mo means, peaks, etc.)
+ *  that Peter injects for "where you came from" narration only. */
+function stripRolling30d(wb: unknown): Record<string, unknown> {
+  if (!wb || typeof wb !== "object") return {};
+  const rest: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(wb as Record<string, unknown>)) {
+    if (key !== "rolling_30d") rest[key] = value;
+  }
+  return rest;
+}
+
 type DailyLogRow = {
   date: string;
   hrv: number | null;
@@ -282,7 +294,8 @@ export async function buildSnapshot(inputs: SnapshotInputs): Promise<SnapshotRes
 
   const body = [
     `ATHLETE: ${p?.name ?? "Athlete"}. GOAL: "${p?.goal ?? "general health"}".`,
-    `BASELINES: ${JSON.stringify(p?.whoop_baselines ?? {})}`,
+    `BASELINES_LIVE_30D: ${JSON.stringify((p?.whoop_baselines as { rolling_30d?: unknown } | null)?.rolling_30d ?? {})}`,
+    `BASELINES_HISTORICAL: ${JSON.stringify(stripRolling30d(p?.whoop_baselines))}`,
     // Live current top set per lift FIRST, so the model anchors on live data
     // before reading the intake-time baselines in the profile body.
     ...(currentTopSetsBlock ? [``, currentTopSetsBlock] : []),
