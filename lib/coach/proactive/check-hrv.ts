@@ -1,7 +1,14 @@
 // lib/coach/proactive/check-hrv.ts
 //
-// Emits zero or one event when HRV 4w avg is >5% below the user's 30-day
-// baseline. Threshold matches pickHeadline in lib/coach/trends/index.ts.
+// Emits zero or one event when HRV 4w avg is meaningfully below the user's
+// 30-day baseline. "Meaningfully" today = below the -5% absolute threshold,
+// which is already noise-conservative for HRV. The baseline read in
+// trends/compose-recovery.ts now sources rolling_30d.hrv.mean (live anchor)
+// per the 2026-05-30 baselines spec; before that fix this trigger had
+// effectively never fired (vs_baseline_pct_4w was silently null).
+//
+// If we later thread SD onto CoachTrendsPayload.recovery.hrv, layer the
+// Hopkins SWC gate (±0.5 × SD) here on top of the absolute threshold.
 
 import type { CoachTrendsPayload, ProactiveEvent } from "@/lib/data/types";
 
