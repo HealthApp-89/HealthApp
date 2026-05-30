@@ -31,6 +31,10 @@ const PatchSchema = z
     hr_max: z.number().int().min(120).max(230).nullable().optional(),
     ftp_watts: z.number().int().min(50).max(600).nullable().optional(),
     weekly_volume_target_hours: z.number().min(0.5).max(20).optional(),
+    preferred_endurance_day: z
+      .union([z.literal(0), z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6)])
+      .nullable()
+      .optional(),
   })
   .strict();
 
@@ -43,6 +47,7 @@ const DEFAULTS: EnduranceProfile = {
   ftp_watts: null,
   threshold_pace_s_per_km: null,
   weekly_volume_target_hours: 1,
+  preferred_endurance_day: null,
   current_race: null,
   set_at: new Date(0).toISOString(),
 };

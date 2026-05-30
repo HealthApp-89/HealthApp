@@ -30,6 +30,12 @@ export function EnduranceSetupSection({ initial, stravaConnected }: Props) {
   const [volume, setVolume] = useState<number>(
     initial?.weekly_volume_target_hours ?? 1,
   );
+  // "" = no preference (composer defaults to Wed). "0".."6" = Sun..Sat.
+  const [preferredDay, setPreferredDay] = useState<string>(
+    initial?.preferred_endurance_day != null
+      ? String(initial.preferred_endurance_day)
+      : "",
+  );
   const [pending, startTransition] = useTransition();
   const [saved, setSaved] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -41,6 +47,8 @@ export function EnduranceSetupSection({ initial, stravaConnected }: Props) {
       const body: Record<string, unknown> = {
         weekly_volume_target_hours: volume,
         threshold_hr: thresholdHr === "" ? null : Number(thresholdHr),
+        preferred_endurance_day:
+          preferredDay === "" ? null : Number(preferredDay),
       };
       try {
         const res = await fetch("/api/profile/endurance-profile", {
@@ -259,6 +267,44 @@ export function EnduranceSetupSection({ initial, stravaConnected }: Props) {
         />
         <span style={{ fontSize: 11, color: COLOR.textFaint }}>
           Phase 1 default 1h (1×60min Z2/wk). Range leaves room for triathlon scale-up.
+        </span>
+      </label>
+
+      {/* ── Preferred day for the prescribed Z2 session ──────────────── */}
+      <label
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 4,
+          fontSize: 13,
+          color: COLOR.textStrong,
+        }}
+      >
+        <span style={{ color: COLOR.textMid }}>Preferred day for Z2</span>
+        <select
+          value={preferredDay}
+          onChange={(e) => setPreferredDay(e.target.value)}
+          style={{
+            padding: "6px 10px",
+            background: COLOR.surfaceAlt,
+            border: `1px solid ${COLOR.divider}`,
+            borderRadius: RADIUS.input,
+            fontSize: 13,
+            color: COLOR.textStrong,
+            width: "100%",
+          }}
+        >
+          <option value="">Auto (Wednesday)</option>
+          <option value="1">Monday</option>
+          <option value="2">Tuesday</option>
+          <option value="3">Wednesday</option>
+          <option value="4">Thursday</option>
+          <option value="5">Friday</option>
+          <option value="6">Saturday</option>
+          <option value="0">Sunday</option>
+        </select>
+        <span style={{ fontSize: 11, color: COLOR.textFaint }}>
+          Carter anchors each prescribed week to this day. At 1×/wk this is "always this day."
         </span>
       </label>
 

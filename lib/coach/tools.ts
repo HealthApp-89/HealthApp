@@ -3776,6 +3776,7 @@ async function patchEnduranceProfile(
     ftp_watts: null,
     threshold_pace_s_per_km: null,
     weekly_volume_target_hours: 1,
+    preferred_endurance_day: null,
     current_race: null,
     set_at: new Date().toISOString(),
   }) as import("@/lib/coach/endurance/types").EnduranceProfile;
