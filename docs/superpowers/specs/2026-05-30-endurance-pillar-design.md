@@ -102,14 +102,14 @@ Phase 1 ships **only `aerobic_base`**. Other phase composers stub to "Not implem
 OAuth 2.0 mirror of the WHOOP integration pattern at [lib/whoop.ts](../../lib/whoop.ts) and [app/api/whoop/](../../app/api/whoop/).
 
 - **`/api/strava/auth`** — server-side redirect to Strava authorization URL. Scopes: `read,activity:read_all,profile:read_all`. Includes `state` CSRF token.
-- **`/api/strava/callback`** — exchanges code for tokens, stores `(access_token, refresh_token, expires_at, athlete_id)` on `profiles.strava_tokens` jsonb. Single-user app, no per-user token table needed (mirrors WHOOP storage pattern).
+- **`/api/strava/callback`** — exchanges code for tokens, stores `(access_token, refresh_token, expires_at, scope, strava_athlete_id)` in a dedicated `strava_tokens` table (one row per user, primary key on `user_id`). Mirrors the existing `whoop_tokens` / `withings_tokens` shape — RLS read-self, writes via service-role only.
 - **`/api/strava/sync`** — `CRON_SECRET`-gated daily backfill (09:00 UTC, after WHOOP sync at 08:00). Fetches `athletes/{id}/activities` for last 7 days, upserts `endurance_activities`. Catches webhook misses.
 - **`/api/strava/backfill?since=YYYY-MM-DD`** — session-authed historical backfill. Paginated, rate-limit-aware (200 req / 15min, 2000/day).
 - **`/api/strava/webhook`** — handles push events. GET = subscription validation handshake (echoes `hub.challenge`). POST = activity events. Logic:
   - `aspect_type: 'create'` → fetch full activity, write `endurance_activities` row, recompute `daily_logs.endurance_*` for the affected date.
   - `aspect_type: 'update'` → re-fetch, upsert by `external_id`.
   - `aspect_type: 'delete'` → mark `endurance_activities.deleted_at`, recompute day.
-- **`/api/strava/disconnect`** — POST that nulls `profiles.strava_tokens` and revokes subscription. Symmetric with `/api/withings/disconnect`.
+- **`/api/strava/disconnect`** — POST that deletes the user's `strava_tokens` row and revokes the webhook subscription. Symmetric with `/api/withings/disconnect`.
 
 **Webhook subscription** is created once via `scripts/strava-subscribe-webhook.mjs`. Stores subscription ID in a script-local artifact (single-user — no DB row needed). Subscription survives token refreshes; only needs re-registration on callback URL change.
 
@@ -502,7 +502,7 @@ Composer [lib/coach/trends/compose-endurance.ts](../../lib/coach/trends/) added 
 **Reflects the 1×60min Z2/wk reality.** Data + integration + coach plumbing ships in full (cheap, future-proof). UI surface drastically reduced — no top-level page, no sub-pills, no trends section.
 
 **Data:**
-- Migration `0038_endurance_pillar.sql` (table + columns + aggregation function)
+- Migration `0040_endurance_pillar.sql` (`strava_tokens` + `endurance_activities` tables + daily_logs columns + jsonb extensions on athlete_profile_documents / training_weeks / training_blocks + `sum_endurance_for_day` aggregation function)
 - `lib/data/types.ts` updates (`EnduranceActivity`, `EnduranceProfile`, `EnduranceSessionPlan`, `EnduranceFocus`)
 
 **Integration:**
@@ -607,9 +607,9 @@ Explicitly NOT in Phase 1:
 
 ## Migration order
 
-1. `supabase/migrations/0038_endurance_pillar.sql` — table + daily_logs columns + athlete_profile_documents.endurance_profile + training_weeks.endurance_session_plan + training_blocks.endurance_focus + sum_endurance_for_day function
+1. `supabase/migrations/0040_endurance_pillar.sql` — `strava_tokens` table + `endurance_activities` table + daily_logs columns + athlete_profile_documents.endurance_profile + training_weeks.endurance_session_plan + training_blocks.endurance_focus + sum_endurance_for_day function
 
-Migration numbering follows from 0037 (block_outcomes). No parallel arc reserves 0038 on the current branch list.
+Migration numbering: spec was drafted assuming 0038 was available, but parallel arcs (`0038_nora_suggestion_engine`, `0039_user_food_items_metadata`) claimed 0038 and 0039 on the branch before this work merged. Endurance numbering jumped to 0040.
 
 ## Audit plan
 
