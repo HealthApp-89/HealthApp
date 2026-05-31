@@ -1997,7 +1997,11 @@ export async function executeCommitCloseBlock(opts: {
     return { ok: false, error: { error: `active_block_fetch_failed: ${blockErr.message}`, code: "fetch_failed" }, meta: { ms: Date.now() - t0, range_days: 0 } };
   }
   if (!blockRow) {
-    return { ok: false, error: { error: "Block not found.", code: "no_active_block" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+    // Distinct from propose-side "no_active_block": at commit time the token
+    // names a specific block_id; if it isn't there, the block was deleted (or
+    // the id was tampered with), not "no active block". UI/audit needs the
+    // distinction.
+    return { ok: false, error: { error: "Block not found.", code: "block_not_found" }, meta: { ms: Date.now() - t0, range_days: 0 } };
   }
   if (blockRow.status !== "active") {
     return {
@@ -2053,6 +2057,13 @@ export async function executeCommitCloseBlock(opts: {
 
   // Flip the block to completed. Idempotent — the WHERE status='active' guard
   // makes re-runs no-op even if a concurrent close just landed.
+  //
+  // NOTE: deliberately does NOT write a `chat_messages` row with kind=
+  // 'block_outcome' (which the cron at app/api/coach/block-outcomes/sweep
+  // does). The chat-initiated close-block flow surfaces the outcome via the
+  // commit_close_block confirmation chip (PERSIST_RESULT_TOOLS) and via
+  // BLOCK_OUTCOME_CONTEXT in setup_block mode — the durable card is
+  // unnecessary on the in-chat path and would duplicate the chip.
   const { error: updateErr } = await opts.supabase
     .from("training_blocks")
     .update({
