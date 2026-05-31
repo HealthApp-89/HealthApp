@@ -13,7 +13,6 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { PrimaryLift } from "@/lib/data/types";
-// Staged for the Task 2 orchestrator (computeTargetRecommendation, appended next commit).
 import { bestComparisonValue } from "@/lib/coach/e1rm";
 import { PRIMARY_LIFT_NAME_PATTERNS } from "@/lib/coach/prescription/current-comparison-value";
 
@@ -97,4 +96,131 @@ export function coefficientFor(lift: PrimaryLift, phase: AthletePhase = "cut"): 
 }
 
 // ── Supabase-driven orchestrator (Task 2) ────────────────────────────────
-// computeTargetRecommendation() is implemented in Task 2.
+
+export type TargetRecommendation = {
+  /** Athlete's current best e1RM for the lift across the 90-day window.
+   *  Null when no logged data exists (bootstrap path for first-ever block). */
+  current_e1rm: number | null;
+  /** OLS slope of per-week max e1RM, kg/wk. Null when <3 weeks of data
+   *  OR when slope is non-positive (declining lift — fall through to math). */
+  slope_kg_per_wk: number | null;
+  /** current + slope × 4, grid-rounded. Null when slope is null. */
+  trend_target: number | null;
+  /** current + coefficient × 4, grid-rounded. Null when current is null. */
+  math_target: number | null;
+  /** Which source produced `recommended_target`. 'neither' = no data, no
+   *  recommendation; validator falls through and accepts any input. */
+  used: "trend" | "math" | "neither";
+  recommended_target: number | null;
+  /** [min, max] inclusive bounds for the validator. Null when current is null. */
+  sanity_bounds: [number, number] | null;
+};
+
+export async function computeTargetRecommendation(opts: {
+  supabase: SupabaseClient;
+  userId: string;
+  lift: PrimaryLift;
+  todayIso: string;
+  phase?: AthletePhase;
+}): Promise<TargetRecommendation> {
+  const { supabase, userId, lift, todayIso, phase = "cut" } = opts;
+
+  const cutoff = subtractDaysIso(todayIso, 90);
+  const namePatterns = PRIMARY_LIFT_NAME_PATTERNS[lift] ?? [];
+  if (namePatterns.length === 0) {
+    return emptyRecommendation();
+  }
+
+  const { data, error } = await supabase
+    .from("workouts")
+    .select("date, exercises(name, exercise_sets(kg, reps, warmup))")
+    .eq("user_id", userId)
+    .gte("date", cutoff)
+    .order("date", { ascending: true });
+  if (error || !data) return emptyRecommendation();
+
+  type RawSet = { kg: number | null; reps: number | null; warmup: boolean | null };
+  type RawEx = { name: string; exercise_sets: RawSet[] | null };
+  type RawW = { date: string; exercises: RawEx[] | null };
+  const rows = data as unknown as RawW[];
+
+  const namesLower = new Set(namePatterns.map((n) => n.toLowerCase()));
+
+  // Per-week max e1RM samples. Week index is days-since-cutoff / 7, floored.
+  const cutoffMs = new Date(cutoff + "T00:00:00Z").getTime();
+  const weekMax = new Map<number, number>();
+  let allTimeMax: number | null = null;
+
+  for (const w of rows) {
+    for (const ex of w.exercises ?? []) {
+      if (!namesLower.has(ex.name.toLowerCase())) continue;
+      for (const s of ex.exercise_sets ?? []) {
+        const e1rm = bestComparisonValue(
+          [{ kg: s.kg, reps: s.reps, warmup: s.warmup }],
+          "e1rm",
+        );
+        if (e1rm == null) continue;
+        if (allTimeMax == null || e1rm > allTimeMax) allTimeMax = e1rm;
+        const dayMs = new Date(w.date + "T00:00:00Z").getTime();
+        const weekIdx = Math.floor((dayMs - cutoffMs) / (7 * 24 * 60 * 60 * 1000));
+        weekMax.set(weekIdx, Math.max(weekMax.get(weekIdx) ?? 0, e1rm));
+      }
+    }
+  }
+
+  if (allTimeMax == null) return emptyRecommendation();
+  const current = allTimeMax;
+
+  // OLS slope across per-week samples
+  const samples = Array.from(weekMax.entries())
+    .map(([weekIndex, e1rm]) => ({ weekIndex, e1rm }))
+    .sort((a, b) => a.weekIndex - b.weekIndex);
+  const rawSlope = computeOlsSlope(samples);
+
+  // Negative or zero slope on a focus lift is suspect (declining recently —
+  // could be a deload week or just a bad session sequence). Fall through to
+  // math so the recommendation isn't "target = current".
+  const slope = rawSlope != null && rawSlope > 0 ? rawSlope : null;
+
+  const coef = coefficientFor(lift, phase);
+  const trendTarget = slope != null ? gridRoundDown(current + slope * 4) : null;
+  const mathTarget = gridRoundDown(current + coef * 4);
+
+  let recommended: number | null;
+  let used: TargetRecommendation["used"];
+  if (trendTarget != null) {
+    recommended = trendTarget;
+    used = "trend";
+  } else {
+    recommended = mathTarget;
+    used = "math";
+  }
+
+  return {
+    current_e1rm: current,
+    slope_kg_per_wk: rawSlope, // expose the raw slope (even when non-positive) for narration
+    trend_target: trendTarget,
+    math_target: mathTarget,
+    used,
+    recommended_target: recommended,
+    sanity_bounds: computeSanityBounds({ currentE1rm: current, coefficient: coef }),
+  };
+}
+
+function emptyRecommendation(): TargetRecommendation {
+  return {
+    current_e1rm: null,
+    slope_kg_per_wk: null,
+    trend_target: null,
+    math_target: null,
+    used: "neither",
+    recommended_target: null,
+    sanity_bounds: null,
+  };
+}
+
+function subtractDaysIso(iso: string, days: number): string {
+  const d = new Date(iso + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() - days);
+  return d.toISOString().slice(0, 10);
+}

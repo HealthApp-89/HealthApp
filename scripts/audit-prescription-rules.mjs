@@ -577,5 +577,74 @@ console.log("\n## block-phase-rule.ts — e1RM target semantics\n");
   assert("e1rm block: currentValue ≥ target → pre_target (defensive: not off_pace)", alreadyMet === "pre_target", `got ${alreadyMet}`);
 }
 
+console.log("\n## calibrate-target.ts (pure helpers)\n");
+{
+  const {
+    coefficientFor,
+    computeOlsSlope,
+    computeSanityBounds,
+    gridRoundDown,
+    gridRoundUp,
+    COEFFICIENT_TABLE,
+  } = await import("@/lib/coach/prescription/calibrate-target");
+
+  // coefficient table
+  assert("coefficient deadlift cut = 1.5", coefficientFor("deadlift", "cut") === 1.5);
+  assert("coefficient bench cut = 0.75", coefficientFor("bench", "cut") === 0.75);
+  assert("coefficient ohp cut = 0.4", coefficientFor("ohp", "cut") === 0.4);
+  assert("coefficient default phase = cut", coefficientFor("squat") === coefficientFor("squat", "cut"));
+  assert("coefficient table covers all 4 lifts", Object.keys(COEFFICIENT_TABLE).sort().join(",") === "bench,deadlift,ohp,squat");
+
+  // grid rounding
+  assert("gridRoundDown 81.7 = 80", gridRoundDown(81.7) === 80);
+  assert("gridRoundDown 82.5 = 82.5", gridRoundDown(82.5) === 82.5);
+  assert("gridRoundUp 81.7 = 82.5", gridRoundUp(81.7) === 82.5);
+  assert("gridRoundUp 82.5 = 82.5", gridRoundUp(82.5) === 82.5);
+
+  // OLS slope
+  assert("OLS null on <3 samples", computeOlsSlope([{ weekIndex: 0, e1rm: 80 }, { weekIndex: 1, e1rm: 81 }]) === null);
+  const slope1 = computeOlsSlope([
+    { weekIndex: 0, e1rm: 80 },
+    { weekIndex: 1, e1rm: 81 },
+    { weekIndex: 2, e1rm: 82 },
+  ]);
+  assert("OLS slope of perfectly-linear +1/wk = 1.0", Math.abs(slope1 - 1.0) < 1e-9, `got ${slope1}`);
+  const slope2 = computeOlsSlope([
+    { weekIndex: 0, e1rm: 80 },
+    { weekIndex: 1, e1rm: 80 },
+    { weekIndex: 2, e1rm: 80 },
+  ]);
+  assert("OLS slope of flat samples = 0", slope2 === 0);
+  const slope3 = computeOlsSlope([
+    { weekIndex: 0, e1rm: 85 },
+    { weekIndex: 1, e1rm: 84 },
+    { weekIndex: 2, e1rm: 83 },
+  ]);
+  assert("OLS slope of declining samples = -1.0", Math.abs(slope3 + 1.0) < 1e-9, `got ${slope3}`);
+  // OLS handles gaps (week 0, 2, 5) — uses x-values as supplied
+  const slope4 = computeOlsSlope([
+    { weekIndex: 0, e1rm: 80 },
+    { weekIndex: 2, e1rm: 82 },
+    { weekIndex: 5, e1rm: 85 },
+  ]);
+  assert("OLS slope on sparse weeks ≈ 1.0", Math.abs(slope4 - 1.0) < 0.001, `got ${slope4}`);
+
+  // sanity bounds
+  // current = 80.7, coef = 0.75 (bench cut)
+  //   lower = ceil(81.7 / 2.5) × 2.5 = 82.5
+  //   upper = floor(80.7 + 0.75 × 4 × 1.5 / 2.5) × 2.5 = floor((80.7 + 4.5) / 2.5) × 2.5 = floor(85.2/2.5)×2.5 = 85
+  const bounds1 = computeSanityBounds({ currentE1rm: 80.7, coefficient: 0.75 });
+  assert("bounds for bench cut current=80.7 are [82.5, 85]",
+    bounds1[0] === 82.5 && bounds1[1] === 85,
+    `got [${bounds1[0]}, ${bounds1[1]}]`);
+  // current = 117.9 (your post-stamp deadlift e1RM), coef = 1.5 (deadlift cut)
+  //   lower = ceil(118.9 / 2.5) × 2.5 = 120
+  //   upper = floor((117.9 + 9) / 2.5) × 2.5 = floor(126.9/2.5)×2.5 = 125
+  const bounds2 = computeSanityBounds({ currentE1rm: 117.9, coefficient: 1.5 });
+  assert("bounds for deadlift cut current=117.9 are [120, 125]",
+    bounds2[0] === 120 && bounds2[1] === 125,
+    `got [${bounds2[0]}, ${bounds2[1]}]`);
+}
+
 console.log(`\n${pass} passed, ${fail} failed.`);
 process.exit(fail === 0 ? 0 : 1);
