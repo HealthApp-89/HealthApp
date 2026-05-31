@@ -13,6 +13,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { PrimaryLift } from "@/lib/data/types";
+// Staged for the Task 2 orchestrator (computeTargetRecommendation, appended next commit).
 import { bestComparisonValue } from "@/lib/coach/e1rm";
 import { PRIMARY_LIFT_NAME_PATTERNS } from "@/lib/coach/prescription/current-comparison-value";
 
@@ -69,7 +70,16 @@ export function computeOlsSlope(
 /** Compute the sanity-bounds window for a proposed target, given the
  *  athlete's current e1RM and the lift's phase coefficient. The lower bound
  *  rejects "too easy" (target hit by week 1); the upper bound rejects
- *  "demoralizing/unrealistic" at 1.5× the realistic 4-week gain. */
+ *  "demoralizing/unrealistic" at 1.5× the realistic 4-week gain.
+ *
+ *  Edge case: when currentE1rm sits exactly at (gridPoint − 1) — e.g.
+ *  current=114 with grid={112.5, 115, 117.5} — the lower bound resolves to
+ *  current + 1 rather than current + one full grid step. The validator
+ *  therefore admits a target of current + 1 kg in that narrow case, which
+ *  on heavy lifts (deadlift, coefficient 1.5 kg/wk) is just-below the
+ *  "hit by week 1" threshold. Accepted as low-frequency since real e1RM
+ *  values rarely land exactly on (grid − 1); the audit fixtures in
+ *  scripts/audit-prescription-rules.mjs assume off-grid current values. */
 export function computeSanityBounds(opts: {
   currentE1rm: number;
   coefficient: number;
