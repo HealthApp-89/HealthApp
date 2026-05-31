@@ -1763,6 +1763,14 @@ export async function executeProposeBlock(opts: {
   if (hasMetric !== hasValue) {
     return { ok: false, error: { error: "target_metric and target_value must both be set or both null" }, meta: { ms: Date.now() - t0, range_days: 0 } };
   }
+  // primary_lift enum guard — schema-level enforcement only runs in the
+  // Anthropic API; server must re-validate so an unexpected string can't
+  // slip through and silently bypass the sanity-bounds check below
+  // (PRIMARY_LIFT_NAME_PATTERNS[unknown] = undefined → empty recommendation
+  // → zero enforcement).
+  if (i.primary_lift != null && !["squat", "bench", "deadlift", "ohp"].includes(i.primary_lift as string)) {
+    return { ok: false, error: { error: "primary_lift must be one of: squat, bench, deadlift, ohp" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
 
   // ── Target calibration: trend-derived sanity check ──────────────────────
   // Compute the trend-derived recommendation (helper returns all-nulls when
@@ -1789,7 +1797,7 @@ export async function executeProposeBlock(opts: {
     const [lo, hi] = recommendation.sanity_bounds;
     const tv = i.target_value as number;
     const outOfBounds = tv < lo || tv > hi;
-    const overrideReason = typeof i.override_reason === "string" && i.override_reason.length >= 4 ? i.override_reason : null;
+    const overrideReason = typeof i.override_reason === "string" && i.override_reason.trim().length >= 4 ? i.override_reason : null;
     if (outOfBounds && overrideReason == null) {
       const direction = tv < lo ? "too low" : "too high";
       const hint = tv < lo
