@@ -40,6 +40,7 @@ import { maintenanceLoadFor } from "@/lib/coach/prescription/maintenance-baselin
 import { prescribeWeek } from "@/lib/coach/prescription/prescribe-week";
 import { upsertWeekPrescription } from "@/lib/coach/prescription/upsert-week-prescription";
 import { computeTargetRecommendation, type TargetRecommendation } from "@/lib/coach/prescription/calibrate-target";
+import { generateBlockOutcome } from "@/lib/coach/block-outcomes";
 import type { WorkoutSetSample } from "@/lib/coach/prescription/types";
 import type { PlannedExercise } from "@/lib/coach/sessionPlans";
 import {
@@ -1627,6 +1628,37 @@ export const COMMIT_BLOCK_TOOL = {
   },
 };
 
+export const PROPOSE_CLOSE_BLOCK_TOOL = {
+  name: "propose_close_block",
+  description:
+    "Preview closing the athlete's active block before its end_date. Returns the would-be block_outcomes payload + approval_token. Use ONLY when the athlete asks to close early (target hit early, target unreachable, schedule change, injury). The standard end-of-block flow runs via block-outcomes/sweep at end_date automatically and does NOT need this tool.",
+  input_schema: {
+    type: "object" as const,
+    required: ["reason"],
+    properties: {
+      reason: {
+        type: "string",
+        minLength: 4,
+        maxLength: 200,
+        description: "Why are we closing early? Athlete-quoted preferred — e.g. 'target hit week 3, recalibrating', 'shoulder pain forcing rotation', 'travel disrupting schedule'.",
+      },
+    },
+  },
+};
+
+export const COMMIT_CLOSE_BLOCK_TOOL = {
+  name: "commit_close_block",
+  description:
+    "Commit a previously proposed early block close. Requires approval_token from propose_close_block. Updates training_blocks.status='completed' and writes the block_outcomes row.",
+  input_schema: {
+    type: "object" as const,
+    required: ["approval_token"],
+    properties: {
+      approval_token: { type: "string", minLength: 60 },
+    },
+  },
+};
+
 export const PROPOSE_WEEK_PLAN_TOOL = {
   name: "propose_week_plan",
   description:
@@ -1829,6 +1861,90 @@ export async function executeProposeBlock(opts: {
   return {
     ok: true,
     data: { preview: payload, approval_token: token, recommendation },
+    meta: { ms: Date.now() - t0, result_rows: 1, range_days: 35, truncated: false },
+  };
+}
+
+type ProposeCloseBlockInput = {
+  blockId: string;
+  reason: string;
+};
+
+// ── propose_close_block executor ──────────────────────────────────────────
+
+export async function executeProposeCloseBlock(opts: {
+  supabase: SupabaseClient;
+  userId: string;
+  input: unknown;
+}): Promise<ToolResult<{ preview: { blockId: string; primary_lift: PrimaryLift | null; target_value: number | null; reason: string; would_be_outcome: unknown }; approval_token: string }>> {
+  const t0 = Date.now();
+  const i = (opts.input ?? {}) as Record<string, unknown>;
+
+  if (typeof i.reason !== "string" || i.reason.length < 4 || i.reason.length > 200) {
+    return { ok: false, error: { error: "reason required (4-200 chars)" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+
+  // Find active block.
+  const { data: blocks } = await opts.supabase
+    .from("training_blocks")
+    .select("id, primary_lift, target_value, target_metric, target_unit, start_date, end_date, target_hit_at_week, status")
+    .eq("user_id", opts.userId)
+    .eq("status", "active")
+    .limit(1);
+  const block = blocks?.[0];
+  if (!block) {
+    return {
+      ok: false,
+      error: {
+        error: "You're not in an active block; nothing to close. Use propose_block / commit_block to start a new one.",
+        code: "no_active_block",
+      },
+      meta: { ms: Date.now() - t0, range_days: 0 },
+    };
+  }
+
+  // Generate the prospective outcome (preview only — no write).
+  let prospectiveOutcome: unknown;
+  try {
+    const { payload } = await generateBlockOutcome({
+      supabase: opts.supabase,
+      userId: opts.userId,
+      blockId: block.id as string,
+    });
+    prospectiveOutcome = payload;
+  } catch (e) {
+    return {
+      ok: false,
+      error: {
+        error: `Couldn't compute the block outcome (no qualifying workouts in the block window?). ${String(e)}`,
+        code: "outcome_generate_failed",
+      },
+      meta: { ms: Date.now() - t0, range_days: 0 },
+    };
+  }
+
+  const closePayload: ProposeCloseBlockInput = {
+    blockId: block.id as string,
+    reason: i.reason as string,
+  };
+  const token = signApprovalToken({
+    userId: opts.userId,
+    action: "close_block",
+    payload: closePayload,
+  });
+
+  return {
+    ok: true,
+    data: {
+      preview: {
+        blockId: block.id as string,
+        primary_lift: (block.primary_lift as PrimaryLift | null) ?? null,
+        target_value: (block.target_value as number | null) ?? null,
+        reason: i.reason as string,
+        would_be_outcome: prospectiveOutcome,
+      },
+      approval_token: token,
+    },
     meta: { ms: Date.now() - t0, result_rows: 1, range_days: 35, truncated: false },
   };
 }
