@@ -1958,6 +1958,126 @@ export async function executeProposeCloseBlock(opts: {
   };
 }
 
+// ── commit_close_block executor ───────────────────────────────────────────
+
+export async function executeCommitCloseBlock(opts: {
+  supabase: SupabaseClient;
+  userId: string;
+  input: unknown;
+}): Promise<ToolResult<{ block_id: string; status: "completed"; outcome_id: string }>> {
+  const t0 = Date.now();
+  const i = (opts.input ?? {}) as Record<string, unknown>;
+  const token = i.approval_token;
+  if (typeof token !== "string") {
+    return { ok: false, error: { error: "approval_token required" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+
+  let envelope;
+  try {
+    envelope = verifyApprovalToken({ token, userId: opts.userId, action: "close_block" });
+  } catch (e) {
+    if (e instanceof ApprovalTokenError) {
+      return { ok: false, error: { error: approvalTokenUserMessage(e.code), code: e.code }, meta: { ms: Date.now() - t0, range_days: 0 } };
+    }
+    return { ok: false, error: { error: (e as Error).message, code: "verify_failed" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  if (!envelope.payload || typeof envelope.payload !== "object") {
+    return { ok: false, error: { error: "That approval is missing the close-block details. Please re-propose.", code: "missing_payload" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  const p = envelope.payload as ProposeCloseBlockInput;
+
+  // Re-verify the block is still active + owned by this user.
+  const { data: blockRow, error: blockErr } = await opts.supabase
+    .from("training_blocks")
+    .select("id, status")
+    .eq("id", p.blockId)
+    .eq("user_id", opts.userId)
+    .maybeSingle();
+  if (blockErr) {
+    return { ok: false, error: { error: `active_block_fetch_failed: ${blockErr.message}`, code: "fetch_failed" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  if (!blockRow) {
+    return { ok: false, error: { error: "Block not found.", code: "no_active_block" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  if (blockRow.status !== "active") {
+    return {
+      ok: false,
+      error: { error: `Block is already ${blockRow.status}. Nothing to close.`, code: "already_closed" },
+      meta: { ms: Date.now() - t0, range_days: 0 },
+    };
+  }
+
+  // Re-run outcome generation against fresh data (athlete may have logged a
+  // workout between propose and commit; we write what's current, not what's
+  // in the token).
+  let outcomePayload: GenerateBlockOutcomeResult["payload"];
+  try {
+    const result = await generateBlockOutcome({
+      supabase: opts.supabase,
+      userId: opts.userId,
+      blockId: p.blockId,
+    });
+    outcomePayload = result.payload;
+  } catch (e) {
+    return {
+      ok: false,
+      error: {
+        error: `Couldn't compute the block outcome at commit time. ${String(e)}`,
+        code: "outcome_generate_failed",
+      },
+      meta: { ms: Date.now() - t0, range_days: 0 },
+    };
+  }
+
+  // Upsert the block_outcomes row. UNIQUE constraint is on (block_id);
+  // ON CONFLICT updates the payload but preserves athlete_acknowledged_at
+  // (which the next commit_block will stamp when the next block starts).
+  const { data: outcomeRow, error: outcomeErr } = await opts.supabase
+    .from("block_outcomes")
+    .upsert(
+      {
+        ...outcomePayload,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "block_id", ignoreDuplicates: false },
+    )
+    .select("id")
+    .single();
+  if (outcomeErr || !outcomeRow) {
+    return {
+      ok: false,
+      error: { error: `block_outcomes upsert failed: ${outcomeErr?.message ?? "unknown"}`, code: "outcome_upsert_failed" },
+      meta: { ms: Date.now() - t0, range_days: 0 },
+    };
+  }
+
+  // Flip the block to completed. Idempotent — the WHERE status='active' guard
+  // makes re-runs no-op even if a concurrent close just landed.
+  const { error: updateErr } = await opts.supabase
+    .from("training_blocks")
+    .update({
+      status: "completed",
+      completed_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", p.blockId)
+    .eq("user_id", opts.userId)
+    .eq("status", "active");
+  if (updateErr) {
+    return {
+      ok: false,
+      error: { error: `training_blocks update failed: ${updateErr.message}`, code: "block_update_failed" },
+      meta: { ms: Date.now() - t0, range_days: 0 },
+    };
+  }
+
+  return {
+    ok: true,
+    data: { block_id: p.blockId, status: "completed", outcome_id: outcomeRow.id as string },
+    meta: { ms: Date.now() - t0, result_rows: 1, range_days: 35, truncated: false },
+  };
+}
+
 // ── commit_block executor ─────────────────────────────────────────────────────
 
 export async function executeCommitBlock(opts: {
