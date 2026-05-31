@@ -12,18 +12,15 @@
 // the framework if the framework's verdict is in his prompt.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { TrainingBlock, PrimaryLift } from "@/lib/data/types";
+import type { TrainingBlock, PrimaryLift, TargetMetric } from "@/lib/data/types";
 import type { WorkoutSetSample, BlockPhase } from "@/lib/coach/prescription/types";
 import { evaluateBlockPhase } from "@/lib/coach/prescription/block-phase-rule";
-import { maintenanceLoadFor } from "@/lib/coach/prescription/maintenance-baseline";
+import {
+  PRIMARY_LIFT_NAME_PATTERNS,
+  currentComparisonValueForLift,
+} from "@/lib/coach/prescription/current-comparison-value";
+import { bestComparisonValue, metricLabel } from "@/lib/coach/e1rm";
 import { todayInUserTz } from "@/lib/time";
-
-const PRIMARY_LIFT_NAME_PATTERNS: Record<PrimaryLift, string[]> = {
-  squat:    ["Squat (Barbell)"],
-  bench:    ["Decline Bench Press (Barbell)", "Incline Bench Press (Dumbbell)", "Bench Press (Barbell)"],
-  deadlift: ["Deadlift (Barbell)"],
-  ohp:      ["Overhead Press (Barbell)"],
-};
 
 /** Pure assembly — no Anthropic call. Returns null when no active focus
  *  block exists (Carter falls back to general autoregulation talk; no
@@ -114,18 +111,22 @@ export async function buildFrameworkStateBlock(args: {
   }
 
   const namePatterns = PRIMARY_LIFT_NAME_PATTERNS[block.primary_lift];
-  let currentWorkingKg: number | null = null;
-  for (const name of namePatterns) {
-    const m = maintenanceLoadFor(name, 2, recentSets, todayIso);
-    if (m != null) { currentWorkingKg = m; break; }
-  }
+  const metric: TargetMetric = (block.target_metric as TargetMetric | null) ?? "working_weight";
+  const currentWorkingKg = currentComparisonValueForLift({
+    lift: block.primary_lift,
+    metric,
+    recentSets,
+    rirTarget: 2,
+    todayIso,
+  });
 
   // Observed weekly progression rate for the primary lift — needed for the
-  // block-phase rule's off_pace detection. Computed as (newest clean kg −
-  // oldest clean kg) / weeks between, across the primary-lift sets in the
-  // 28-day window. Returns null if fewer than 2 clean primary-lift sets
-  // exist; phase then falls back to pre_target.
-  const recentProgressionRatePerWeek = estimateProgressionRate(recentSets, namePatterns);
+  // block-phase rule's off_pace detection. Computed in the SAME comparison
+  // space as currentWorkingKg (kg for working_weight blocks, e1RM for e1rm
+  // blocks) so the off_pace required-vs-observed math is internally
+  // consistent. Returns null if fewer than 2 clean primary-lift sets exist;
+  // phase then falls back to pre_target.
+  const recentProgressionRatePerWeek = estimateProgressionRate(recentSets, namePatterns, metric);
 
   const weekN = currentBlockWeek(block, todayIso);
   const totalWeeks = totalBlockWeeks(block);
@@ -146,19 +147,20 @@ export async function buildFrameworkStateBlock(args: {
       ? (block.target_value - currentWorkingKg) / weeksLeft
       : null;
 
+  const unit = metricLabel(metric);
   const lines: string[] = [];
   lines.push("<framework_state>");
-  lines.push(`Active block: ${block.primary_lift} focus, target ${block.target_value ?? "n/a"} kg ${block.target_metric ? `(${block.target_metric})` : ""}, window ${block.start_date} → ${block.end_date}.`);
+  lines.push(`Active block: ${block.primary_lift} focus, target ${block.target_value ?? "n/a"} ${unit}, window ${block.start_date} → ${block.end_date}.`);
   lines.push(`Today: ${todayIso} — week ${weekN} of ${totalWeeks}.`);
   if (block.target_hit_at_week != null) {
     lines.push(`target_hit_at_week = ${block.target_hit_at_week} (block target ALREADY MET — consolidation engaged).`);
   }
   lines.push("");
   lines.push(`Primary lift (${block.primary_lift}):`);
-  lines.push(`  current working kg: ${currentWorkingKg ?? "unknown (no clean working set in last 28d)"}`);
+  lines.push(`  current ${metric === "e1rm" ? "best e1RM" : "working kg"}: ${currentWorkingKg ?? "unknown (no clean working set in last 28d)"}`);
   lines.push(`  block phase: **${phase}**`);
   if (requiredStep != null) {
-    lines.push(`  required progression to hit target: ${requiredStep.toFixed(2)} kg/wk over ${weeksLeft} remaining week${weeksLeft === 1 ? "" : "s"}.`);
+    lines.push(`  required progression to hit target: ${requiredStep.toFixed(2)} ${metric === "e1rm" ? "e1RM kg" : "kg"}/wk over ${weeksLeft} remaining week${weeksLeft === 1 ? "" : "s"}.`);
   }
   lines.push("");
   lines.push("Framework rule for this phase (NON-NEGOTIABLE):");
@@ -205,19 +207,31 @@ function totalBlockWeeks(block: TrainingBlock): number {
   return Math.round(days / 7);
 }
 
-/** Observed kg-per-week progression rate across clean primary-lift sets in
- *  the 28-day window. Returns null when fewer than 2 clean sets exist. */
+/** Observed per-week progression rate (kg/wk for working_weight blocks,
+ *  e1RM-kg/wk for e1rm blocks) across clean primary-lift sets in the 28-day
+ *  window. Returns null when fewer than 2 valid samples exist. */
 function estimateProgressionRate(
   sets: WorkoutSetSample[],
   namePatterns: string[],
+  metric: TargetMetric,
 ): number | null {
   const nameSet = new Set(namePatterns.map((n) => n.toLowerCase()));
   const matching = sets
     .filter((s) => !s.warmup && !s.failure && nameSet.has(s.exercise_name.toLowerCase()))
     .sort((a, b) => (a.performed_on < b.performed_on ? -1 : 1)); // oldest first
   if (matching.length < 2) return null;
-  const oldest = matching[0];
-  const newest = matching[matching.length - 1];
+  const samples = matching
+    .map((s) => {
+      const v =
+        metric === "e1rm"
+          ? bestComparisonValue([{ kg: s.kg, reps: s.reps, warmup: false }], "e1rm")
+          : s.kg;
+      return v == null ? null : { v, performed_on: s.performed_on };
+    })
+    .filter((x): x is { v: number; performed_on: string } => x != null);
+  if (samples.length < 2) return null;
+  const oldest = samples[0];
+  const newest = samples[samples.length - 1];
   const days = Math.max(
     1,
     Math.round(
@@ -227,5 +241,5 @@ function estimateProgressionRate(
     ),
   );
   const weeks = Math.max(1, days / 7);
-  return (newest.kg - oldest.kg) / weeks;
+  return (newest.v - oldest.v) / weeks;
 }

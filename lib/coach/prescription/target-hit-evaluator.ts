@@ -5,8 +5,15 @@
 // (idempotent — no-op when already set). This is the consolidation
 // forcing function — once stamped, propose_week_plan refuses further
 // load increases for the lift.
+//
+// Comparison metric honors `training_blocks.target_metric`:
+//   'working_weight' → max raw non-warmup kg across the block window
+//   'e1rm'           → max Brzycki e1RM across non-warmup sets in 1..12 reps
+//   null (legacy)    → defaults to 'working_weight' for backwards compatibility
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { TargetMetric } from "@/lib/data/types";
+import { bestComparisonValue } from "@/lib/coach/e1rm";
 
 /** Exercise-name patterns that identify a primary-lift instance.
  *  Mirrors prescribe-week.ts. */
@@ -23,10 +30,11 @@ export async function evaluateAndStampTargetHit(opts: {
 }): Promise<{ stamped: boolean; week_n: number | null }> {
   const { supabase, userId } = opts;
 
-  // Find active block
+  // Find active block. target_metric is read so the comparison honors
+  // whether the target is an e1RM contract or a raw working-weight contract.
   const { data: blocks } = await supabase
     .from("training_blocks")
-    .select("id, primary_lift, target_value, target_unit, start_date, end_date, target_hit_at_week")
+    .select("id, primary_lift, target_value, target_metric, target_unit, start_date, end_date, target_hit_at_week")
     .eq("user_id", userId)
     .eq("status", "active")
     .limit(1);
@@ -39,9 +47,8 @@ export async function evaluateAndStampTargetHit(opts: {
   const namePatterns = PRIMARY_LIFT_NAME_PATTERNS[block.primary_lift];
   if (!namePatterns || namePatterns.length === 0) return { stamped: false, week_n: null };
 
-  // Find the max working-set kg for the primary lift since block start.
-  // Query workouts → exercises → exercise_sets in one round-trip via nested
-  // select, filtering by user_id + date range + warmup=false.
+  // Find the best comparison value (working_weight or e1RM per target_metric)
+  // for the primary lift since block start.
   const { data: workouts, error } = await supabase
     .from("workouts")
     .select("date, exercises(name, exercise_sets(kg, reps, warmup, failure))")
@@ -58,18 +65,21 @@ export async function evaluateAndStampTargetHit(opts: {
   const rows = workouts as unknown as RawW[];
   const patternsLower = namePatterns.map((p) => p.toLowerCase());
 
-  let maxKg = 0;
+  const candidateSets: Array<{ kg: number | null; reps: number | null; warmup: boolean | null }> = [];
   for (const w of rows) {
     for (const ex of w.exercises ?? []) {
       if (!patternsLower.includes(ex.name.toLowerCase())) continue;
       for (const s of ex.exercise_sets ?? []) {
-        if (s.warmup) continue;
-        if (s.kg != null && s.kg > maxKg) maxKg = s.kg;
+        candidateSets.push({ kg: s.kg, reps: s.reps, warmup: s.warmup });
       }
     }
   }
 
-  if (maxKg < block.target_value) return { stamped: false, week_n: null };
+  // Legacy rows pre-0041 may have NULL target_metric. Default to working_weight
+  // to keep their consolidation semantics unchanged until they're migrated.
+  const metric: TargetMetric = (block.target_metric as TargetMetric | null) ?? "working_weight";
+  const best = bestComparisonValue(candidateSets, metric);
+  if (best == null || best < block.target_value) return { stamped: false, week_n: null };
 
   // Determine block-week index (1-indexed) from block.start_date
   const start = new Date(block.start_date + "T00:00:00Z");

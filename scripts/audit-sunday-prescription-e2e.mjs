@@ -15,6 +15,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { validatePatternConflicts } from "@/lib/coach/prescription/pattern-conflict-overlay";
 import { resolveExercise } from "@/lib/coach/exercise-library";
+import { bestComparisonValue } from "@/lib/coach/e1rm";
 
 const userId = process.env.AUDIT_USER_ID;
 if (!userId) {
@@ -72,24 +73,28 @@ if (!block) {
     const names = PRIMARY_LIFT_NAMES[block.primary_lift] ?? [];
     const { data: wRows } = await supabase
       .from("workouts")
-      .select("date, exercises(name, exercise_sets(kg, warmup))")
+      .select("date, exercises(name, exercise_sets(kg, reps, warmup))")
       .eq("user_id", userId)
       .gte("date", block.start_date)
       .lte("date", block.end_date);
-    let maxKg = 0;
+    // Metric-aware comparison: working_weight blocks use max raw kg; e1rm
+    // blocks use max Brzycki across 1..12-rep sets. Legacy NULL metric →
+    // 'working_weight'. Matches lib/coach/prescription/target-hit-evaluator.ts.
+    const metric = block.target_metric ?? "working_weight";
+    const candidates = [];
     for (const w of wRows ?? []) {
       for (const ex of w.exercises ?? []) {
         if (!names.includes(ex.name)) continue;
         for (const s of ex.exercise_sets ?? []) {
-          if (s.warmup) continue;
-          if (s.kg != null && s.kg > maxKg) maxKg = s.kg;
+          candidates.push({ kg: s.kg, reps: s.reps, warmup: s.warmup });
         }
       }
     }
-    if (maxKg >= block.target_value) {
-      assert(`target crossed (max ${maxKg} ≥ ${block.target_value}) → target_hit_at_week must be set`, block.target_hit_at_week != null);
+    const best = bestComparisonValue(candidates, metric);
+    if (best != null && best >= block.target_value) {
+      assert(`target crossed (best ${best.toFixed(1)} ≥ ${block.target_value}, metric=${metric}) → target_hit_at_week must be set`, block.target_hit_at_week != null);
     } else {
-      console.log(`  - max non-warmup ${block.primary_lift} kg = ${maxKg}; target ${block.target_value} not yet crossed (target_hit_at_week correctly null).`);
+      console.log(`  - best ${metric} ${block.primary_lift} = ${best == null ? "n/a" : best.toFixed(1)}; target ${block.target_value} not yet crossed (target_hit_at_week correctly null).`);
     }
   }
 }

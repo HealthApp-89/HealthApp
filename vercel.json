@@ -48,6 +48,10 @@
     {
       "path": "/api/strava/sync",
       "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/coach/sunday-prescriptions/sync",
+      "schedule": "30 3 * * 0"
     }
   ],
   "functions": {

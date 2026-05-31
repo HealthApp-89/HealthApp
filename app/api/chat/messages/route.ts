@@ -28,6 +28,7 @@ import { getTodayTargets } from "@/lib/morning/brief/get-today-targets";
 import { buildPeterContextBlock } from "@/lib/coach/peter-context";
 import { loadLatestPeterDashboard } from "@/lib/coach/peter-dashboard";
 import { buildThisWeeksExercisesBlock } from "@/lib/coach/carter-context/this-weeks-exercises";
+import { buildThisWeeksPrescriptionBlock } from "@/lib/coach/carter-context/this-weeks-prescription";
 import { buildFrameworkStateBlock } from "@/lib/coach/carter-context/framework-state";
 import { renderEatingIdentityBlock } from "@/lib/coach/nora-suggestions/render-injection";
 import type { EatingIdentity, DietaryExclusions } from "@/lib/data/types";
@@ -798,7 +799,7 @@ export async function POST(req: Request) {
         : null;
       const carterContext = initialSpeaker === "carter"
         ? await (async () => {
-            const [exercisesBlock, frameworkBlock] = await Promise.all([
+            const [exercisesBlock, frameworkBlock, prescriptionBlock] = await Promise.all([
               buildThisWeeksExercisesBlock({ supabase: sr, userId: user.id }).catch((err) => {
                 console.warn("[chat] buildThisWeeksExercisesBlock failed", err);
                 return null;
@@ -807,10 +808,17 @@ export async function POST(req: Request) {
                 console.warn("[chat] buildFrameworkStateBlock failed", err);
                 return null;
               }),
+              buildThisWeeksPrescriptionBlock({ supabase: sr, userId: user.id }).catch((err) => {
+                console.warn("[chat] buildThisWeeksPrescriptionBlock failed", err);
+                return null;
+              }),
             ]);
-            // Framework state first — it's the higher-authority context;
-            // exercises block grounds load proposals downstream.
-            const parts = [frameworkBlock, exercisesBlock].filter((b): b is string => !!b);
+            // Ordering: framework rule first (the non-negotiable phase rule),
+            // then the canonical prescription Carter must quote, then the
+            // exercise metadata that supports off-prescription substitutions.
+            const parts = [frameworkBlock, prescriptionBlock, exercisesBlock].filter(
+              (b): b is string => !!b,
+            );
             return parts.length > 0 ? parts.join("\n\n") : null;
           })()
         : null;

@@ -13,14 +13,17 @@ import type {
   TrainingWeek,
   SessionPrescriptions,
   PrimaryLift,
+  TargetMetric,
   WeekdayLong,
 } from "@/lib/data/types";
 import type { PlannedExercise } from "@/lib/coach/sessionPlans";
 import { SESSION_PLANS } from "@/lib/coach/sessionPlans";
 import { evaluateBlockPhase, prescribePrimaryFromPhase } from "@/lib/coach/prescription/block-phase-rule";
+import { currentComparisonValueForLift } from "@/lib/coach/prescription/current-comparison-value";
 import { prescribeSecondaryAutoregulated } from "@/lib/coach/prescription/autoregulation-rule";
 import { prescribeAccessoryFromVolumeBand, classifyVolumeBand, type VolumeBandPosition } from "@/lib/coach/prescription/volume-balance-rule";
 import { maintenanceLoadFor } from "@/lib/coach/prescription/maintenance-baseline";
+import { bestComparisonValue } from "@/lib/coach/e1rm";
 import { discoverEffectiveExercises } from "@/lib/coach/prescription/recent-workouts-discovery";
 import type { BlockPhase, WorkoutSetSample } from "@/lib/coach/prescription/types";
 import { fetchMuscleVolumeServer } from "@/lib/query/fetchers/muscleVolume";
@@ -278,13 +281,22 @@ function computeWholeBlockPhase(opts: {
     });
   }
 
-  const currentWorkingKg =
-    maintenanceLoadFor(focusEx.name, rirTarget, recentSets, todayIso) ??
-    focusEx.baseKg ?? 0;
+  // Comparison value is metric-aware: working_weight blocks compare max kg;
+  // e1rm blocks compare max Brzycki e1RM. The same value also drives the
+  // progression-rate estimate so the off_pace check is internally consistent.
+  const metric: TargetMetric = (block.target_metric as TargetMetric | null) ?? "working_weight";
+  const currentValue =
+    currentComparisonValueForLift({
+      lift: focusLift,
+      metric,
+      recentSets,
+      rirTarget,
+      todayIso,
+    }) ?? focusEx.baseKg ?? 0;
   return evaluateBlockPhase({
     block,
-    currentWorkingKg,
-    recentProgressionRatePerWeek: estimateProgressionRate(recentSets, focusEx),
+    currentWorkingKg: currentValue,
+    recentProgressionRatePerWeek: estimateProgressionRate(recentSets, focusEx, metric),
     todayIso,
   });
 }
@@ -370,17 +382,36 @@ function consecutiveMisses(sets: WorkoutSetSample[], ex: PlannedExercise): numbe
   return misses;
 }
 
-/** Estimate weekly load-progression rate (kg/week) from the user's recent
- *  non-warmup sets for this exercise. Used by evaluateBlockPhase to detect
- *  off_pace. Returns 0 when fewer than 2 sets exist. */
-function estimateProgressionRate(sets: WorkoutSetSample[], ex: PlannedExercise): number {
+/** Estimate weekly progression rate (kg/week OR e1RM/week, depending on
+ *  metric) from the user's recent non-warmup sets for this exercise. Used by
+ *  evaluateBlockPhase to detect off_pace. Returns 0 when fewer than 2 sets
+ *  exist. For e1rm metric, sets whose reps fall outside the 1..12 Brzycki
+ *  window are skipped — the slope is computed in the same value-space as
+ *  the target comparison so the "required vs observed" math is consistent. */
+function estimateProgressionRate(
+  sets: WorkoutSetSample[],
+  ex: PlannedExercise,
+  metric: TargetMetric,
+): number {
   const matching = setsForExercise(sets, ex).slice(0, 8);
   if (matching.length < 2) return 0;
-  const newest = matching[0].kg;
-  const oldest = matching[matching.length - 1].kg;
+  // Convert each candidate set to its comparison value; skip sets that
+  // produce null (rep out of e1RM window).
+  const samples = matching
+    .map((s) => {
+      const v =
+        metric === "e1rm"
+          ? bestComparisonValue([{ kg: s.kg, reps: s.reps, warmup: false }], "e1rm")
+          : s.kg;
+      return v == null ? null : { v, performed_on: s.performed_on };
+    })
+    .filter((x): x is { v: number; performed_on: string } => x != null);
+  if (samples.length < 2) return 0;
+  const newest = samples[0].v;
+  const oldest = samples[samples.length - 1].v;
   const weeks = Math.max(
     1,
-    Math.round(dateDiffDays(matching[matching.length - 1].performed_on, matching[0].performed_on) / 7),
+    Math.round(dateDiffDays(samples[samples.length - 1].performed_on, samples[0].performed_on) / 7),
   );
   return (newest - oldest) / weeks;
 }

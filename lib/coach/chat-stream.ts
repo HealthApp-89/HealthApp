@@ -33,6 +33,7 @@ import {
   executeQueryTrainingPlan,
   executeGetAutoregulationSignals,
   executeComputeAdherence,
+  executeGetWeekPrescription,
   executeProposeBlock,
   executeCommitBlock,
   executeProposeWeekPlan,
@@ -603,6 +604,12 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
           });
         } else if (block.name === "compute_adherence") {
           result = await executeComputeAdherence({
+            supabase: opts.sr,
+            userId: opts.userId,
+            input: block.input,
+          });
+        } else if (block.name === "get_week_prescription") {
+          result = await executeGetWeekPrescription({
             supabase: opts.sr,
             userId: opts.userId,
             input: block.input,

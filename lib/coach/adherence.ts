@@ -132,7 +132,16 @@ export type AdherenceResult = {
   sessions_on_plan: number;
   adherence_pct: number;     // sessions_on_plan / sessions_planned * 100
   done_pct: number;          // sessions_done / sessions_planned * 100
-  muscle_volume_vs_4w_avg: Record<ExerciseCategory, number>; // proportional delta, e.g. -0.12 = -12%
+  /** Proportional delta vs the prior-28d weekly average per muscle category.
+   *  -0.12 = -12%, +0.08 = +8%. A category is OMITTED entirely when the
+   *  baseline is too thin to compute a reliable delta:
+   *    - fewer than 6 working sets in the category across the 28-day window
+   *    - the category appeared in fewer than 2 distinct weeks
+   *  Coaches must NOT cite "drift" or "volume change" for an omitted category
+   *  — the absence IS the signal that we don't have enough data to tell.
+   *  This kills the 2026-05-31 Carter "squat -14% drift" false positive that
+   *  fired on 3 weeks of in-block data. */
+  muscle_volume_vs_4w_avg: Partial<Record<ExerciseCategory, number>>;
 };
 
 /** Pure endurance-adherence verdict for a single day.
@@ -326,7 +335,9 @@ export async function computeAdherence(
   const adherence_pct = sessions_planned === 0 ? 0 : Math.round((sessions_on_plan / sessions_planned) * 100);
   const done_pct      = sessions_planned === 0 ? 0 : Math.round((sessions_done / sessions_planned) * 100);
 
-  // 4. Volume per muscle group, this week vs prior-28d average
+  // 4. Volume per muscle group, this week vs prior-28d average. The delta is
+  //    suppressed for categories with thin baselines — see the
+  //    AdherenceResult.muscle_volume_vs_4w_avg doc for the exact thresholds.
   const thisWeekVol = bucketVolume(workouts ?? []);
 
   const priorEnd = new Date(start);
@@ -346,15 +357,33 @@ export async function computeAdherence(
     Object.entries(priorVol).map(([k, v]) => [k, v / 4]),
   ) as Record<ExerciseCategory, number>;
 
-  const muscle_volume_vs_4w_avg = Object.fromEntries(
-    Object.keys(thisWeekVol).map((cat) => {
-      const c = cat as ExerciseCategory;
-      const avg = priorWeeklyAvg[c] ?? 0;
-      const cur = thisWeekVol[c] ?? 0;
-      const delta = avg === 0 ? (cur > 0 ? 1 : 0) : (cur - avg) / avg;
-      return [cat, delta];
-    }),
-  ) as Record<ExerciseCategory, number>;
+  // Per-category baseline reliability: count working sets and distinct weeks.
+  const baselineCounts = bucketBaselineCounts(
+    priorWorkouts ?? [],
+    priorStart.toISOString().slice(0, 10),
+  );
+  const MIN_BASELINE_SETS = 6;
+  const MIN_BASELINE_WEEKS = 2;
+
+  const muscle_volume_vs_4w_avg: Partial<Record<ExerciseCategory, number>> = {};
+  for (const cat of Object.keys(thisWeekVol)) {
+    const c = cat as ExerciseCategory;
+    const counts = baselineCounts[c];
+    if (!counts || counts.sets < MIN_BASELINE_SETS || counts.weeks < MIN_BASELINE_WEEKS) {
+      // Thin baseline — omit. Carter's prompt teaches "absence = not enough
+      // history to claim a drift" so the false positive never reaches chat.
+      continue;
+    }
+    const avg = priorWeeklyAvg[c] ?? 0;
+    const cur = thisWeekVol[c] ?? 0;
+    if (avg === 0) {
+      // Defensive: counts qualified the baseline, but the volume sum is 0
+      // (e.g. an all-isometric/duration-based category). Skip — the delta
+      // is meaningless and the prior `1` sentinel was misleading.
+      continue;
+    }
+    muscle_volume_vs_4w_avg[c] = (cur - avg) / avg;
+  }
 
   return {
     week_start: weekStart,
@@ -391,6 +420,54 @@ function bucketVolume(
       const vol = workingVolume((e.exercise_sets ?? []) as SetRow[]);
       out[cat] = (out[cat] ?? 0) + vol;
     }
+  }
+  return out;
+}
+
+/** Per-category coverage counts for the prior-28d window. Used to decide
+ *  whether the muscle_volume_vs_4w_avg delta is reliable enough to surface.
+ *  Each `sets` count is the number of non-warmup sets in the category;
+ *  `weeks` is the count of distinct ISO weeks (Mon..Sun blocks) the category
+ *  appeared in across the window. */
+function bucketBaselineCounts(
+  workouts: Array<{
+    date: string;
+    type: string | null;
+    exercises:
+      | Array<{
+          name: string;
+          exercise_sets: Array<{ kg: number | null; reps: number | null; warmup: boolean; set_index: number; duration_seconds: number | null; failure: boolean }>;
+        }>
+      | null;
+  }>,
+  priorStartIso: string,
+): Partial<Record<ExerciseCategory, { sets: number; weeks: number }>> {
+  const start = new Date(priorStartIso + "T00:00:00Z").getTime();
+  // Tally sets per category and (category -> set-of-week-indices) for distinct
+  // week counting. weekIdx = floor((date - priorStart) / 7d).
+  const setCounts = new Map<ExerciseCategory, number>();
+  const weekIdxs = new Map<ExerciseCategory, Set<number>>();
+  for (const w of workouts) {
+    const d = new Date(w.date + "T00:00:00Z").getTime();
+    const weekIdx = Math.floor((d - start) / (7 * 24 * 60 * 60 * 1000));
+    for (const e of w.exercises ?? []) {
+      const cat = categorize(e.name);
+      if (cat === "uncategorized") continue;
+      let setsInExercise = 0;
+      for (const s of e.exercise_sets ?? []) {
+        if (s.warmup) continue;
+        setsInExercise++;
+      }
+      if (setsInExercise === 0) continue;
+      setCounts.set(cat, (setCounts.get(cat) ?? 0) + setsInExercise);
+      const wks = weekIdxs.get(cat) ?? new Set<number>();
+      wks.add(weekIdx);
+      weekIdxs.set(cat, wks);
+    }
+  }
+  const out: Partial<Record<ExerciseCategory, { sets: number; weeks: number }>> = {};
+  for (const [cat, sets] of setCounts) {
+    out[cat] = { sets, weeks: weekIdxs.get(cat)?.size ?? 0 };
   }
   return out;
 }

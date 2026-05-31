@@ -9,6 +9,7 @@
 import { maintenanceLoadFor } from "@/lib/coach/prescription/maintenance-baseline";
 import { evaluateBlockPhase, prescribePrimaryFromPhase } from "@/lib/coach/prescription/block-phase-rule";
 import { prescribeSecondaryAutoregulated } from "@/lib/coach/prescription/autoregulation-rule";
+import { brzycki, bestComparisonValue, metricLabel } from "@/lib/coach/e1rm";
 
 let pass = 0;
 let fail = 0;
@@ -500,6 +501,80 @@ console.log("\n## validate-week.ts\n");
     nonFocusBaselineSets: { squat: 3, bench: 3, ohp: 3 },
   });
   assert("secondary at 3 sets (not below baseline 3) rejected", volumeTooHigh !== null && volumeTooHigh.code === "non_focus_primary_volume_too_high");
+}
+
+console.log("\n## e1rm.ts\n");
+
+{
+  // Brzycki: 1RM = kg × 36 / (37 − reps)
+  const a = brzycki(100, 5);
+  assert("brzycki(100,5) = 112.5", Math.abs(a - 112.5) < 0.001, `got ${a}`);
+  const b = brzycki(100, 1);
+  assert("brzycki(100,1) = 100 (1RM = the kg lifted)", Math.abs(b - 100) < 0.001, `got ${b}`);
+  assert("brzycki rejects reps=0", brzycki(100, 0) === null);
+  assert("brzycki rejects reps=13", brzycki(100, 13) === null);
+  assert("brzycki rejects kg=0", brzycki(0, 5) === null);
+
+  // bestComparisonValue: working_weight vs e1rm comparison
+  // Brzycki e1RM = kg × 36 / (37 − reps):
+  //   95 × 8  → 95 × 36 / 29 = 117.93  ← e1RM winner (sub-maximal but high vol)
+  //  100 × 5  → 100 × 36 / 32 = 112.5
+  //  105 × 1  → 105 × 36 / 36 = 105.0  ← working-weight winner (raw kg max)
+  const sets = [
+    { kg: 95,  reps: 8,  warmup: false },
+    { kg: 100, reps: 5,  warmup: false },
+    { kg: 105, reps: 1,  warmup: false },
+    { kg: 80,  reps: 10, warmup: true },   // warmup — skipped
+    { kg: 70,  reps: 20, warmup: false },  // reps > 12 — rejected for e1rm
+  ];
+  assert("bestComparisonValue working_weight = 105", bestComparisonValue(sets, "working_weight") === 105);
+  const e1 = bestComparisonValue(sets, "e1rm");
+  const expectedE1 = (95 * 36) / 29; // ≈ 117.93
+  assert(`bestComparisonValue e1rm picks Brzycki-best ${expectedE1.toFixed(2)}`, Math.abs(e1 - expectedE1) < 0.001, `got ${e1}`);
+
+  // empty / all-warmup
+  assert("bestComparisonValue null on empty input", bestComparisonValue([], "e1rm") === null);
+  assert("bestComparisonValue null when only warmups", bestComparisonValue([{ kg: 50, reps: 10, warmup: true }], "working_weight") === null);
+
+  // metricLabel
+  assert("metricLabel('e1rm')", metricLabel("e1rm") === "kg (e1RM)");
+  assert("metricLabel('working_weight')", metricLabel("working_weight") === "kg (working set)");
+  assert("metricLabel(null)", metricLabel(null) === "kg");
+}
+
+console.log("\n## block-phase-rule.ts — e1RM target semantics\n");
+
+{
+  // e1rm block: target_value is an e1RM. Caller passes currentValue as e1RM.
+  const blockE1rm = {
+    id: "fixture",
+    user_id: "fixture",
+    block_id: null,
+    start_date: "2026-05-04",
+    end_date: "2026-06-07",
+    primary_lift: "deadlift",
+    target_metric: "e1rm",
+    target_value: 115, // e1RM in kg
+    target_unit: "kg",
+    status: "active",
+    diet_goal: null,
+    goal_text: "fixture",
+    notes: null,
+    created_at: "2026-05-04",
+    updated_at: "2026-05-04",
+    target_hit_at_week: null,
+  };
+
+  // Athlete pulling 97.5 × 8 (Brzycki = 121) ALREADY at e1RM target. The pre-
+  // 0041 evaluator would have compared 97.5 < 115 and said pre_target/off_pace.
+  // With currentValue = 121 (e1RM), the evaluator should recognize "already met".
+  const alreadyMet = evaluateBlockPhase({
+    block: blockE1rm,
+    currentWorkingKg: 121, // e1RM-space value passed by caller
+    recentProgressionRatePerWeek: 1.0,
+    todayIso: "2026-05-17", // week 2
+  });
+  assert("e1rm block: currentValue ≥ target → pre_target (defensive: not off_pace)", alreadyMet === "pre_target", `got ${alreadyMet}`);
 }
 
 console.log(`\n${pass} passed, ${fail} failed.`);

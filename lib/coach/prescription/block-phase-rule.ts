@@ -12,7 +12,14 @@ const OFF_PACE_REQUIRED_RATIO = 1.5; // required-rate must exceed observed-rate 
 
 /** Returns the block phase based on the athlete's progress and the calendar.
  *  Deload week (week 5) always wins. Otherwise: consolidation if target hit,
- *  off_pace if remaining weeks can't catch up, pre_target otherwise. */
+ *  off_pace if remaining weeks can't catch up, pre_target otherwise.
+ *
+ *  The `currentWorkingKg` parameter is the athlete's current "comparison
+ *  value" matched to the block's `target_metric`. Callers in the
+ *  working_weight regime pass the max recent working kg; callers in the e1RM
+ *  regime pass the max recent Brzycki e1RM. The name is kept for back-compat;
+ *  the field stores whichever value is comparable to `block.target_value`.
+ *  See lib/coach/e1rm.ts:bestComparisonValue for the canonical conversion. */
 export function evaluateBlockPhase(opts: {
   block: TrainingBlock;
   currentWorkingKg: number | null;
@@ -29,6 +36,12 @@ export function evaluateBlockPhase(opts: {
     opts.recentProgressionRatePerWeek != null &&
     opts.recentProgressionRatePerWeek > 0
   ) {
+    // Defensive: if current already meets-or-exceeds target the consolidation
+    // branch above usually catches it (because target-hit-evaluator stamped
+    // target_hit_at_week), but on a freshly-crossed week before the stamp is
+    // visible to this caller, treat it as already-on-pace rather than emitting
+    // a spurious off_pace verdict from required = (negative)/weeks.
+    if (opts.currentWorkingKg >= opts.block.target_value) return "pre_target";
     const weeksRemaining = totalBlockWeeks(opts.block) - week;
     if (weeksRemaining <= 0) return "deload_week";
     const required = (opts.block.target_value - opts.currentWorkingKg) / weeksRemaining;
