@@ -36,6 +36,8 @@ import {
   executeGetWeekPrescription,
   executeProposeBlock,
   executeCommitBlock,
+  executeProposeCloseBlock,
+  executeCommitCloseBlock,
   executeProposeWeekPlan,
   executeCommitWeekPlan,
   executeProposeSessionToday,
@@ -93,6 +95,8 @@ import { CHAT_MODEL as MODEL } from "@/lib/anthropic/models";
 const PERSIST_RESULT_TOOLS = new Set([
   "propose_block",
   "commit_block",
+  "propose_close_block",
+  "commit_close_block",
   "propose_week_plan",
   "commit_week_plan",
   "propose_plan",
@@ -372,6 +376,12 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
     if (name === "propose_session_today") return true;
     if (name === "commit_session_today") return true;
     if (name === "apply_rotation_override") return true;
+    // Close-block tool pair: athlete legitimately initiates from default
+    // chat when target is hit early / injury / schedule change. Without
+    // these explicit allows the prefix guards below strip them and Peter
+    // narrates a fake close in prose with no DB write.
+    if (name === "propose_close_block") return true;
+    if (name === "commit_close_block") return true;
     // Endurance write tools (Carter): athlete legitimately asks for a Z2
     // week or updates threshold HR / FTP from default chat. Without these
     // explicit allows the prefix guards below strip them, the model invents
@@ -622,6 +632,18 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
           });
         } else if (block.name === "commit_block") {
           result = await executeCommitBlock({
+            supabase: opts.sr,
+            userId: opts.userId,
+            input: block.input,
+          });
+        } else if (block.name === "propose_close_block") {
+          result = await executeProposeCloseBlock({
+            supabase: opts.sr,
+            userId: opts.userId,
+            input: block.input,
+          });
+        } else if (block.name === "commit_close_block") {
+          result = await executeCommitCloseBlock({
             supabase: opts.sr,
             userId: opts.userId,
             input: block.input,
