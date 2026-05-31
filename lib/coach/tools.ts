@@ -40,7 +40,7 @@ import { maintenanceLoadFor } from "@/lib/coach/prescription/maintenance-baselin
 import { prescribeWeek } from "@/lib/coach/prescription/prescribe-week";
 import { upsertWeekPrescription } from "@/lib/coach/prescription/upsert-week-prescription";
 import { computeTargetRecommendation, type TargetRecommendation } from "@/lib/coach/prescription/calibrate-target";
-import { generateBlockOutcome } from "@/lib/coach/block-outcomes";
+import { generateBlockOutcome, type GenerateBlockOutcomeResult } from "@/lib/coach/block-outcomes";
 import type { WorkoutSetSample } from "@/lib/coach/prescription/types";
 import type { PlannedExercise } from "@/lib/coach/sessionPlans";
 import {
@@ -1876,7 +1876,7 @@ export async function executeProposeCloseBlock(opts: {
   supabase: SupabaseClient;
   userId: string;
   input: unknown;
-}): Promise<ToolResult<{ preview: { blockId: string; primary_lift: PrimaryLift | null; target_value: number | null; reason: string; would_be_outcome: unknown }; approval_token: string }>> {
+}): Promise<ToolResult<{ preview: { blockId: string; primary_lift: PrimaryLift | null; target_value: number | null; reason: string; would_be_outcome: GenerateBlockOutcomeResult["payload"] }; approval_token: string }>> {
   const t0 = Date.now();
   const i = (opts.input ?? {}) as Record<string, unknown>;
 
@@ -1884,14 +1884,23 @@ export async function executeProposeCloseBlock(opts: {
     return { ok: false, error: { error: "reason required (4-200 chars)" }, meta: { ms: Date.now() - t0, range_days: 0 } };
   }
 
-  // Find active block.
-  const { data: blocks } = await opts.supabase
+  // Find active block. maybeSingle() so two active blocks (a data-integrity
+  // bug) surface as an error rather than silently picking the first; error
+  // destructured so a transient Supabase fetch failure doesn't masquerade as
+  // "no active block" and mislead Peter's prompt downstream.
+  const { data: block, error: blockErr } = await opts.supabase
     .from("training_blocks")
     .select("id, primary_lift, target_value, target_metric, target_unit, start_date, end_date, target_hit_at_week, status")
     .eq("user_id", opts.userId)
     .eq("status", "active")
-    .limit(1);
-  const block = blocks?.[0];
+    .maybeSingle();
+  if (blockErr) {
+    return {
+      ok: false,
+      error: { error: `active_block_fetch_failed: ${blockErr.message}`, code: "fetch_failed" },
+      meta: { ms: Date.now() - t0, range_days: 0 },
+    };
+  }
   if (!block) {
     return {
       ok: false,
@@ -1904,7 +1913,7 @@ export async function executeProposeCloseBlock(opts: {
   }
 
   // Generate the prospective outcome (preview only — no write).
-  let prospectiveOutcome: unknown;
+  let prospectiveOutcome: GenerateBlockOutcomeResult["payload"] | undefined;
   try {
     const { payload } = await generateBlockOutcome({
       supabase: opts.supabase,
