@@ -13,6 +13,7 @@ import {
   SCHEMA_EXPLAINER,
 } from "@/lib/coach/system-prompts";
 import { getAutoregulationSignals } from "@/lib/coach/autoregulation";
+import { computeTargetRecommendation } from "@/lib/coach/prescription/calibrate-target";
 import { todayInUserTz } from "@/lib/time";
 import type { ChatMode, IntakePayload, PrimaryLift, TrainingBlock } from "@/lib/data/types";
 import type { TriggerDirective } from "@/lib/coach/voice/triggers";
@@ -120,6 +121,8 @@ We run **5-week blocks** ending in a deload week — research consensus for an i
    - Athlete asks "why <recommended_next_focus>?" → cite the rotation reasoning + recovery argument (just-focused lift needs 15+ weeks before re-focus; rotation distributes adaptation across all 4 patterns).
 
    If NO BLOCK_OUTCOME_CONTEXT block is present (first-ever block, OR most recent outcome already acknowledged), fall back to today's behavior: ask the user for their lift focus + target directly. Single primary lift only (squat / bench / deadlift / ohp). Target metric is e1RM or working_weight in kg. Also ask for free-form goal_text (1-2 sentences) for any nuance the structure can't capture.
+
+   **Target calibration narration (REQUIRED when NEXT_BLOCK_TARGET_RECOMMENDATION is present in your context):** Cite the recommendation by name, the athlete's current e1RM, AND the math that produced it. E.g.: *"Your decline bench is at 80.7 e1RM; trend over 6 weeks is +1.45 kg/wk. Recommended target for a 4-week-progression focus block is 86 kg e1RM. That hits around week 4 if execution is clean — sanity floor is 82.5, ceiling is 85.5."* Always recommend a number INSIDE the sanity_bounds window. If the athlete proposes a target outside the bounds, propose_block will return target_out_of_bounds — at that point ask why they want to override, take their stated reason, and pass it as override_reason on the retry. Do NOT silently capitulate to "I want to push harder" without a concrete justification (returning from layoff, meet attempt, specific peaking timeline, etc.). The validator exists to prevent the 2026-05-11 miscalibration class (target hit by week 3 of 5).
 
 3. **PROPOSE** the block. Call \`propose_block\` with start_date = next Monday (UTC), end_date = start + 34 days. Surface the preview to the user.
 
@@ -474,6 +477,38 @@ async function fetchSetupBlockContext(
   if (!row) return null;
   const tb = (row as unknown as { training_blocks: { end_date: string } | null }).training_blocks;
   const calibrationNote = (row.lessons as { calibration_note?: string } | null)?.calibration_note ?? "";
+
+  // Also compute trend-derived recommendation for the recommended_next_focus
+  // lift, so Carter narrates a number anchored in the athlete's actual
+  // realized data (not just the rotation-based recalibrate-target.ts output).
+  let recommendationLines: string[] = [];
+  if (row.recommended_next_focus) {
+    try {
+      const todayIso = todayInUserTz();
+      const rec = await computeTargetRecommendation({
+        supabase,
+        userId,
+        lift: row.recommended_next_focus as PrimaryLift,
+        todayIso,
+      });
+      recommendationLines = [
+        "",
+        "NEXT_BLOCK_TARGET_RECOMMENDATION:",
+        `  lift: ${row.recommended_next_focus}`,
+        `  current_e1rm: ${rec.current_e1rm ?? "n/a (no logged data)"}`,
+        `  observed_slope_kg_per_wk: ${rec.slope_kg_per_wk == null ? "n/a (<3 weeks data)" : rec.slope_kg_per_wk.toFixed(2)}`,
+        `  trend_target: ${rec.trend_target ?? "n/a"}`,
+        `  math_target: ${rec.math_target ?? "n/a"}`,
+        `  used: ${rec.used}`,
+        `  recommended_target: ${rec.recommended_target ?? "n/a"}`,
+        `  sanity_bounds: ${rec.sanity_bounds == null ? "n/a" : `[${rec.sanity_bounds[0]}, ${rec.sanity_bounds[1]}]`}`,
+      ];
+    } catch {
+      // Don't block setup_block context on a transient compute failure.
+      recommendationLines = ["", "NEXT_BLOCK_TARGET_RECOMMENDATION: (compute failed; use rotation-based recommended_target_value_kg above)"];
+    }
+  }
+
   return [
     "BLOCK_OUTCOME_CONTEXT:",
     `  primary_lift: ${row.primary_lift}`,
@@ -484,5 +519,6 @@ async function fetchSetupBlockContext(
     `  recommended_next_focus: ${row.recommended_next_focus}`,
     `  recommended_target_value_kg: ${row.recommended_target_value_kg}`,
     `  calibration_note: ${calibrationNote}`,
+    ...recommendationLines,
   ].join("\n");
 }
