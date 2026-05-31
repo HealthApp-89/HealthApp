@@ -39,6 +39,7 @@ import { validateWeekPrescription } from "@/lib/coach/prescription/validate-week
 import { maintenanceLoadFor } from "@/lib/coach/prescription/maintenance-baseline";
 import { prescribeWeek } from "@/lib/coach/prescription/prescribe-week";
 import { upsertWeekPrescription } from "@/lib/coach/prescription/upsert-week-prescription";
+import { computeTargetRecommendation, type TargetRecommendation } from "@/lib/coach/prescription/calibrate-target";
 import type { WorkoutSetSample } from "@/lib/coach/prescription/types";
 import type { PlannedExercise } from "@/lib/coach/sessionPlans";
 import {
@@ -1591,18 +1592,24 @@ export async function executeComputeAdherence(opts: {
 export const PROPOSE_BLOCK_TOOL = {
   name: "propose_block",
   description:
-    "Generate a preview of a new 5-week training block. Does NOT write to the database. Returns a preview object plus an approval_token that the matching commit_block call must include after the user explicitly approves the proposal.",
+    "Propose a new 5-week training block. Does NOT write. Returns preview + approval_token. The server validates the target_value against trend-derived sanity bounds (computed from the athlete's last 90d of realized working sets for the primary lift). If the proposed target is outside [current+1, current+coefficient×4×1.5], the call fails with target_out_of_bounds — retry with an explicit override_reason if the athlete consciously wants to go outside that window.",
   input_schema: {
     type: "object" as const,
     required: ["goal_text", "start_date", "end_date"],
     properties: {
-      goal_text:     { type: "string", minLength: 4, maxLength: 200 },
-      primary_lift:  { type: "string", enum: ["squat","bench","deadlift","ohp"] },
-      target_metric: { type: "string", enum: ["e1rm","working_weight"] },
-      target_value:  { type: "number", minimum: 0 },
-      target_unit:   { type: "string", default: "kg" },
-      start_date:    { type: "string", format: "date", description: "Must be a Monday." },
-      end_date:      { type: "string", format: "date", description: "Must be exactly start_date + 34 days." },
+      goal_text:    { type: "string", minLength: 4, maxLength: 200 },
+      primary_lift: { type: "string", enum: ["squat", "bench", "deadlift", "ohp"] },
+      target_metric:{ type: "string", enum: ["e1rm", "working_weight"] },
+      target_value: { type: "number", minimum: 1, maximum: 500 },
+      target_unit:  { type: "string", maxLength: 16 },
+      start_date:   { type: "string", format: "date", description: "Must be a Monday." },
+      end_date:     { type: "string", format: "date", description: "Must equal start_date + 34 days." },
+      override_reason: {
+        type: "string",
+        minLength: 4,
+        maxLength: 200,
+        description: "Required ONLY when target_value falls outside the trend-derived sanity bounds. Explain why you want to go above/below the realistic 4-week range — e.g. 'returning from injury, conservative target' or 'priming meet attempt, intentionally aggressive'.",
+      },
     },
   },
 };
@@ -1704,6 +1711,7 @@ type ProposeBlockInput = {
   target_unit?: string;
   start_date: string;
   end_date: string;
+  override_reason?: string;
 };
 
 type ProposeWeekPlanInput = {
@@ -1729,7 +1737,7 @@ export async function executeProposeBlock(opts: {
   supabase: SupabaseClient;
   userId: string;
   input: unknown;
-}): Promise<ToolResult<{ preview: ProposeBlockInput; approval_token: string }>> {
+}): Promise<ToolResult<{ preview: ProposeBlockInput; approval_token: string; recommendation: TargetRecommendation | null }>> {
   const t0 = Date.now();
   const i = (opts.input ?? {}) as Record<string, unknown>;
 
@@ -1756,11 +1764,63 @@ export async function executeProposeBlock(opts: {
     return { ok: false, error: { error: "target_metric and target_value must both be set or both null" }, meta: { ms: Date.now() - t0, range_days: 0 } };
   }
 
+  // ── Target calibration: trend-derived sanity check ──────────────────────
+  // Compute the trend-derived recommendation (helper returns all-nulls when
+  // the lift has no logged history — bootstrap path for first-ever block).
+  // Only enforces bounds when (a) target_value is set AND (b) recommendation
+  // returned non-null sanity_bounds (i.e., there's enough data to anchor).
+  let recommendation: TargetRecommendation | null = null;
+  if (i.primary_lift != null && i.target_value != null) {
+    try {
+      recommendation = await computeTargetRecommendation({
+        supabase: opts.supabase,
+        userId: opts.userId,
+        lift: i.primary_lift as PrimaryLift,
+        todayIso: todayInUserTz(),
+      });
+    } catch (e) {
+      // Don't block block creation on a transient data-fetch failure.
+      console.warn("[propose_block] computeTargetRecommendation failed", e);
+      recommendation = null;
+    }
+  }
+
+  if (recommendation?.sanity_bounds != null && i.target_value != null) {
+    const [lo, hi] = recommendation.sanity_bounds;
+    const tv = i.target_value as number;
+    const outOfBounds = tv < lo || tv > hi;
+    const overrideReason = typeof i.override_reason === "string" && i.override_reason.length >= 4 ? i.override_reason : null;
+    if (outOfBounds && overrideReason == null) {
+      const direction = tv < lo ? "too low" : "too high";
+      const hint = tv < lo
+        ? `Target ${tv} kg would be hit too quickly given current ${recommendation.current_e1rm} e1RM. Sanity floor for this lift is ${lo} kg.`
+        : `Target ${tv} kg exceeds realistic 4-week progression. Sanity ceiling for this lift is ${hi} kg (current ${recommendation.current_e1rm} e1RM + 1.5× the trend-realistic 4-week gain).`;
+      return {
+        ok: false,
+        error: {
+          error: `Proposed target ${tv} kg is ${direction} for a 5-week ${i.primary_lift} block. ${hint} Recommended target: ${recommendation.recommended_target} kg (${recommendation.used}-based). To proceed with ${tv} kg anyway, retry propose_block with an explicit override_reason explaining why.`,
+          code: "target_out_of_bounds",
+          hint,
+        },
+        meta: { ms: Date.now() - t0, range_days: 0 },
+      };
+    }
+    if (outOfBounds && overrideReason != null) {
+      console.info("[propose_block] target_out_of_bounds_override", {
+        userId: opts.userId,
+        lift: i.primary_lift,
+        proposed: tv,
+        bounds: [lo, hi],
+        reason: overrideReason,
+      });
+    }
+  }
+
   const payload = i as unknown as ProposeBlockInput;
   const token = signApprovalToken({ userId: opts.userId, action: "block", payload });
   return {
     ok: true,
-    data: { preview: payload, approval_token: token },
+    data: { preview: payload, approval_token: token, recommendation },
     meta: { ms: Date.now() - t0, result_rows: 1, range_days: 35, truncated: false },
   };
 }
