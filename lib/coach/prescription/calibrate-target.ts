@@ -178,8 +178,9 @@ export async function computeTargetRecommendation(opts: {
   const rawSlope = computeOlsSlope(samples);
 
   // Negative or zero slope on a focus lift is suspect (declining recently —
-  // could be a deload week or just a bad session sequence). Fall through to
-  // math so the recommendation isn't "target = current".
+  // could be a deload week or just a bad session sequence). Zero slope would
+  // yield trend_target = current, which is unhelpfully conservative. Strict
+  // > 0 forces both cases to fall through to math.
   const slope = rawSlope != null && rawSlope > 0 ? rawSlope : null;
 
   const coef = coefficientFor(lift, phase);
