@@ -54,12 +54,11 @@ export const SESSION_PLANS: Record<string, PlannedExercise[]> = {
   Legs: [
     { name: "Squat (Barbell)", baseKg: 62.5, baseReps: 6, sets: 3, key: "squat", increment: { step: 2.5 } },
     { name: "Leg Press", baseKg: 85, baseReps: 12, sets: 3, key: "leg_press", increment: { step: 5 } },
-    { name: "Leg Extension (Machine)", baseKg: 31, baseReps: 12, sets: 3, key: "leg_ext", increment: { step: 5, intermediate: 2.5 } },
-    { name: "Romanian Deadlift (Barbell)", baseKg: 65, baseReps: 6, sets: 4, key: "rdl", increment: { step: 2.5 } },
     { name: "Hip Thrust (Machine)", baseKg: 60, baseReps: 10, sets: 3, key: "hip_thrust_machine", note: "baseKg is a starting estimate — confirm on first session", increment: { step: 2.5 } },
+    { name: "Leg Extension (Machine)", baseKg: 31, baseReps: 12, sets: 3, key: "leg_ext", increment: { step: 5, intermediate: 2.5 } },
     { name: "Seated Leg Curl (Machine)", baseKg: 30, baseReps: 12, sets: 3, key: "leg_curl", increment: { step: 5, intermediate: 2.3 } },
-    { name: "Seated Calf Raise", baseKg: 40, baseReps: 15, sets: 3, key: "calf", increment: { step: 5 } },
     { name: "Hip Abductor (Machine)", baseKg: 56, baseReps: 15, sets: 3, key: "abductor", increment: { step: 5, intermediate: 2 } },
+    { name: "Seated Calf Raise", baseKg: 40, baseReps: 15, sets: 3, key: "calf", increment: { step: 5 } },
   ],
   Back: [
     { name: "Deadlift (Barbell)", baseKg: 82.5, baseReps: 6, sets: 3, key: "deadlift", increment: { step: 2.5 } },
