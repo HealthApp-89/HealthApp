@@ -154,7 +154,7 @@ console.log("\n## block-phase-rule.ts\n");
   });
   // 97.5 × 0.80 = 78.0; rounded to nearest 2.5 step = 77.5 or 80 (both acceptable)
   assert("deload rounds 80% of 97.5 to step grid", deloaded.baseKg === 77.5 || deloaded.baseKg === 80, `got ${deloaded.baseKg}`);
-  assert("deload halves sets (3 → 1)", deloaded.sets === 1);
+  assert("deload sets MEV-floor (3 → 2)", deloaded.sets === 2, `got ${deloaded.sets}`);
 }
 
 console.log("\n## autoregulation-rule.ts\n");
@@ -272,7 +272,7 @@ console.log("\n## autoregulation-rule.ts\n");
   });
   // 70 × 0.80 = 56; round to step 2.5 → 55.
   assert("deload_week: 0.80× rounded to grid (55)", deloadCut.baseKg === 55, `got ${deloadCut.baseKg}`);
-  assert("deload_week: sets cut in half (3 → 1)", deloadCut.sets === 1, `got ${deloadCut.sets}`);
+  assert("deload_week: sets MEV-floor (3 → 2)", deloadCut.sets === 2, `got ${deloadCut.sets}`);
 
   // Clamp still wins when current sits at or above the clamped ceiling —
   // ensures the phase gate doesn't accidentally re-permit over-the-ceiling holds.

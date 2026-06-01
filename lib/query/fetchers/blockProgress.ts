@@ -84,6 +84,13 @@ export async function computeBlockProgress(
     if (flipErr) throw flipErr;
     return { active: false };
   }
+  // Block is in the DB as active but hasn't started yet — treat as inactive
+  // so the UI hides Mesocycle badge and session debrief omits the week-num
+  // section. (Was silently clamping to "Week 1" because the original
+  // computation only handled the end_date case.)
+  if (block.start_date > today) {
+    return { active: false };
+  }
 
   const start = new Date(block.start_date + "T00:00:00Z");
   const todayD = new Date(today + "T00:00:00Z");

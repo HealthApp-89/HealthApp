@@ -42,7 +42,9 @@ export function prescribeSecondaryAutoregulated(input: AutoregInput): PlannedExe
     nextKg = currentWorkingKg;
   } else if (phase === "deload_week") {
     nextKg = roundToStep(currentWorkingKg * 0.80, step);
-    setsOverride = Math.max(1, Math.floor(input.baselineSets / 2));
+    // MEV-floor maintenance: ceil halves, never drop below 2 working sets.
+    // Mirrors block-phase-rule.ts deload_week branch.
+    setsOverride = Math.max(2, Math.ceil(input.baselineSets / 2));
   } else if (input.consecutiveRirMisses >= 2) {
     // Step 1: standard autoregulation (pre_target phase only).
     nextKg = roundToStep(currentWorkingKg * 0.90, step);

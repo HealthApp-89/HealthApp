@@ -56,7 +56,7 @@ export function evaluateBlockPhase(opts: {
  *   - pre_target:    +step kg if last week RIR target hit cleanly; hold otherwise
  *   - consolidation: hold load, +1 rep target AND +1 set (chase clean volume)
  *   - off_pace:      narrow the deficit — small load jump, optional set drop to compensate fatigue
- *   - deload_week:   load × 0.80, sets cut 50% (rounded down to integer ≥ 1), reps held */
+ *   - deload_week:   load × 0.80, sets = max(2, ceil(baseline/2)), reps held — MEV-floor maintenance */
 export function prescribePrimaryFromPhase(opts: {
   baseExercise: PlannedExercise; // from session library or recent_workouts; supplies name/key/increment
   phase: BlockPhase;
@@ -101,7 +101,10 @@ export function prescribePrimaryFromPhase(opts: {
     }
     case "deload_week": {
       nextKg = roundToStep(currentWorkingKg * 0.80, step);
-      nextSets = Math.max(1, Math.floor(opts.baselineSets / 2));
+      // MEV-floor maintenance: ceil halves, never drop below 2 working sets.
+      // Floor rounding (3→1) was below MEV for a 7-day bridge deload; RP-style
+      // maintenance literature anchors ~2 sets per exercise as the floor.
+      nextSets = Math.max(2, Math.ceil(opts.baselineSets / 2));
       break;
     }
   }
