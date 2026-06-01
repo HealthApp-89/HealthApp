@@ -145,6 +145,8 @@ export const EXERCISE_MUSCLES: Record<string, MuscleMapping> = {
   "romanian deadlift":      { primary: [M.Hams], secondary: [M.Glutes] },
   "deadlift":               { primary: [M.Hams, M.Glutes], secondary: [M.Lats, M.Traps] },
   "hip thrust":             { primary: [M.Glutes], secondary: [M.Hams] },
+  "hip thrust machine":     { primary: [M.Glutes], secondary: [M.Hams] },
+  "machine hip thrust":     { primary: [M.Glutes], secondary: [M.Hams] },
   "glute bridge":           { primary: [M.Glutes], secondary: [M.Hams] },
   "hip abductor":           { primary: [M.Glutes], secondary: [] },
   "leg extension":          { primary: [M.Quads], secondary: [] },

@@ -106,6 +106,8 @@ export const EXERCISE_CATEGORY: Record<string, ExerciseCategory> = {
   "good morning": "hinge",
   "hip thrust": "hinge",
   "barbell hip thrust": "hinge",
+  "hip thrust machine": "hinge",
+  "machine hip thrust": "hinge",
   "glute bridge": "hinge",
   "kettlebell swing": "hinge",
   "back extension": "hinge",

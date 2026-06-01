@@ -69,6 +69,8 @@ const FATIGUE_TIER: Record<string, FatigueTier> = {
   "machine squat": 2,
   "hip thrust": 2,
   "barbell hip thrust": 2,
+  "hip thrust machine": 2,
+  "machine hip thrust": 2,
   "good morning": 2,
 
   // ── TIER 3 — isolation ──────────────────────────────────────────────────
