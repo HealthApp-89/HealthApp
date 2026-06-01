@@ -14,6 +14,7 @@ import { ExercisePicker } from "@/components/logger/ExercisePicker";
 import { ResumeDraftPrompt } from "@/components/logger/ResumeDraftPrompt";
 import { SaveAsDefaultDialog } from "@/components/logger/SaveAsDefaultDialog";
 import { FinishSummary } from "@/components/logger/FinishSummary";
+import { ReorderDialog } from "@/components/logger/ReorderDialog";
 import { queryKeys } from "@/lib/query/keys";
 
 type Props = {
@@ -142,6 +143,7 @@ export function LoggerSheet(props: Props) {
   const [finishOpen, setFinishOpen] = useState(false);
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
+  const [reorderOpen, setReorderOpen] = useState(false);
   const [committing, setCommitting] = useState(false);
   const [now, setNow] = useState(() => Date.now());
 
@@ -469,6 +471,7 @@ export function LoggerSheet(props: Props) {
             onChange={(next) => setDraft({ ...draft, exercises: draft.exercises.map((e, j) => j === i ? next : e) })}
             onReplace={() => { setPickerMode({ replace_index: i }); setPickerOpen(true); }}
             onRemove={() => setDraft({ ...draft, exercises: draft.exercises.filter((_, j) => j !== i) })}
+            onReorderAll={() => setReorderOpen(true)}
           />
         ))}
 
@@ -502,6 +505,17 @@ export function LoggerSheet(props: Props) {
               });
             }
             setPickerOpen(false);
+          }}
+        />
+      )}
+
+      {reorderOpen && (
+        <ReorderDialog
+          exercises={draft.exercises}
+          onCancel={() => setReorderOpen(false)}
+          onConfirm={(next) => {
+            setDraft({ ...draft, exercises: next });
+            setReorderOpen(false);
           }}
         />
       )}

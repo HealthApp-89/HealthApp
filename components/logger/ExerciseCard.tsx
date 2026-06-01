@@ -17,10 +17,11 @@ type Props = {
   onChange: (next: ExerciseDraft) => void;
   onReplace: () => void;
   onRemove: () => void;
+  onReorderAll: () => void;
 };
 
 export function ExerciseCard({
-  userId, externalId, exercise, exerciseIndex, allExercises, onChange, onReplace, onRemove,
+  userId, externalId, exercise, exerciseIndex, allExercises, onChange, onReplace, onRemove, onReorderAll,
 }: Props) {
   // Tier + rest prescription from session-structure annotation.
   const annotated = useMemo(() => {
@@ -95,6 +96,7 @@ export function ExerciseCard({
           {menuOpen && (
             <div className="absolute right-0 top-6 bg-zinc-800 border border-zinc-700 rounded-lg p-1 text-xs z-10 min-w-[160px]">
               <button onClick={() => { setMenuOpen(false); onReplace(); }} className="block w-full text-left px-2 py-1.5 hover:bg-zinc-700 rounded text-zinc-200">Replace</button>
+              <button onClick={() => { setMenuOpen(false); onReorderAll(); }} className="block w-full text-left px-2 py-1.5 hover:bg-zinc-700 rounded text-zinc-200">Reorder exercises</button>
               <button onClick={() => { setMenuOpen(false); setRestDialogOpen(true); }} className="block w-full text-left px-2 py-1.5 hover:bg-zinc-700 rounded text-zinc-200">Edit rest time</button>
               <button onClick={() => { setMenuOpen(false); onRemove(); }} className="block w-full text-left px-2 py-1.5 hover:bg-zinc-700 rounded text-red-400">Remove</button>
             </div>
