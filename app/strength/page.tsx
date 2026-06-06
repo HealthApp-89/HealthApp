@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SubPillNav } from "@/components/layout/SubPillNav";
 import { StrengthCoachClient } from "@/components/strength/StrengthCoachClient";
+import { StrengthScheduleClient } from "@/components/strength/StrengthScheduleClient";
 import { StrengthByDateClient } from "@/components/strength/StrengthByDateClient";
 import { StrengthByMuscleClient } from "@/components/strength/StrengthByMuscleClient";
 import { StrengthLogClient } from "@/components/strength/StrengthLogClient";
@@ -9,15 +10,16 @@ import { COLOR } from "@/lib/ui/theme";
 
 const SUB_TABS = [
   { key: "coach", label: "Coach" },
+  { key: "schedule", label: "Schedule" },
   { key: "date", label: "By date" },
   { key: "by_muscle", label: "By muscle" },
   { key: "log", label: "Log" },
 ];
 
-type Tab = "coach" | "date" | "by_muscle" | "log";
+type Tab = "coach" | "schedule" | "date" | "by_muscle" | "log";
 
 function parseTab(value: string | undefined): Tab {
-  if (value === "date" || value === "by_muscle" || value === "log") return value;
+  if (value === "schedule" || value === "date" || value === "by_muscle" || value === "log") return value;
   return "coach";
 }
 
@@ -45,6 +47,7 @@ export default async function StrengthPage({
       </header>
       <SubPillNav pills={SUB_TABS} paramName="tab" defaultKey="coach" />
       {tab === "coach" && <StrengthCoachClient userId={user.id} />}
+      {tab === "schedule" && <StrengthScheduleClient userId={user.id} />}
       {tab === "date" && <StrengthByDateClient userId={user.id} />}
       {tab === "by_muscle" && <StrengthByMuscleClient userId={user.id} />}
       {tab === "log" && <StrengthLogClient userId={user.id} />}
