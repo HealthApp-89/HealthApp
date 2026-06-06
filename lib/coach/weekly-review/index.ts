@@ -15,21 +15,25 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
-  ResearchPhase,
   TrainingBlock,
-  WeeklyPhase,
   WeeklyReviewPayload,
   WeeklyReviewRow,
 } from "@/lib/data/types";
 import { composeRecap } from "./compose-recap";
 import { composeReconfirm } from "./compose-reconfirm";
 import { composeTrends } from "./compose-trends";
-import { composePrescription } from "./compose-prescription";
 import { composeVolume } from "./compose-volume";
 import { composeTargets } from "./compose-targets";
 import { renderNarrative } from "./narrative-prompt";
-import { weeklyPhaseFor, nextWeeklyPhaseFor } from "./phase-mapping";
 import { computeOnPace } from "./compute-on-pace";
+import { readNextWeekPrescription } from "./read-prescription";
+import { buildPerLiftFromEngine } from "./payload-mapper";
+import { evaluateBlockPhase } from "@/lib/coach/prescription/block-phase-rule";
+import {
+  currentComparisonValueForLift,
+  PRIMARY_LIFT_NAME_PATTERNS,
+} from "@/lib/coach/prescription/current-comparison-value";
+import type { BlockPhase, WorkoutSetSample } from "@/lib/coach/prescription/types";
 
 export async function generateWeeklyReview(args: {
   supabase: SupabaseClient;
@@ -63,12 +67,36 @@ export async function generateWeeklyReview(args: {
     .eq("week_start", weekStart)
     .maybeSingle();
 
-  // research_phase lives on training_weeks (not training_blocks). When the
-  // recap week has no committed row, default to 'accumulate' so phase-mapping
-  // gives us a normal MEV/MAV/MRV/deload progression.
-  const researchPhase: ResearchPhase = (trainingWeek?.research_phase as ResearchPhase | null) ?? "accumulate";
-  const weeklyPhaseCurrent = weeklyPhaseFor(weekN, totalWeeks, researchPhase);
-  const weeklyPhaseNext = nextWeeklyPhaseFor(weekN, totalWeeks, researchPhase);
+  // Fetch the upcoming week's row early so blockPhaseNext can use its
+  // rir_target rather than the current week's value (which may differ if
+  // Carter already committed a new plan for next week).
+  const nextWeekStart = shiftDays(weekStart, 7);
+  const { data: upcomingWeek } = await supabase
+    .from("training_weeks")
+    .select("session_plan, weekly_focus, rir_target")
+    .eq("user_id", userId)
+    .eq("week_start", nextWeekStart)
+    .maybeSingle();
+
+  // Phase derivation: BlockPhase via evaluateBlockPhase, the canonical engine
+  // path. blockPhaseNow anchors at the recap week (weekStart); blockPhaseNext
+  // anchors at next Monday. Same code path Carter's framework-state block and
+  // the Sunday cron see, so the review's header agrees with the rest of the
+  // surface.
+  const blockPhaseNow: BlockPhase = await deriveBlockPhase({
+    supabase,
+    userId,
+    block: block as TrainingBlock,
+    todayIso: weekStart,
+    rirTarget: trainingWeek?.rir_target ?? null,
+  });
+  const blockPhaseNext: BlockPhase = await deriveBlockPhase({
+    supabase,
+    userId,
+    block: block as TrainingBlock,
+    todayIso: nextWeekStart,
+    rirTarget: upcomingWeek?.rir_target ?? trainingWeek?.rir_target ?? null,
+  });
 
   const plannedSessions: Record<string, string> =
     (trainingWeek?.original_session_plan as Record<string, string> | null) ??
@@ -97,7 +125,7 @@ export async function generateWeeklyReview(args: {
       priorReview: priorReview as WeeklyReviewRow | null,
     }),
     composeTrends({ supabase, userId, weekStart }),
-    composeVolume({ supabase, userId, weekStart, nextPhase: weeklyPhaseNext }),
+    composeVolume({ supabase, userId, weekStart, nextPhase: blockPhaseNext }),
   ]);
 
   // compose-targets needs the next-week session plan from prescription;
@@ -105,29 +133,42 @@ export async function generateWeeklyReview(args: {
   const targets = await composeTargets({
     supabase,
     userId,
-    nextWeekStart: shiftDays(weekStart, 7),
+    nextWeekStart,
     sessionPlan: plannedSessions,
   });
 
-  const prescription = await composePrescription({
+  // Read next week's deterministic prescription via the canonical engine seam.
+  // Prefers training_weeks.session_prescriptions written by the Sunday cron at
+  // 03:30 UTC; falls through to prescribeWeek inline if the row is missing.
+  const { prescription: engineRx, source: rxSource } = await readNextWeekPrescription({
     supabase,
     userId,
-    nextWeekStart: shiftDays(weekStart, 7),
-    weeklyPhaseCurrent,
-    weeklyPhaseNext,
-    rirTargetCurrent: trainingWeek?.rir_target ?? null,
-    rirTargetNext: rirForPhase(weeklyPhaseNext),
-    perLiftRecap: recap.per_lift,
-    bodyWeightLossPctPerWk: deriveLossPct(
-      trends.weight_loss_kg_per_week,
-      recap.weight,
-    ),
-    sleepAvg7d: recap.sleep.avg_h,
-    hrvFlag: false, // v1: sleep-based recovery_hold only. HRV-based hold deferred to a follow-up — leaves an explicit gap when sleep is fine but HRV crashed.
-    isFirstWeekOfBlock: weekN === 1,
-    intakeStartingLoads: null, // v1: when null, prescription falls back to last-week weight. First-week-of-block users get block_start_baseline tag with last-week weight; if intake load injection is needed, add it before shipping.
-    weeklyFocus: trainingWeek?.weekly_focus ?? null,
+    nextWeekStart,
+    todayIso: nextWeekStart,
   });
+  if (rxSource === "inline") {
+    console.warn("[weekly-review] read fell through to inline prescribeWeek", {
+      userId,
+      nextWeekStart,
+    });
+  }
+  const perLift = buildPerLiftFromEngine({
+    prescription: engineRx,
+    perLiftRecap: recap.per_lift,
+    blockPhase: blockPhaseNext,
+  });
+
+  const prescription: WeeklyReviewPayload["prescription"] = {
+    next_week_start: nextWeekStart,
+    phase: blockPhaseNext,
+    rir_target: upcomingWeek?.rir_target ?? trainingWeek?.rir_target ?? null,
+    session_plan:
+      (upcomingWeek?.session_plan as Record<string, string> | null) ??
+      (trainingWeek?.session_plan as Record<string, string> | null) ??
+      {},
+    weekly_focus: upcomingWeek?.weekly_focus ?? trainingWeek?.weekly_focus ?? null,
+    per_lift: perLift,
+  };
 
   const reconfirm = composeReconfirm({
     recap,
@@ -143,13 +184,13 @@ export async function generateWeeklyReview(args: {
   });
 
   const payload: WeeklyReviewPayload = {
-    schema_version: 1,
+    schema_version: 2,
     header: {
       week_n: weekN,
       total_weeks: totalWeeks,
       block_goal_text: block.goal_text,
-      block_phase_now: weeklyPhaseCurrent,
-      block_phase_next: weeklyPhaseNext,
+      block_phase_now: blockPhaseNow,
+      block_phase_next: blockPhaseNext,
       on_pace: onPace,
       weeks_remaining: Math.max(0, totalWeeks - weekN),
       late,
@@ -191,21 +232,84 @@ function computeTotalWeeks(blockStart: string, blockEnd: string): number {
   return Math.max(1, weeks);
 }
 
-function rirForPhase(phase: WeeklyPhase): number | null {
-  if (phase === "mev") return 3;
-  if (phase === "mav") return 2;
-  if (phase === "mrv") return 1;
-  if (phase === "deload") return 4;
-  // v2 BlockPhase labels: v1 RIR logic does not apply; null signals no target.
-  return null;
-}
+// ── BlockPhase derivation ────────────────────────────────────────────────────
+//
+// Mirrors the query shape + row-mapper in compute-on-pace.ts (workouts →
+// exercises → exercise_sets) so the header's block_phase_{now,next} are
+// derived from the same WorkoutSetSample[] feed the on_pace computation uses.
+// Keeping these parallel for now; future refactor can extract a shared helper
+// at module-stabilization time, not in this PR.
 
-function deriveLossPct(
-  weeklyDeltaKg: number | null,
-  weight: { start_kg: number | null; end_kg: number | null },
-): number | null {
-  if (weeklyDeltaKg == null || weight.start_kg == null || weight.start_kg <= 0)
-    return null;
-  return weeklyDeltaKg / weight.start_kg;
+type RawSet = { kg: number | null; reps: number | null; warmup: boolean | null; failure: boolean | null };
+type RawExercise = { name: string; exercise_sets: RawSet[] | null };
+type RawWorkout = { date: string; exercises: RawExercise[] | null };
+
+async function deriveBlockPhase(opts: {
+  supabase: SupabaseClient;
+  userId: string;
+  block: TrainingBlock | null;
+  todayIso: string;
+  rirTarget: number | null;
+}): Promise<BlockPhase> {
+  const { supabase, userId, block, todayIso } = opts;
+  if (!block || block.primary_lift == null) return "pre_target";
+
+  const rirTarget = opts.rirTarget ?? 2;
+
+  const sinceIso = (() => {
+    const d = new Date(todayIso + "T12:00:00Z");
+    d.setUTCDate(d.getUTCDate() - 28);
+    return d.toISOString().slice(0, 10);
+  })();
+
+  const { data } = await supabase
+    .from("workouts")
+    .select("date, exercises(name, exercise_sets(kg, reps, warmup, failure))")
+    .eq("user_id", userId)
+    .gte("date", sinceIso)
+    .order("date", { ascending: false });
+
+  const rows = (data ?? []) as unknown as RawWorkout[];
+
+  const patterns = PRIMARY_LIFT_NAME_PATTERNS[block.primary_lift];
+  const lowerPatterns = new Set(patterns.map((p) => p.toLowerCase()));
+
+  const recentSets: WorkoutSetSample[] = [];
+  for (const w of rows) {
+    for (const ex of w.exercises ?? []) {
+      for (const s of ex.exercise_sets ?? []) {
+        if (s.kg == null || s.reps == null) continue;
+        if (!lowerPatterns.has(ex.name.toLowerCase())) continue;
+        recentSets.push({
+          exercise_name: ex.name,
+          exercise_key: null,
+          kg: s.kg,
+          reps: s.reps,
+          warmup: !!s.warmup,
+          failure: !!s.failure,
+          performed_on: w.date,
+        });
+      }
+    }
+  }
+
+  const currentWorkingKg = currentComparisonValueForLift({
+    lift: block.primary_lift,
+    metric: block.target_metric ?? "working_weight",
+    recentSets,
+    rirTarget,
+    todayIso,
+  });
+
+  // recentProgressionRatePerWeek intentionally null: defers the off_pace
+  // verdict to consolidation/deload_week/pre_target. compute-on-pace owns the
+  // OLS-slope estimation for the on_pace flag; the header's block_phase
+  // derivation is a calendar+target check, not a slope check.
+  return evaluateBlockPhase({
+    block,
+    currentWorkingKg,
+    recentProgressionRatePerWeek: null,
+    todayIso,
+  });
 }
 
