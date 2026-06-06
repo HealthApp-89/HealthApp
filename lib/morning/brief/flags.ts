@@ -108,12 +108,20 @@ export function computeAdviceFlags(inputs: FlagInputs): AdviceFlags {
     coach_swap_suggested: inputs.card.coach_suggestion?.kind === "swap_to_mobility",
     coach_reduce_intensity_suggested:
       inputs.card.coach_suggestion?.kind === "reduce_intensity",
-    phase_transition_this_week:
-      inputs.thisWeekCommittedReview && inputs.previousCommittedReview
-        ? inputs.thisWeekCommittedReview.payload.header.block_phase_now !==
-          inputs.previousCommittedReview.payload.header.block_phase_now
-        : inputs.thisWeekCommittedReview != null,
+    phase_transition_this_week: (() => {
+      if (!inputs.thisWeekCommittedReview) return false;
+      if (!inputs.previousCommittedReview)
         // No previous review = first ever committed week = treat as transition.
+        return true;
+      const thisV = inputs.thisWeekCommittedReview.payload.schema_version;
+      const prevV = inputs.previousCommittedReview.payload.schema_version;
+      const sameSchema = thisV === prevV;
+      const phaseChanged =
+        sameSchema &&
+        inputs.thisWeekCommittedReview.payload.header.block_phase_now !==
+          inputs.previousCommittedReview.payload.header.block_phase_now;
+      return phaseChanged;
+    })(),
   };
 }
 
