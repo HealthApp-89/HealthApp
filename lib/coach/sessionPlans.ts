@@ -47,7 +47,7 @@ export const SESSION_PLANS: Record<string, PlannedExercise[]> = {
     { name: "Overhead Press (Barbell)", baseKg: 30, baseReps: 7, sets: 3, key: "ohp", increment: { step: 5 } },
     { name: "Incline Bench Press (Dumbbell)", baseKg: 32, baseReps: 11, sets: 3, key: "incline_db", increment: { step: 4 } },
     { name: "Chest Fly", baseKg: 22, baseReps: 15, sets: 3, key: "chest_fly", increment: { step: 5, intermediate: 2.3 } },
-    { name: "Lateral Raise (Dumbbell)", baseKg: 12, baseReps: 12, sets: 4, key: "lateral_raise", note: "Jump from 8kg — next DB is 12kg", increment: { step: 4 } },
+    { name: "Lateral Raise (Dumbbell)", baseKg: 12, baseReps: 12, sets: 4, key: "lateral_raise", increment: { step: 4 } },
     { name: "Triceps Pushdown (Cable)", baseKg: 23, baseReps: 15, sets: 3, key: "triceps", increment: { step: 2.5 } },
     { name: "Dead Bug", baseReps: 6, sets: 2, key: "dead_bug", note: "Per side — arms relaxed at sides, opposite leg lowers, lumbar pressed to floor", video_url: "https://www.youtube.com/watch?v=bxn9FBrt4-A" },
   ],

@@ -67,12 +67,12 @@ export function prescribeSecondaryAutoregulated(input: AutoregInput): PlannedExe
     if (nextKg > ceiling) nextKg = ceiling;
   }
 
-  // Step 3: volume drop during focus block (deload_week overrides above).
-  const sets = setsOverride != null
-    ? setsOverride
-    : input.isFocusBlock
-      ? Math.max(1, input.baselineSets - 1)
-      : input.baselineSets;
+  // Step 3: deload_week overrides above; otherwise full baseline volume.
+  // The prior focus-block "-1 set" rule was removed 2026-06-06 — accumulating
+  // a set/wk loss across 5 weeks on three secondary primaries detrained the
+  // patterns too aggressively. Load discipline during a focus block is now
+  // owned entirely by the 0.92× maintenance clamp on load (see Step 2 above).
+  const sets = setsOverride != null ? setsOverride : input.baselineSets;
 
   return {
     ...ex,

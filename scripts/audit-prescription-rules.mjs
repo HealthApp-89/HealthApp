@@ -182,7 +182,8 @@ console.log("\n## autoregulation-rule.ts\n");
   });
   // autoreg says: clean → 80 + 2.5 = 82.5. Then clamp to 0.92 × 80 = 73.6, rounded to step 2.5 = 72.5 or 75.
   assert("focus block clean: clamped to ≤ 0.92×80 (round to grid)", focusClean.baseKg === 72.5 || focusClean.baseKg === 75, `got ${focusClean.baseKg}`);
-  assert("focus block drops one set (3→2)", focusClean.sets === 2);
+  // 2026-06-06: -1 set rule removed; focus blocks keep full baseline volume on secondaries.
+  assert("focus block preserves baseline sets (3)", focusClean.sets === 3);
 
   const focusMissedTwice = prescribeSecondaryAutoregulated({
     baseExercise: baseEx,
@@ -466,7 +467,6 @@ console.log("\n## validate-week.ts\n");
     prescription: { Thursday: [{ name: "Deadlift (Barbell)", key: "deadlift", baseKg: 100, baseReps: 7, sets: 3, increment: { step: 2.5 } }] },
     block, week, prevWeek,
     maintenanceBaselines: { squat: 80, bench: 72.5, ohp: 40 },
-    nonFocusBaselineSets: { squat: 3, bench: 3, ohp: 3 },
   });
   assert("consolidation: deadlift 97.5 → 100 rejected", consolidationViolation !== null && consolidationViolation.code === "consolidation_load_increase");
 
@@ -474,7 +474,6 @@ console.log("\n## validate-week.ts\n");
     prescription: { Thursday: [{ name: "Deadlift (Barbell)", key: "deadlift", baseKg: 97.5, baseReps: 8, sets: 4, increment: { step: 2.5 } }] },
     block, week, prevWeek,
     maintenanceBaselines: { squat: 80, bench: 72.5, ohp: 40 },
-    nonFocusBaselineSets: { squat: 3, bench: 3, ohp: 3 },
   });
   assert("consolidation: same load + more reps/sets OK", okSameLoad === null);
 
@@ -482,7 +481,6 @@ console.log("\n## validate-week.ts\n");
     prescription: { Monday: [{ name: "Squat (Barbell)", key: "squat", baseKg: 80, baseReps: 6, sets: 2, increment: { step: 2.5 } }] },
     block, week, prevWeek,
     maintenanceBaselines: { squat: 80, bench: 72.5, ohp: 40 },
-    nonFocusBaselineSets: { squat: 3, bench: 3, ohp: 3 },
   });
   assert("secondary at baseline (80 kg) > clamp (0.92×80=73.6) rejected", overcooked !== null && overcooked.code === "non_focus_primary_overcooked");
 
@@ -490,17 +488,16 @@ console.log("\n## validate-week.ts\n");
     prescription: { Monday: [{ name: "Squat (Barbell)", key: "squat", baseKg: 72.5, baseReps: 6, sets: 2, increment: { step: 2.5 } }] },
     block, week, prevWeek,
     maintenanceBaselines: { squat: 80, bench: 72.5, ohp: 40 },
-    nonFocusBaselineSets: { squat: 3, bench: 3, ohp: 3 },
   });
   assert("secondary at 72.5 (≤ clamp 73.6) and 2 sets (< baseline 3) OK", okSecondaryAtClamp === null);
 
-  const volumeTooHigh = validateWeekPrescription({
+  // 2026-06-06: non_focus_primary_volume_too_high removed; full-volume secondaries are now allowed.
+  const fullVolumeOk = validateWeekPrescription({
     prescription: { Monday: [{ name: "Squat (Barbell)", key: "squat", baseKg: 72.5, baseReps: 6, sets: 3, increment: { step: 2.5 } }] },
     block, week, prevWeek,
     maintenanceBaselines: { squat: 80, bench: 72.5, ohp: 40 },
-    nonFocusBaselineSets: { squat: 3, bench: 3, ohp: 3 },
   });
-  assert("secondary at 3 sets (not below baseline 3) rejected", volumeTooHigh !== null && volumeTooHigh.code === "non_focus_primary_volume_too_high");
+  assert("secondary at 3 sets (full baseline) is OK post-2026-06-06", fullVolumeOk === null);
 }
 
 console.log("\n## e1rm.ts\n");

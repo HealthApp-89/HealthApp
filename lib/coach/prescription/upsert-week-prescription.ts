@@ -116,31 +116,41 @@ export async function upsertWeekPrescription(opts: {
     todayIso,
   });
 
-  // Upsert: keep existing columns when row exists, only overwrite
-  // session_prescriptions (and refresh updated_at). When creating, fill in
-  // session_plan from the synthetic working row.
-  const upsertPayload: Record<string, unknown> = {
-    user_id: userId,
-    week_start: weekStart,
-    session_prescriptions: prescription,
-    updated_at: new Date().toISOString(),
-  };
-  if (!existing) {
-    upsertPayload.block_id = block?.id ?? null;
-    upsertPayload.session_plan = workingRow.session_plan;
-    upsertPayload.weekly_focus = workingRow.weekly_focus;
-    upsertPayload.intensity_modifier = workingRow.intensity_modifier ?? {};
-    upsertPayload.rir_target = workingRow.rir_target;
-    upsertPayload.research_phase = workingRow.research_phase;
-    upsertPayload.proposed_by = "coach";
-    upsertPayload.endurance_session_plan = workingRow.endurance_session_plan;
-    upsertPayload.committed_at = new Date().toISOString();
+  // Split INSERT vs UPDATE explicitly. Using `.upsert()` here would trip the
+  // NOT NULL constraint on session_plan when the row exists — Postgres
+  // validates the would-be INSERT row before applying ON CONFLICT, so a
+  // payload that omits session_plan (intending to preserve it) violates the
+  // constraint at parse time.
+  if (existing) {
+    const { error } = await supabase
+      .from("training_weeks")
+      .update({
+        session_prescriptions: prescription,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("user_id", userId)
+      .eq("week_start", weekStart);
+    if (error) throw error;
+  } else {
+    const { error } = await supabase
+      .from("training_weeks")
+      .insert({
+        user_id: userId,
+        week_start: weekStart,
+        block_id: block?.id ?? null,
+        session_plan: workingRow.session_plan,
+        weekly_focus: workingRow.weekly_focus,
+        intensity_modifier: workingRow.intensity_modifier ?? {},
+        rir_target: workingRow.rir_target,
+        research_phase: workingRow.research_phase,
+        proposed_by: "coach",
+        endurance_session_plan: workingRow.endurance_session_plan,
+        session_prescriptions: prescription,
+        committed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+    if (error) throw error;
   }
-
-  const { error } = await supabase
-    .from("training_weeks")
-    .upsert(upsertPayload, { onConflict: "user_id,week_start" });
-  if (error) throw error;
 
   return {
     week_start: weekStart,

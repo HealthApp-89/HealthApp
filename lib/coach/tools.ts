@@ -2477,7 +2477,6 @@ export async function executeProposeWeekPlan(opts: {
     week: synthesizedWeek,
     prevWeek,
     maintenanceBaselines,
-    nonFocusBaselineSets: { squat: 3, bench: 3, deadlift: 3, ohp: 3 },
   });
 
   if (validationErr) {

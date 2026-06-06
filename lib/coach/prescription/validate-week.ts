@@ -20,7 +20,6 @@ export type ValidationError =
   | { code: "off_grid_weight";                 message: string; hint: string }
   | { code: "consolidation_load_increase";     message: string; hint: string }
   | { code: "non_focus_primary_overcooked";    message: string; hint: string }
-  | { code: "non_focus_primary_volume_too_high"; message: string; hint: string }
   | { code: "pattern_conflict";                message: string; hint: string; offending: Array<{ weekday: WeekdayLong; exercise: string }> };
 
 const PRIMARY_LIFT_BY_KEY: Record<string, PrimaryLift> = {
@@ -44,8 +43,6 @@ export function validateWeekPrescription(opts: {
   prevWeek: TrainingWeek | null;
   /** current working kg per primary lift — comes from prescribeWeek's maintenanceLoadFor lookup */
   maintenanceBaselines: Partial<Record<PrimaryLift, number>>;
-  /** sets a primary lift uses when NOT in a focus block — defaults to 3 if absent */
-  nonFocusBaselineSets: Partial<Record<PrimaryLift, number>>;
 }): ValidationError | null {
 
   // 1. off_grid_weight — every prescribed exercise with a baseKg must sit on the equipment grid
@@ -95,7 +92,9 @@ export function validateWeekPrescription(opts: {
     }
   }
 
-  // 3 + 4. non-focus primary checks — applies during a focus block, weeks 1-4
+  // 3. non-focus primary load check — applies during a focus block, weeks 1-4.
+  // (Volume-too-high check removed 2026-06-06; load discipline via the 0.92×
+  // maintenance clamp is sufficient, the per-set drop detrained patterns.)
   if (opts.block?.primary_lift != null && opts.week.research_phase !== "deload") {
     for (const [weekdayStr, exercises] of Object.entries(opts.prescription)) {
       const weekday = weekdayStr as WeekdayLong;
@@ -115,15 +114,6 @@ export function validateWeekPrescription(opts: {
               hint: `Drop the load to ≤ ${ceiling.toFixed(1)} kg. The ${opts.block.primary_lift} focus block requires reduced secondaries.`,
             };
           }
-        }
-
-        const baselineSets = opts.nonFocusBaselineSets[liftKey] ?? 3;
-        if ((ex.sets ?? 0) >= baselineSets) {
-          return {
-            code: "non_focus_primary_volume_too_high",
-            message: `${ex.name} (${weekday}): ${ex.sets} sets is not below the non-focus baseline of ${baselineSets}.`,
-            hint: `During a focus block, secondary primaries drop by at least one working set vs their non-focus baseline.`,
-          };
         }
       }
     }

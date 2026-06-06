@@ -143,14 +143,9 @@ export async function prescribeWeek(opts: {
         // Accessory — volume-balance owns SETS, autoregulation owns LOAD. The
         // focus-block clamp applies to load (0.92 × maintenance) and the
         // consolidation/off_pace/deload phase gates pass through to load via
-        // prescribeSecondaryAutoregulated. The "drop one set in a focus block"
-        // rule is ONLY for non-focus primaries (see validate-week.ts
-        // non_focus_primary_volume_too_high — explicitly primary-keyed). For
-        // accessories, the volume-balance rule starts from the library's
-        // baseline sets — applying autoreg's secondary -1 here would
-        // double-count and silently halve accessory volume across a whole
-        // block, which is what the 2026-05-31 "everything dropped to 2 sets"
-        // report flagged.
+        // prescribeSecondaryAutoregulated. Volume-balance starts from the
+        // library's baseline sets; the secondary -1 set rule was removed
+        // 2026-06-06 (see autoregulation-rule.ts).
         const accessoryWorkingKg =
           maintenanceLoadFor(baseEx.name, rirTarget, recentSets, todayIso) ??
           baseEx.baseKg ?? 0;
