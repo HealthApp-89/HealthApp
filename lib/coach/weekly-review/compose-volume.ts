@@ -115,11 +115,14 @@ export async function composeVolume(args: {
 /** WeeklyPhase → tier on the output payload.
  *  WeeklyReviewPayload.volume.per_muscle.tier is `"mev" | "mav" | "mrv"` —
  *  no `"deload"`. Deload weeks map to the lowest tier (mev) since the
- *  set target collapses to ramp_recipe.deload_pct × MEV. */
+ *  set target collapses to ramp_recipe.deload_pct × MEV.
+ *  v2 BlockPhase labels are not consumed by this v1 volume-ramp path;
+ *  they fall back to "mev" (the safest/lowest tier). */
 function phaseToTier(
   phase: WeeklyPhase,
 ): PerMuscleEntry["tier"] {
-  return phase === "deload" ? "mev" : phase;
+  if (phase === "mav" || phase === "mrv") return phase;
+  return "mev";
 }
 
 async function resolvePlanLandmarks(

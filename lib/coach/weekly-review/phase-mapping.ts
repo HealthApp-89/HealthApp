@@ -47,5 +47,9 @@ export function blockWeekForPhase(phase: WeeklyPhase): number {
       return 4;
     case "deload":
       return 5;
+    default:
+      // v2 BlockPhase labels are not used by this v1 volume-ramp helper;
+      // fall back to MEV (week 1) so the function stays total.
+      return 1;
   }
 }

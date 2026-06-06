@@ -415,6 +415,7 @@ export type WeekdayLong =
   | "Friday"
   | "Saturday"
   | "Sunday";
+export type { BlockPhase } from "@/lib/coach/prescription/types";
 /** Session-type strings keyed in SESSION_PLANS, plus the literal "REST". */
 export type SessionPlan = Partial<Record<Weekday, string>>;
 /** Per-primary-lift intensity multipliers; missing keys default to 1.0. */
@@ -962,7 +963,7 @@ export type ThisWeekPlanBlock = {
   schema_version: 1;
   week_n: number;
   total_weeks: number;
-  phase_now: WeeklyPhase;             // "mev" | "mav" | "mrv" | "deload" — see lib/data/types.ts
+  phase_now: WeeklyPhase;             // v1: mev/mav/mrv/deload; v2: pre_target/consolidation/off_pace/deload_week
   phase_changed_this_week: boolean;
   per_lift: Array<{
     lift: string;                     // e.g. "Deadlift (Barbell)" — matches SESSION_PLANS keys
@@ -1242,7 +1243,13 @@ export type MuscleVolumeFlag =
 
 // ── Weekly review (0014_weekly_reviews) ─────────────────────────────────────
 
-export type WeeklyPhase = "mev" | "mav" | "mrv" | "deload";
+/** Weekly-review phase taxonomy. v1 rows carry MEV/MAV/MRV volume-landmark
+ *  labels written by the (now-removed) bespoke composer. v2 rows carry the
+ *  canonical BlockPhase from lib/coach/prescription/types.ts. Discriminator:
+ *  WeeklyReviewPayload.schema_version. */
+export type WeeklyPhase =
+  | "mev" | "mav" | "mrv" | "deload"                                  // v1 (historical)
+  | "pre_target" | "consolidation" | "off_pace" | "deload_week";       // v2 (new)
 
 /** Rationale tag for a per-lift prescription. Composable suffixes
  *  `_increment_floor` / `_increment_capped` may be appended by
@@ -1263,10 +1270,16 @@ export type PrescriptionRationaleTag =
   | "mav_to_mrv_advance"
   | "mrv_volume_drive"
   | "deload_load_volume_cut"
+  // v2 (BlockPhase-aligned) — emitted by lib/coach/weekly-review/rationale-tags.ts
+  | "pre_target_step"
+  | "pre_target_hold"
+  | "consolidation_hold_progress_reps"
+  | "off_pace_hold"
+  | "deload_floor"
   | (string & Record<never, never>);  // keeps known literals in autocomplete while allowing _increment_floor / _increment_capped suffixes
 
 export type WeeklyReviewPayload = {
-  schema_version: 1;
+  schema_version: 1 | 2;  // v1 = MEV/MAV/MRV phase; v2 = BlockPhase + engine-bound prescription
   header: {
     week_n: number;
     total_weeks: number;

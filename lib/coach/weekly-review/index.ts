@@ -16,6 +16,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
   ResearchPhase,
+  WeeklyPhase,
   WeeklyReviewPayload,
   WeeklyReviewRow,
 } from "@/lib/data/types";
@@ -182,11 +183,12 @@ function computeTotalWeeks(blockStart: string, blockEnd: string): number {
   return Math.max(1, weeks);
 }
 
-function rirForPhase(phase: "mev" | "mav" | "mrv" | "deload"): number | null {
+function rirForPhase(phase: WeeklyPhase): number | null {
   if (phase === "mev") return 3;
   if (phase === "mav") return 2;
   if (phase === "mrv") return 1;
   if (phase === "deload") return 4;
+  // v2 BlockPhase labels: v1 RIR logic does not apply; null signals no target.
   return null;
 }
 
