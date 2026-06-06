@@ -41,13 +41,44 @@ export async function GET(req: Request) {
 
   // Target week_start: Sunday is the LAST day of the week being recapped
   // (the week started 6 days ago on Monday); Monday catch-up reviews the
-  // week that ended yesterday (started 7 days ago).
+  // week that ended yesterday (started 7 days ago). The (dow - 1) + 7 branch
+  // only produces a meaningful answer on Mon; firing the formula on Tue-Sat
+  // yields a Monday from two weeks ago, which is stale by design. The route
+  // refuses to fire on Tue-Sat unless an explicit `?week_start=YYYY-MM-DD`
+  // override is supplied (manual catch-up, debugging, replay).
+  const url = new URL(req.url);
+  const overrideWeekStart = url.searchParams.get("week_start");
   const today = new Date();
-  const dow = today.getUTCDay() || 7; // Mon=1..Sun=7
-  const offset = dow === 7 ? 6 : (dow - 1) + 7;
-  const lastMonday = new Date(today);
-  lastMonday.setUTCDate(today.getUTCDate() - offset);
-  const weekStart = lastMonday.toISOString().slice(0, 10);
+  let weekStart: string;
+  if (overrideWeekStart) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(overrideWeekStart)) {
+      return NextResponse.json(
+        { error: "bad_week_start", detail: "expected YYYY-MM-DD" },
+        { status: 400 },
+      );
+    }
+    const probe = new Date(overrideWeekStart + "T12:00:00Z");
+    if (probe.getUTCDay() !== 1) {
+      return NextResponse.json(
+        { error: "bad_week_start", detail: "week_start must be a Monday" },
+        { status: 400 },
+      );
+    }
+    weekStart = overrideWeekStart;
+  } else {
+    const dow = today.getUTCDay() || 7; // Mon=1..Sun=7
+    if (dow !== 7 && dow !== 1) {
+      return NextResponse.json({
+        ok: true,
+        skipped: "wrong_day",
+        detail: "Auto sync runs on Sunday or Monday only. Pass ?week_start=YYYY-MM-DD to override.",
+      });
+    }
+    const offset = dow === 7 ? 6 : 7;
+    const lastMonday = new Date(today);
+    lastMonday.setUTCDate(today.getUTCDate() - offset);
+    weekStart = lastMonday.toISOString().slice(0, 10);
+  }
 
   // Idempotency: bail if any row exists for this week.
   const { data: existing } = await sb
