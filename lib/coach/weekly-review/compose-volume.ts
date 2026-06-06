@@ -116,7 +116,8 @@ export async function composeVolume(args: {
  *  phase-mapping.ts.
  *
  *  MEV → 1, MAV → 3, MRV → 4, Deload → 5.
- *  v2 BlockPhase labels fall back to 1 (MEV) so the function stays total. */
+ *  v2 BlockPhase literals get explicit cases (pre_target→2, consolidation→4,
+ *  off_pace→3, deload_week→5). Unknown future labels fall back to 1 (MEV). */
 function blockWeekForPhase(phase: WeeklyPhase): number {
   switch (phase) {
     case "mev":
@@ -127,6 +128,14 @@ function blockWeekForPhase(phase: WeeklyPhase): number {
       return 4;
     case "deload":
       return 5;
+    case "deload_week":
+      return 5;
+    case "consolidation":
+      return 4;
+    case "off_pace":
+      return 3;
+    case "pre_target":
+      return 2;
     default:
       return 1;
   }

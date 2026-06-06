@@ -27,9 +27,11 @@ export function buildWeeklyReviewCommitPayload(args: {
   // training_weeks.research_phase enum is 'accumulate' | 'deload' | null.
   // The review payload's prescription.phase is a WeeklyPhase ('mev'|'mav'|'mrv'|'deload'...).
   // Map deload → 'deload', everything else → 'accumulate'.
-  const researchPhase: "accumulate" | "deload" = presc.phase === "deload"
-    ? "deload"
-    : "accumulate";
+  // v2 payloads use the BlockPhase literal "deload_week"; cover both.
+  const researchPhase: "accumulate" | "deload" =
+    (presc.phase === "deload" || presc.phase === "deload_week")
+      ? "deload"
+      : "accumulate";
   return {
     review_id: args.reviewId,
     next_week_start: args.nextWeekStart,
