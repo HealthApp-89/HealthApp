@@ -26,6 +26,15 @@ export type RationaleTagKey =
   | "mav_to_mav_step"
   | "mav_to_mrv_advance"
   | "mrv_volume_drive"
+  | "pre_target"
+  | "consolidation"
+  | "off_pace"
+  | "deload_week"
+  | "pre_target_step"
+  | "pre_target_hold"
+  | "consolidation_hold_progress_reps"
+  | "off_pace_hold"
+  | "deload_floor"
   | "deload_load_volume_cut"
   | "plateau_rep_shift"
   | "plateau_deload_reset"
@@ -103,6 +112,51 @@ export const RATIONALE_LABELS: Record<RationaleTagKey, GlossaryEntry> = {
     label: "MRV · volume drive",
     short: "hold load, add a set",
     plain: "At MRV the program holds load and adds a working set. Pushing both weight and sets risks overtraining; volume is the lever here.",
+  },
+  pre_target: {
+    label: "Pre-target",
+    short: "block is still progressing toward the primary-lift target",
+    plain: "The athlete hasn't hit the block's target_value yet and is on pace to reach it within the remaining weeks. Progression rule: +step kg on the primary lift when last week's RIR target was hit cleanly; hold otherwise.",
+  },
+  consolidation: {
+    label: "Consolidation",
+    short: "target hit early; the rest of the block locks in the gain",
+    plain: "training_blocks.target_hit_at_week was stamped before the final week. We hold the load and add one rep per session to consolidate the adaptation. Sets stay at baseline; volume climbs again in the next block. Don't raise the target mid-block — that requires closing the block and starting a new one.",
+  },
+  off_pace: {
+    label: "Off pace",
+    short: "required weekly progress now exceeds the realistic per-week step",
+    plain: "Remaining weeks × the lift's realistic progression rate < (target − current). The block won't hit target without forcing risky jumps. Hold load this week; revisit at block close (we'll inherit the delta into the next block, or close early).",
+  },
+  deload_week: {
+    label: "Deload",
+    short: "last week of the block — volume + intensity cut to recover",
+    plain: "Week 5 of the 5-week block. Load × 0.80, sets halved (MEV floor), reps held. The week exists to clear fatigue before the next block, not to chase another PR.",
+  },
+  pre_target_step: {
+    label: "Step up",
+    short: "pre-target phase: clean RIR last week → +step kg",
+    plain: "Something stepped up for this lift this week — typically +step kg when last week's RIR target was hit cleanly, otherwise +1 rep or +1 set when the same load needs volume growth. Check the prescription for what moved.",
+  },
+  pre_target_hold: {
+    label: "Hold",
+    short: "pre-target phase: RIR missed last week → hold load",
+    plain: "Last week's RIR target was not met cleanly. Hold load this week and clear it before stepping up.",
+  },
+  consolidation_hold_progress_reps: {
+    label: "Hold + reps",
+    short: "consolidation: hold load, add a rep",
+    plain: "Target already hit. We're not chasing more weight this block — we lock in the load and add one rep per session. Sets stay at baseline until the next block.",
+  },
+  off_pace_hold: {
+    label: "Off-pace hold",
+    short: "off-pace verdict: hold load this week",
+    plain: "Required weekly progress exceeds the realistic per-week step. Don't force a jump — hold load, finish the block honestly, and either close early or carry the delta into the next block.",
+  },
+  deload_floor: {
+    label: "Deload floor",
+    short: "deload week: load × 0.80, sets halved",
+    plain: "MEV-floor maintenance. Just enough stimulus to retain the adaptation while recovering for the next block.",
   },
   deload_load_volume_cut: {
     label: "Deload · load + volume cut",
