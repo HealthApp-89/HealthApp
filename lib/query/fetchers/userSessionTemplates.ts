@@ -41,3 +41,31 @@ export async function fetchUserSessionTemplateBrowser(
   const supabase = createSupabaseBrowserClient();
   return fetchUserSessionTemplateServer(supabase, userId, sessionType);
 }
+
+/**
+ * Plural variant — fetches every user_session_templates row for the user
+ * and returns a map keyed by session_type. Used by the Schedule sub-tab
+ * which renders up to five distinct session types per week and would
+ * otherwise fan out one query per (weekday, session_type) pair.
+ */
+export async function fetchAllUserSessionTemplatesServer(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<Record<string, UserSessionTemplate>> {
+  const { data, error } = await supabase
+    .from("user_session_templates")
+    .select(SELECT)
+    .eq("user_id", userId);
+  if (error) throw error;
+  const rows = (data ?? []) as UserSessionTemplate[];
+  const map: Record<string, UserSessionTemplate> = {};
+  for (const row of rows) map[row.session_type] = row;
+  return map;
+}
+
+export async function fetchAllUserSessionTemplatesBrowser(
+  userId: string,
+): Promise<Record<string, UserSessionTemplate>> {
+  const supabase = createSupabaseBrowserClient();
+  return fetchAllUserSessionTemplatesServer(supabase, userId);
+}
