@@ -35,6 +35,15 @@ function dayOfMonth(iso: string): number {
   return new Date(iso + "T12:00:00Z").getUTCDate();
 }
 
+function formatTarget(ex: PlannedExercise): string {
+  if (ex.baseKg != null) {
+    const reps = ex.baseReps ?? 8;
+    const sets = ex.sets ?? 3;
+    return `${ex.baseKg}kg × ${reps} × ${sets}`;
+  }
+  return ex.reps ?? "—";
+}
+
 export function ScheduleDayRow({
   userId,
   weekStart,
@@ -207,7 +216,7 @@ export function ScheduleDayRow({
                         color: COLOR.textStrong,
                       }}
                     >
-                      {ex.reps ?? ""}
+                      {formatTarget(ex)}
                     </span>
                   </li>
                 ))}
