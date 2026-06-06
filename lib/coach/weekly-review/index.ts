@@ -16,6 +16,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
   ResearchPhase,
+  TrainingBlock,
   WeeklyPhase,
   WeeklyReviewPayload,
   WeeklyReviewRow,
@@ -28,6 +29,7 @@ import { composeVolume } from "./compose-volume";
 import { composeTargets } from "./compose-targets";
 import { renderNarrative } from "./narrative-prompt";
 import { weeklyPhaseFor, nextWeeklyPhaseFor } from "./phase-mapping";
+import { computeOnPace } from "./compute-on-pace";
 
 export async function generateWeeklyReview(args: {
   supabase: SupabaseClient;
@@ -44,7 +46,7 @@ export async function generateWeeklyReview(args: {
   // Pull active block + training_week for context.
   const { data: block } = await supabase
     .from("training_blocks")
-    .select("id, goal_text, start_date, end_date")
+    .select("id, user_id, status, goal_text, start_date, end_date, primary_lift, target_metric, target_value, target_hit_at_week, target_unit, diet_goal, endurance_focus, created_at, completed_at, updated_at")
     .eq("user_id", userId)
     .eq("status", "active")
     .maybeSingle();
@@ -132,7 +134,13 @@ export async function generateWeeklyReview(args: {
     proteinTargetG: targets.nutrition.protein_g,
   });
 
-  const onPace = computeOnPace(block, recap);
+  const onPace = await computeOnPace({
+    supabase,
+    userId,
+    block: block as TrainingBlock,
+    todayIso: weekStart,
+    rirTarget: trainingWeek?.rir_target ?? null,
+  });
 
   const payload: WeeklyReviewPayload = {
     schema_version: 1,
@@ -201,13 +209,3 @@ function deriveLossPct(
   return weeklyDeltaKg / weight.start_kg;
 }
 
-function computeOnPace(
-  block: { goal_text: string },
-  _recap: WeeklyReviewPayload["recap"],
-): boolean | null {
-  // TODO(v2): parse a "<kg>x<reps>" target out of block.goal_text and compare
-  // to current top e1rm in recap. Returning null for now means downstream UI
-  // shows "pace unknown" instead of false/true.
-  void block;
-  return null;
-}
