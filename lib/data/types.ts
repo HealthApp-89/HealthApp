@@ -1251,10 +1251,12 @@ export type WeeklyPhase =
   | "mev" | "mav" | "mrv" | "deload"                                  // v1 (historical)
   | "pre_target" | "consolidation" | "off_pace" | "deload_week";       // v2 (new)
 
-/** Rationale tag for a per-lift prescription. Composable suffixes
- *  `_increment_floor` / `_increment_capped` may be appended by
- *  `compose-prescription.ts` when physical loading constraints force
- *  a hold despite a non-zero target step. */
+/** Rationale tag for a per-lift prescription. v1 tags are emitted by the
+ *  (now-removed) bespoke composer; v2 tags are derived in
+ *  lib/coach/weekly-review/rationale-tags.ts from the canonical engine's
+ *  output. Composable suffixes `_increment_floor` / `_increment_capped`
+ *  may be appended when physical loading constraints force a hold despite
+ *  a non-zero target step. */
 export type PrescriptionRationaleTag =
   | "block_start_baseline"
   | "cutting_hold"

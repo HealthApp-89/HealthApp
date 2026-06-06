@@ -20,7 +20,6 @@ import {
   literatureBand,
   DEFAULT_RAMP_RECIPE,
 } from "@/lib/coach/volume-landmarks";
-import { blockWeekForPhase } from "@/lib/coach/weekly-review/phase-mapping";
 import { addDays } from "./date-utils";
 import {
   TARGETED_MUSCLE_GROUPS,
@@ -111,6 +110,27 @@ export async function composeVolume(args: {
 }
 
 // ── helpers ─────────────────────────────────────────────────────────────────
+
+/** Map a WeeklyPhase back to the canonical week-of-block index used by
+ *  volume-landmarks.targetSetsForWeek. Inlined from the now-deleted
+ *  phase-mapping.ts.
+ *
+ *  MEV → 1, MAV → 3, MRV → 4, Deload → 5.
+ *  v2 BlockPhase labels fall back to 1 (MEV) so the function stays total. */
+function blockWeekForPhase(phase: WeeklyPhase): number {
+  switch (phase) {
+    case "mev":
+      return 1;
+    case "mav":
+      return 3;
+    case "mrv":
+      return 4;
+    case "deload":
+      return 5;
+    default:
+      return 1;
+  }
+}
 
 /** WeeklyPhase → tier on the output payload.
  *  WeeklyReviewPayload.volume.per_muscle.tier is `"mev" | "mav" | "mrv"` —
