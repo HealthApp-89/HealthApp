@@ -189,7 +189,7 @@ After the existing `deload_load_volume_cut` entry, append:
   consolidation: {
     term: "Consolidation",
     short: "Target hit early; the rest of the block locks in the gain.",
-    full: "training_blocks.target_hit_at_week was stamped before the final week. We hold the load and chase reps + sets to consolidate the adaptation. Don't raise the target mid-block — that requires closing the block and starting a new one.",
+    full: "training_blocks.target_hit_at_week was stamped before the final week. We hold the load and add one rep per session to consolidate the adaptation. Sets stay at baseline; volume climbs again in the next block. Don't raise the target mid-block — that requires closing the block and starting a new one.",
   },
   off_pace: {
     term: "Off pace",
@@ -204,7 +204,7 @@ After the existing `deload_load_volume_cut` entry, append:
   pre_target_step: {
     term: "Step up",
     short: "Pre-target phase: clean RIR last week → +step kg.",
-    full: "Last week's RIR target was hit cleanly on this lift. The engine adds the smallest valid grid increment for the lift (see increment.step).",
+    full: "Something stepped up for this lift this week — typically +step kg when last week's RIR target was hit cleanly, otherwise +1 rep or +1 set when the same load needs volume growth. Check the prescription for what moved.",
   },
   pre_target_hold: {
     term: "Hold",
@@ -213,8 +213,8 @@ After the existing `deload_load_volume_cut` entry, append:
   },
   consolidation_hold_progress_reps: {
     term: "Hold + reps",
-    short: "Consolidation: hold load, push reps + sets.",
-    full: "Target already hit. We're not chasing more weight this block — we lock in the load and grow volume by adding a rep and an extra set per session.",
+    short: "Consolidation: hold load, add a rep.",
+    full: "Target already hit. We're not chasing more weight this block — we lock in the load and add one rep per session. Sets stay at baseline until the next block.",
   },
   off_pace_hold: {
     term: "Off-pace hold",
