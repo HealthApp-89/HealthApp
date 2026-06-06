@@ -17,7 +17,8 @@ import type { WeeklyReviewPayload, Speaker, PrescriptionRationaleTag } from "@/l
 function getRationaleTagSpeaker(tag: PrescriptionRationaleTag): Speaker {
   const cleanTag = tag.replace(/_increment_floor|_increment_capped$/, "");
 
-  // Carter: lifting mechanics, rep completions, RIR issues, MEV/MAV/MRV progression
+  // Carter: lifting mechanics, rep completions, RIR issues, MEV/MAV/MRV
+  // progression (v1) AND the BlockPhase execution tags (v2).
   if (
     cleanTag === "cutting_hold" ||
     cleanTag === "recovery_hold" ||
@@ -29,27 +30,25 @@ function getRationaleTagSpeaker(tag: PrescriptionRationaleTag): Speaker {
     cleanTag === "mav_to_mav_step" ||
     cleanTag === "mav_to_mrv_advance" ||
     cleanTag === "mrv_volume_drive" ||
-    cleanTag === "plateau_rep_shift"
+    cleanTag === "plateau_rep_shift" ||
+    cleanTag === "pre_target_step" ||
+    cleanTag === "pre_target_hold" ||
+    cleanTag === "off_pace_hold"
   ) {
     return "carter";
   }
 
-  // Peter: block structure, periodization, major phase transitions
+  // Peter: block structure, periodization, major phase transitions.
   if (
     cleanTag === "block_start_baseline" ||
     cleanTag === "plateau_deload_reset" ||
-    cleanTag === "deload_load_volume_cut"
+    cleanTag === "deload_load_volume_cut" ||
+    cleanTag === "consolidation_hold_progress_reps" || // block-level "we hit target" verdict
+    cleanTag === "deload_floor"                        // block-level "week 5" verdict
   ) {
     return "peter";
   }
 
-  // Nora: deficit/composition adjustments
-  // (currently minimal direct tags, but included for future extensibility)
-
-  // Remi: recovery focus
-  // (currently minimal direct tags, but included for future extensibility)
-
-  // Default to Peter for unknown tags
   return "peter";
 }
 
