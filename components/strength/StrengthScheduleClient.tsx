@@ -9,6 +9,7 @@ import { useFullWorkouts } from "@/lib/query/hooks/useFullWorkouts";
 import { useUserSessionTemplates } from "@/lib/query/hooks/useUserSessionTemplates";
 import { currentWeekMonday } from "@/lib/coach/week";
 import { getEffectiveSessionPlan, WEEKLY_SESSIONS } from "@/lib/coach/sessionPlans";
+import { readSessionForDay } from "@/lib/coach/session-plan-reader";
 import { todayInUserTz } from "@/lib/time";
 import { COLOR } from "@/lib/ui/theme";
 import type { DayClass } from "@/components/strength/ScheduleDayRow";
@@ -70,8 +71,15 @@ export function StrengthScheduleClient({ userId }: Props) {
     return WEEKDAY_ORDER.map<WeekDayEntry>((wd, i) => {
       const date = addDays(weekStart, i);
       const weekdayLong = WEEKDAY_LONG[wd];
+      // session_plan jsonb may use either short ("Mon") or full ("Monday") keys
+      // depending on the writer (Carter uses full names, schema spec says short).
+      // readSessionForDay handles both forms; a raw `sessionPlan[wd]` lookup
+      // misses full-name keys and falls back to WEEKLY_SESSIONS, which surfaced
+      // as "Monday: Legs" in the schedule view despite a committed Mon→Chest swap.
       const sessionType =
-        sessionPlan[wd] ?? WEEKLY_SESSIONS[weekdayLong] ?? "REST";
+        readSessionForDay(sessionPlan as Record<string, string>, wd) ??
+        WEEKLY_SESSIONS[weekdayLong] ??
+        "REST";
 
       const userTemplate = templatesMap[sessionType]?.exercises ?? null;
       const exercises = sessionType === "REST"
