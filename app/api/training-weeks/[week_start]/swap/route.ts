@@ -17,6 +17,11 @@
 //   8. Clear exercise_overrides[weekday] for any day whose session type
 //      changed. Stale overrides would hold exercises for the old session
 //      type. NULL the entire column when the resulting map is empty.
+//   8b. Recompute session_prescriptions via prescribeWeek when any weekday's
+//      session type changed. session_prescriptions is the new top of the
+//      resolver chain — stale entries leak prior-session exercises into the
+//      strength card body while the header shows the new type. Fallback on
+//      engine failure: clear changed-day entries.
 //   9. UPDATE with COALESCE-on-first-edit (set original=current) OR
 //      identity-restore-clears (set original=null) OR no-op (subsequent edit).
 //  10. Return SwapResult.
@@ -26,12 +31,15 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { applySwap, detectConflicts, plansEqual } from "@/lib/training-weeks/apply-swap";
 import { readSessionForDay, SHORT_TO_FULL } from "@/lib/coach/session-plan-reader";
 import { SESSION_PLANS } from "@/lib/coach/sessionPlans";
+import { prescribeWeek } from "@/lib/coach/prescription/prescribe-week";
 import type {
   ExerciseOverrides,
   SessionPlan,
+  SessionPrescriptions,
   SwapBody,
   SwapConflictResponse,
   SwapResult,
+  TrainingBlock,
   TrainingWeek,
   Weekday,
 } from "@/lib/data/types";
@@ -49,7 +57,7 @@ const REPLACE_TYPES: ReadonlySet<string> = new Set([
 ]);
 
 const TRAINING_WEEK_SELECT =
-  "id, user_id, block_id, week_start, session_plan, original_session_plan, exercise_overrides, weekly_focus, intensity_modifier, rir_target, research_phase, proposed_by, chat_message_id, committed_at, created_at, updated_at";
+  "id, user_id, block_id, week_start, session_plan, original_session_plan, exercise_overrides, session_prescriptions, endurance_session_plan, weekly_focus, intensity_modifier, rir_target, research_phase, proposed_by, chat_message_id, committed_at, created_at, updated_at";
 
 function isWeekday(s: unknown): s is Weekday {
   return typeof s === "string" && WEEKDAYS.has(s);
@@ -173,19 +181,29 @@ export async function POST(
   // 7. Identity-restore detection
   const isIdentityRestore = original !== null && plansEqual(newPlan, original);
 
+  // Pre-compute which weekdays' session_type changed in the swap. The
+  // session_plan jsonb may use short ("Mon") or full ("Monday") keys
+  // depending on the writer (Carter writes full names); routing every read
+  // through readSessionForDay keeps the loop key-form-agnostic. A raw
+  // current[shortKey] comparison would always read undefined on full-name
+  // plans and silently report "no changes" — making overrides cleanup AND
+  // prescription invalidation no-ops.
+  const currentRec = current as Record<string, string>;
+  const newPlanRec = newPlan as Record<string, string>;
+  const changedFull: string[] = [];
+  for (const shortKey of ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const) {
+    const before = readSessionForDay(currentRec, shortKey);
+    const after = readSessionForDay(newPlanRec, shortKey);
+    if (before !== after) changedFull.push(SHORT_TO_FULL[shortKey]);
+  }
+
   // 8. Clear exercise_overrides for any day whose session type changed.
   //    Stale overrides would hold exercises for the previous session type.
   const currentOverrides =
     (row.exercise_overrides as ExerciseOverrides | null) ?? null;
   let nextOverrides: ExerciseOverrides | null = currentOverrides;
-  if (currentOverrides) {
-    const drop: string[] = [];
-    for (const shortKey of ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const) {
-      const fullKey = SHORT_TO_FULL[shortKey];
-      if (current[shortKey] !== newPlan[shortKey] && currentOverrides[fullKey]) {
-        drop.push(fullKey);
-      }
-    }
+  if (currentOverrides && changedFull.length > 0) {
+    const drop = changedFull.filter((k) => currentOverrides[k]);
     if (drop.length > 0) {
       const cleaned: ExerciseOverrides = { ...currentOverrides };
       for (const k of drop) delete cleaned[k];
@@ -193,10 +211,53 @@ export async function POST(
     }
   }
 
+  // 8b. Recompute session_prescriptions when any weekday's session type changed.
+  //     session_prescriptions is the top of the resolution chain in
+  //     getEffectiveSessionPlan, so a stale entry leaks the previous session's
+  //     exercises into TodayPlanCard's body while the header shows the new type.
+  //     Recompute via the same engine the Sunday cron uses against the post-swap
+  //     session_plan. On recompute failure, fall back to clearing changed-day
+  //     entries so we never write a header/body-mismatch state.
+  const currentPrescriptions =
+    (row.session_prescriptions as SessionPrescriptions | null) ?? null;
+  let nextPrescriptions: SessionPrescriptions | null = currentPrescriptions;
+  if (currentPrescriptions && changedFull.length > 0) {
+    const { data: blockRow } = await supabase
+      .from("training_blocks")
+      .select("*")
+      .eq("user_id", user.id)
+      .eq("status", "active")
+      .maybeSingle();
+    const block = (blockRow as TrainingBlock | null) ?? null;
+
+    const workingRow: TrainingWeek = {
+      ...(row as TrainingWeek),
+      session_plan: newPlan,
+      exercise_overrides: nextOverrides,
+      session_prescriptions: currentPrescriptions,
+    };
+
+    try {
+      nextPrescriptions = await prescribeWeek({
+        supabase,
+        userId: user.id,
+        block,
+        week: workingRow,
+        todayIso: new Date().toISOString().slice(0, 10),
+      });
+    } catch (e) {
+      console.error("[swap] prescription recompute failed; clearing stale entries", e);
+      const cleared: SessionPrescriptions = { ...currentPrescriptions };
+      for (const k of changedFull) delete cleared[k as keyof SessionPrescriptions];
+      nextPrescriptions = Object.keys(cleared).length > 0 ? cleared : null;
+    }
+  }
+
   // 9. UPDATE
   const update: Record<string, unknown> = {
     session_plan: newPlan,
     exercise_overrides: nextOverrides,
+    session_prescriptions: nextPrescriptions,
     updated_at: new Date().toISOString(),
   };
   if (isIdentityRestore) {
