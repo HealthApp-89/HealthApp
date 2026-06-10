@@ -44,6 +44,7 @@ export function TimezoneSyncProvider({ userId, children }: { userId: string; chi
       const isFirstSet =
         !!createdAt && Date.now() - new Date(createdAt).getTime() < 24 * 3600 * 1000;
       const dismissed =
+        typeof window !== "undefined" &&
         window.sessionStorage.getItem(dismissedKey(stored, detected)) === "1";
       if (isFirstSet) state = { kind: "first-set-silent", stored, detected };
       else if (dismissed) state = { kind: "stayed", stored, detected };
@@ -76,7 +77,9 @@ export function TimezoneSyncProvider({ userId, children }: { userId: string; chi
     accept: acceptInternal,
     dismiss() {
       if (state.kind === "loading") return;
-      window.sessionStorage.setItem(dismissedKey(state.stored, state.detected), "1");
+      if (typeof window !== "undefined") {
+        window.sessionStorage.setItem(dismissedKey(state.stored, state.detected), "1");
+      }
       setDismissTick((t) => t + 1);
     },
   };
