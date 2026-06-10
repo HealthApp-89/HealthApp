@@ -17,7 +17,10 @@ function startOfWeekMondayLocal(d: Date, tz: string): string {
     Monday: 1, Tuesday: 2, Wednesday: 3, Thursday: 4,
     Friday: 5, Saturday: 6, Sunday: 7,
   };
-  const idx = longToIdx[wd] ?? 1;
+  const idx = longToIdx[wd];
+  if (idx === undefined) {
+    throw new Error(`startOfWeekMondayLocal: unexpected weekday "${wd}" from Intl`);
+  }
   const monday = new Date(d.getTime() - (idx - 1) * 86_400_000);
   return fmt(monday, tz);
 }
@@ -49,7 +52,10 @@ export function reviewWindow(today: Date = new Date(), tz: string = USER_TIMEZON
     Sunday: 0, Monday: 1, Tuesday: 2, Wednesday: 3,
     Thursday: 4, Friday: 5, Saturday: 6,
   };
-  const dow = dowMap[weekday] ?? 1;
+  const dow = dowMap[weekday];
+  if (dow === undefined) {
+    throw new Error(`reviewWindow: unexpected weekday "${weekday}" from Intl`);
+  }
 
   if (dow === 1) {
     const lastSun = addDays(todayYmd, -1);
