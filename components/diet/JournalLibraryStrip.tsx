@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useQueryClient } from "@tanstack/react-query";
 import { useUserFoodItemsRecent } from "@/lib/query/hooks/useUserFoodItems";
+import { useProfile } from "@/lib/query/hooks/useProfile";
 import { queryKeys } from "@/lib/query/keys";
 import { deriveMealSlot } from "@/lib/food/meal-slot";
 import { fmtNum } from "@/lib/ui/score";
@@ -25,6 +26,8 @@ type Toast = {
 
 export function JournalLibraryStrip({ userId, date }: Props) {
   const { data: items = [] } = useUserFoodItemsRecent(userId);
+  const { data: profile } = useProfile(userId);
+  const tz = profile?.timezone ?? "Asia/Dubai";
   const queryClient = useQueryClient();
   const [toast, setToast] = useState<Toast>(null);
   const [pendingIds, setPendingIds] = useState<Set<string>>(new Set());
@@ -54,7 +57,7 @@ export function JournalLibraryStrip({ userId, date }: Props) {
   const handleTap = async (item: UserFoodItem) => {
     if (pendingIds.has(item.id)) return; // prevent double-tap of THIS card only
     setPendingIds((prev) => new Set(prev).add(item.id));
-    const slot: MealSlot = deriveMealSlot(new Date());
+    const slot: MealSlot = deriveMealSlot(new Date(), tz);
     const kind = item.composite_of !== null ? "user_recipe" : "user_item";
 
     try {

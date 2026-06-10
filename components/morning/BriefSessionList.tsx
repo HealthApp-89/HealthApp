@@ -9,6 +9,7 @@ import type { SessionStructure } from "@/lib/coach/session-structure";
 import { SessionStructureBanner } from "@/components/strength/SessionStructureBanner";
 import { LoggerSheet } from "@/components/logger/LoggerSheet";
 import { useExistingLoggerDraft } from "@/lib/logger/use-existing-draft";
+import { useUserToday } from "@/lib/query/hooks/useUserToday";
 import { SESSION_PLANS, type PlannedExercise } from "@/lib/coach/sessionPlans";
 
 function fmtRestRange(r: { min: number; max: number }): string {
@@ -72,6 +73,7 @@ export function BriefSessionList({
   const [draftEpoch, setDraftEpoch] = useState(0);
   const loggerSessionType = liveType ?? session.type;
   const hasDraft = useExistingLoggerDraft(userId, loggerSessionType, draftEpoch);
+  const today = useUserToday(userId);
   const liveExercises = resolveLiveExercises({
     weekOverrides,
     weekday,
@@ -297,11 +299,11 @@ export function BriefSessionList({
           Log day data
         </a>
       </div>
-      {loggerOpen && (
+      {loggerOpen && today && (
         <LoggerSheet
           userId={userId}
           sessionType={loggerSessionType}
-          date={new Date().toISOString().slice(0, 10)}
+          date={today}
           weekdayLong={weekday}
           weekOverrides={weekOverrides}
           weekPrescriptions={weekPrescriptions ?? null}

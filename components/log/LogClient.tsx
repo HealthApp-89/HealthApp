@@ -75,6 +75,7 @@ export function LogClient({
       <div style={{ padding: "0 8px" }}>
         <LogForm
           key={date}
+          userId={userId}
           date={date}
           initialLog={log as Partial<DailyLog> | null}
           initialCheckin={

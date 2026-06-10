@@ -9,6 +9,7 @@ import { RADIUS, modeColorLight } from "@/lib/ui/theme";
 import { SessionStructureBanner } from "@/components/strength/SessionStructureBanner";
 import { LoggerSheet } from "@/components/logger/LoggerSheet";
 import { useExistingLoggerDraft } from "@/lib/logger/use-existing-draft";
+import { useUserToday } from "@/lib/query/hooks/useUserToday";
 
 function fmtRestRange(r: { min: number; max: number }): string {
   if (r.min >= 60 && r.max >= 90 && r.min % 60 === 0 && r.max % 60 === 0) {
@@ -37,6 +38,7 @@ export function TodayPlanCard({ plan, committedFromPlan, rirTarget, researchPhas
   const [draftEpoch, setDraftEpoch] = useState(0);
   const canStartSession = plan.sessionType !== "REST";
   const hasDraft = useExistingLoggerDraft(userId, plan.sessionType, draftEpoch);
+  const today = useUserToday(userId);
 
   // Pill text: prefer committed plan info if present.
   const pillText = committedFromPlan
@@ -213,11 +215,11 @@ export function TodayPlanCard({ plan, committedFromPlan, rirTarget, researchPhas
         </button>
       )}
     </Card>
-    {loggerOpen && (
+    {loggerOpen && today && (
       <LoggerSheet
         userId={userId}
         sessionType={plan.sessionType}
-        date={new Date().toISOString().slice(0, 10)}
+        date={today}
         weekdayLong={weekday}
         weekOverrides={weekOverrides}
         weekPrescriptions={weekPrescriptions ?? null}

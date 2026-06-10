@@ -5,6 +5,7 @@ import { Check } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { COLOR, GRADIENT } from "@/lib/ui/theme";
 import { useLabAcknowledgments, useAckLabItem } from "@/lib/query/hooks/useLabAcknowledgments";
+import { useUserToday } from "@/lib/query/hooks/useUserToday";
 
 type LabItem = {
   key: string;
@@ -24,6 +25,7 @@ const ITEMS: LabItem[] = [
 export function LabPromptCard({ userId }: { userId: string }) {
   const { data: acks = {} } = useLabAcknowledgments(userId);
   const ackMut = useAckLabItem(userId);
+  const today = useUserToday(userId);
 
   const pendingCount = useMemo(
     () => ITEMS.filter((it) => !acks[it.key]).length,
@@ -83,7 +85,8 @@ export function LabPromptCard({ userId }: { userId: string }) {
                 type="button"
                 onClick={() => {
                   if (acked || ackMut.isPending) return;
-                  ackMut.mutate({ key: it.key, ackedOn: new Date().toISOString().slice(0, 10) });
+                  if (!today) return;
+                  ackMut.mutate({ key: it.key, ackedOn: today });
                 }}
                 disabled={ackMut.isPending}
                 aria-label={acked ? `${it.label} acknowledged` : `Mark ${it.label} as acknowledged`}

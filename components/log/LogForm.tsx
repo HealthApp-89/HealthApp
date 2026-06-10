@@ -7,6 +7,7 @@ import type { DailyLog } from "@/lib/data/types";
 import { Card, SectionLabel } from "@/components/ui/Card";
 import { COLOR, SHADOW } from "@/lib/ui/theme";
 import { selectOnFocus } from "@/lib/ui/inputs";
+import { useUserToday } from "@/lib/query/hooks/useUserToday";
 
 const SECTIONS: { title: string; color: string; fields: { k: keyof DailyLog; l: string; u: string }[] }[] = [
   {
@@ -74,8 +75,6 @@ const FATIGUE_OPTIONS = ["none", "some", "heavy"] as const;
 const SORENESS_AREAS = ["chest", "back", "legs", "shoulders", "arms", "core"] as const;
 const SORENESS_SEVERITY_OPTIONS = ["mild", "sharp"] as const;
 
-const TODAY_ISO = () => new Date().toISOString().slice(0, 10);
-
 type CheckinState = {
   readiness: number | null;
   energy_label: string;
@@ -91,6 +90,7 @@ type CheckinState = {
 };
 
 type Props = {
+  userId: string;
   date: string;
   initialLog: Partial<DailyLog> | null;
   initialCheckin: {
@@ -108,10 +108,11 @@ type Props = {
   } | null;
 };
 
-export function LogForm({ date, initialLog, initialCheckin }: Props) {
+export function LogForm({ userId, date, initialLog, initialCheckin }: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [flash, setFlash] = useState<string | null>(null);
+  const today = useUserToday(userId);
 
   const [feel, setFeel] = useState<CheckinState>({
     readiness: initialCheckin?.readiness ?? null,
@@ -193,7 +194,7 @@ export function LogForm({ date, initialLog, initialCheckin }: Props) {
             <input
               type="date"
               value={date}
-              max={TODAY_ISO()}
+              max={today ?? ""}
               onChange={(e) => onDateChange(e.target.value)}
               style={{
                 ...inputStyle,
