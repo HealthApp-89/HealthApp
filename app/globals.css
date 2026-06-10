@@ -70,11 +70,10 @@
   --nav-h: 120px;
 }
 
-/* Body padding for the iOS safe-area + the BottomNav reservation.
-   Lives here rather than as a Tailwind arbitrary class on <body> so
-   the calc() expression stays readable and unambiguous. */
+/* Body padding for the BottomNav reservation. Safe-area-inset-top
+   is now handled by the TopBar header (components/layout/TopBar.tsx)
+   for authenticated pages; the login page handles it inline. */
 body {
-  padding-top: env(safe-area-inset-top);
   padding-bottom: calc(env(safe-area-inset-bottom) + var(--nav-h));
 }
 
