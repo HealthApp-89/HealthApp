@@ -130,7 +130,7 @@ const ONE_DAY_MS = 86_400_000;
  *  Returns "today" | "yesterday" | "tomorrow" | "Mon (3d ago)" | "Wed (in 2d)". */
 export function relativeDateLabel(
   ymd: string,
-  today: string = todayInUserTz(),
+  today: string = todayInUserTz(new Date(), USER_TZ),
 ): string {
   if (ymd === today) return "today";
   const todayMs = Date.UTC(
