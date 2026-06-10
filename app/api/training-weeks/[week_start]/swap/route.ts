@@ -32,6 +32,8 @@ import { applySwap, detectConflicts, plansEqual } from "@/lib/training-weeks/app
 import { readSessionForDay, SHORT_TO_FULL } from "@/lib/coach/session-plan-reader";
 import { SESSION_PLANS } from "@/lib/coach/sessionPlans";
 import { prescribeWeek } from "@/lib/coach/prescription/prescribe-week";
+import { getUserTimezone } from "@/lib/time/get-user-tz";
+import { todayInUserTz } from "@/lib/time";
 import type {
   ExerciseOverrides,
   SessionPlan,
@@ -238,12 +240,14 @@ export async function POST(
     };
 
     try {
+      const tz = await getUserTimezone(user.id);
+      const todayIso = todayInUserTz(new Date(), tz);
       nextPrescriptions = await prescribeWeek({
         supabase,
         userId: user.id,
         block,
         week: workingRow,
-        todayIso: new Date().toISOString().slice(0, 10),
+        todayIso,
       });
     } catch (e) {
       console.error("[swap] prescription recompute failed; clearing stale entries", e);

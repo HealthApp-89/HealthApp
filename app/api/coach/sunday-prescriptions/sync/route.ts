@@ -15,6 +15,8 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { upsertWeekPrescription } from "@/lib/coach/prescription/upsert-week-prescription";
+import { getUserTimezone } from "@/lib/time/get-user-tz";
+import { todayInUserTz } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -39,7 +41,6 @@ export async function GET(req: Request) {
   }
 
   const sb = createSupabaseServiceRoleClient();
-  const todayIso = new Date().toISOString().slice(0, 10);
   const weekStart = nextMondayIso();
 
   // Every user with an ACTIVE block gets a prescription written. Users
@@ -57,6 +58,8 @@ export async function GET(req: Request) {
   for (const row of activeBlocks ?? []) {
     const userId = (row as { user_id: string }).user_id;
     try {
+      const tz = await getUserTimezone(userId);
+      const todayIso = todayInUserTz(new Date(), tz);
       const out = await upsertWeekPrescription({
         supabase: sb,
         userId,
@@ -73,7 +76,6 @@ export async function GET(req: Request) {
   return NextResponse.json({
     ok: true,
     week_start: weekStart,
-    today: todayIso,
     users_processed: results.length,
     results,
   });

@@ -7,6 +7,8 @@ import { NextResponse } from "next/server";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { generatePeterDashboard } from "@/lib/coach/peter-dashboard";
 import { renderInjectionBlock } from "@/lib/coach/peter-dashboard/render-injection";
+import { getUserTimezone } from "@/lib/time/get-user-tz";
+import { todayInUserTz } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -33,7 +35,8 @@ export async function GET(req: Request) {
   }
   const userId = profile.user_id as string;
 
-  const today = new Date().toISOString().slice(0, 10);
+  const tz = await getUserTimezone(userId);
+  const today = todayInUserTz(new Date(), tz);
 
   // Idempotent on v1.
   const { data: existing } = await sb

@@ -11,6 +11,8 @@ import {
 } from "@/lib/supabase/server";
 import { generatePeterDashboard } from "@/lib/coach/peter-dashboard";
 import { renderInjectionBlock } from "@/lib/coach/peter-dashboard/render-injection";
+import { getUserTimezone } from "@/lib/time/get-user-tz";
+import { todayInUserTz } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -27,7 +29,8 @@ export async function POST() {
   }
 
   const sb = createSupabaseServiceRoleClient();
-  const today = new Date().toISOString().slice(0, 10);
+  const tz = await getUserTimezone(user.id);
+  const today = todayInUserTz(new Date(), tz);
 
   // Rate limit: count existing rows for today.
   const { data: rows, error: countErr } = await sb

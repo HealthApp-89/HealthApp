@@ -6,12 +6,10 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { composeEatingIdentity } from "@/lib/coach/nora-suggestions/compose-eating-identity";
+import { getUserTimezone } from "@/lib/time/get-user-tz";
+import { todayInUserTz } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
-
-function todayUtc(): string {
-  return new Date().toISOString().slice(0, 10);
-}
 
 export async function GET(req: Request) {
   const auth = req.headers.get("authorization");
@@ -24,20 +22,21 @@ export async function GET(req: Request) {
   const { data: profiles, error } = await supabase.from("profiles").select("user_id");
   if (error) return NextResponse.json({ error: "read_failed", detail: error.message }, { status: 500 });
 
-  const today = todayUtc();
-  const results: Array<{ user_id: string; ok: boolean; error?: string }> = [];
+  const results: Array<{ user_id: string; ok: boolean; today?: string; error?: string }> = [];
   for (const p of profiles ?? []) {
     try {
+      const tz = await getUserTimezone(p.user_id);
+      const today = todayInUserTz(new Date(), tz);
       const payload = await composeEatingIdentity({ supabase, userId: p.user_id, today });
       const { error: upErr } = await supabase
         .from("profiles")
         .update({ eating_identity_cache: payload })
         .eq("user_id", p.user_id);
       if (upErr) throw upErr;
-      results.push({ user_id: p.user_id, ok: true });
+      results.push({ user_id: p.user_id, ok: true, today });
     } catch (e) {
       results.push({ user_id: p.user_id, ok: false, error: String(e) });
     }
   }
-  return NextResponse.json({ today, results });
+  return NextResponse.json({ results });
 }

@@ -13,6 +13,7 @@ import { fetchLabAcknowledgmentsServer } from "@/lib/query/fetchers/labAcknowled
 import { fetchTodayTargetsServer } from "@/lib/query/fetchers/todayTargets";
 import { ProfileClient } from "@/components/profile/ProfileClient";
 import { todayInUserTz } from "@/lib/time";
+import { getUserTimezone } from "@/lib/time/get-user-tz";
 
 export const revalidate = 60;
 
@@ -29,8 +30,9 @@ export default async function ProfilePage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const today = new Date().toISOString().slice(0, 10);
-  const todayUserTz = todayInUserTz();
+  const tz = await getUserTimezone(user.id);
+  const today = todayInUserTz(new Date(), tz);
+  const todayUserTz = today;
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 
   const queryClient = makeServerQueryClient();

@@ -19,6 +19,7 @@ import { findFabricatedNumbers } from "@/lib/coach/fabrication-check";
 import type { ToolCallLog, Speaker } from "@/lib/data/types";
 import { buildSnapshot, buildEphemeralHeader } from "@/lib/coach/snapshot";
 import { todayInUserTz } from "@/lib/time";
+import { getUserTimezone } from "@/lib/time/get-user-tz";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { buildSystemPrompt } from "@/lib/coach/planning-prompts";
 import type { ChatMode, DailyLog } from "@/lib/data/types";
@@ -789,8 +790,10 @@ export async function POST(req: Request) {
             return null;
           })
         : null;
+      const tz = await getUserTimezone(user.id);
+      const today = todayInUserTz(new Date(), tz);
       const peterDashboardBlock = initialSpeaker === "peter"
-        ? await loadLatestPeterDashboard(sr, user.id, new Date().toISOString().slice(0, 10))
+        ? await loadLatestPeterDashboard(sr, user.id, today)
             .then((row) => row?.narrative_md ?? null)
             .catch((err) => {
               console.warn("[chat] loadLatestPeterDashboard failed", err);
