@@ -19,6 +19,7 @@ import { findFabricatedNumbers } from "@/lib/coach/fabrication-check";
 import type { ToolCallLog, Speaker } from "@/lib/data/types";
 import { buildSnapshot, buildEphemeralHeader } from "@/lib/coach/snapshot";
 import { todayInUserTz } from "@/lib/time";
+import { getUserTimezone } from "@/lib/time/get-user-tz";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { buildSystemPrompt } from "@/lib/coach/planning-prompts";
 import type { ChatMode, DailyLog } from "@/lib/data/types";
@@ -541,7 +542,8 @@ export async function POST(req: Request) {
   let messages: RichMessage[];
 
   try {
-    const todayIso = todayInUserTz();
+    const tzForToday = await getUserTimezone(user.id);
+    const todayIso = todayInUserTz(new Date(), tzForToday);
     const sinceDate = new Date(`${todayIso}T00:00:00Z`);
     sinceDate.setUTCDate(sinceDate.getUTCDate() - 14);
     const since = sinceDate.toISOString().slice(0, 10);
@@ -572,6 +574,7 @@ export async function POST(req: Request) {
         userId: user.id,
         since,
         workoutLimit: 5,
+        tz: tzForToday,
       }),
       sr.from("chat_messages")
         .select("id, role, content, created_at")
@@ -739,6 +742,7 @@ export async function POST(req: Request) {
     const ephemeralHeader = await buildEphemeralHeader({
       supabase: sr as unknown as SupabaseClient,
       userId: user.id,
+      tz: tzForToday,
     });
     const headerBlock: ContentBlock = { type: "text", text: ephemeralHeader };
     messages.push({ role: "user", content: [headerBlock, ...newTurnBlocks] });
@@ -789,8 +793,10 @@ export async function POST(req: Request) {
             return null;
           })
         : null;
+      const tz = await getUserTimezone(user.id);
+      const today = todayInUserTz(new Date(), tz);
       const peterDashboardBlock = initialSpeaker === "peter"
-        ? await loadLatestPeterDashboard(sr, user.id, new Date().toISOString().slice(0, 10))
+        ? await loadLatestPeterDashboard(sr, user.id, today)
             .then((row) => row?.narrative_md ?? null)
             .catch((err) => {
               console.warn("[chat] loadLatestPeterDashboard failed", err);

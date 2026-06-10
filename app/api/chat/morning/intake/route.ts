@@ -18,6 +18,7 @@ import {
   createSupabaseServiceRoleClient,
 } from "@/lib/supabase/server";
 import { todayInUserTz } from "@/lib/time";
+import { getUserTimezone } from "@/lib/time/get-user-tz";
 import {
   SLOT_BY_KEY,
   STILL_SICK_PROMPT,
@@ -54,7 +55,8 @@ export async function POST(req: Request) {
   if (!user) return NextResponse.json({ ok: false, reason: "unauthorized" }, { status: 401 });
 
   const body = (await req.json()) as Body;
-  const today = todayInUserTz();
+  const tz = await getUserTimezone(user.id);
+  const today = todayInUserTz(new Date(), tz);
   const sr = createSupabaseServiceRoleClient();
 
   // Always read today's row first; many handlers need it.

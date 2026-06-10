@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { COLOR, RADIUS, SHADOW } from "@/lib/ui/theme";
 import { fmtNum } from "@/lib/ui/score";
-import { todayInUserTz } from "@/lib/time";
+import { useUserToday } from "@/lib/query/hooks/useUserToday";
 import { queryKeys } from "@/lib/query/keys";
 import { selectOnFocus } from "@/lib/ui/inputs";
 import {
@@ -95,8 +95,9 @@ export function MeasurementForm({
   existingDates: string[];
 }) {
   const qc = useQueryClient();
+  const today = useUserToday(userId);
   const [state, setState] = useState<FormState>(() => ({
-    measured_on: existing?.measured_on ?? todayInUserTz(),
+    measured_on: existing?.measured_on ?? today ?? "",
     notes: existing?.notes ?? "",
     photo_path: existing?.photo_path ?? null,
     photo_signed_url: null,

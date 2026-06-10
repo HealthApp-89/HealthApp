@@ -4,7 +4,7 @@ import { createSupabaseServerClient, createSupabaseServiceRoleClient } from "@/l
 import { makeServerQueryClient } from "@/lib/query/queryClient";
 import { queryKeys } from "@/lib/query/keys";
 import { fetchFoodEntriesServer } from "@/lib/query/fetchers/foodEntries";
-import { fetchTodayTargetsServer } from "@/lib/query/fetchers/todayTargets";
+import { fetchTodayTargetsServer } from "@/lib/query/fetchers/todayTargets.server";
 import { fetchDailyLogsServer } from "@/lib/query/fetchers/dailyLogs";
 import { fetchCoachTrendsServer } from "@/lib/query/fetchers/coachTrends";
 import { fetchBlockHistoryServer } from "@/lib/query/fetchers/blockHistory";
@@ -12,6 +12,7 @@ import { fetchBodyMeasurementsServer } from "@/lib/query/fetchers/bodyMeasuremen
 import { fetchHealthTrendServer } from "@/lib/query/fetchers/healthTrend";
 import { fetchUserFoodItemsRecentServer } from "@/lib/query/fetchers/userFoodItems";
 import { todayInUserTz } from "@/lib/time";
+import { getUserTimezone } from "@/lib/time/get-user-tz";
 import { DietJournalClient } from "@/components/diet/DietJournalClient";
 
 export const dynamic = "force-dynamic";
@@ -33,7 +34,8 @@ export default async function DietPage({
     params.view === "body"      ? "body"      :
     params.view === "coach"     ? "coach"     :
                                   "journal";
-  const today = todayInUserTz();
+  const tz = await getUserTimezone(user.id);
+  const today = todayInUserTz(new Date(), tz);
   const date =
     typeof params.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(params.date)
       ? params.date

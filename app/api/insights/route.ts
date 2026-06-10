@@ -3,6 +3,7 @@ import { createSupabaseServerClient, createSupabaseServiceRoleClient } from "@/l
 import { callClaude, parseClaudeJson } from "@/lib/anthropic/client";
 import { buildSnapshot, withDayReferenceInstruction } from "@/lib/coach/snapshot";
 import { todayInUserTz } from "@/lib/time";
+import { getUserTimezone } from "@/lib/time/get-user-tz";
 
 export const dynamic = "force-dynamic";
 
@@ -37,7 +38,8 @@ export async function POST() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ ok: false, reason: "unauthorized" }, { status: 401 });
 
-  const today = todayInUserTz();
+  const tz = await getUserTimezone(user.id);
+  const today = todayInUserTz(new Date(), tz);
   const since = new Date(Date.now() - 14 * 86_400_000).toISOString().slice(0, 10);
 
   const { nowLine, body: snapshotBody } = await buildSnapshot({
@@ -45,6 +47,7 @@ export async function POST() {
     userId: user.id,
     since,
     workoutLimit: 5,
+    tz,
   });
 
   const userPrompt = `${nowLine}

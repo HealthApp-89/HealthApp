@@ -3,9 +3,11 @@
 import { useRouter } from "next/navigation";
 import { LogForm } from "@/components/log/LogForm";
 import { COLOR } from "@/lib/ui/theme";
-import { formatHeaderDate, todayInUserTz } from "@/lib/time";
+import { formatHeaderDate } from "@/lib/time";
 import { useDailyLogs } from "@/lib/query/hooks/useDailyLogs";
 import { useCheckin } from "@/lib/query/hooks/useCheckin";
+import { useProfile } from "@/lib/query/hooks/useProfile";
+import { useUserToday } from "@/lib/query/hooks/useUserToday";
 import type { DailyLog } from "@/lib/data/types";
 
 export function LogClient({
@@ -18,8 +20,9 @@ export function LogClient({
   const router = useRouter();
   const { data: logRange = [] } = useDailyLogs(userId, date, date);
   const { data: checkin = null } = useCheckin(userId, date);
+  const { data: profile } = useProfile(userId);
   const log = (logRange[0] ?? null) as DailyLog | null;
-  const today = todayInUserTz();
+  const today = useUserToday(userId) ?? date;
   const isToday = date === today;
 
   return (
@@ -35,7 +38,7 @@ export function LogClient({
       >
         <div>
           <div style={{ fontSize: 12, color: COLOR.textMuted, fontWeight: 500 }}>
-            {isToday ? formatHeaderDate() : date}
+            {isToday && profile?.timezone ? formatHeaderDate(new Date(), profile.timezone) : date}
           </div>
           <h1
             style={{
@@ -75,6 +78,7 @@ export function LogClient({
       <div style={{ padding: "0 8px" }}>
         <LogForm
           key={date}
+          userId={userId}
           date={date}
           initialLog={log as Partial<DailyLog> | null}
           initialCheckin={

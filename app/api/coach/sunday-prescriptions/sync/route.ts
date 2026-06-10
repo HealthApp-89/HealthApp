@@ -15,21 +15,12 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { upsertWeekPrescription } from "@/lib/coach/prescription/upsert-week-prescription";
+import { getUserTimezone } from "@/lib/time/get-user-tz";
+import { todayInUserTz } from "@/lib/time";
+import { currentWeekMonday } from "@/lib/coach/week";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
-
-/** Returns the upcoming Monday in YYYY-MM-DD form (UTC). When today is
- *  Sunday returns tomorrow; on Monday returns one week from today; otherwise
- *  returns the Monday after this week. Always strictly greater than today. */
-function nextMondayIso(now: Date = new Date()): string {
-  const t = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-  const day = t.getUTCDay(); // 0=Sun..6=Sat
-  // Days until next Monday: Sun=1, Mon=7, Tue=6, Wed=5, Thu=4, Fri=3, Sat=2
-  const daysToAdd = day === 1 ? 7 : (8 - day) % 7;
-  t.setUTCDate(t.getUTCDate() + (daysToAdd === 0 ? 7 : daysToAdd));
-  return t.toISOString().slice(0, 10);
-}
 
 export async function GET(req: Request) {
   const auth = req.headers.get("authorization") ?? "";
@@ -39,8 +30,6 @@ export async function GET(req: Request) {
   }
 
   const sb = createSupabaseServiceRoleClient();
-  const todayIso = new Date().toISOString().slice(0, 10);
-  const weekStart = nextMondayIso();
 
   // Every user with an ACTIVE block gets a prescription written. Users
   // between blocks skip — there's no phase context to drive prescribeWeek
@@ -53,17 +42,26 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "block_fetch_failed", detail: blocksErr.message }, { status: 500 });
   }
 
-  const results: Array<{ user_id: string; ok: boolean; detail?: string; inserted?: boolean }> = [];
+  const results: Array<{ user_id: string; ok: boolean; detail?: string; inserted?: boolean; week_start?: string }> = [];
   for (const row of activeBlocks ?? []) {
     const userId = (row as { user_id: string }).user_id;
     try {
+      const tz = await getUserTimezone(userId);
+      const todayIso = todayInUserTz(new Date(), tz);
+      const thisMonday = currentWeekMonday(new Date(), tz);
+      const nextMonday = (() => {
+        // Add 7 days to the YYYY-MM-DD via UTC-noon parsing (DST-safe).
+        const dt = new Date(`${thisMonday}T12:00:00Z`);
+        dt.setUTCDate(dt.getUTCDate() + 7);
+        return dt.toISOString().slice(0, 10);
+      })();
       const out = await upsertWeekPrescription({
         supabase: sb,
         userId,
-        weekStart,
+        weekStart: nextMonday,
         todayIso,
       });
-      results.push({ user_id: userId, ok: true, inserted: out.inserted });
+      results.push({ user_id: userId, ok: true, inserted: out.inserted, week_start: nextMonday });
     } catch (e) {
       console.error("[sunday-prescriptions.sync] user failed", userId, e);
       results.push({ user_id: userId, ok: false, detail: String(e) });
@@ -72,8 +70,6 @@ export async function GET(req: Request) {
 
   return NextResponse.json({
     ok: true,
-    week_start: weekStart,
-    today: todayIso,
     users_processed: results.length,
     results,
   });

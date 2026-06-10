@@ -8,6 +8,7 @@ import { CustomFoodCreateAndLogSheet } from "./CustomFoodCreateAndLogSheet";
 import { useQueryClient } from "@tanstack/react-query";
 import type { MealSlot } from "@/lib/food/types";
 import { deriveMealSlot, mealSlotLabel } from "@/lib/food/meal-slot";
+import { useProfile } from "@/lib/query/hooks/useProfile";
 import { COLOR } from "@/lib/ui/theme";
 
 type Tab = "search" | "library";
@@ -29,10 +30,13 @@ export function MealLoggerSheet({
   const [historyPickerOpen, setHistoryPickerOpen] = useState(false);
   const [customCreateOpen, setCustomCreateOpen] = useState(false);
   const queryClient = useQueryClient();
+  const { data: profile } = useProfile(userId);
+  const tz = profile?.timezone ?? "Asia/Dubai";
 
   const mealSlot: MealSlot =
     initialMealSlot ?? deriveMealSlot(
       initialEatenAt ? new Date(initialEatenAt) : new Date(),
+      tz,
     );
   const eatenAt = initialEatenAt ?? new Date().toISOString();
 

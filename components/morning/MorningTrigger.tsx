@@ -13,6 +13,7 @@
 
 import { useEffect, useState } from "react";
 import { useCheckin } from "@/lib/query/hooks/useCheckin";
+import { useProfile } from "@/lib/query/hooks/useProfile";
 import { todayInUserTz } from "@/lib/time";
 import { decideIntakeAction } from "@/lib/morning/state";
 
@@ -30,7 +31,9 @@ export function MorningTrigger({
   userId: string;
   onShouldOpen: () => void;
 }) {
-  const [today, setToday] = useState<string>(() => todayInUserTz());
+  const { data: profile } = useProfile(userId);
+  const tz = profile?.timezone ?? "UTC";
+  const [today, setToday] = useState<string>(() => todayInUserTz(new Date(), tz));
   const yesterday = isoMinusDays(today, 1);
 
   // Re-evaluate `today` when the tab/PWA comes back into focus. If the user
@@ -41,7 +44,7 @@ export function MorningTrigger({
   useEffect(() => {
     const recheck = () => {
       if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
-      const now = todayInUserTz();
+      const now = todayInUserTz(new Date(), tz);
       setToday((prev) => (prev === now ? prev : now));
     };
     document.addEventListener("visibilitychange", recheck);
@@ -50,7 +53,7 @@ export function MorningTrigger({
       document.removeEventListener("visibilitychange", recheck);
       window.removeEventListener("focus", recheck);
     };
-  }, []);
+  }, [tz]);
 
   const { data: todayCheckin, isLoading: tLoading } = useCheckin(userId, today);
   const { data: yesterdayCheckin, isLoading: yLoading } = useCheckin(userId, yesterday);

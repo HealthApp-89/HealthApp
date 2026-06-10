@@ -2,7 +2,9 @@ import type { Metadata } from "next";
 import { DM_Sans, DM_Mono } from "next/font/google";
 import "./globals.css";
 import { BottomNav } from "@/components/layout/BottomNav";
+import { TopBar } from "@/components/layout/TopBar";
 import { QueryProvider } from "@/components/providers/QueryProvider";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 // Self-hosted via next/font — removes the render-blocking Google CSS
 // round-trip (~200ms cold on LTE) and ships zero layout shift.
@@ -33,7 +35,12 @@ export const metadata: Metadata = {
   themeColor: "#f1f2f6",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const sb = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await sb.auth.getUser();
+
   return (
     <html lang="en" className={`${dmSans.variable} ${dmMono.variable}`}>
       <head>
@@ -53,7 +60,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           is set in globals.css. */}
       <body className="min-h-[100dvh] bg-bg">
         <QueryProvider>
-          <main>{children}</main>
+          {user ? (
+            <TopBar userId={user.id}>
+              <main>{children}</main>
+            </TopBar>
+          ) : (
+            <main>{children}</main>
+          )}
           <BottomNav />
         </QueryProvider>
       </body>

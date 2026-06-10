@@ -1,6 +1,6 @@
 import type { DailyLog } from "@/lib/data/types";
 import type { ImpactSegment } from "./impact";
-import { SESSION_PLANS, getTodaySession, type PlannedExercise } from "./sessionPlans";
+import { SESSION_PLANS, type PlannedExercise } from "./sessionPlans";
 import { annotateSession } from "@/lib/coach/session-structure";
 
 const HRV_BASELINE_DEFAULT = 33;
@@ -208,7 +208,9 @@ export function buildDailyPlan(
 ): DailyPlan {
   const readiness = computeDailyReadiness(log, feel, hrvBaseline);
   const mode = getIntensityMode(readiness, feel);
-  const sessionType = override?.sessionType ?? getTodaySession();
+  // Callers always pass a resolved sessionType (from training_weeks +
+  // weekday-in-tz); fall through to "REST" defensively if absent.
+  const sessionType = override?.sessionType ?? "REST";
   const effectiveMult = override?.intensityMultiplier ?? mode.multiplier;
   const basePlan = override?.effectiveExercises ?? SESSION_PLANS[sessionType] ?? [];
   const exercises = basePlan.map((ex) => {

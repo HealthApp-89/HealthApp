@@ -107,8 +107,8 @@ export const WEEKLY_SESSIONS: Record<string, string> = {
   Sunday: "REST",
 };
 
-export function getTodaySession(): string {
-  return WEEKLY_SESSIONS[weekdayInUserTz()] ?? "REST";
+export function getTodaySession(tz: string): string {
+  return WEEKLY_SESSIONS[weekdayInUserTz(new Date(), tz)] ?? "REST";
 }
 
 import type { ExerciseOverrides, SessionPrescriptions } from "@/lib/data/types";

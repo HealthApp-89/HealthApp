@@ -4,7 +4,7 @@ import ChatPanel from "@/components/chat/ChatPanel";
 import { useMarkThreadSeen } from "@/lib/chat/use-mark-thread-seen";
 import { useDailyLogs } from "@/lib/query/hooks/useDailyLogs";
 import { useCheckin } from "@/lib/query/hooks/useCheckin";
-import { todayInUserTz } from "@/lib/time";
+import { useUserToday } from "@/lib/query/hooks/useUserToday";
 import { COLOR } from "@/lib/ui/theme";
 import type { Checkin } from "@/lib/query/fetchers/checkin";
 import { MorningIntakeHost, openMorningIntake } from "@/components/morning/MorningIntakeHost";
@@ -18,7 +18,8 @@ type Props = {
 
 export function HealthCoachClient({ userId, hrvBaseline }: Props) {
   useMarkThreadSeen("remi");
-  const today = todayInUserTz();
+  const today = useUserToday(userId);
+  if (!today) return null;
 
   const yesterday = new Date(`${today}T00:00:00Z`);
   yesterday.setUTCDate(yesterday.getUTCDate() - 1);

@@ -1,21 +1,35 @@
 /** Week boundaries for the coach's weekly review.
- *  Weeks are Monday → Sunday (UTC), matching lib/ui/period.ts. */
+ *  Weeks are Monday → Sunday in the user's timezone (was UTC pre-0042). */
 
-function utc(d: Date): Date {
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+import { ymdInUserTz } from "@/lib/time";
+
+/** "YYYY-MM-DD" for a Date in the given tz. */
+function fmt(d: Date, tz: string): string {
+  return ymdInUserTz(d, tz);
 }
 
-function fmt(d: Date): string {
-  return d.toISOString().slice(0, 10);
+/** Monday of the week containing `d`, in the given tz. Returns YYYY-MM-DD. */
+function startOfWeekMondayLocal(d: Date, tz: string): string {
+  // Compute weekday in tz, then walk back N days. The walk is in UTC ms
+  // (safe because we only care about day-count), then format in tz.
+  const wd = new Intl.DateTimeFormat("en-US", { weekday: "long", timeZone: tz }).format(d);
+  const longToIdx: Record<string, number> = {
+    Monday: 1, Tuesday: 2, Wednesday: 3, Thursday: 4,
+    Friday: 5, Saturday: 6, Sunday: 7,
+  };
+  const idx = longToIdx[wd];
+  if (idx === undefined) {
+    throw new Error(`startOfWeekMondayLocal: unexpected weekday "${wd}" from Intl`);
+  }
+  const monday = new Date(d.getTime() - (idx - 1) * 86_400_000);
+  return fmt(monday, tz);
 }
 
-/** Monday of the week containing `d` (UTC). */
-function startOfWeekMonday(d: Date): Date {
-  const day = d.getUTCDay() || 7;
-  const monday = new Date(d);
-  monday.setUTCDate(d.getUTCDate() - (day - 1));
-  monday.setUTCHours(0, 0, 0, 0);
-  return monday;
+/** Add N calendar days to a YYYY-MM-DD by parsing as UTC noon (DST-safe). */
+function addDays(ymd: string, n: number): string {
+  const dt = new Date(`${ymd}T12:00:00Z`);
+  dt.setUTCDate(dt.getUTCDate() + n);
+  return dt.toISOString().slice(0, 10);
 }
 
 /** Three review rhythms keyed off day-of-week. */
@@ -25,34 +39,37 @@ export type ReviewMode = "monday-recap" | "in-progress" | "sunday-full";
  *  - Monday  → previous full Mon-Sun ("recap last week, set up this week")
  *  - Tue-Sat → current Mon → today (week-to-date)
  *  - Sunday  → current full Mon-Sun (thorough end-of-week review) */
-export function reviewWindow(today: Date = new Date()): {
+export function reviewWindow(today: Date = new Date(), tz: string): {
   start: string;
   end: string;
   mode: ReviewMode;
   /** Days remaining in the current calendar week including today's leftover. 0 on Sunday, 6 on Monday. */
   daysRemaining: number;
 } {
-  const t = utc(today);
-  const dow = t.getUTCDay(); // 0=Sun, 1=Mon, … 6=Sat
+  const todayYmd = fmt(today, tz);
+  const weekday = new Intl.DateTimeFormat("en-US", { weekday: "long", timeZone: tz }).format(today);
+  const dowMap: Record<string, number> = {
+    Sunday: 0, Monday: 1, Tuesday: 2, Wednesday: 3,
+    Thursday: 4, Friday: 5, Saturday: 6,
+  };
+  const dow = dowMap[weekday];
+  if (dow === undefined) {
+    throw new Error(`reviewWindow: unexpected weekday "${weekday}" from Intl`);
+  }
 
   if (dow === 1) {
-    const lastSun = new Date(t);
-    lastSun.setUTCDate(t.getUTCDate() - 1);
-    const lastMon = new Date(lastSun);
-    lastMon.setUTCDate(lastSun.getUTCDate() - 6);
-    return { start: fmt(lastMon), end: fmt(lastSun), mode: "monday-recap", daysRemaining: 6 };
+    const lastSun = addDays(todayYmd, -1);
+    const lastMon = addDays(lastSun, -6);
+    return { start: lastMon, end: lastSun, mode: "monday-recap", daysRemaining: 6 };
   }
-
   if (dow === 0) {
-    const mon = new Date(t);
-    mon.setUTCDate(t.getUTCDate() - 6);
-    return { start: fmt(mon), end: fmt(t), mode: "sunday-full", daysRemaining: 0 };
+    const mon = addDays(todayYmd, -6);
+    return { start: mon, end: todayYmd, mode: "sunday-full", daysRemaining: 0 };
   }
-
-  const mon = startOfWeekMonday(t);
+  const mon = startOfWeekMondayLocal(today, tz);
   return {
-    start: fmt(mon),
-    end: fmt(t),
+    start: mon,
+    end: todayYmd,
     mode: "in-progress",
     daysRemaining: 7 - dow, // Tue=2 → 5 days, Sat=6 → 1 day
   };
@@ -61,15 +78,11 @@ export function reviewWindow(today: Date = new Date()): {
 /** The week_start that recommendations should target.
  *  Monday + Tue-Sat → current Monday (this calendar week).
  *  Sunday → next Monday (the upcoming week). */
-export function recommendationWeekStart(today: Date = new Date()): string {
-  const t = utc(today);
-  const monday = startOfWeekMonday(t);
-  if (t.getUTCDay() === 0) {
-    const nextMon = new Date(monday);
-    nextMon.setUTCDate(monday.getUTCDate() + 7);
-    return fmt(nextMon);
-  }
-  return fmt(monday);
+export function recommendationWeekStart(today: Date = new Date(), tz: string): string {
+  const weekday = new Intl.DateTimeFormat("en-US", { weekday: "long", timeZone: tz }).format(today);
+  const mon = startOfWeekMondayLocal(today, tz);
+  if (weekday === "Sunday") return addDays(mon, 7);
+  return mon;
 }
 
 /** Monday that the planning CTA targets when the user opens /coach.
@@ -84,19 +97,12 @@ export function recommendationWeekStart(today: Date = new Date()): string {
  *  Distinct from `currentWeekMonday(today)` (used by the strength tab) which
  *  always returns the most recent Monday on or before today regardless of
  *  weekday — strength reads "this week's plan", not "next week's". */
-export function planningTargetMonday(today: Date = new Date()): string {
-  const t = utc(today);
-  const monday = startOfWeekMonday(t);
-  if (t.getUTCDay() === 0) {
-    const nextMon = new Date(monday);
-    nextMon.setUTCDate(monday.getUTCDate() + 7);
-    return fmt(nextMon);
-  }
-  return fmt(monday);
+export function planningTargetMonday(today: Date = new Date(), tz: string): string {
+  return recommendationWeekStart(today, tz);
 }
 
 /** Monday of the week containing today (no Sunday flip). Used by the strength
  *  tab to look up the *current* week's training_weeks row. */
-export function currentWeekMonday(today: Date = new Date()): string {
-  return fmt(startOfWeekMonday(utc(today)));
+export function currentWeekMonday(today: Date = new Date(), tz: string): string {
+  return startOfWeekMondayLocal(today, tz);
 }

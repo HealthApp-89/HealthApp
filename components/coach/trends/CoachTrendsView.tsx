@@ -6,6 +6,7 @@ import { useCoachTrends } from "@/lib/query/hooks/useCoachTrends";
 import { useBlockHistory } from "@/lib/query/hooks/useBlockHistory";
 import { CHAT, COLOR } from "@/lib/ui/theme";
 import { formatHeaderDate } from "@/lib/time";
+import { useProfile } from "@/lib/query/hooks/useProfile";
 import { SectionPills, type TrendsSection } from "./SectionPills";
 import { TrendsHeader } from "./TrendsHeader";
 import { PerformanceSection } from "./PerformanceSection";
@@ -20,6 +21,8 @@ export function CoachTrendsView({
   initialSection: TrendsSection;
 }) {
   const router = useRouter();
+  const { data: profile } = useProfile(userId);
+  const tz = profile?.timezone ?? "UTC";
   const [activeSection, setActiveSection] = useState<TrendsSection>(initialSection);
   const { data: payload } = useCoachTrends(userId);
   const { data: blockHistory } = useBlockHistory(userId);
@@ -37,7 +40,7 @@ export function CoachTrendsView({
     >
       <header style={{ padding: "12px 16px 8px" }}>
         <div style={{ fontSize: 12, color: COLOR.textMuted, fontWeight: 500 }}>
-          {formatHeaderDate()}
+          {formatHeaderDate(new Date(), tz)}
         </div>
         <h1
           style={{

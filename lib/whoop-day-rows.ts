@@ -8,7 +8,7 @@
 
 import type { WhoopRecovery, WhoopCycle, WhoopSleep } from "@/lib/whoop";
 import { buildCycleTzLookup } from "@/lib/whoop-tz";
-import { parseUtcOffsetMs, parseValidDate, ymdInUserTz, ymdInZoneOffset } from "@/lib/time";
+import { parseUtcOffsetMs, parseValidDate, ymdInUserTz, ymdInZoneOffset, USER_TIMEZONE } from "@/lib/time";
 
 export type WhoopDayRow = {
   user_id: string;
@@ -142,7 +142,7 @@ export function buildWhoopDayRows(
           `[whoop] sleep ${s.id} matched cycle with bad timezone_offset=${JSON.stringify(cycleTz)}; keying via USER_TIMEZONE`,
         );
       }
-      date = ymdInUserTz(endDate);
+      date = ymdInUserTz(endDate, USER_TIMEZONE);
     }
     sleepIdToDate.set(s.id, date);
     const row = ensure(date);
@@ -204,7 +204,7 @@ export function buildWhoopDayRows(
         );
         continue;
       }
-      date = ymdInUserTz(created);
+      date = ymdInUserTz(created, USER_TIMEZONE);
     }
     const row = ensure(date);
     row.hrv = r.score.hrv_rmssd_milli;

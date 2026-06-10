@@ -11,6 +11,7 @@ import { useWeeklyReview } from "@/lib/query/hooks/useWeeklyReview";
 import { useTrainingWeek } from "@/lib/query/hooks/useTrainingWeek";
 import { weekdayInUserTz, LONG_TO_SHORT_WEEKDAY } from "@/lib/time";
 import { currentWeekMonday } from "@/lib/coach/week";
+import { useProfile } from "@/lib/query/hooks/useProfile";
 import type { ChatMode } from "@/lib/data/types";
 
 /**
@@ -40,7 +41,9 @@ export function ComposerSuggestionChips({
   onEnterMode: (mode: ChatMode) => void;
 }) {
   const router = useRouter();
-  const currentMonday = currentWeekMonday(new Date(`${todayDate}T12:00:00Z`));
+  const { data: profile } = useProfile(userId);
+  const tz = profile?.timezone ?? "UTC";
+  const currentMonday = currentWeekMonday(new Date(`${todayDate}T12:00:00Z`), tz);
   const { data: trainingWeek } = useTrainingWeek(userId, currentMonday);
   const { data: weeklyReview } = useWeeklyReview(userId, currentMonday);
 
@@ -48,7 +51,7 @@ export function ComposerSuggestionChips({
   const hasDraftReview = weeklyReview != null && weeklyReview.status === "draft";
   const hasReviewForThisWeek = weeklyReview != null;
 
-  const todayLong = weekdayInUserTz();
+  const todayLong = weekdayInUserTz(new Date(), tz);
   const todayShort = LONG_TO_SHORT_WEEKDAY[todayLong] ?? "Mon";
 
   const [swapOpen, setSwapOpen] = useState(false);

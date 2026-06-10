@@ -21,6 +21,7 @@ import {
 } from "@/lib/coach/prescription/current-comparison-value";
 import { bestComparisonValue, metricLabel } from "@/lib/coach/e1rm";
 import { todayInUserTz } from "@/lib/time";
+import { getUserTimezone } from "@/lib/time/get-user-tz";
 
 /** Pure assembly — no Anthropic call. Returns null when no active focus
  *  block exists (Carter falls back to general autoregulation talk; no
@@ -30,7 +31,8 @@ export async function buildFrameworkStateBlock(args: {
   userId: string;
 }): Promise<string | null> {
   const { supabase, userId } = args;
-  const todayIso = todayInUserTz();
+  const tz = await getUserTimezone(userId);
+  const todayIso = todayInUserTz(new Date(), tz);
 
   const { data: blocks } = await supabase
     .from("training_blocks")

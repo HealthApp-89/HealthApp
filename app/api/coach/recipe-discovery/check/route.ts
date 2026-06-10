@@ -10,6 +10,8 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { pickDiscoveryCandidate } from "@/lib/coach/nora-suggestions/recipe-discovery";
+import { getUserTimezone } from "@/lib/time/get-user-tz";
+import { todayInUserTz } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +33,6 @@ export async function GET(req: Request) {
     );
   }
 
-  const today = new Date().toISOString().slice(0, 10);
   const fired: Array<{ user_id: string; sig: string }> = [];
   const skipped: Array<{ user_id: string; reason: string }> = [];
 
@@ -40,6 +41,8 @@ export async function GET(req: Request) {
       skipped.push({ user_id: p.user_id, reason: "no_identity_cache" });
       continue;
     }
+    const tz = await getUserTimezone(p.user_id);
+    const today = todayInUserTz(new Date(), tz);
     const cand = await pickDiscoveryCandidate({
       supabase,
       userId: p.user_id,
@@ -108,7 +111,6 @@ export async function GET(req: Request) {
   }
 
   return NextResponse.json({
-    today,
     fired_count: fired.length,
     skipped_count: skipped.length,
     fired,

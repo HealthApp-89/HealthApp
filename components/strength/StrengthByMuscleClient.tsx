@@ -1,12 +1,13 @@
 "use client";
 
 import { ByMuscleView } from "@/components/strength/by-muscle/ByMuscleView";
-import { todayInUserTz } from "@/lib/time";
+import { useUserToday } from "@/lib/query/hooks/useUserToday";
 
 type Props = { userId: string };
 
 export function StrengthByMuscleClient({ userId }: Props) {
-  const todayIso = todayInUserTz();
+  const todayIso = useUserToday(userId);
+  if (!todayIso) return null;
   return (
     <div style={{ padding: "8px 16px" }}>
       <ByMuscleView userId={userId} todayIso={todayIso} />

@@ -10,6 +10,7 @@ import {
 } from "@/lib/query/fetchers/athleteProfile";
 import { OnboardingWizard, type WizardPrefill } from "@/components/onboarding/OnboardingWizard";
 import { todayInUserTz } from "@/lib/time";
+import { getUserTimezone } from "@/lib/time/get-user-tz";
 
 export const dynamic = "force-dynamic";
 
@@ -24,7 +25,8 @@ export default async function OnboardingPage(props: {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const today = todayInUserTz();
+  const tz = await getUserTimezone(user.id);
+  const today = todayInUserTz(new Date(), tz);
 
   // 30-day window for nutrition / sleep avgs.
   const thirtyAgo = new Date(`${today}T00:00:00Z`);

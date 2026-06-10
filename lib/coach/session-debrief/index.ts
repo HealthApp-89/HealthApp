@@ -10,6 +10,7 @@ import type { SetRow } from "@/lib/coach/derived";
 import type { TrainingBlock } from "@/lib/data/types";
 import { computeBlockProgress } from "@/lib/query/fetchers/blockProgress";
 import { todayInUserTz } from "@/lib/time";
+import { getUserTimezone } from "@/lib/time/get-user-tz";
 import { composeLifts } from "@/lib/coach/session-debrief/compose-lifts";
 import { composeVolume } from "@/lib/coach/session-debrief/compose-volume";
 import { composeAutoregulation } from "@/lib/coach/session-debrief/compose-autoregulation";
@@ -79,6 +80,7 @@ export async function generateWorkoutDebrief(opts: {
   if (totalWorking === 0) return { ok: false, skipped: "no_working_sets" };
 
   // 3. Run composers in parallel where independent.
+  const tz = await getUserTimezone(userId);
   const [lifts, volume, autoregulation, blockProgress, activeBlock] = await Promise.all([
     composeLifts({
       supabase,
@@ -100,7 +102,7 @@ export async function generateWorkoutDebrief(opts: {
       userId,
       workoutDate: workout.date as string,
     }),
-    computeBlockProgress(supabase, userId),
+    computeBlockProgress(supabase, userId, tz),
     loadActiveBlock(supabase, userId),
   ]);
 
@@ -170,7 +172,8 @@ async function loadBodyComp(
   supabase: SupabaseClient,
   userId: string,
 ): Promise<WorkoutDebriefPayload["body_comp"]> {
-  const today = todayInUserTz();
+  const tz = await getUserTimezone(userId);
+  const today = todayInUserTz(new Date(), tz);
   const { data, error } = await supabase
     .from("daily_logs")
     .select("weight_kg, fat_free_mass_kg")

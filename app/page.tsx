@@ -15,7 +15,9 @@ import { fetchTodayBriefServer } from "@/lib/query/fetchers/todayBrief";
 import { TodayClient } from "@/components/dashboard/TodayClient";
 import { WeeklyRollups } from "@/components/dashboard/WeeklyRollups";
 import { BodyTile } from "@/components/dashboard/BodyTile";
+import { TimezoneMismatchNotice } from "@/components/timezone/TimezoneMismatchNotice";
 import { todayInUserTz } from "@/lib/time";
+import { getUserTimezone } from "@/lib/time/get-user-tz";
 import type { Profile } from "@/lib/query/fetchers/profile";
 import type { DailyLog } from "@/lib/data/types";
 
@@ -33,7 +35,8 @@ export default async function Home(props: { searchParams: Promise<{ date?: strin
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const today = todayInUserTz();
+  const tz = await getUserTimezone(user.id);
+  const today = todayInUserTz(new Date(), tz);
   const sp = await props.searchParams;
   const selectedDate =
     sp.date && ISO_DATE.test(sp.date) && sp.date <= today ? sp.date : today;
@@ -115,6 +118,7 @@ export default async function Home(props: { searchParams: Promise<{ date?: strin
 
   return (
     <HydrationBoundary state={dehydrate(queryClient)}>
+      <TimezoneMismatchNotice />
       <TodayClient
         userId={user.id}
         userEmail={user.email ?? null}

@@ -32,6 +32,7 @@ export function mergeWithingsToRows(
   userId: string,
   measureGroups: WithingsMeasureGroup[],
   activities: WithingsActivity[],
+  tz: string,
 ): Map<string, DayRow> {
   const byDate = new Map<string, DayRow>();
   const ensure = (date: string): DayRow => {
@@ -46,7 +47,7 @@ export function mergeWithingsToRows(
   // Group by date, pick latest measurement per type
   const sorted = [...measureGroups].sort((a, b) => a.date - b.date);
   for (const grp of sorted) {
-    const date = ymdInUserTz(new Date(grp.date * 1000));
+    const date = ymdInUserTz(new Date(grp.date * 1000), tz);
     const row = ensure(date);
     for (const m of grp.measures) {
       const v = toReal(m.value, m.unit);

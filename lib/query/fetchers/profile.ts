@@ -3,7 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import type { PrimaryLift, DietaryExclusions } from "@/lib/data/types";
 
-const COLS = "name, age, height_cm, goal, system_prompt, whoop_baselines, disable_yazio_ingest, disable_strong_ingest, rotation_priority_lift, dietary_exclusions";
+const COLS = "name, age, height_cm, goal, system_prompt, whoop_baselines, disable_yazio_ingest, disable_strong_ingest, rotation_priority_lift, dietary_exclusions, timezone, created_at";
 
 export type Profile = {
   name: string | null;
@@ -16,6 +16,8 @@ export type Profile = {
   disable_strong_ingest: boolean;
   rotation_priority_lift: PrimaryLift | null;
   dietary_exclusions: DietaryExclusions | null;
+  timezone: string;
+  created_at: string;
 };
 
 export async function fetchProfileServer(

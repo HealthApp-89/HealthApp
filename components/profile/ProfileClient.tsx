@@ -23,6 +23,7 @@ import { NutritionTargetsSection } from "@/components/profile/NutritionTargetsSe
 import { DietaryExclusionsSection } from "@/components/profile/DietaryExclusionsSection";
 import { GoalSection } from "@/components/profile/GoalSection";
 import { EnduranceSetupSection } from "@/components/profile/EnduranceSetupSection";
+import { TimezoneSection } from "@/components/profile/TimezoneSection";
 import { useAthleteProfile } from "@/lib/query/hooks/useAthleteProfile";
 
 export function ProfileClient({
@@ -160,6 +161,10 @@ export function ProfileClient({
           onSave={() => setEditOpen(false)}
         />
       </BottomSheet>
+
+      <div style={{ padding: "0 16px" }}>
+        <TimezoneSection userId={userId} />
+      </div>
 
       <SectionLabel>Coaching plan</SectionLabel>
       <div style={{ padding: "0 8px 14px", display: "flex", flexDirection: "column", gap: "8px" }}>

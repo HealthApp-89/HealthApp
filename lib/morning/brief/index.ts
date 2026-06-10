@@ -11,6 +11,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { todayInUserTz } from "@/lib/time";
+import { getUserTimezone } from "@/lib/time/get-user-tz";
 import type { MorningBriefCard, MuscleVolumeFlag, StrengthMuscleVolume } from "@/lib/data/types";
 import {
   fetchBriefInputs,
@@ -34,7 +35,8 @@ export async function prepareBriefExceptAdvice(
   supabase: SupabaseClient,
   userId: string,
 ): Promise<{ partial: Omit<MorningBriefCard, "advice_md">; adviceCtx: AdviceContext }> {
-  const today = todayInUserTz();
+  const tz = await getUserTimezone(userId);
+  const today = todayInUserTz(new Date(), tz);
   const yesterday = yesterdayOf(today);
   const weekStart = mondayOf(today);
 
@@ -52,7 +54,7 @@ export async function prepareBriefExceptAdvice(
     previousCommittedReview,
     yesterdayFoodEntriesRes,
   ] = await Promise.all([
-    fetchBriefInputs(supabase, userId, today),
+    fetchBriefInputs(supabase, userId, today, tz),
     getThisWeekPrescription(supabase, userId, today),
     getThisWeekEndurancePlan(supabase, userId, today),
     getYesterdayWorkoutFlat(supabase, userId, yesterday),

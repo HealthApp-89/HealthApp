@@ -62,8 +62,9 @@ const PHASE_BY_WEEK: Record<number, "accumulate" | "deload"> = {
 export async function computeBlockProgress(
   supabase: SupabaseClient,
   userId: string,
+  tz: string,
 ): Promise<BlockProgressPayload> {
-  const today = todayInUserTz();
+  const today = todayInUserTz(new Date(), tz);
   const { data: rawBlock, error: blockErr } = await supabase
     .from("training_blocks")
     .select("*")

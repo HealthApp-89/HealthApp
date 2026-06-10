@@ -27,6 +27,7 @@ import type {
 import { currentWeekMonday } from "@/lib/coach/week";
 import { prescribeWeek } from "@/lib/coach/prescription/prescribe-week";
 import { todayInUserTz } from "@/lib/time";
+import { getUserTimezone } from "@/lib/time/get-user-tz";
 
 const WEEKDAY_ORDER: ReadonlyArray<WeekdayLong> = [
   "Monday",
@@ -43,8 +44,9 @@ export async function buildThisWeeksPrescriptionBlock(args: {
   userId: string;
 }): Promise<string | null> {
   const { supabase, userId } = args;
-  const weekStart = currentWeekMonday();
-  const todayIso = todayInUserTz();
+  const tz = await getUserTimezone(userId);
+  const weekStart = currentWeekMonday(new Date(), tz);
+  const todayIso = todayInUserTz(new Date(), tz);
 
   const { data: tw } = await supabase
     .from("training_weeks")

@@ -4,6 +4,7 @@ import { COLOR } from "@/lib/ui/theme";
 import { fmtNum } from "@/lib/ui/score";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { todayInUserTz } from "@/lib/time";
+import { getUserTimezone } from "@/lib/time/get-user-tz";
 
 function isoNDaysAgo(iso: string, n: number): string {
   const d = new Date(iso + "T00:00:00Z");
@@ -13,7 +14,8 @@ function isoNDaysAgo(iso: string, n: number): string {
 
 export async function BodyTile({ userId }: { userId: string }) {
   const supabase = await createSupabaseServerClient();
-  const todayIso = todayInUserTz();
+  const tz = await getUserTimezone(userId);
+  const todayIso = todayInUserTz(new Date(), tz);
   // Reach back 60 days so the 30d-prior baseline lookup (today-35 .. today-25)
   // has a chance of hitting a non-null reading even when Withings sync gaps.
   const lookbackFromIso = isoNDaysAgo(todayIso, 60);

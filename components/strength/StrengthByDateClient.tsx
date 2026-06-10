@@ -5,13 +5,13 @@ import { useFullWorkouts } from "@/lib/query/hooks/useFullWorkouts";
 import { DateNavigator } from "@/components/strength/DateNavigator";
 import { SessionTable } from "@/components/strength/SessionTable";
 import { Card } from "@/components/ui/Card";
-import { todayInUserTz } from "@/lib/time";
+import { useUserToday } from "@/lib/query/hooks/useUserToday";
 import { COLOR } from "@/lib/ui/theme";
 
 type Props = { userId: string };
 
 export function StrengthByDateClient({ userId }: Props) {
-  const todayIso = todayInUserTz();
+  const todayIso = useUserToday(userId) ?? "";
   const { data: workouts = [], isLoading } = useFullWorkouts(userId);
   const [pickedDate, setPickedDate] = useState<string | null>(null);
 

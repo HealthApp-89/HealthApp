@@ -38,11 +38,10 @@ type Parts = {
   weekday: string;
 };
 
-function partsInUserTz(now: Date): Parts {
+function partsInUserTz(now: Date, tz: string = USER_TZ): Parts {
   logOnce();
-  // en-CA gives us YYYY-MM-DD-friendly numeric formatting; weekday is "long".
   const fmt = new Intl.DateTimeFormat("en-CA", {
-    timeZone: USER_TZ,
+    timeZone: tz,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -54,7 +53,6 @@ function partsInUserTz(now: Date): Parts {
   const parts = fmt.formatToParts(now);
   const get = (t: Intl.DateTimeFormatPartTypes) =>
     parts.find((p) => p.type === t)?.value ?? "";
-  // Some platforms emit "24" for midnight; normalize to "00".
   const rawHour = get("hour");
   return {
     year: get("year"),
@@ -66,61 +64,58 @@ function partsInUserTz(now: Date): Parts {
   };
 }
 
-/** YYYY-MM-DD in the user's timezone for any moment. This is the canonical
- *  user-tz date formatter; `todayInUserTz()` is a thin wrapper for the
- *  no-arg "right now" case. Use this when keying historical timestamps
- *  (WHOOP/Withings sync, etc.). */
-export function ymdInUserTz(when: Date): string {
+/** YYYY-MM-DD in the given timezone for any moment.
+ *  `tz` is required as of Task 13 — pass `getUserTimezone(userId)` server-side
+ *  or `useUserToday(userId)`'s underlying profile.timezone client-side. */
+export function ymdInUserTz(when: Date, tz: string): string {
   if (!Number.isFinite(when.getTime())) {
     throw new Error("ymdInUserTz: invalid Date input");
   }
-  const p = partsInUserTz(when);
+  const p = partsInUserTz(when, tz);
   return `${p.year}-${p.month}-${p.day}`;
 }
 
-/** YYYY-MM-DD for "right now" in the user's timezone. Replaces every
- *  server-side `new Date().toISOString().slice(0, 10)`. Thin wrapper. */
-export function todayInUserTz(now: Date = new Date()): string {
-  return ymdInUserTz(now);
+/** YYYY-MM-DD for "right now" in the given timezone. Thin wrapper. */
+export function todayInUserTz(now: Date = new Date(), tz: string): string {
+  return ymdInUserTz(now, tz);
 }
 
-/** Day of week in user's tz: "Monday" | "Tuesday" | ... */
-export function weekdayInUserTz(now: Date = new Date()): string {
-  return partsInUserTz(now).weekday;
+/** Day of week in the given tz: "Monday" | "Tuesday" | ... */
+export function weekdayInUserTz(now: Date = new Date(), tz: string): string {
+  return partsInUserTz(now, tz).weekday;
 }
 
-/** "HH:mm" in user's tz, 24h. */
-export function localTimeInUserTz(now: Date = new Date()): string {
-  const p = partsInUserTz(now);
+/** "HH:mm" in the given tz, 24h. */
+export function localTimeInUserTz(now: Date = new Date(), tz: string): string {
+  const p = partsInUserTz(now, tz);
   return `${p.hour}:${p.minute}`;
 }
 
 /** Single struct for prompts and logs. */
-export function nowInUserTz(now: Date = new Date()): {
+export function nowInUserTz(now: Date = new Date(), tz: string): {
   date: string;
   weekday: string;
   time: string;
   tz: string;
   utcOffset: string;
 } {
-  const p = partsInUserTz(now);
+  const p = partsInUserTz(now, tz);
   return {
     date: `${p.year}-${p.month}-${p.day}`,
     weekday: p.weekday,
     time: `${p.hour}:${p.minute}`,
-    tz: USER_TZ,
-    utcOffset: utcOffsetString(now),
+    tz,
+    utcOffset: utcOffsetString(now, tz),
   };
 }
 
-function utcOffsetString(now: Date): string {
+function utcOffsetString(now: Date, tz: string = USER_TZ): string {
   const fmt = new Intl.DateTimeFormat("en-US", {
-    timeZone: USER_TZ,
+    timeZone: tz,
     timeZoneName: "shortOffset",
   });
   const parts = fmt.formatToParts(now);
   const tzPart = parts.find((p) => p.type === "timeZoneName")?.value ?? "GMT+00:00";
-  // Examples seen across runtimes: "GMT+4", "GMT+04:00", "GMT-5", "GMT".
   const m = tzPart.match(/GMT([+-])?(\d{1,2})(?::?(\d{2}))?/);
   if (!m) return "+00:00";
   const sign = m[1] || "+";
@@ -135,7 +130,7 @@ const ONE_DAY_MS = 86_400_000;
  *  Returns "today" | "yesterday" | "tomorrow" | "Mon (3d ago)" | "Wed (in 2d)". */
 export function relativeDateLabel(
   ymd: string,
-  today: string = todayInUserTz(),
+  today: string = todayInUserTz(new Date(), USER_TZ),
 ): string {
   if (ymd === today) return "today";
   const todayMs = Date.UTC(
@@ -205,14 +200,14 @@ export function ymdInZoneOffset(when: Date, offset: string): string {
     throw new Error("ymdInZoneOffset: invalid Date input");
   }
   const offsetMs = parseUtcOffsetMs(offset);
-  if (offsetMs === null) return ymdInUserTz(when);
+  if (offsetMs === null) return ymdInUserTz(when, USER_TZ);
   return new Date(when.getTime() + offsetMs).toISOString().slice(0, 10);
 }
 
 /** "Tuesday, May 5" — for the dashboard Header. */
-export function formatHeaderDate(now: Date = new Date()): string {
+export function formatHeaderDate(now: Date = new Date(), tz: string): string {
   return new Intl.DateTimeFormat("en-US", {
-    timeZone: USER_TZ,
+    timeZone: tz,
     weekday: "long",
     month: "long",
     day: "numeric",

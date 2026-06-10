@@ -3,6 +3,7 @@ import { createSupabaseServerClient, createSupabaseServiceRoleClient } from "@/l
 import { callClaude, parseClaudeJson } from "@/lib/anthropic/client";
 import { loadWorkouts } from "@/lib/data/workouts-server";
 import { todayInUserTz } from "@/lib/time";
+import { getUserTimezone } from "@/lib/time/get-user-tz";
 
 export const dynamic = "force-dynamic";
 
@@ -111,7 +112,8 @@ Categorise compound barbell lifts as priority high. Isolation accessories medium
     );
   }
 
-  const today = todayInUserTz();
+  const tz = await getUserTimezone(user.id);
+  const today = todayInUserTz(new Date(), tz);
   const sr = createSupabaseServiceRoleClient();
   const { error } = await sr.from("ai_insights").upsert(
     {

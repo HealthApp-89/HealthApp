@@ -89,6 +89,9 @@ export type Profile = {
    *  drive a deterministic predicate filter; free_text is advisory prose
    *  Nora reads in chat. NULL = no exclusions configured. */
   dietary_exclusions: DietaryExclusions | null;
+  /** IANA timezone (e.g., "Asia/Dubai"). Authoritative for all per-user "today"
+   *  / week-boundary / day-attribution computations. NOT NULL DEFAULT in DB. */
+  timezone: string;
 };
 
 export type WhoopTokensRow = {

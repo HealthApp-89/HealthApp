@@ -22,6 +22,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getUserTimezone } from "@/lib/time/get-user-tz";
+import { todayInUserTz } from "@/lib/time";
 
 const Body = z.object({ trigger_key: z.string().min(1) });
 
@@ -40,7 +42,8 @@ export async function POST(req: Request) {
     );
   }
 
-  const today = new Date().toISOString().slice(0, 10);
+  const tz = await getUserTimezone(user.id);
+  const today = todayInUserTz(new Date(), tz);
 
   // Upsert: if the cron already inserted the row earlier today, the conflict
   // is a no-op (we have nothing additional to write since there's no

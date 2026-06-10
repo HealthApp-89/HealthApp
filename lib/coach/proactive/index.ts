@@ -45,6 +45,7 @@ import { checkPostStrainUndersleep } from "./check-post-strain-undersleep";
 import { checkEnduranceVolumeSpike } from "./check-endurance-volume-spike";
 import { renderCard } from "./render-card";
 import { todayInUserTz } from "@/lib/time";
+import { getUserTimezone } from "@/lib/time/get-user-tz";
 
 /** Maps a proactive trigger to the coach whose thread the card lives in.
  *  Plateau (strength stagnation) → Carter; off-pace (weight trend drift)
@@ -120,7 +121,8 @@ export async function runProactiveChecks(args: {
   dry_run?: boolean;
 }): Promise<ProactiveRunResult> {
   const { supabase, userId, trends, recoveryIntelligence, dry_run } = args;
-  const today = todayInUserTz();
+  const tz = await getUserTimezone(userId);
+  const today = todayInUserTz(new Date(), tz);
 
   const events: ProactiveEvent[] = [
     ...checkPlateau(trends),
