@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { computeBlockProgress } from "@/lib/query/fetchers/blockProgress";
+import { getUserTimezone } from "@/lib/time/get-user-tz";
 
 export async function GET() {
   const supabase = await createSupabaseServerClient();
@@ -11,7 +12,8 @@ export async function GET() {
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   try {
-    const payload = await computeBlockProgress(supabase, user.id);
+    const tz = await getUserTimezone(user.id);
+    const payload = await computeBlockProgress(supabase, user.id, tz);
     return NextResponse.json(payload);
   } catch (err) {
     return NextResponse.json(

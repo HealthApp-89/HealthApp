@@ -80,6 +80,7 @@ export async function generateWorkoutDebrief(opts: {
   if (totalWorking === 0) return { ok: false, skipped: "no_working_sets" };
 
   // 3. Run composers in parallel where independent.
+  const tz = await getUserTimezone(userId);
   const [lifts, volume, autoregulation, blockProgress, activeBlock] = await Promise.all([
     composeLifts({
       supabase,
@@ -101,7 +102,7 @@ export async function generateWorkoutDebrief(opts: {
       userId,
       workoutDate: workout.date as string,
     }),
-    computeBlockProgress(supabase, userId),
+    computeBlockProgress(supabase, userId, tz),
     loadActiveBlock(supabase, userId),
   ]);
 

@@ -4,7 +4,7 @@ import { createSupabaseServerClient, createSupabaseServiceRoleClient } from "@/l
 import { makeServerQueryClient } from "@/lib/query/queryClient";
 import { queryKeys } from "@/lib/query/keys";
 import { fetchFoodEntriesServer } from "@/lib/query/fetchers/foodEntries";
-import { fetchTodayTargetsServer } from "@/lib/query/fetchers/todayTargets";
+import { fetchTodayTargetsServer } from "@/lib/query/fetchers/todayTargets.server";
 import { fetchDailyLogsServer } from "@/lib/query/fetchers/dailyLogs";
 import { fetchCoachTrendsServer } from "@/lib/query/fetchers/coachTrends";
 import { fetchBlockHistoryServer } from "@/lib/query/fetchers/blockHistory";

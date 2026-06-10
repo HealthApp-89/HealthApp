@@ -3,7 +3,7 @@ import { HydrationBoundary, dehydrate } from '@tanstack/react-query';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { makeServerQueryClient } from '@/lib/query/queryClient';
 import { queryKeys } from '@/lib/query/keys';
-import { fetchPeterDashboardServer } from '@/lib/query/fetchers/peterDashboard';
+import { fetchPeterDashboardServer } from '@/lib/query/fetchers/peterDashboard.server';
 import { PeterDashboardClient } from '@/components/coach/PeterDashboardClient';
 import { PeterChatClient } from '@/components/coach/PeterChatClient';
 import { DefinitionsView } from '@/components/coach/DefinitionsView';

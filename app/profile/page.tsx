@@ -10,7 +10,7 @@ import { fetchIngestTokenServer } from "@/lib/query/fetchers/ingestToken";
 import { fetchDailyLogsServer } from "@/lib/query/fetchers/dailyLogs";
 import { fetchActiveProfileServer, fetchProfileHistoryServer, fetchDraftProfileServer } from "@/lib/query/fetchers/athleteProfile";
 import { fetchLabAcknowledgmentsServer } from "@/lib/query/fetchers/labAcknowledgments";
-import { fetchTodayTargetsServer } from "@/lib/query/fetchers/todayTargets";
+import { fetchTodayTargetsServer } from "@/lib/query/fetchers/todayTargets.server";
 import { ProfileClient } from "@/components/profile/ProfileClient";
 import { todayInUserTz } from "@/lib/time";
 import { getUserTimezone } from "@/lib/time/get-user-tz";
