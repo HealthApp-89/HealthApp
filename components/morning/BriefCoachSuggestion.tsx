@@ -9,6 +9,7 @@ import {
 } from "@/lib/query/hooks/useSwapTrainingDay";
 import { readSessionForDay } from "@/lib/coach/session-plan-reader";
 import { todayInUserTz, weekdayInUserTz } from "@/lib/time";
+import { useProfile } from "@/lib/query/hooks/useProfile";
 import type { MorningBriefCoachSuggestion, Weekday } from "@/lib/data/types";
 
 const FULL_TO_SHORT: Record<string, Weekday> = {
@@ -29,13 +30,19 @@ function weekStartOf(today: string): string {
   return d.toISOString().slice(0, 10);
 }
 
-function formatHHmm(iso: string | null | undefined): string {
+// Format an ISO timestamp as "HH:mm" in the user's coaching timezone (NOT
+// the device's local clock). The device tz can differ from the user's
+// profile.timezone (travel mode); display must be anchored to the latter.
+function formatHHmm(iso: string | null | undefined, tz: string): string {
   if (!iso) return "";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
-  const h = String(d.getHours()).padStart(2, "0");
-  const m = String(d.getMinutes()).padStart(2, "0");
-  return `${h}:${m}`;
+  return new Intl.DateTimeFormat("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: tz,
+  }).format(d);
 }
 
 export function BriefCoachSuggestion({
@@ -55,6 +62,7 @@ export function BriefCoachSuggestion({
     return FULL_TO_SHORT[full] ?? "Mon";
   }, [today]);
 
+  const { data: profile } = useProfile(userId);
   const { data: trainingWeek } = useTrainingWeek(userId, weekStart);
   const mutation = useSwapTrainingDay(userId, weekStart);
   const [reduceDismissed, setReduceDismissed] = useState(false);
@@ -158,7 +166,7 @@ export function BriefCoachSuggestion({
           lineHeight: 1.5,
         }}
       >
-        ✓ Swapped to {currentType} at {formatHHmm(trainingWeek.updated_at)} —{" "}
+        ✓ Swapped to {currentType} at {formatHHmm(trainingWeek.updated_at, profile?.timezone ?? "UTC")} —{" "}
         <a href="/strength" style={{ color: "inherit", textDecoration: "underline" }}>
           see /strength
         </a>

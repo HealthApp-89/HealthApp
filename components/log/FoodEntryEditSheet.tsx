@@ -8,6 +8,7 @@ import { fmtNum } from "@/lib/ui/score";
 import { MEAL_SLOTS, mealSlotLabel } from "@/lib/food/meal-slot";
 import type { MealSlot } from "@/lib/food/types";
 import { useFoodItemFavorites } from "@/lib/query/hooks/useFoodItemFavorites";
+import { useProfile } from "@/lib/query/hooks/useProfile";
 
 export function FoodEntryEditSheet({
   entry,
@@ -32,6 +33,8 @@ export function FoodEntryEditSheet({
   const [eatenAt, setEatenAt]   = useState<string>(entry.eaten_at);
   const qc = useQueryClient();
   const { data: itemFavorites = [] } = useFoodItemFavorites(userId);
+  const { data: profile } = useProfile(userId);
+  const tz = profile?.timezone ?? "UTC";
 
   const isItemFavorite = (name: string) =>
     itemFavorites.some((f) => f.name.toLowerCase() === name.toLowerCase());
@@ -135,8 +138,8 @@ export function FoodEntryEditSheet({
             Time
             <input
               type="datetime-local"
-              value={toLocalInputValue(eatenAt)}
-              onChange={(e) => setEatenAt(fromLocalInputValue(e.target.value))}
+              value={toLocalInputValue(eatenAt, tz)}
+              onChange={(e) => setEatenAt(fromLocalInputValue(e.target.value, tz))}
               className="mt-1 w-full rounded-md border border-zinc-700 bg-zinc-900 p-2 text-sm text-zinc-100"
             />
           </label>
@@ -221,14 +224,61 @@ export function FoodEntryEditSheet({
   );
 }
 
-// `datetime-local` expects "YYYY-MM-DDTHH:mm" in local time, no seconds
-// or timezone suffix. Helpers translate to/from full ISO strings.
-function toLocalInputValue(iso: string): string {
+// `datetime-local` expects "YYYY-MM-DDTHH:mm" in *local* time, no seconds
+// or timezone suffix. The HTML element is bound to the device clock by
+// spec, but the user's coaching timezone (profile.timezone) is the source
+// of truth here — Abdelouahed may edit an entry from a hotel laptop on
+// a different tz than his Dubai-anchored app. So we render the input
+// value in the user's tz, and on input change we recover the UTC instant
+// for the same naive wall-clock in that same tz.
+function toLocalInputValue(iso: string, tz: string): string {
   const d = new Date(iso);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  if (!Number.isFinite(d.getTime())) return "";
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(d);
+  const get = (t: Intl.DateTimeFormatPartTypes) =>
+    parts.find((p) => p.type === t)?.value ?? "00";
+  const hh = get("hour") === "24" ? "00" : get("hour");
+  return `${get("year")}-${get("month")}-${get("day")}T${hh}:${get("minute")}`;
 }
 
-function fromLocalInputValue(v: string): string {
-  return new Date(v).toISOString();
+function fromLocalInputValue(v: string, tz: string): string {
+  // Interpret the naive "Y-M-DTH:M" string as wall-clock time in `tz`,
+  // recovering the UTC instant. Computes the tz's offset at the candidate
+  // UTC moment and subtracts it. This works across DST because we always
+  // ask Intl what the offset *is* for that specific moment.
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(v);
+  if (!m) return new Date(v).toISOString();
+  const [, y, mo, d, h, mi] = m;
+  const guess = Date.UTC(+y, +mo - 1, +d, +h, +mi);
+  // Ask Intl what wall-clock `tz` reads at `guess`. The delta from our
+  // intended wall-clock is the local-vs-UTC offset we need to subtract.
+  const guessDate = new Date(guess);
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(guessDate);
+  const get = (t: Intl.DateTimeFormatPartTypes) =>
+    parts.find((p) => p.type === t)?.value ?? "00";
+  const tzWallMs = Date.UTC(
+    +get("year"),
+    +(get("month")) - 1,
+    +get("day"),
+    +(get("hour") === "24" ? "00" : get("hour")),
+    +get("minute"),
+  );
+  const offsetMs = tzWallMs - guess;
+  return new Date(guess - offsetMs).toISOString();
 }
