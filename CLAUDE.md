@@ -88,6 +88,8 @@ Apply in order via Supabase Dashboard → SQL Editor:
 
 41. [supabase/migrations/0041_target_value_semantics.sql](supabase/migrations/0041_target_value_semantics.sql) — documents `training_blocks.target_value` + `target_metric` semantics in column comments, and adds a NOT VALID `training_blocks_target_metric_required` CHECK so future inserts with `primary_lift` + `target_value` set must declare `target_metric` ∈ {`e1rm`, `working_weight`}. Pre-0041 rows with NULL `target_metric` are grandfathered — code readers default to `working_weight`. Backfill via `node --import ./scripts/alias-loader.mjs --experimental-strip-types --env-file=.env.local scripts/backfill-target-hit-via-e1rm.mjs --yes` re-stamps `target_hit_at_week` across active blocks using the metric-aware comparison (Brzycki for e1RM blocks, raw kg for working_weight blocks). See [lib/coach/e1rm.ts](lib/coach/e1rm.ts) for the formula and the single-source-of-truth `bestComparisonValue` helper consumed by `target-hit-evaluator`, `block-outcomes/evaluator`, `framework-state`, and `prescribe-week`.
 
+42. [supabase/migrations/0042_profile_timezone.sql](supabase/migrations/0042_profile_timezone.sql) — adds `profiles.timezone text NOT NULL DEFAULT 'Asia/Dubai'`. Authoritative for all server- and client-side "today" computations. `USER_TIMEZONE` env var becomes fallback-only for backfill scripts.
+
 `supabase` CLI is now linked (`supabase link --project-ref eopfwwergisvskxqvsqe`); future migrations apply via `supabase db push` after `repair --status applied <history>` if needed.
 
 Row shapes mirrored in [lib/data/types.ts](lib/data/types.ts). Schema is snake_case; keep DB columns and TS types in sync.
@@ -124,6 +126,14 @@ Multiple integrations write to the same `daily_logs` columns. Source-of-truth is
   - **Phase 2 deferred**: `/endurance` top-level page + `?sub=activities|plan|trends` sub-pills, `/coach/trends` Endurance section, CTL/ATL/TSB chart (math module already shipped in `lib/coach/endurance/training-load.ts`), TrainingPeaks integration, Garmin Connect partner integration, formal interference autoregulation rules (seam at [lib/coach/interference/check-interference.ts](lib/coach/interference/check-interference.ts) always returns `'none'` in Phase 1), brick workouts + race-prep composers, swim metrics (CSS/SWOLF), Coach Felix split.
 
 When adding a new metric, decide the owner first, then ensure no other sync path writes that column.
+
+### Timezone (single source of truth)
+
+`profiles.timezone` (IANA) is authoritative for every "today" / week-boundary / day-attribution computation. Server reads via `getUserTimezone(userId)` in [lib/time/get-user-tz.ts](lib/time/get-user-tz.ts); client reads via [useUserToday](lib/query/hooks/useUserToday.ts) (returns `string | undefined` while profile loads — callers must guard). The `USER_TIMEZONE` env var is fallback-only for backfill scripts. New code MUST NOT call `new Date().toISOString().slice(0, 10)` or `d.getHours()` directly — the audit script [scripts/audit-timezone-usage.mjs](scripts/audit-timezone-usage.mjs) is the regression gate.
+
+UX: ambient `TimezoneChip` in [components/layout/TopBar.tsx](components/layout/TopBar.tsx) (neutral when match, orange when device-vs-profile mismatch, orange-tinted after user dismisses). Inline `TimezoneMismatchNotice` on the dashboard. Searchable picker on `/profile` via [components/profile/TimezoneSection.tsx](components/profile/TimezoneSection.tsx). All driven by `TimezoneSyncContext`.
+
+Audit: `node scripts/audit-timezone-usage.mjs` (forbidden patterns) + `node --import ./scripts/alias-loader.mjs --experimental-strip-types --env-file=.env.local scripts/audit-time-helpers.mjs` (fixture-based helper test).
 
 ### Routes
 
