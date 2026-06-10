@@ -5,16 +5,21 @@
 // (used for the one-shot backfill). Going forward, this TS function is the
 // runtime source of truth — the migration mapping is frozen historical code.
 
+import { USER_TIMEZONE } from "@/lib/time";
 import type { MealSlot } from "./types";
 
 export const MEAL_SLOTS = ["breakfast", "lunch", "dinner", "snack"] as const;
 
-// Uses local-clock hours — matches the user's felt mealtime (the SQL
-// backfill in migration 0020 used UTC hours, which is fine for the
-// one-shot legacy backfill but diverges for late-night entries; runtime
-// going forward uses this local-clock derivation).
-export function deriveMealSlot(d: Date): MealSlot {
-  const h = d.getHours();
+// Uses tz-aware local-clock hours. Without tz, callers fall back to the
+// env-var USER_TIMEZONE (transitional — Task 13 makes tz required).
+export function deriveMealSlot(d: Date, tz: string = USER_TIMEZONE): MealSlot {
+  const hourStr = new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    hour12: false,
+    timeZone: tz,
+  }).format(d);
+  // en-US numeric hour returns "0" through "23" (no zero-pad).
+  const h = Number(hourStr);
   if (h >= 4 && h <= 10) return "breakfast";
   if (h >= 11 && h <= 14) return "lunch";
   if (h >= 15 && h <= 16) return "snack";
