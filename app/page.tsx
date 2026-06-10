@@ -15,6 +15,7 @@ import { fetchTodayBriefServer } from "@/lib/query/fetchers/todayBrief";
 import { TodayClient } from "@/components/dashboard/TodayClient";
 import { WeeklyRollups } from "@/components/dashboard/WeeklyRollups";
 import { BodyTile } from "@/components/dashboard/BodyTile";
+import { TimezoneMismatchNotice } from "@/components/timezone/TimezoneMismatchNotice";
 import { todayInUserTz } from "@/lib/time";
 import type { Profile } from "@/lib/query/fetchers/profile";
 import type { DailyLog } from "@/lib/data/types";
@@ -115,6 +116,7 @@ export default async function Home(props: { searchParams: Promise<{ date?: strin
 
   return (
     <HydrationBoundary state={dehydrate(queryClient)}>
+      <TimezoneMismatchNotice />
       <TodayClient
         userId={user.id}
         userEmail={user.email ?? null}
