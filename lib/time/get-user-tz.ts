@@ -16,12 +16,16 @@ export async function getUserTimezone(userId: string): Promise<string> {
   const hit = cache.get(userId);
   if (hit && Date.now() - hit.at < TTL_MS) return hit.tz;
   const sb = createSupabaseServiceRoleClient();
-  const { data } = await sb
+  const { data, error } = await sb
     .from("profiles")
     .select("timezone")
     .eq("user_id", userId)
     .maybeSingle();
-  const tz = (data?.timezone as string | undefined) ?? FALLBACK_TZ;
+  if (error || !data?.timezone) {
+    // Don't cache the fallback — let the next call retry.
+    return FALLBACK_TZ;
+  }
+  const tz = data.timezone as string;
   cache.set(userId, { tz, at: Date.now() });
   return tz;
 }

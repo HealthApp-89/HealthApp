@@ -10,7 +10,7 @@ const KNOWN: Record<string, string> = {
   "Asia/Shanghai": "SHA",
   "Asia/Hong_Kong": "HKG",
   "Asia/Singapore": "SIN",
-  "Asia/Kolkata": "DEL",
+  "Asia/Kolkata": "CCU",
   "Asia/Bangkok": "BKK",
   "Asia/Seoul": "ICN",
   "Europe/London": "LON",
@@ -37,7 +37,7 @@ const KNOWN: Record<string, string> = {
 
 export function ianaToCode(tz: string): string {
   if (KNOWN[tz]) return KNOWN[tz];
-  // Fallback: take the city portion, drop underscores, uppercase, max 4 chars.
+  // Fallback: take the city portion, drop underscores, uppercase, max 3 chars.
   const city = tz.split("/").pop() ?? tz;
-  return city.replace(/_/g, "").toUpperCase().slice(0, 4);
+  return city.replace(/_/g, "").toUpperCase().slice(0, 3);
 }
