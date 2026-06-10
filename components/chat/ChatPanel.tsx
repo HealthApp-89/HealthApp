@@ -15,7 +15,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/query/keys";
 import { useDailyLogs } from "@/lib/query/hooks/useDailyLogs";
 import { useCheckin } from "@/lib/query/hooks/useCheckin";
-import { todayInUserTz, ymdInUserTz } from "@/lib/time";
+import { useProfile } from "@/lib/query/hooks/useProfile";
+import { useUserToday } from "@/lib/query/hooks/useUserToday";
+import { ymdInUserTz } from "@/lib/time";
 import { currentWeekMonday } from "@/lib/coach/week";
 import { COLOR } from "@/lib/ui/theme";
 
@@ -77,10 +79,11 @@ function scopeForMode(
   messages: ChatMessage[],
   mode: "coach" | "morning_intake",
   todayYmd: string,
+  tz: string,
 ): ChatMessage[] {
   if (mode !== "morning_intake") return messages;
   return messages.filter(
-    (m) => ymdInUserTz(new Date(m.created_at)) === todayYmd,
+    (m) => ymdInUserTz(new Date(m.created_at), tz) === todayYmd,
   );
 }
 
@@ -99,6 +102,7 @@ function scopeCoachForRender(
   messages: ChatMessage[],
   todayYmd: string,
   showAll: boolean,
+  tz: string,
   scopeHours?: number,
 ): ChatMessage[] {
   if (showAll) return messages;
@@ -111,7 +115,7 @@ function scopeCoachForRender(
   }
   const yesterdayYmd = shiftYmd(todayYmd, -1);
   return messages.filter((m) => {
-    const ymd = ymdInUserTz(new Date(m.created_at));
+    const ymd = ymdInUserTz(new Date(m.created_at), tz);
     return ymd === todayYmd || ymd === yesterdayYmd;
   });
 }
@@ -275,6 +279,15 @@ export default function ChatPanel({
    *  Used by /diet's Coach tab to keep the Nora chat tight. */
   scopeHours?: number;
 }) {
+  // Profile-driven timezone — gates every "today" / day-key computation in
+  // this panel. `useUserToday` returns undefined while the profile loads;
+  // we use an empty-string fallback so the filters below produce empty
+  // arrays until profile.timezone hydrates (the loaded gate also blocks
+  // most code paths until messages land).
+  const { data: profile } = useProfile(userId);
+  const tz = profile?.timezone ?? "UTC";
+  const today = useUserToday(userId) ?? "";
+
   const [mode, setMode] = useState<ChatMode>(initialMode);
   const [composerHint, setComposerHint] = useState<string | undefined>(undefined);
   // Composer empty/focused state, lifted from ChatComposer via callbacks so
@@ -336,7 +349,7 @@ export default function ChatPanel({
       if (json.ok && json.messages) {
         // Server returns desc; we want asc for render.
         const asc = json.messages.slice().reverse();
-        const scoped = scopeForMode(asc, currentMode, today);
+        const scoped = scopeForMode(asc, currentMode, today, tz);
         dispatch({ type: "loaded", messages: scoped });
 
         // Coach lane: if no coach-kind message exists for today and no special
@@ -344,7 +357,7 @@ export default function ChatPanel({
         // turn was already created today, so this is safe to call eagerly.
         if (currentMode === "coach" && mode === "default") {
           const hasCoachToday = scoped.some(
-            (m) => m.kind === "coach" && ymdInUserTz(new Date(m.created_at)) === today,
+            (m) => m.kind === "coach" && ymdInUserTz(new Date(m.created_at), tz) === today,
           );
           if (!hasCoachToday) {
             try {
@@ -540,7 +553,7 @@ export default function ChatPanel({
             );
             if (committedSessionToday) {
               queryClient.invalidateQueries({
-                queryKey: queryKeys.trainingWeeks.one(userId, currentWeekMonday()),
+                queryKey: queryKeys.trainingWeeks.one(userId, currentWeekMonday(new Date(), tz)),
               });
             }
             if (committedSessionTemplate) {
@@ -650,7 +663,8 @@ export default function ChatPanel({
   // ── Morning intake hooks & handlers ─────────────────────────────────────────
 
   const queryClient = useQueryClient();
-  const today = todayInUserTz();
+  // `today` and `tz` are defined at component top (right after the useState
+  // hooks) so callbacks declared above can close over them.
 
   const { data: todayCheckin } = useCheckin(userId, today);
 
@@ -702,7 +716,7 @@ export default function ChatPanel({
             if (histJson.ok && histJson.messages) {
               dispatch({
                 type: "loaded",
-                messages: scopeForMode(histJson.messages.slice().reverse(), currentMode, today),
+                messages: scopeForMode(histJson.messages.slice().reverse(), currentMode, today, tz),
               });
             }
           }
@@ -867,7 +881,7 @@ export default function ChatPanel({
       if (histJson.ok && histJson.messages) {
         dispatch({
           type: "loaded",
-          messages: scopeForMode(histJson.messages.slice().reverse(), currentMode, today),
+          messages: scopeForMode(histJson.messages.slice().reverse(), currentMode, today, tz),
         });
       }
     },
@@ -918,7 +932,7 @@ export default function ChatPanel({
           if (json.ok && json.messages) {
             dispatch({
             type: "loaded",
-            messages: scopeForMode(json.messages.slice().reverse(), currentMode, today),
+            messages: scopeForMode(json.messages.slice().reverse(), currentMode, today, tz),
           });
           }
         }
@@ -1000,7 +1014,7 @@ export default function ChatPanel({
       if (histJson.ok && histJson.messages) {
         dispatch({
           type: "loaded",
-          messages: scopeForMode(histJson.messages.slice().reverse(), currentMode, today),
+          messages: scopeForMode(histJson.messages.slice().reverse(), currentMode, today, tz),
         });
       }
       queryClient.invalidateQueries({ queryKey: queryKeys.checkin.one(userId, today) });
@@ -1108,7 +1122,7 @@ export default function ChatPanel({
   const renderedMessages = useMemo(
     () =>
       currentMode === "coach"
-        ? scopeCoachForRender(state.messages, today, showAllCoach, scopeHours)
+        ? scopeCoachForRender(state.messages, today, showAllCoach, tz, scopeHours)
         : state.messages,
     [currentMode, state.messages, today, showAllCoach, scopeHours],
   );
@@ -1307,7 +1321,7 @@ export default function ChatPanel({
                     if (json.ok && json.messages) {
                       dispatch({
               type: "loaded",
-              messages: scopeForMode(json.messages.slice().reverse(), currentMode, today),
+              messages: scopeForMode(json.messages.slice().reverse(), currentMode, today, tz),
             });
                     }
                     queryClient.invalidateQueries({ queryKey: queryKeys.checkin.one(userId, today) });
@@ -1480,7 +1494,7 @@ export default function ChatPanel({
                   if (json.ok && json.messages) {
                     dispatch({
             type: "loaded",
-            messages: scopeForMode(json.messages.slice().reverse(), currentMode, today),
+            messages: scopeForMode(json.messages.slice().reverse(), currentMode, today, tz),
           });
                   }
                   queryClient.invalidateQueries({ queryKey: queryKeys.checkin.one(userId, today) });

@@ -20,6 +20,7 @@ import {
   createSupabaseServiceRoleClient,
 } from "@/lib/supabase/server";
 import { todayInUserTz, ymdInUserTz } from "@/lib/time";
+import { getUserTimezone } from "@/lib/time/get-user-tz";
 import type { CheckinRow, DailyLog, MorningBriefCard } from "@/lib/data/types";
 import {
   buildMorningBriefStreaming,
@@ -37,7 +38,8 @@ export async function POST(req: Request) {
   }
 
   const body = (await req.json().catch(() => ({}))) as { skip_whoop?: boolean };
-  const today = todayInUserTz();
+  const tz = await getUserTimezone(user.id);
+  const today = todayInUserTz(new Date(), tz);
   const sr = createSupabaseServiceRoleClient();
 
   // Fetch today's checkin row
@@ -58,7 +60,7 @@ export async function POST(req: Request) {
 
   // Idempotency: brief already delivered for today
   if (row.intake_state === "brief_delivered") {
-    const existing = await loadExistingBriefMessage(sr, user.id, today);
+    const existing = await loadExistingBriefMessage(sr, user.id, today, tz);
     if (existing) {
       return NextResponse.json({ ok: false, reason: "already_delivered", message: existing }, { status: 409 });
     }
@@ -231,6 +233,7 @@ async function loadExistingBriefMessage(
   sr: ReturnType<typeof createSupabaseServiceRoleClient>,
   userId: string,
   today: string,
+  tz: string,
 ) {
   // Pull the most recent morning_brief; verify its date matches today in user-tz.
   const { data } = await sr
@@ -242,7 +245,7 @@ async function loadExistingBriefMessage(
     .limit(1)
     .maybeSingle();
   if (!data) return null;
-  const rowDate = ymdInUserTz(new Date(data.created_at as string));
+  const rowDate = ymdInUserTz(new Date(data.created_at as string), tz);
   if (rowDate !== today) return null;
   return data;
 }

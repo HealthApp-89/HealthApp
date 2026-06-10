@@ -91,6 +91,8 @@ export type SnapshotInputs = {
   until?: string;
   /** Workouts to include in daily mode (ignored when `until` is set). */
   workoutLimit?: number;
+  /** Authoritative per-user timezone. Resolve via `getUserTimezone(userId)`. */
+  tz: string;
 };
 
 export type SnapshotResult = {
@@ -303,8 +305,8 @@ async function renderEnduranceBlocks(
 }
 
 export async function buildSnapshot(inputs: SnapshotInputs): Promise<SnapshotResult> {
-  const { supabase, userId, since, until, workoutLimit = 5 } = inputs;
-  const today = todayInUserTz();
+  const { supabase, userId, since, until, workoutLimit = 5, tz } = inputs;
+  const today = todayInUserTz(new Date(), tz);
 
   let logsQ = supabase
     .from("daily_logs")
@@ -432,7 +434,7 @@ export async function buildSnapshot(inputs: SnapshotInputs): Promise<SnapshotRes
     workoutLines || `  (no workouts)`,
   ].join("\n");
 
-  const n = nowInUserTz();
+  const n = nowInUserTz(new Date(), tz);
   const nowLine = composeNowLine(n);
 
   return { nowLine, body };
@@ -444,11 +446,13 @@ export async function buildSnapshot(inputs: SnapshotInputs): Promise<SnapshotRes
  *  prompt-cache placement matters. */
 export async function buildSnapshotText({
   userId,
+  tz,
 }: {
   userId: string;
+  tz: string;
 }): Promise<string> {
   const supabase = await createSupabaseServerClient();
-  const sinceDate = new Date(`${todayInUserTz()}T00:00:00Z`);
+  const sinceDate = new Date(`${todayInUserTz(new Date(), tz)}T00:00:00Z`);
   sinceDate.setUTCDate(sinceDate.getUTCDate() - 14);
   const since = sinceDate.toISOString().slice(0, 10);
   const { nowLine, body } = await buildSnapshot({
@@ -456,6 +460,7 @@ export async function buildSnapshotText({
     userId,
     since,
     workoutLimit: 5,
+    tz,
   });
   return `${nowLine}\n\n${body}`;
 }
@@ -531,9 +536,10 @@ export function formatFreshness(now: Date, last: string | null): string {
 export async function buildEphemeralHeader(opts: {
   supabase: SupabaseClient;
   userId: string;
+  tz: string;
 }): Promise<string> {
-  const { supabase, userId } = opts;
-  const today = todayInUserTz();
+  const { supabase, userId, tz } = opts;
+  const today = todayInUserTz(new Date(), tz);
   const yesterdayDate = new Date(`${today}T00:00:00Z`);
   yesterdayDate.setUTCDate(yesterdayDate.getUTCDate() - 1);
   const yesterday = yesterdayDate.toISOString().slice(0, 10);
@@ -558,7 +564,7 @@ export async function buildEphemeralHeader(opts: {
       .order("week_start", { ascending: false })
       .limit(1)
       .maybeSingle(),
-    Promise.resolve(nowInUserTz()),
+    Promise.resolve(nowInUserTz(new Date(), tz)),
   ]);
 
   const byDate = new Map<string, DailyLogRow>();
@@ -584,7 +590,7 @@ export async function buildEphemeralHeader(opts: {
   return [
     composeNowLine(n),
     ``,
-    renderTodaysPrescribedSession(trainingWeek, today),
+    renderTodaysPrescribedSession(trainingWeek, today, tz),
     ``,
     renderRow("TODAY", today),
     ``,
@@ -603,6 +609,7 @@ export async function buildEphemeralHeader(opts: {
 function renderTodaysPrescribedSession(
   trainingWeek: { week_start: string; session_plan: unknown; intensity_modifier: unknown } | null,
   today: string,
+  tz: string,
 ): string {
   if (!trainingWeek) {
     return [
@@ -617,7 +624,7 @@ function renderTodaysPrescribedSession(
       `THIS WEEK'S PLAN: (most recent committed week starts ${trainingWeek.week_start} — does not cover today; no live plan)`,
     ].join("\n");
   }
-  const weekdayLong = weekdayInUserTz(new Date(`${today}T12:00:00Z`));
+  const weekdayLong = weekdayInUserTz(new Date(`${today}T12:00:00Z`), tz);
   const sessionPlan = (trainingWeek.session_plan ?? {}) as Record<string, string>;
   const todaysType = readSessionForDay(sessionPlan, weekdayLong) ?? "(no entry for today)";
   const planLines = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]

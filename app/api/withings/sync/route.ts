@@ -4,6 +4,7 @@ import { createSupabaseServerClient, createSupabaseServiceRoleClient } from "@/l
 import { getValidAccessToken, getMeasures, getActivity } from "@/lib/withings";
 import { mergeWithingsToRows } from "@/lib/withings-merge";
 import { todayInUserTz, ymdInUserTz } from "@/lib/time";
+import { getUserTimezone } from "@/lib/time/get-user-tz";
 
 const MS_PER_DAY = 86_400_000;
 
@@ -11,19 +12,20 @@ async function syncForUser(userId: string) {
   const accessToken = await getValidAccessToken(userId);
   if (!accessToken) return { ok: false, reason: "no_tokens" };
 
+  const tz = await getUserTimezone(userId);
   const now = Date.now();
   const startMs = now - 14 * MS_PER_DAY;
   const startEpoch = Math.floor(startMs / 1000);
   const endEpoch = Math.floor(now / 1000);
-  const startYmd = ymdInUserTz(new Date(startMs));
-  const endYmd = todayInUserTz();
+  const startYmd = ymdInUserTz(new Date(startMs), tz);
+  const endYmd = todayInUserTz(new Date(), tz);
 
   const [measureGroups, activities] = await Promise.all([
     getMeasures(accessToken, startEpoch, endEpoch),
     getActivity(accessToken, startYmd, endYmd),
   ]);
 
-  const byDate = mergeWithingsToRows(userId, measureGroups, activities);
+  const byDate = mergeWithingsToRows(userId, measureGroups, activities, tz);
   if (byDate.size === 0) return { ok: true, upserted: 0 };
 
   const supabase = createSupabaseServiceRoleClient();

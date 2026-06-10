@@ -5,14 +5,13 @@
 // (used for the one-shot backfill). Going forward, this TS function is the
 // runtime source of truth — the migration mapping is frozen historical code.
 
-import { USER_TIMEZONE } from "@/lib/time";
 import type { MealSlot } from "./types";
 
 export const MEAL_SLOTS = ["breakfast", "lunch", "dinner", "snack"] as const;
 
-// Uses tz-aware local-clock hours. Without tz, callers fall back to the
-// env-var USER_TIMEZONE (transitional — Task 13 makes tz required).
-export function deriveMealSlot(d: Date, tz: string = USER_TIMEZONE): MealSlot {
+// Uses tz-aware local-clock hours. `tz` is required (Task 13 lock-in) —
+// pass `getUserTimezone(userId)` server-side or `profile.timezone` client-side.
+export function deriveMealSlot(d: Date, tz: string): MealSlot {
   const hourStr = new Intl.DateTimeFormat("en-US", {
     hour: "numeric",
     hour12: false,

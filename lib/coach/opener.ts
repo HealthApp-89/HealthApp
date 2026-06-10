@@ -15,6 +15,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { callClaude } from "@/lib/anthropic/client";
 import { SHORT_FORM_MODEL } from "@/lib/anthropic/models";
 import { todayInUserTz } from "@/lib/time";
+import { getUserTimezone } from "@/lib/time/get-user-tz";
 import { mondayOf } from "@/lib/coach/weekly-review/date-utils";
 import type { DailyLog } from "@/lib/data/types";
 
@@ -51,7 +52,8 @@ export async function fetchOpenerContext(
   supabase: SupabaseClient,
   userId: string,
 ): Promise<OpenerContext> {
-  const today = todayInUserTz();
+  const tz = await getUserTimezone(userId);
+  const today = todayInUserTz(new Date(), tz);
   const yesterday = (() => {
     const d = new Date(today + "T00:00:00Z");
     d.setUTCDate(d.getUTCDate() - 1);

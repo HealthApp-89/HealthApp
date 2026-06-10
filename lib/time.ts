@@ -65,9 +65,9 @@ function partsInUserTz(now: Date, tz: string = USER_TZ): Parts {
 }
 
 /** YYYY-MM-DD in the given timezone for any moment.
- *  `tz` defaults to USER_TIMEZONE env var (fallback during migration).
- *  After Task 13 this default is removed and `tz` becomes required. */
-export function ymdInUserTz(when: Date, tz: string = USER_TZ): string {
+ *  `tz` is required as of Task 13 — pass `getUserTimezone(userId)` server-side
+ *  or `useUserToday(userId)`'s underlying profile.timezone client-side. */
+export function ymdInUserTz(when: Date, tz: string): string {
   if (!Number.isFinite(when.getTime())) {
     throw new Error("ymdInUserTz: invalid Date input");
   }
@@ -76,23 +76,23 @@ export function ymdInUserTz(when: Date, tz: string = USER_TZ): string {
 }
 
 /** YYYY-MM-DD for "right now" in the given timezone. Thin wrapper. */
-export function todayInUserTz(now: Date = new Date(), tz: string = USER_TZ): string {
+export function todayInUserTz(now: Date = new Date(), tz: string): string {
   return ymdInUserTz(now, tz);
 }
 
 /** Day of week in the given tz: "Monday" | "Tuesday" | ... */
-export function weekdayInUserTz(now: Date = new Date(), tz: string = USER_TZ): string {
+export function weekdayInUserTz(now: Date = new Date(), tz: string): string {
   return partsInUserTz(now, tz).weekday;
 }
 
 /** "HH:mm" in the given tz, 24h. */
-export function localTimeInUserTz(now: Date = new Date(), tz: string = USER_TZ): string {
+export function localTimeInUserTz(now: Date = new Date(), tz: string): string {
   const p = partsInUserTz(now, tz);
   return `${p.hour}:${p.minute}`;
 }
 
 /** Single struct for prompts and logs. */
-export function nowInUserTz(now: Date = new Date(), tz: string = USER_TZ): {
+export function nowInUserTz(now: Date = new Date(), tz: string): {
   date: string;
   weekday: string;
   time: string;
@@ -200,12 +200,12 @@ export function ymdInZoneOffset(when: Date, offset: string): string {
     throw new Error("ymdInZoneOffset: invalid Date input");
   }
   const offsetMs = parseUtcOffsetMs(offset);
-  if (offsetMs === null) return ymdInUserTz(when);
+  if (offsetMs === null) return ymdInUserTz(when, USER_TZ);
   return new Date(when.getTime() + offsetMs).toISOString().slice(0, 10);
 }
 
 /** "Tuesday, May 5" — for the dashboard Header. */
-export function formatHeaderDate(now: Date = new Date(), tz: string = USER_TZ): string {
+export function formatHeaderDate(now: Date = new Date(), tz: string): string {
   return new Intl.DateTimeFormat("en-US", {
     timeZone: tz,
     weekday: "long",

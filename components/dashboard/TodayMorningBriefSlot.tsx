@@ -2,8 +2,8 @@
 
 import { useTodayBrief } from "@/lib/query/hooks/useTodayBrief";
 import { useCheckin } from "@/lib/query/hooks/useCheckin";
+import { useUserToday } from "@/lib/query/hooks/useUserToday";
 import { MorningBriefCard } from "@/components/morning/MorningBriefCard";
-import { todayInUserTz } from "@/lib/time";
 import { COLOR, RADIUS } from "@/lib/ui/theme";
 
 type Props = { userId: string };
@@ -13,7 +13,8 @@ type Props = { userId: string };
  *  the Health tab (where the intake now lives). Hydrates from the server
  *  prefetch in app/page.tsx so first paint is instant. */
 export function TodayMorningBriefSlot({ userId }: Props) {
-  const today = todayInUserTz();
+  const today = useUserToday(userId) ?? "";
+  if (!today) return null;
   const { data: card } = useTodayBrief(userId, today);
   const { data: checkin } = useCheckin(userId, today);
 

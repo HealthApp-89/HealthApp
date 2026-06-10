@@ -7,7 +7,7 @@ import { HistoryPickerDateBar } from "./HistoryPickerDateBar";
 import { HistoryPickerBucket, type SelectedItem } from "./HistoryPickerBucket";
 import { HistoryPickerSlotCard } from "./HistoryPickerSlotCard";
 import { useFoodHistory } from "@/lib/query/hooks/useFoodHistory";
-import { todayInUserTz } from "@/lib/time";
+import { useUserToday } from "@/lib/query/hooks/useUserToday";
 import type { FoodLogEntry, MealSlot } from "@/lib/food/types";
 
 function offsetDate(iso: string, deltaDays: number): string {
@@ -31,7 +31,7 @@ export function HistoryPickerSheet({
   initialEatenAt: string;
   onCommitted: () => void;
 }) {
-  const today = todayInUserTz();
+  const today = useUserToday(userId) ?? "";
   const minDate = offsetDate(today, -60);
 
   const [date, setDate] = useState(offsetDate(today, -1)); // yesterday by default

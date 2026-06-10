@@ -10,6 +10,7 @@ import type { SetRow } from "@/lib/coach/derived";
 import type { TrainingBlock } from "@/lib/data/types";
 import { computeBlockProgress } from "@/lib/query/fetchers/blockProgress";
 import { todayInUserTz } from "@/lib/time";
+import { getUserTimezone } from "@/lib/time/get-user-tz";
 import { composeLifts } from "@/lib/coach/session-debrief/compose-lifts";
 import { composeVolume } from "@/lib/coach/session-debrief/compose-volume";
 import { composeAutoregulation } from "@/lib/coach/session-debrief/compose-autoregulation";
@@ -170,7 +171,8 @@ async function loadBodyComp(
   supabase: SupabaseClient,
   userId: string,
 ): Promise<WorkoutDebriefPayload["body_comp"]> {
-  const today = todayInUserTz();
+  const tz = await getUserTimezone(userId);
+  const today = todayInUserTz(new Date(), tz);
   const { data, error } = await supabase
     .from("daily_logs")
     .select("weight_kg, fat_free_mass_kg")

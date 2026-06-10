@@ -11,6 +11,7 @@ import { SubPillNav } from "@/components/layout/SubPillNav";
 import { HealthCoachClient } from "@/components/health/HealthCoachClient";
 import { HealthLogClient } from "@/components/health/HealthLogClient";
 import { todayInUserTz } from "@/lib/time";
+import { getUserTimezone } from "@/lib/time/get-user-tz";
 import { COLOR } from "@/lib/ui/theme";
 
 const SUB_TABS = [
@@ -35,7 +36,8 @@ export default async function HealthPage({
   tabParam === "log"    ? "log"    :
   tabParam === "trends" ? "trends" : "coach";
 
-  const today = todayInUserTz();
+  const tz = await getUserTimezone(user.id);
+  const today = todayInUserTz(new Date(), tz);
 
   const yesterday = new Date(`${today}T00:00:00Z`);
   yesterday.setUTCDate(yesterday.getUTCDate() - 1);

@@ -32,6 +32,7 @@ import { composeRecovery } from "@/lib/coach/plan-builder/compose-recovery";
 import { composeCoachingAgreement } from "@/lib/coach/plan-builder/compose-coaching-agreement";
 import { generatePlanNarrative } from "@/lib/coach/plan-builder/narrative-prompt";
 import { todayInUserTz } from "@/lib/time";
+import { getUserTimezone } from "@/lib/time/get-user-tz";
 
 export type BuildPlanResult = {
   plan_payload: PlanPayload;
@@ -46,7 +47,8 @@ export async function buildPlanPayload(
   userId: string,
   intake: IntakePayload,
 ): Promise<BuildPlanResult> {
-  const today = todayInUserTz();
+  const tz = await getUserTimezone(userId);
+  const today = todayInUserTz(new Date(), tz);
 
   // Parallel fetches
   const [profileRes, recentLogsRes, recentWorkoutData, activeBlockRes] = await Promise.all([

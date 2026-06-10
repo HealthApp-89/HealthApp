@@ -252,7 +252,7 @@ export function TodayClient({
     <div style={{ maxWidth: "640px", margin: "0 auto", padding: "12px 8px 16px" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 12px 14px" }}>
         <div>
-          <div style={{ fontSize: "12px", color: COLOR.textMuted, fontWeight: 500 }}>{formatHeaderDate()}</div>
+          <div style={{ fontSize: "12px", color: COLOR.textMuted, fontWeight: 500 }}>{profile?.timezone ? formatHeaderDate(new Date(), profile.timezone) : ""}</div>
           <h1 style={{ fontSize: "22px", fontWeight: 700, letterSpacing: "-0.02em", marginTop: "2px" }}>Today</h1>
         </div>
         <div

@@ -2,7 +2,7 @@
 
 import { LogClient } from "@/components/log/LogClient";
 import { useCheckins } from "@/lib/query/hooks/useCheckins";
-import { todayInUserTz } from "@/lib/time";
+import { useUserToday } from "@/lib/query/hooks/useUserToday";
 import { COLOR } from "@/lib/ui/theme";
 import type { CheckinRangeRow } from "@/lib/query/fetchers/checkinsRange";
 import type { FatigueLevel } from "@/lib/data/types";
@@ -14,7 +14,9 @@ type Props = {
 };
 
 export function HealthLogClient({ userId, initialDate }: Props) {
-  const date = initialDate ?? todayInUserTz();
+  const today = useUserToday(userId);
+  const date = initialDate ?? today;
+  if (!date) return null;
   return (
     <>
       <LogClient userId={userId} date={date} />
@@ -25,7 +27,8 @@ export function HealthLogClient({ userId, initialDate }: Props) {
 }
 
 function PastIntakesList({ userId }: { userId: string }) {
-  const today = todayInUserTz();
+  const today = useUserToday(userId);
+  if (!today) return null;
   const fromDate = new Date(`${today}T00:00:00Z`);
   fromDate.setUTCDate(fromDate.getUTCDate() - 14);
   const fromIso = fromDate.toISOString().slice(0, 10);

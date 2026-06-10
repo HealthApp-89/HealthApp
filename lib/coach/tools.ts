@@ -69,6 +69,7 @@ import {
 import { categorize, type ExerciseCategory } from "@/lib/coach/exercise-categories";
 import type { PrimaryLift } from "@/lib/data/types";
 import { todayInUserTz, weekdayInUserTz } from "@/lib/time";
+import { getUserTimezone } from "@/lib/time/get-user-tz";
 import { computeAdherence } from "@/lib/coach/adherence";
 import { getAutoregulationSignals } from "@/lib/coach/autoregulation";
 import {
@@ -1358,7 +1359,7 @@ export async function executeQueryTrainingBlocks(opts: {
     };
   }
 
-  const today = todayInUserTz();
+  const today = todayInUserTz(new Date(), await getUserTimezone(opts.userId));
 
   // Lazy auto-flip: active blocks whose end_date is in the past → completed
   const flipped: Record<string, unknown>[] = [];
@@ -1516,7 +1517,7 @@ export async function executeGetAutoregulationSignals(opts: {
       };
     }
   } else {
-    asOf = todayInUserTz();
+    asOf = todayInUserTz(new Date(), await getUserTimezone(opts.userId));
   }
 
   // Look up active block's primary_lift (security invariant 2: .eq("user_id"))
@@ -1816,7 +1817,7 @@ export async function executeProposeBlock(opts: {
         supabase: opts.supabase,
         userId: opts.userId,
         lift: i.primary_lift as PrimaryLift,
-        todayIso: todayInUserTz(),
+        todayIso: todayInUserTz(new Date(), await getUserTimezone(opts.userId)),
       });
     } catch (e) {
       // Don't block block creation on a transient data-fetch failure.
@@ -2189,7 +2190,7 @@ export async function executeGetWeekPrescription(opts: {
   const i = (opts.input ?? {}) as Record<string, unknown>;
 
   // Resolve target week.
-  const todayIso = todayInUserTz();
+  const todayIso = todayInUserTz(new Date(), await getUserTimezone(opts.userId));
   let weekStart: string;
   if (typeof i.week_start === "string") {
     if (!isYmd(i.week_start)) {
@@ -2381,7 +2382,7 @@ export async function executeProposeWeekPlan(opts: {
     .limit(1);
   const prevWeek = (prevWeekRows?.[0] ?? null) as TrainingWeek | null;
 
-  const today = todayInUserTz();
+  const today = todayInUserTz(new Date(), await getUserTimezone(opts.userId));
 
   // Synthetic week shape for prescribeWeek — only the fields it reads matter.
   const synthesizedWeek = {
@@ -2568,7 +2569,7 @@ export async function executeCommitWeekPlan(opts: {
   // propose and commit (which would shift maintenance baselines, possibly
   // toggling phase from off_pace → consolidation, etc.). The engine is
   // deterministic; if the world didn't change, the result matches the token.
-  const today = todayInUserTz();
+  const today = todayInUserTz(new Date(), await getUserTimezone(opts.userId));
   const synthesizedWeek = {
     id: "",
     user_id: opts.userId,
@@ -2734,7 +2735,7 @@ export async function executeProposeSessionToday(opts: {
   // Soft anchor: the weekday should match today's user-tz weekday. If it
   // doesn't, the override would land on the wrong day. Reject cleanly rather
   // than silently writing the wrong slot.
-  const todayWeekday = weekdayInUserTz();
+  const todayWeekday = weekdayInUserTz(new Date(), await getUserTimezone(opts.userId));
   if (i.weekday !== todayWeekday) {
     return {
       ok: false,
@@ -2841,7 +2842,7 @@ export async function executeCommitSessionToday(opts: {
   }
   const p = envelope.payload as SessionTodayPayload;
 
-  const today = todayInUserTz();
+  const today = todayInUserTz(new Date(), await getUserTimezone(opts.userId));
   const week_start = weekStart(today);
 
   const { data: row, error: loadErr } = await opts.supabase
@@ -5431,7 +5432,7 @@ export async function executeProposeMealSuggestions(opts: {
     .eq("user_id", opts.userId)
     .single();
   let identity = (prof?.eating_identity_cache ?? null) as EatingIdentity | null;
-  const today = todayInUserTz();
+  const today = todayInUserTz(new Date(), await getUserTimezone(opts.userId));
   const staleMs = identity?.generated_on
     ? Date.now() - new Date(identity.generated_on).getTime()
     : Infinity;
@@ -5720,7 +5721,7 @@ export async function executeMarkMobilityDone(opts: {
   const i = (opts.input ?? {}) as Record<string, unknown>;
 
   // Resolve date: default to today in user TZ; validate shape if provided.
-  const today = todayInUserTz();
+  const today = todayInUserTz(new Date(), await getUserTimezone(opts.userId));
   let date: string;
   if (i.date === undefined || i.date === null) {
     date = today;
@@ -5798,7 +5799,7 @@ export async function executeUnmarkMobilityDone(opts: {
   const t0 = Date.now();
   const i = (opts.input ?? {}) as Record<string, unknown>;
 
-  const today = todayInUserTz();
+  const today = todayInUserTz(new Date(), await getUserTimezone(opts.userId));
   let date: string;
   if (i.date === undefined || i.date === null) {
     date = today;

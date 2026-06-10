@@ -17,6 +17,7 @@ import { resolveExercise } from "@/lib/coach/exercise-library";
 import { fetchUserSessionTemplateServer } from "@/lib/query/fetchers/userSessionTemplates";
 import { currentWeekMonday } from "@/lib/coach/week";
 import { readSessionForDay } from "@/lib/coach/session-plan-reader";
+import { getUserTimezone } from "@/lib/time/get-user-tz";
 
 type WeeklyExerciseRow = {
   sessionType: string;
@@ -39,7 +40,8 @@ export async function buildThisWeeksExercisesBlock(args: {
   userId: string;
 }): Promise<string | null> {
   const { supabase, userId } = args;
-  const weekStart = currentWeekMonday();
+  const tz = await getUserTimezone(userId);
+  const weekStart = currentWeekMonday(new Date(), tz);
 
   const { data: tw, error } = await supabase
     .from("training_weeks")

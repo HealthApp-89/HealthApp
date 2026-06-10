@@ -16,6 +16,7 @@ import {
   strengthPerLbm,
 } from "@/lib/coach/progress-metrics";
 import { todayInUserTz } from "@/lib/time";
+import { getUserTimezone } from "@/lib/time/get-user-tz";
 import type { PrimaryLift, TrainingBlock } from "@/lib/data/types";
 
 export type BlockProgressPayload =
@@ -63,7 +64,8 @@ export async function computeBlockProgress(
   supabase: SupabaseClient,
   userId: string,
 ): Promise<BlockProgressPayload> {
-  const today = todayInUserTz();
+  const tz = await getUserTimezone(userId);
+  const today = todayInUserTz(new Date(), tz);
   const { data: rawBlock, error: blockErr } = await supabase
     .from("training_blocks")
     .select("*")

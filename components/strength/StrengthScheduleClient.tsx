@@ -11,6 +11,7 @@ import { currentWeekMonday } from "@/lib/coach/week";
 import { getEffectiveSessionPlan, WEEKLY_SESSIONS } from "@/lib/coach/sessionPlans";
 import { readSessionForDay } from "@/lib/coach/session-plan-reader";
 import { todayInUserTz } from "@/lib/time";
+import { useProfile } from "@/lib/query/hooks/useProfile";
 import { COLOR } from "@/lib/ui/theme";
 import type { DayClass } from "@/components/strength/ScheduleDayRow";
 import type { Weekday, SessionPlan } from "@/lib/data/types";
@@ -45,8 +46,10 @@ type Props = { userId: string };
 export function StrengthScheduleClient({ userId }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const todayIso = todayInUserTz();
-  const defaultMonday = currentWeekMonday();
+  const { data: profile } = useProfile(userId);
+  const tz = profile?.timezone ?? "UTC";
+  const todayIso = todayInUserTz(new Date(), tz);
+  const defaultMonday = currentWeekMonday(new Date(), tz);
 
   const weekParam = searchParams.get("week");
   const weekStart = weekParam && /^\d{4}-\d{2}-\d{2}$/.test(weekParam)

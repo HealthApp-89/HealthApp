@@ -17,7 +17,6 @@ import { MealSlotCardCollapsed } from "./MealSlotCardCollapsed";
 import { JournalLibraryStrip } from "./JournalLibraryStrip";
 import { targetsForAllSlots } from "@/lib/food/meal-targets";
 import { MEAL_SLOTS } from "@/lib/food/meal-slot";
-import { todayInUserTz } from "@/lib/time";
 import { COLOR } from "@/lib/ui/theme";
 import type { FoodLogEntry, MealSlot } from "@/lib/food/types";
 
@@ -60,7 +59,7 @@ export function DietJournalClient({ userId, initialDate, initialView, todayIso, 
   const setViewAndUrl = (next: DietView) => {
     setView(next);
     const sp = new URLSearchParams();
-    if (date !== todayInUserTz()) sp.set("date", date);
+    if (date !== todayIso) sp.set("date", date);
     if (next !== "journal") sp.set("view", next);
     const qs = sp.toString();
     router.replace(qs ? `/diet?${qs}` : "/diet", { scroll: false });
@@ -105,7 +104,7 @@ export function DietJournalClient({ userId, initialDate, initialView, todayIso, 
 
   // initialEatenAt: same logic as MealJournalClient.
   const initialEatenAtForLogger = (): string => {
-    if (date === todayInUserTz()) return new Date().toISOString();
+    if (date === todayIso) return new Date().toISOString();
     return `${date}T12:00:00.000Z`;
   };
 
@@ -113,7 +112,7 @@ export function DietJournalClient({ userId, initialDate, initialView, todayIso, 
   const d = new Date(`${date}T00:00:00`);
   const weekday = d.toLocaleDateString(undefined, { weekday: "short" });
   const monthDay = d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-  const isToday = date === todayInUserTz();
+  const isToday = date === todayIso;
 
   return (
     <main className="mx-auto max-w-md px-0 pt-6 pb-32">

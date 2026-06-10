@@ -11,6 +11,7 @@ import { generateCoachTrends } from "@/lib/coach/trends";
 import { generateRecoveryIntelligence } from "@/lib/coach/recovery-intelligence";
 import { runProactiveChecks } from "@/lib/coach/proactive";
 import { todayInUserTz } from "@/lib/time";
+import { getUserTimezone } from "@/lib/time/get-user-tz";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -41,7 +42,8 @@ export async function GET(req: Request) {
   // morning brief and Sub-project #5's trends compute (which both anchor on
   // todayInUserTz). Near-midnight UTC firings could otherwise resolve to a
   // different calendar day than the surfaces that consume the same signals.
-  const today = todayInUserTz();
+  const tz = await getUserTimezone(userId);
+  const today = todayInUserTz(new Date(), tz);
 
   let trends;
   let recoveryIntelligence;

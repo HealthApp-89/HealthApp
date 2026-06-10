@@ -10,6 +10,7 @@ import {
 import { readSessionForDay } from "@/lib/coach/session-plan-reader";
 import { todayInUserTz, weekdayInUserTz } from "@/lib/time";
 import { useProfile } from "@/lib/query/hooks/useProfile";
+import { useUserToday } from "@/lib/query/hooks/useUserToday";
 import type { MorningBriefCoachSuggestion, Weekday } from "@/lib/data/types";
 
 const FULL_TO_SHORT: Record<string, Weekday> = {
@@ -55,14 +56,18 @@ export function BriefCoachSuggestion({
   briefSessionType: string;
   suggestion: MorningBriefCoachSuggestion;
 }) {
-  const today = useMemo(() => todayInUserTz(), []);
+  const { data: profile } = useProfile(userId);
+  const tz = profile?.timezone ?? "UTC";
+  const todayFromHook = useUserToday(userId);
+  const today = useMemo(
+    () => todayFromHook ?? todayInUserTz(new Date(), tz),
+    [todayFromHook, tz],
+  );
   const weekStart = useMemo(() => weekStartOf(today), [today]);
   const sourceDay = useMemo<Weekday>(() => {
-    const full = weekdayInUserTz(new Date(`${today}T12:00:00Z`));
+    const full = weekdayInUserTz(new Date(`${today}T12:00:00Z`), tz);
     return FULL_TO_SHORT[full] ?? "Mon";
-  }, [today]);
-
-  const { data: profile } = useProfile(userId);
+  }, [today, tz]);
   const { data: trainingWeek } = useTrainingWeek(userId, weekStart);
   const mutation = useSwapTrainingDay(userId, weekStart);
   const [reduceDismissed, setReduceDismissed] = useState(false);

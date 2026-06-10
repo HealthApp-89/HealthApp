@@ -1,7 +1,7 @@
 /** Week boundaries for the coach's weekly review.
  *  Weeks are Monday → Sunday in the user's timezone (was UTC pre-0042). */
 
-import { ymdInUserTz, USER_TIMEZONE } from "@/lib/time";
+import { ymdInUserTz } from "@/lib/time";
 
 /** "YYYY-MM-DD" for a Date in the given tz. */
 function fmt(d: Date, tz: string): string {
@@ -39,7 +39,7 @@ export type ReviewMode = "monday-recap" | "in-progress" | "sunday-full";
  *  - Monday  → previous full Mon-Sun ("recap last week, set up this week")
  *  - Tue-Sat → current Mon → today (week-to-date)
  *  - Sunday  → current full Mon-Sun (thorough end-of-week review) */
-export function reviewWindow(today: Date = new Date(), tz: string = USER_TIMEZONE): {
+export function reviewWindow(today: Date = new Date(), tz: string): {
   start: string;
   end: string;
   mode: ReviewMode;
@@ -78,7 +78,7 @@ export function reviewWindow(today: Date = new Date(), tz: string = USER_TIMEZON
 /** The week_start that recommendations should target.
  *  Monday + Tue-Sat → current Monday (this calendar week).
  *  Sunday → next Monday (the upcoming week). */
-export function recommendationWeekStart(today: Date = new Date(), tz: string = USER_TIMEZONE): string {
+export function recommendationWeekStart(today: Date = new Date(), tz: string): string {
   const weekday = new Intl.DateTimeFormat("en-US", { weekday: "long", timeZone: tz }).format(today);
   const mon = startOfWeekMondayLocal(today, tz);
   if (weekday === "Sunday") return addDays(mon, 7);
@@ -97,12 +97,12 @@ export function recommendationWeekStart(today: Date = new Date(), tz: string = U
  *  Distinct from `currentWeekMonday(today)` (used by the strength tab) which
  *  always returns the most recent Monday on or before today regardless of
  *  weekday — strength reads "this week's plan", not "next week's". */
-export function planningTargetMonday(today: Date = new Date(), tz: string = USER_TIMEZONE): string {
+export function planningTargetMonday(today: Date = new Date(), tz: string): string {
   return recommendationWeekStart(today, tz);
 }
 
 /** Monday of the week containing today (no Sunday flip). Used by the strength
  *  tab to look up the *current* week's training_weeks row. */
-export function currentWeekMonday(today: Date = new Date(), tz: string = USER_TIMEZONE): string {
+export function currentWeekMonday(today: Date = new Date(), tz: string): string {
   return startOfWeekMondayLocal(today, tz);
 }

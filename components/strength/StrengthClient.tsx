@@ -112,7 +112,7 @@ export function StrengthClient({
     Monday: "Mon", Tuesday: "Tue", Wednesday: "Wed", Thursday: "Thu",
     Friday: "Fri", Saturday: "Sat", Sunday: "Sun",
   };
-  const todayWeekdayKey = WEEKDAY_MAP[weekdayInUserTz()];
+  const todayWeekdayKey = WEEKDAY_MAP[weekdayInUserTz(new Date(), profile?.timezone ?? "UTC")];
   const committedSessionType = readSessionForDay(committedWeek?.session_plan ?? null, todayWeekdayKey) ?? null;
   const committedRirTarget   = committedWeek?.rir_target ?? null;
   const committedPhase       = committedWeek?.research_phase ?? null;
@@ -125,7 +125,7 @@ export function StrengthClient({
       : null;
   const exerciseOverrides =
     (committedWeek?.exercise_overrides as ExerciseOverrides | null | undefined) ?? null;
-  const fullWeekday = weekdayInUserTz();
+  const fullWeekday = weekdayInUserTz(new Date(), profile?.timezone ?? "UTC");
 
   const { data: userTemplate = null } = useUserSessionTemplate(
     userId,

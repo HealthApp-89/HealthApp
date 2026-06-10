@@ -19,6 +19,7 @@ import { EnduranceBriefBlock } from "@/components/morning/EnduranceBriefBlock";
 import { useTrainingWeek } from "@/lib/query/hooks/useTrainingWeek";
 import { readSessionForDay } from "@/lib/coach/session-plan-reader";
 import { todayInUserTz, weekdayInUserTz } from "@/lib/time";
+import { useProfile } from "@/lib/query/hooks/useProfile";
 
 const FULL_TO_SHORT_INLINE: Record<string, Weekday> = {
   Monday: "Mon",
@@ -43,9 +44,11 @@ export function MorningBriefCard({
   userId: string;
   card: MorningBriefCardData;
 }) {
-  const today = useMemo(() => todayInUserTz(), []);
+  const { data: profile } = useProfile(userId);
+  const tz = profile?.timezone ?? "UTC";
+  const today = useMemo(() => todayInUserTz(new Date(), tz), [tz]);
   const weekStart = useMemo(() => weekStartOfInline(today), [today]);
-  const fullWeekday = useMemo(() => weekdayInUserTz(new Date(`${today}T12:00:00Z`)), [today]);
+  const fullWeekday = useMemo(() => weekdayInUserTz(new Date(`${today}T12:00:00Z`), tz), [today, tz]);
   const sourceDay = useMemo<Weekday>(() => {
     return FULL_TO_SHORT_INLINE[fullWeekday] ?? "Mon";
   }, [fullWeekday]);

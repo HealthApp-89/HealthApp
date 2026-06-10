@@ -9,6 +9,7 @@ import { PeterChatClient } from '@/components/coach/PeterChatClient';
 import { DefinitionsView } from '@/components/coach/DefinitionsView';
 import { SubPillNav } from '@/components/layout/SubPillNav';
 import { todayInUserTz } from '@/lib/time';
+import { getUserTimezone } from '@/lib/time/get-user-tz';
 import { COLOR } from '@/lib/ui/theme';
 
 export const dynamic = 'force-dynamic';
@@ -35,7 +36,8 @@ export default async function CoachPage({ searchParams }: SP) {
     sp.tab === 'chat' ? 'chat'
     : sp.tab === 'definitions' ? 'definitions'
     : 'dashboard';
-  const today = todayInUserTz();
+  const tz = await getUserTimezone(user.id);
+  const today = todayInUserTz(new Date(), tz);
 
   const queryClient = makeServerQueryClient();
   if (tab === 'dashboard') {

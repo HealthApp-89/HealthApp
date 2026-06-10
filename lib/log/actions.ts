@@ -8,6 +8,7 @@
 import { revalidatePath } from "next/cache";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { todayInUserTz } from "@/lib/time";
+import { getUserTimezone } from "@/lib/time/get-user-tz";
 
 function num(v: FormDataEntryValue | null): number | null {
   if (typeof v !== "string" || v.trim() === "") return null;
@@ -31,7 +32,8 @@ export async function saveDailyLog(formData: FormData) {
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 
-  const date = (formData.get("date") as string) || todayInUserTz();
+  const tz = await getUserTimezone(user.id);
+  const date = (formData.get("date") as string) || todayInUserTz(new Date(), tz);
 
   const row = {
     user_id: user.id,
@@ -158,7 +160,8 @@ export async function saveCheckin(formData: FormData) {
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 
-  const date = (formData.get("date") as string) || todayInUserTz();
+  const tz = await getUserTimezone(user.id);
+  const date = (formData.get("date") as string) || todayInUserTz(new Date(), tz);
   const row = {
     user_id: user.id,
     date,

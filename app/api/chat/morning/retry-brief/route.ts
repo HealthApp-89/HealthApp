@@ -9,6 +9,7 @@ import {
   createSupabaseServiceRoleClient,
 } from "@/lib/supabase/server";
 import { todayInUserTz } from "@/lib/time";
+import { getUserTimezone } from "@/lib/time/get-user-tz";
 import type { CheckinRow, MorningBriefCard } from "@/lib/data/types";
 import { buildMorningBrief } from "@/lib/morning/brief";
 
@@ -21,7 +22,8 @@ export async function POST() {
     return NextResponse.json({ ok: false, reason: "unauthorized" }, { status: 401 });
   }
 
-  const today = todayInUserTz();
+  const tz = await getUserTimezone(user.id);
+  const today = todayInUserTz(new Date(), tz);
   const sr = createSupabaseServiceRoleClient();
 
   const { data: row } = await sr

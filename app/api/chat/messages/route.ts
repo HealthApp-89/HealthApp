@@ -542,7 +542,8 @@ export async function POST(req: Request) {
   let messages: RichMessage[];
 
   try {
-    const todayIso = todayInUserTz();
+    const tzForToday = await getUserTimezone(user.id);
+    const todayIso = todayInUserTz(new Date(), tzForToday);
     const sinceDate = new Date(`${todayIso}T00:00:00Z`);
     sinceDate.setUTCDate(sinceDate.getUTCDate() - 14);
     const since = sinceDate.toISOString().slice(0, 10);
@@ -573,6 +574,7 @@ export async function POST(req: Request) {
         userId: user.id,
         since,
         workoutLimit: 5,
+        tz: tzForToday,
       }),
       sr.from("chat_messages")
         .select("id, role, content, created_at")
@@ -740,6 +742,7 @@ export async function POST(req: Request) {
     const ephemeralHeader = await buildEphemeralHeader({
       supabase: sr as unknown as SupabaseClient,
       userId: user.id,
+      tz: tzForToday,
     });
     const headerBlock: ContentBlock = { type: "text", text: ephemeralHeader };
     messages.push({ role: "user", content: [headerBlock, ...newTurnBlocks] });

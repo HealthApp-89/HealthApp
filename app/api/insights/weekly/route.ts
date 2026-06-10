@@ -5,9 +5,10 @@ import { buildSnapshot, withDayReferenceInstruction } from "@/lib/coach/snapshot
 import { reviewWindow, recommendationWeekStart, type ReviewMode } from "@/lib/coach/week";
 import { REVIEW_SYSTEM_PROMPT, REVIEW_RESPONSE_SHAPE, frameFor } from "@/lib/coach/prompts";
 import { todayInUserTz } from "@/lib/time";
+import { getUserTimezone } from "@/lib/time/get-user-tz";
 
-function userTzNoon(): Date {
-  return new Date(`${todayInUserTz()}T12:00:00Z`);
+function userTzNoon(tz: string): Date {
+  return new Date(`${todayInUserTz(new Date(), tz)}T12:00:00Z`);
 }
 
 export const dynamic = "force-dynamic";
@@ -59,15 +60,17 @@ export async function POST() {
   } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ ok: false, reason: "unauthorized" }, { status: 401 });
 
-  const anchor = userTzNoon();
-  const { start, end, mode, daysRemaining } = reviewWindow(anchor);
-  const targetWeekStart = recommendationWeekStart(anchor);
+  const tz = await getUserTimezone(user.id);
+  const anchor = userTzNoon(tz);
+  const { start, end, mode, daysRemaining } = reviewWindow(anchor, tz);
+  const targetWeekStart = recommendationWeekStart(anchor, tz);
 
   const { nowLine, body: snapshotBody } = await buildSnapshot({
     supabase,
     userId: user.id,
     since: start,
     until: end,
+    tz,
   });
 
   const frame = frameFor(mode, { start, end, daysRemaining, targetWeekStart });

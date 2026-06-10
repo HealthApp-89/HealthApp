@@ -8,7 +8,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { generateBlockOutcome } from "@/lib/coach/block-outcomes";
-import { todayInUserTz } from "@/lib/time";
+import { todayInUserTz, USER_TIMEZONE } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +19,8 @@ export async function GET(req: Request) {
   }
 
   const supabase = createSupabaseServiceRoleClient();
-  const today = todayInUserTz();
+  // Cron sweep operates across all users; use the env-var fallback for "today".
+  const today = todayInUserTz(new Date(), USER_TIMEZONE);
 
   const { data: blocks, error } = await supabase
     .from("training_blocks")

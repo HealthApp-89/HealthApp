@@ -31,6 +31,7 @@ import type {
   PhaseStep,
 } from "@/lib/data/types";
 import { todayInUserTz } from "@/lib/time";
+import { getUserTimezone } from "@/lib/time/get-user-tz";
 import { type MealRatios, DEFAULT_MEAL_RATIOS } from "@/lib/food/meal-targets";
 export type { MealRatios };
 
@@ -94,6 +95,7 @@ async function isTrainingDay(
   supabase: SupabaseClient,
   userId: string,
   today: string,
+  tz: string,
 ): Promise<boolean> {
   // Week start: Monday-anchored. Compute the Monday of the current week.
   const todayD = new Date(`${today}T00:00:00Z`);
@@ -114,7 +116,7 @@ async function isTrainingDay(
   // session_plan keys may be 3-letter ("Mon") or full ("Monday"); read
   // via readSessionForDay so both shapes resolve. weekdayInUserTz returns
   // the full-name form ("Monday") which is what the AI bot writes.
-  const todayLabel = weekdayInUserTz(todayD);
+  const todayLabel = weekdayInUserTz(todayD, tz);
   const session = readSessionForDay(
     data.session_plan as Record<string, string>,
     todayLabel,
@@ -250,7 +252,8 @@ export async function getTodayTargets(
   if (!data) return null;
 
   const overrides = await getOverrides(supabase, userId);
-  const today = todayInUserTz();
+  const tz = await getUserTimezone(userId);
+  const today = todayInUserTz(new Date(), tz);
 
   // Phase 2 path: plan_payload exists
   if (data.plan_payload) {
@@ -258,7 +261,7 @@ export async function getTodayTargets(
     const glp1 = plan.nutrition.glp1 ?? null;
     const classical = plan.nutrition.classical_phases ?? null;
     const mode = resolveMode(glp1, classical);
-    const is_training_day = await isTrainingDay(supabase, userId, today);
+    const is_training_day = await isTrainingDay(supabase, userId, today, tz);
 
     if (mode === "glp1_active" && glp1) {
       // Alarm fires when avg intake drifts more than ADHERENCE_GRACE_KCAL

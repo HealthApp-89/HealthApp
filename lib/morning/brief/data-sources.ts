@@ -45,8 +45,8 @@ function inferLiftFromName(name: string): PrimaryLift | null {
 
 /** Maps a Date object to the keys used in WEEKLY_SESSIONS ("Monday".."Sunday").
  *  weekdayInUserTz returns the same shape. */
-function weeklySessionKey(today: string): string {
-  return weekdayInUserTz(new Date(`${today}T12:00:00Z`));
+function weeklySessionKey(today: string, tz: string): string {
+  return weekdayInUserTz(new Date(`${today}T12:00:00Z`), tz);
 }
 
 function yesterdayOf(today: string): string {
@@ -59,9 +59,10 @@ export async function fetchBriefInputs(
   supabase: SupabaseClient,
   userId: string,
   today: string,
+  tz: string,
 ): Promise<BriefInputs> {
   const yesterday = yesterdayOf(today);
-  const weeklyKey = weeklySessionKey(today);  // "Monday".."Sunday"
+  const weeklyKey = weeklySessionKey(today, tz);  // "Monday".."Sunday"
 
   // Parallel reads (Promise.all):
   // 1. Active training_blocks (for primary_lift)

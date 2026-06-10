@@ -68,14 +68,15 @@ export function StrengthCoachClient({ userId }: Props) {
     chatRegionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [initialMode]);
 
-  const todayIso = todayInUserTz();
-  const currentWeekStart = currentWeekMonday();
-  const fullWeekday = weekdayInUserTz();
-  const todayWeekdayKey = WEEKDAY_MAP[fullWeekday] as Weekday;
-
   // ── Data hooks ────────────────────────────────────────────────────────────
 
   const { data: profile } = useProfile(userId);
+  const tz = profile?.timezone ?? "UTC";
+  const todayIso = todayInUserTz(new Date(), tz);
+  const currentWeekStart = currentWeekMonday(new Date(), tz);
+  const fullWeekday = weekdayInUserTz(new Date(), tz);
+  const todayWeekdayKey = WEEKDAY_MAP[fullWeekday] as Weekday;
+
   const { data: todayLogRange = [] } = useDailyLogs(userId, todayIso, todayIso);
   const { data: todayCheckin = null } = useCheckin(userId, todayIso);
   const { data: committedWeek = null } = useTrainingWeek(userId, currentWeekStart);

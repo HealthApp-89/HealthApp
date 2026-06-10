@@ -15,6 +15,7 @@ import {
 import { getAutoregulationSignals } from "@/lib/coach/autoregulation";
 import { computeTargetRecommendation } from "@/lib/coach/prescription/calibrate-target";
 import { todayInUserTz } from "@/lib/time";
+import { getUserTimezone } from "@/lib/time/get-user-tz";
 import type { ChatMode, IntakePayload, PrimaryLift, TrainingBlock } from "@/lib/data/types";
 import type { TriggerDirective } from "@/lib/coach/voice/triggers";
 
@@ -342,7 +343,8 @@ async function fetchActiveBlockContext(
   if (!data) return null;
 
   const block = data as TrainingBlock;
-  const today = todayInUserTz();
+  const tz = await getUserTimezone(userId);
+  const today = todayInUserTz(new Date(), tz);
   const weeksElapsed = Math.max(
     0,
     Math.floor(
@@ -374,7 +376,8 @@ async function fetchAutoregContext(
   userId: string,
   primaryLift: PrimaryLift | null,
 ): Promise<string | null> {
-  const today = todayInUserTz();
+  const tz = await getUserTimezone(userId);
+  const today = todayInUserTz(new Date(), tz);
   const sig = await getAutoregulationSignals(supabase, userId, today, primaryLift);
   if (!sig.should_deload) return null;
 
@@ -410,7 +413,8 @@ async function fetchIntakeContext(
   // user's local "today" rather than UTC now, matching how the other helpers
   // in this file compute date bounds (consistency + correctness for users in
   // non-UTC timezones near midnight).
-  const today = todayInUserTz();
+  const tz = await getUserTimezone(userId);
+  const today = todayInUserTz(new Date(), tz);
   const sinceDate = new Date(new Date(today).getTime() - 8 * 86_400_000)
     .toISOString()
     .slice(0, 10);
@@ -484,7 +488,8 @@ async function fetchSetupBlockContext(
   let recommendationLines: string[] = [];
   if (row.recommended_next_focus) {
     try {
-      const todayIso = todayInUserTz();
+      const tz = await getUserTimezone(userId);
+      const todayIso = todayInUserTz(new Date(), tz);
       const rec = await computeTargetRecommendation({
         supabase,
         userId,

@@ -3,6 +3,7 @@ import { createSupabaseServerClient, createSupabaseServiceRoleClient } from "@/l
 import { getValidAccessToken, getMeasures, getActivity } from "@/lib/withings";
 import { mergeWithingsToRows } from "@/lib/withings-merge";
 import { todayInUserTz } from "@/lib/time";
+import { getUserTimezone } from "@/lib/time/get-user-tz";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -26,10 +27,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, reason: "no_tokens" }, { status: 400 });
   }
 
+  const tz = await getUserTimezone(user.id);
   const startEpoch = Math.floor(since.getTime() / 1000);
   const endEpoch = Math.floor(Date.now() / 1000);
   const startYmd = since.toISOString().slice(0, 10);
-  const endYmd = todayInUserTz();
+  const endYmd = todayInUserTz(new Date(), tz);
 
   let measureGroups, activities;
   try {
@@ -41,7 +43,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
   }
 
-  const byDate = mergeWithingsToRows(user.id, measureGroups, activities);
+  const byDate = mergeWithingsToRows(user.id, measureGroups, activities, tz);
   if (byDate.size === 0) {
     return NextResponse.json({
       ok: true,
