@@ -14,9 +14,14 @@ type Props = { userId: string };
  *  prefetch in app/page.tsx so first paint is instant. */
 export function TodayMorningBriefSlot({ userId }: Props) {
   const today = useUserToday(userId) ?? "";
+  // Always call hooks. Gating via `enabled` keeps the query dormant while
+  // the profile (and therefore tz-resolved `today`) is hydrating — and
+  // keeps hook counts stable across renders (React #310).
+  const enabled = !!today;
+  const { data: card } = useTodayBrief(userId, today, { enabled });
+  const { data: checkin } = useCheckin(userId, today, { enabled });
+
   if (!today) return null;
-  const { data: card } = useTodayBrief(userId, today);
-  const { data: checkin } = useCheckin(userId, today);
 
   if (card) return <MorningBriefCard userId={userId} card={card} />;
 

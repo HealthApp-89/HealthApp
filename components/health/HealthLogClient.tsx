@@ -28,12 +28,18 @@ export function HealthLogClient({ userId, initialDate }: Props) {
 
 function PastIntakesList({ userId }: { userId: string }) {
   const today = useUserToday(userId);
-  if (!today) return null;
-  const fromDate = new Date(`${today}T00:00:00Z`);
-  fromDate.setUTCDate(fromDate.getUTCDate() - 14);
-  const fromIso = fromDate.toISOString().slice(0, 10);
+  // Always call useCheckins. Gate via `enabled` so the query stays dormant
+  // until the tz-resolved `today` is available. Keeps hook counts stable.
+  const fromIso = (() => {
+    if (!today) return "";
+    const fromDate = new Date(`${today}T00:00:00Z`);
+    fromDate.setUTCDate(fromDate.getUTCDate() - 14);
+    return fromDate.toISOString().slice(0, 10);
+  })();
 
-  const { data: checkins } = useCheckins(userId, fromIso, today);
+  const { data: checkins } = useCheckins(userId, fromIso, today ?? "", { enabled: !!today });
+
+  if (!today) return null;
 
   // "Completed" = past the awaiting_* phases — matches HealthCoachClient's MorningFeelRow filter.
   const completed = (checkins ?? []).filter(

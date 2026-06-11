@@ -19,20 +19,29 @@ type Props = {
 export function HealthCoachClient({ userId, hrvBaseline }: Props) {
   useMarkThreadSeen("remi");
   const today = useUserToday(userId);
+  // Always call hooks. Gate queries via `enabled` so they stay dormant until
+  // the tz-resolved `today` is available — keeps hook counts stable across
+  // renders (React #310).
+  const enabled = !!today;
+  const yIso = (() => {
+    if (!today) return "";
+    const d = new Date(`${today}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() - 1);
+    return d.toISOString().slice(0, 10);
+  })();
+  const sevenIso = (() => {
+    if (!today) return "";
+    const d = new Date(`${today}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() - 7);
+    return d.toISOString().slice(0, 10);
+  })();
+
+  const { data: todayLogs } = useDailyLogs(userId, today ?? "", today ?? "", { enabled });
+  const { data: yesterdayLogs } = useDailyLogs(userId, yIso, yIso, { enabled });
+  const { data: weekLogs } = useDailyLogs(userId, sevenIso, yIso, { enabled });
+  const { data: checkin } = useCheckin(userId, today ?? "", { enabled });
+
   if (!today) return null;
-
-  const yesterday = new Date(`${today}T00:00:00Z`);
-  yesterday.setUTCDate(yesterday.getUTCDate() - 1);
-  const yIso = yesterday.toISOString().slice(0, 10);
-
-  const sevenDaysAgo = new Date(`${today}T00:00:00Z`);
-  sevenDaysAgo.setUTCDate(sevenDaysAgo.getUTCDate() - 7);
-  const sevenIso = sevenDaysAgo.toISOString().slice(0, 10);
-
-  const { data: todayLogs } = useDailyLogs(userId, today, today);
-  const { data: yesterdayLogs } = useDailyLogs(userId, yIso, yIso);
-  const { data: weekLogs } = useDailyLogs(userId, sevenIso, yIso);
-  const { data: checkin } = useCheckin(userId, today);
 
   const todayRow = todayLogs?.[0] ?? null;
   const yRow = yesterdayLogs?.[0] ?? null;
