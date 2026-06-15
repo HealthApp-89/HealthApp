@@ -4,7 +4,7 @@
 // One source of truth for the 4-coach team. Importers should never inline
 // speaker-related literals.
 
-import type { Speaker, ChatSpeaker } from "@/lib/data/types";
+import { SPEAKERS, type Speaker, type ChatSpeaker } from "@/lib/data/types";
 
 export const SPEAKER_DISPLAY: Record<Speaker, { name: string; role: string }> = {
   peter:  { name: "Peter",         role: "Head Coach" },
@@ -12,6 +12,8 @@ export const SPEAKER_DISPLAY: Record<Speaker, { name: string; role: string }> = 
   nora:   { name: "Nora",          role: "Nutrition" },
   remi:   { name: "Remi",          role: "Recovery" },
 };
+
+const SPEAKER_SET: ReadonlySet<string> = new Set(SPEAKERS);
 
 /** Background + text + border colors for the speaker chip rendered next to
  *  each assistant message. Picked to read on the dark theme. */
@@ -33,7 +35,11 @@ export function speakerName(s: Speaker): string {
   return SPEAKER_DISPLAY[s].name;
 }
 
-/** True when the speaker is one of the assistant coaches (vs the user). */
-export function isCoachSpeaker(s: ChatSpeaker): s is Speaker {
-  return s !== "user";
+/** True when the speaker is one of the assistant coaches (vs the user, or
+ *  any unexpected/missing value that would otherwise crash downstream
+ *  registry lookups). Tightened to a real allowlist after a stray
+ *  undefined speaker (from a bad ensure-opener response shape) slipped past
+ *  the previous `s !== "user"` check and crashed HandoffLine. */
+export function isCoachSpeaker(s: ChatSpeaker | string | null | undefined): s is Speaker {
+  return typeof s === "string" && SPEAKER_SET.has(s);
 }

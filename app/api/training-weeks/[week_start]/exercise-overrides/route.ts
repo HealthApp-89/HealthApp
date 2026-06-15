@@ -126,24 +126,26 @@ export async function POST(
     );
   }
 
-  // Permutation check: same multiset of names.
-  if (exercises.length !== staticPlan.length) {
+  // If there's an existing override for this weekday, validate against IT (permutation).
+  // Otherwise validate against the static plan (to enforce static-plan structure).
+  const baselineExercises = existing?.[weekday] ?? staticPlan;
+  if (exercises.length !== baselineExercises.length) {
     return NextResponse.json(
       {
         ok: false,
-        error: `expected ${staticPlan.length} exercises for ${sessionType}, got ${exercises.length}`,
+        error: `expected ${baselineExercises.length} exercises, got ${exercises.length}`,
       },
       { status: 400 },
     );
   }
-  const staticNames = staticPlan.map((e) => e.name).sort();
+  const baselineNames = baselineExercises.map((e) => e.name).sort();
   const submittedNames = exercises.map((e) => e.name).sort();
-  for (let i = 0; i < staticNames.length; i++) {
-    if (staticNames[i] !== submittedNames[i]) {
+  for (let i = 0; i < baselineNames.length; i++) {
+    if (baselineNames[i] !== submittedNames[i]) {
       return NextResponse.json(
         {
           ok: false,
-          error: `permutation only — submitted names do not match SESSION_PLANS.${sessionType}`,
+          error: `permutation only — submitted names do not match current exercises for ${weekday}`,
         },
         { status: 400 },
       );

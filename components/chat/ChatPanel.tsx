@@ -364,6 +364,10 @@ export default function ChatPanel({
               const op = await fetch("/api/chat/coach/ensure-opener", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
+                // Active surface — without this the opener lands in Peter's
+                // thread regardless of where the user is, and the returned
+                // row carries undefined speaker that crashes HandoffLine.
+                body: JSON.stringify({ thread: thread ?? "peter" }),
               });
               if (op.ok) {
                 const opJson = (await op.json()) as { ok: boolean; message?: ChatMessage; skipped?: boolean };
