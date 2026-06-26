@@ -128,6 +128,7 @@ export async function POST(
 
   // If there's an existing override for this weekday, validate against IT (permutation).
   // Otherwise validate against the static plan (to enforce static-plan structure).
+  const existing = (row.exercise_overrides ?? {}) as ExerciseOverrides;
   const baselineExercises = existing?.[weekday] ?? staticPlan;
   if (exercises.length !== baselineExercises.length) {
     return NextResponse.json(
