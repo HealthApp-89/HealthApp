@@ -23,6 +23,8 @@ import { defaultZ2Cap } from "@/lib/coach/endurance/hr-zones";
 import type { EnduranceProfile } from "@/lib/coach/endurance/types";
 import { buildAthleteIntelligence } from "@/lib/coach/intelligence";
 import type { AthleteIntelligencePayload } from "@/lib/coach/intelligence/types";
+import { summarizeResponsiveness, renderResponsivenessLines } from "@/lib/coach/interventions/responsiveness";
+import type { CoachInterventionRow } from "@/lib/data/types";
 
 /** Compose the NOW header for the LLM snapshot prefix. Includes an explicit
  *  "current week" anchor (Mon→Sun of the user's current week) because LLMs
@@ -312,9 +314,16 @@ async function renderEnduranceBlocks(
 
 /** Render the full ATHLETE INTELLIGENCE block (Layer 1 + Layer 2) for the
  *  snapshot body. Each Layer 2 sub-section is kept to 1-2 lines — the block
- *  lives in the cached prefix and must stay compact. */
+ *  lives in the cached prefix and must stay compact.
+ *
+ *  @param intel             Assembled AthleteIntelligencePayload.
+ *  @param interventionRows  Raw evaluated rows (needed for responsiveness rollup).
+ *  @param today             YYYY-MM-DD anchor for the "recent wins" window.
+ */
 function renderAthleteIntelligenceBlock(
   intel: AthleteIntelligencePayload,
+  interventionRows: CoachInterventionRow[] = [],
+  today: string = "",
 ): string {
   const { identity, constraints, history, recovery_readiness, nutrition_performance, interference, body_comp_direction } = intel;
   const lines: string[] = ["## ATHLETE INTELLIGENCE"];
@@ -366,10 +375,16 @@ function renderAthleteIntelligenceBlock(
   }
 
   // ── Layer 1: Coach History ─────────────────────────────────────────────────
+  // Responsiveness rollup — computed from raw intervention rows (not from the
+  // mapped HistoryPayload, which loses fields needed for phrase building).
+  const responsivenessRollup = summarizeResponsiveness(interventionRows, today);
+  const responsivenessLines = renderResponsivenessLines(responsivenessRollup);
+
   const hasHistory =
     history.recent_deloads.length > 0 ||
     history.exercise_swaps_8w.length > 0 ||
-    history.nutrition_interventions.length > 0;
+    history.nutrition_interventions.length > 0 ||
+    responsivenessLines.length > 0;
 
   if (hasHistory) {
     lines.push("", "### Coach History");
@@ -381,6 +396,10 @@ function renderAthleteIntelligenceBlock(
     }
     if (history.nutrition_interventions.length > 0) {
       lines.push(`- Nutrition experiments: ${history.nutrition_interventions.map((n) => n.intervention).join(", ")}`);
+    }
+    // Responsiveness rollup lines — compact, observed-only, omitted when empty.
+    for (const rl of responsivenessLines) {
+      lines.push(rl);
     }
   }
 
@@ -431,7 +450,12 @@ export async function buildSnapshot(inputs: SnapshotInputs): Promise<SnapshotRes
     .order("date", { ascending: true });
   if (until) logsQ = logsQ.lte("date", until);
 
-  const [{ data: profile }, { data: logs }, allWorkouts, { data: athleteProfileRow }, todayTargets, enduranceBlocks, intelligence] = await Promise.all([
+  // 90-day window for intervention rows — same as the intelligence orchestrator.
+  const d90 = new Date(`${today}T00:00:00Z`);
+  d90.setUTCDate(d90.getUTCDate() - 90);
+  const since90d = d90.toISOString().slice(0, 10);
+
+  const [{ data: profile }, { data: logs }, allWorkouts, { data: athleteProfileRow }, todayTargets, enduranceBlocks, intelligence, { data: rawInterventions }] = await Promise.all([
     supabase
       .from("profiles")
       .select("name, goal, whoop_baselines")
@@ -460,6 +484,17 @@ export async function buildSnapshot(inputs: SnapshotInputs): Promise<SnapshotRes
     // targets). Resilient — returns safe-default payload on any error so the
     // snapshot never crashes due to intelligence failure.
     buildAthleteIntelligence(supabase, userId, tz),
+    // Evaluated intervention rows (last 90d) for the responsiveness rollup
+    // rendered into the ### Coach History block. Runs in parallel with the
+    // intelligence orchestrator (which also fetches these), so no extra latency.
+    // Failure-safe: raw array falls back to [] on error.
+    supabase
+      .from("coach_interventions")
+      .select("id, user_id, kind, source, started_on, context, outcome, outcome_evaluated_at, created_at")
+      .eq("user_id", userId)
+      .not("outcome", "is", null)
+      .gte("started_on", since90d)
+      .order("started_on", { ascending: false }),
   ]);
 
   const workouts = until
@@ -506,8 +541,10 @@ export async function buildSnapshot(inputs: SnapshotInputs): Promise<SnapshotRes
 
   // ── Intelligence block ────────────────────────────────────────────────────
   // `intelligence` was assembled by the orchestrator in the Promise.all above.
-  // Render it (Layer 1 + Layer 2) into the snapshot body.
-  const athleteIntelligenceBlock = renderAthleteIntelligenceBlock(intelligence);
+  // Render it (Layer 1 + Layer 2) into the snapshot body. Pass raw intervention
+  // rows + today for the responsiveness rollup inside ### Coach History.
+  const interventionRows = (rawInterventions ?? []) as CoachInterventionRow[];
+  const athleteIntelligenceBlock = renderAthleteIntelligenceBlock(intelligence, interventionRows, today);
 
   const fmt = (v: number | null | undefined, unit = "") =>
     v === null || v === undefined ? "—" : `${v}${unit}`;
