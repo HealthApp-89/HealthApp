@@ -67,6 +67,15 @@ function ExerciseCardInner({
     onExerciseChange(exerciseIndex, { ...exercise, sets: nextSets });
   }, [exercise, exerciseIndex, onExerciseChange]);
 
+  const removeSet = useCallback((setIndex: number) => {
+    // Re-index remaining sets so set_index stays contiguous (the RPC writes
+    // the payload's set_index verbatim — gaps would persist in the DB).
+    const nextSets = exercise.sets
+      .filter((_, i) => i !== setIndex)
+      .map((s, i) => ({ ...s, set_index: i }));
+    onExerciseChange(exerciseIndex, { ...exercise, sets: nextSets });
+  }, [exercise, exerciseIndex, onExerciseChange]);
+
   const addSet = useCallback(() => {
     const last = exercise.sets[exercise.sets.length - 1];
     const isTimeBased = exercise.prescribed.duration_seconds != null;
@@ -139,9 +148,11 @@ function ExerciseCardInner({
                 }
                 isActive={!s.committed_at && exercise.sets.findIndex((x) => !x.committed_at) === i}
                 targetDurationSeconds={exercise.prescribed.duration_seconds ?? null}
+                canRemove={exercise.sets.length > 1}
                 onChange={(patch) => patchSet(i, patch)}
                 onCommit={() => commitSet(i)}
                 onUncommit={() => uncommitSet(i)}
+                onRemove={() => removeSet(i)}
                 onUnparsedVoice={setUnparsedBanner}
               />
               {restAfterSetIndex === i && (

@@ -10,14 +10,27 @@
 // set 1", regardless of where those rows sit in `set_index` space. Warmup
 // rows from history are never surfaced as a "previous" value — they're
 // filtered out before ordinal counting.
+//
+// Exercise name match is normalized (lowercase, strip equipment parens,
+// collapse whitespace) so renames like "Bench Press" → "Bench Press (Barbell)"
+// still resolve to the same lift history.
+//
+// If today's ordinal exceeds the prior session's working-set count (e.g.
+// you're doing a 5th working set when last week only had 4), the fetcher
+// falls back to that session's LAST working set and flags `fallback: true`
+// so the UI can render a marker.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { normalizeExerciseName } from "@/lib/coach/exercise-muscles";
 
 export type PreviousSet = {
   kg: number | null;
   reps: number | null;
   workout_date: string;
+  /** True when the requested ordinal exceeded the prior session's working-set
+   *  count and we returned that session's last working set instead. */
+  fallback: boolean;
 };
 
 export async function fetchPreviousSetServer(
@@ -33,16 +46,20 @@ export async function fetchPreviousSetServer(
   const trimmed = args.exerciseName.trim();
   if (!trimmed || args.workingSetOrdinal < 1) return null;
 
-  // Pull the candidate workout's full set list for this exercise; ordinal
-  // selection happens in JS so warmup-count drift across sessions can't
-  // misalign the comparison.
+  const normalizedTarget = normalizeExerciseName(trimmed);
+  if (!normalizedTarget) return null;
+
+  // Loose server-side filter via substring ILIKE — catches "Bench Press"
+  // and "Bench Press (Barbell)" alike. The exact normalized-name comparison
+  // happens in JS below so substring false-positives ("Squat" vs "Front
+  // Squat") get rejected.
   let workoutsQ = supabase
     .from("workouts")
     .select(
       "id, date, external_id, exercises!inner(id, name, exercise_sets(set_index, kg, reps, warmup))",
     )
     .eq("user_id", args.userId)
-    .ilike("exercises.name", trimmed)
+    .ilike("exercises.name", `%${normalizedTarget}%`)
     .order("date", { ascending: false })
     .limit(10);
 
@@ -55,6 +72,7 @@ export async function fetchPreviousSetServer(
 
   for (const w of data ?? []) {
     const exercises = w.exercises as Array<{
+      name: string;
       exercise_sets: Array<{
         set_index: number;
         kg: number | null;
@@ -62,21 +80,38 @@ export async function fetchPreviousSetServer(
         warmup: boolean;
       }>;
     }>;
-    const ex = exercises?.[0];
+
+    // Exact normalized match — guards against the loose ILIKE catching
+    // unrelated lifts that happen to share a substring.
+    const ex = exercises?.find((e) => normalizeExerciseName(e.name) === normalizedTarget);
     if (!ex?.exercise_sets?.length) continue;
 
     const workingSets = [...ex.exercise_sets]
       .sort((a, b) => a.set_index - b.set_index)
       .filter((s) => !s.warmup);
 
-    const match = workingSets[args.workingSetOrdinal - 1];
-    if (match) {
+    if (workingSets.length === 0) continue;
+
+    const exact = workingSets[args.workingSetOrdinal - 1];
+    if (exact) {
       return {
-        kg: match.kg,
-        reps: match.reps,
+        kg: exact.kg,
+        reps: exact.reps,
         workout_date: w.date as string,
+        fallback: false,
       };
     }
+
+    // Set-count overrun — today's ordinal is past the end of last session's
+    // working-set list. Return the last available working set as a "here's
+    // your prior heavy effort" anchor, flagged so the UI can mark it.
+    const last = workingSets[workingSets.length - 1];
+    return {
+      kg: last.kg,
+      reps: last.reps,
+      workout_date: w.date as string,
+      fallback: true,
+    };
   }
 
   return null;
