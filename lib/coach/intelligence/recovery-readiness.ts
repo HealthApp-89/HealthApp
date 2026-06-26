@@ -77,7 +77,7 @@ type HrvAnalysis = {
   signalDropDays: number;
   /** Days in last 5 where HRV dropped >= actionPct% below baseline AND isMeaningfulDeviation */
   actionDropDaysOf5: number;
-  /** Median HRV drop % vs baseline (for narrative) — null if no data */
+  /** Mean HRV drop % vs baseline (for narrative) — null if no data */
   avgDropPct: number | null;
   /** Whether a meaningful HRV deviation exists on any day */
   anySignalDeviation: boolean;
@@ -233,7 +233,7 @@ function countNonNullDays(logs: DailyLogRow[]): number {
  * Compose a RecoveryReadinessResult from 7 days of daily logs and rolling
  * 30-day baselines.
  *
- * @param dailyLogs    Last 7 days of daily_logs rows (most recent first or any order).
+ * @param dailyLogs    Last 7 days of daily_logs rows — any order; sorted internally to most-recent-first.
  * @param baselines    Rolling 30-day WHOOP baselines, or null for new users.
  * @returns RecoveryReadinessResult validated against RecoveryReadinessResultSchema.
  */
@@ -260,8 +260,11 @@ export function composeRecoveryReadiness(
     return parsed.data;
   }
 
+  // Sort defensively: most-recent-first, regardless of caller ordering.
+  const logs = [...dailyLogs].sort((a, b) => b.date.localeCompare(a.date));
+
   // ── Data coverage & confidence ───────────────────────────────────────────
-  const nonNullDays = countNonNullDays(dailyLogs);
+  const nonNullDays = countNonNullDays(logs);
   const baselineMissing =
     baselines === null ||
     (baselines.hrv.mean === null && baselines.rhr.mean === null);
@@ -276,10 +279,10 @@ export function composeRecoveryReadiness(
   confidence = Math.round(confidence * 100) / 100;
 
   // ── Metric analysis ──────────────────────────────────────────────────────
-  const hrv = analyzeHrv(dailyLogs, baselines);
-  const rhr = analyzeRhr(dailyLogs, baselines);
-  const sleep = analyzeSleep(dailyLogs);
-  const strain = analyzeStrain(dailyLogs);
+  const hrv = analyzeHrv(logs, baselines);
+  const rhr = analyzeRhr(logs, baselines);
+  const sleep = analyzeSleep(logs);
+  const strain = analyzeStrain(logs);
 
   // ── Driver accumulation ──────────────────────────────────────────────────
   const drivers: string[] = [];
@@ -287,7 +290,7 @@ export function composeRecoveryReadiness(
   // HRV drivers
   if (hrv.avgDropPct !== null && hrv.signalDropDays > 0) {
     const pct = Math.round(hrv.avgDropPct);
-    drivers.push(`HRV -${pct}% vs baseline (signal, ${hrv.signalDropDays}d of ${Math.min(dailyLogs.length, 7)})`);
+    drivers.push(`HRV -${pct}% vs baseline (signal, ${hrv.signalDropDays}d of ${Math.min(logs.length, 7)})`);
   } else if (hrv.anySignalDeviation && !baselineMissing) {
     drivers.push("HRV meaningful deviation vs baseline");
   }
@@ -390,7 +393,7 @@ export function composeRecoveryReadiness(
   } else if (status === "warning_overreach") {
     const parts: string[] = [];
     if (hrv.avgDropPct !== null && hrv.signalDropDays > 0) {
-      parts.push(`HRV down ${Math.round(hrv.avgDropPct)}% from your 30-day baseline across ${hrv.signalDropDays} of the last ${Math.min(dailyLogs.length, 7)} days`);
+      parts.push(`HRV down ${Math.round(hrv.avgDropPct)}% from your 30-day baseline across ${hrv.signalDropDays} of the last ${Math.min(logs.length, 7)} days`);
     }
     if (rhr.elevatedDays > 0 && rhr.avgElevation !== null) {
       parts.push(`RHR up ${Math.round(rhr.avgElevation * 10) / 10} bpm for ${rhr.elevatedDays}d`);

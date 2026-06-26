@@ -302,6 +302,28 @@ describe("composeRecoveryReadiness", () => {
     expect(result.confidence).toBeLessThanOrEqual(0.5);
   });
 
+  // ── Order-independence: ascending input produces same result as descending ─
+  it("returns warning_overreach when HRV ≥7% drop on recent 3 days even with ascending input order", () => {
+    // Baseline HRV = 65, SD = 5. -7% of 65 = 60.45. Days 0-2 (most recent) have HRV 59-60.
+    // isMeaningfulDeviation: |59 - 65| = 6 > 0.5*5 = 2.5 → confirmed signal AND ≥7% drop.
+    // Built in ASCENDING (oldest-first) order — the function must sort internally to find recent overreach.
+    const baselines = makeBaselines(65, 5, 55, 4);
+    const ascendingLogs: DailyLogRow[] = [
+      // oldest → newest (ascending)
+      makeLog("2026-06-20", { hrv: 65, resting_hr: 55, sleep_score: 78, strain: 10 }), // day 6
+      makeLog("2026-06-21", { hrv: 64, resting_hr: 55, sleep_score: 77, strain: 10 }), // day 5
+      makeLog("2026-06-22", { hrv: 66, resting_hr: 56, sleep_score: 76, strain: 11 }), // day 4
+      makeLog("2026-06-23", { hrv: 65, resting_hr: 55, sleep_score: 78, strain: 10 }), // day 3
+      makeLog("2026-06-24", { hrv: 60, resting_hr: 56, sleep_score: 72, strain: 12 }), // day 2 — recent overreach
+      makeLog("2026-06-25", { hrv: 59, resting_hr: 56, sleep_score: 70, strain: 13 }), // day 1 — recent overreach
+      makeLog("2026-06-26", { hrv: 59, resting_hr: 57, sleep_score: 69, strain: 14 }), // day 0 — most recent, overreach
+    ];
+
+    const result = composeRecoveryReadiness(ascendingLogs, baselines);
+
+    expect(result.status).toBe("warning_overreach");
+  });
+
   // ── Additional: HRV signal drop combined with sleep <60 → warning_overreach ──
   it("returns warning_overreach when HRV confirmed signal drop AND sleep_score < 60", () => {
     // HRV signal drop (not necessarily 7%+) combined with sleep <60 = warning_overreach per spec
