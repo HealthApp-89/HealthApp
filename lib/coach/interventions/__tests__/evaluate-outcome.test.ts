@@ -347,6 +347,36 @@ describe("evaluateSwapOutcome — inconclusive case", () => {
     expect(result.pain_resolved).toBe(false);
     expect(result.swap_stuck).toBe(false);
   });
+
+  it("returns success=null when replacement was trained but no post-trigger soreness checkins exist", () => {
+    // Regression guard for the fabricated-verdict bug:
+    // post_swap_sets non-empty (replacement trained + progressed) but soreness_checkins is empty.
+    // Old code: postCheckins=[] → painPersists=false → pain_resolved=true → success:true (FABRICATED).
+    // Fixed code: absence of soreness checkins means pain resolution is UNKNOWN → success:null.
+    const row = makeRow("exercise_swap", "2026-06-10", {
+      from_exercise: "Romanian Deadlift",
+      to_exercise: "Hip Thrust (Machine)",
+      reason: "pain",
+    });
+
+    const ctx: SwapEvalCtx = {
+      triggered_at: "2026-06-10",
+      soreness_checkins: [], // no morning intake soreness data at all
+      swapped_muscle_area: "hamstrings",
+      baseline_sets: [
+        { date: "2026-06-10", exercise: "Hip Thrust (Machine)", kg: 80, reps: 10, warmup: false },
+      ],
+      post_swap_sets: [
+        // Replacement was trained and progressed — but we have no soreness data
+        { date: "2026-06-15", exercise: "Hip Thrust (Machine)", kg: 90, reps: 10, warmup: false },
+      ],
+    };
+
+    const result = evaluateSwapOutcome(row, ctx);
+    // Must be inconclusive — cannot confirm pain resolved with zero soreness checkins
+    expect(result.success).toBeNull();
+    expect(result.pain_resolved).toBe(false);
+  });
 });
 
 // ── evaluateNutritionOutcome ───────────────────────────────────────────────────

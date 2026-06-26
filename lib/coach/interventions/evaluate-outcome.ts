@@ -206,19 +206,6 @@ export function evaluateSwapOutcome(row: InterventionRow, ctx: SwapEvalCtx): Swa
     return { success: null, pain_resolved: false, swap_stuck: false };
   }
 
-  // ── Pain resolution ────────────────────────────────────────────────────────
-  // pain_resolved = no checkin after trigger mentions the swapped muscle area
-  const area = ctx.swapped_muscle_area.toLowerCase();
-  const postCheckins = ctx.soreness_checkins.filter(
-    (c) => c.date >= ctx.triggered_at,
-  );
-
-  const painPersists = postCheckins.some((c) =>
-    c.areas.some((a) => a.toLowerCase().includes(area) || area.includes(a.toLowerCase())),
-  );
-
-  const pain_resolved = !painPersists;
-
   // ── Swap progression check ─────────────────────────────────────────────────
   // "Progressed" = at least one post-swap set with higher weight or more reps
   // than the best baseline set for the same exercise.
@@ -244,6 +231,26 @@ export function evaluateSwapOutcome(row: InterventionRow, ctx: SwapEvalCtx): Swa
   }
 
   const swap_stuck = !progressed;
+
+  // ── Pain resolution ────────────────────────────────────────────────────────
+  // pain_resolved = no checkin after trigger mentions the swapped muscle area
+  const area = ctx.swapped_muscle_area.toLowerCase();
+  const postCheckins = ctx.soreness_checkins.filter(
+    (c) => c.date >= ctx.triggered_at,
+  );
+
+  // Inconclusive: replacement was trained but no post-trigger soreness data exists.
+  // Absence of checkins is NOT evidence that pain resolved — we cannot confirm resolution
+  // without at least one post-trigger checkin. Return inconclusive on this dimension.
+  if (postCheckins.length === 0) {
+    return { success: null, pain_resolved: false, swap_stuck };
+  }
+
+  const painPersists = postCheckins.some((c) =>
+    c.areas.some((a) => a.toLowerCase().includes(area) || area.includes(a.toLowerCase())),
+  );
+
+  const pain_resolved = !painPersists;
 
   // Success = pain resolved AND replacement progressed
   if (pain_resolved && progressed) {
