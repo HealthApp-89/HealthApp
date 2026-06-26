@@ -21,6 +21,10 @@ import type { EnduranceActivity, IntakePayload, PlanPayload } from "@/lib/data/t
 import { getTodayTargets } from "@/lib/morning/brief/get-today-targets";
 import { defaultZ2Cap } from "@/lib/coach/endurance/hr-zones";
 import type { EnduranceProfile } from "@/lib/coach/endurance/types";
+import { composeAthleteIdentity } from "@/lib/coach/intelligence/athlete-identity";
+import { composeConstraints } from "@/lib/coach/intelligence/constraints-summary";
+import { composeCoachHistory } from "@/lib/coach/intelligence/coach-history";
+import type { FoodLogEntry } from "@/lib/food/types";
 
 /** Compose the NOW header for the LLM snapshot prefix. Includes an explicit
  *  "current week" anchor (Mon→Sun of the user's current week) because LLMs
@@ -304,6 +308,113 @@ async function renderEnduranceBlocks(
   return out;
 }
 
+// ── Intelligence block helpers ───────────────────────────────────────────────
+
+/** Derive lifestyle_constraints keyword strings from IntakePayload lifestyle
+ *  fields. These map to the keyword matchers in composeConstraints. */
+function buildLifestyleConstraints(intake: IntakePayload): string[] {
+  const constraints: string[] = [];
+  const days = intake.lifestyle.days_available;
+  const daysAvailableCount = [
+    days.mon,
+    days.tue,
+    days.wed,
+    days.thu,
+    days.fri,
+    days.sat,
+    days.sun,
+  ].filter(Boolean).length;
+  if (daysAvailableCount <= 3) {
+    constraints.push("3 sessions per week max");
+  }
+  const latest = intake.lifestyle.latest_session_time;
+  if (latest && latest <= "20:00") {
+    constraints.push("evening training window");
+  }
+  if (intake.lifestyle.travel_frequency === "weekly" || intake.lifestyle.travel_frequency === "monthly") {
+    constraints.push("travel disrupts schedule");
+  }
+  return constraints;
+}
+
+/** Render the ATHLETE INTELLIGENCE block for the snapshot body. */
+function renderAthleteIntelligenceBlock(
+  identity: import("@/lib/coach/intelligence/types").IdentityPayload,
+  constraints: import("@/lib/coach/intelligence/types").ConstraintPayload,
+  history: import("@/lib/coach/intelligence/types").HistoryPayload,
+): string {
+  const lines: string[] = ["## ATHLETE INTELLIGENCE"];
+
+  // ── Identity ──────────────────────────────────────────────────────────────
+  lines.push("", "### Identity (90-day pattern)");
+
+  const top = identity.top_exercises;
+  if (top.lower.length > 0) lines.push(`- Top lower: ${top.lower.join(", ")}`);
+  if (top.upper.length > 0) lines.push(`- Top upper: ${top.upper.join(", ")}`);
+  if (top.pulls.length > 0) lines.push(`- Top pulls: ${top.pulls.join(", ")}`);
+  if (top.isolation.length > 0) lines.push(`- Top isolation: ${top.isolation.join(", ")}`);
+
+  const eat = identity.eating_identity;
+  const eatParts: string[] = [];
+  if (eat.top_proteins.length > 0) eatParts.push(`${eat.top_proteins.join(", ")} (proteins)`);
+  if (eat.top_carbs.length > 0) eatParts.push(`${eat.top_carbs.join(", ")} (carbs)`);
+  if (eat.top_fats.length > 0) eatParts.push(`${eat.top_fats.join(", ")} (fats)`);
+  if (eatParts.length > 0) {
+    lines.push(`- Eating: ${eatParts.join("; ")}`);
+  } else {
+    lines.push("- Eating: no food log data in window");
+  }
+
+  lines.push(`- Training style: ${identity.training_style_signature.volume_preference} volume`);
+
+  if (eat.monotone_flags.length > 0) {
+    lines.push(`- Diet flags: ${eat.monotone_flags.join(", ")} (repetitive)`);
+  }
+
+  // ── Constraints ───────────────────────────────────────────────────────────
+  lines.push("", "### Constraints");
+
+  if (constraints.active_injuries.length > 0) {
+    const injLines = constraints.active_injuries.map(
+      (inj) => `${inj.area} (${inj.status}, ${inj.weeks_ago_onset}w)`,
+    );
+    lines.push(`- Active injuries: ${injLines.join("; ")}`);
+  }
+
+  if (constraints.exercise_exclusions.length > 0) {
+    lines.push(`- Avoid: ${constraints.exercise_exclusions.join(", ")}`);
+  }
+
+  lines.push(`- Equipment: ${constraints.equipment_access}`);
+
+  if (constraints.schedule_constraints.length > 0) {
+    lines.push(`- Schedule: ${constraints.schedule_constraints.join("; ")}`);
+  }
+
+  // ── Coach History ─────────────────────────────────────────────────────────
+  const hasHistory =
+    history.recent_deloads.length > 0 ||
+    history.exercise_swaps_8w.length > 0 ||
+    history.nutrition_interventions.length > 0;
+
+  if (hasHistory) {
+    lines.push("", "### Coach History");
+    if (history.recent_deloads.length > 0) {
+      lines.push(`- Deloads: ${history.recent_deloads.map((d) => `${d.date} (${d.type})`).join(", ")}`);
+    }
+    if (history.exercise_swaps_8w.length > 0) {
+      lines.push(`- Swaps (8w): ${history.exercise_swaps_8w.map((s) => `${s.from} → ${s.to}`).join(", ")}`);
+    }
+    if (history.nutrition_interventions.length > 0) {
+      lines.push(`- Nutrition experiments: ${history.nutrition_interventions.map((n) => n.intervention).join(", ")}`);
+    }
+  }
+  // Phase 1: history arrays are empty — omit the section entirely to keep
+  // the block compact. Detection lands in Phase 2.
+
+  return lines.join("\n");
+}
+
 export async function buildSnapshot(inputs: SnapshotInputs): Promise<SnapshotResult> {
   const { supabase, userId, since, until, workoutLimit = 5, tz } = inputs;
   const today = todayInUserTz(new Date(), tz);
@@ -318,7 +429,12 @@ export async function buildSnapshot(inputs: SnapshotInputs): Promise<SnapshotRes
     .order("date", { ascending: true });
   if (until) logsQ = logsQ.lte("date", until);
 
-  const [{ data: profile }, { data: logs }, allWorkouts, { data: athleteProfileRow }, todayTargets, enduranceBlocks] = await Promise.all([
+  // 90-day window for intelligence composers (identity + history).
+  const ninetyDaysAgo = new Date(`${today}T00:00:00Z`);
+  ninetyDaysAgo.setUTCDate(ninetyDaysAgo.getUTCDate() - 90);
+  const since90d = ninetyDaysAgo.toISOString().slice(0, 10);
+
+  const [{ data: profile }, { data: logs }, allWorkouts, { data: athleteProfileRow }, todayTargets, enduranceBlocks, { data: foodLogRows }] = await Promise.all([
     supabase
       .from("profiles")
       .select("name, goal, whoop_baselines")
@@ -342,6 +458,16 @@ export async function buildSnapshot(inputs: SnapshotInputs): Promise<SnapshotRes
     // three blocks. Hoisted into Promise.all so its 3 internal reads don't
     // serialize behind the other queries.
     renderEnduranceBlocks(supabase, userId),
+    // 90-day food log entries for the identity composer (eating pattern analysis).
+    // Columns: minimum set needed by composeAthleteIdentity (items jsonb carries
+    // per-item name + macros; meal_slot + eaten_at for context).
+    supabase
+      .from("food_log_entries")
+      .select("id, user_id, eaten_at, kind, meal_slot, raw_input, items, totals, is_estimated, is_favorite, status, created_at, updated_at")
+      .eq("user_id", userId)
+      .eq("status", "committed")
+      .gte("eaten_at", since90d + "T00:00:00Z")
+      .order("eaten_at", { ascending: false }),
   ]);
 
   const workouts = until
@@ -386,6 +512,64 @@ export async function buildSnapshot(inputs: SnapshotInputs): Promise<SnapshotRes
   // (insights/weekly) reflect what was current at that point in time.
   const currentTopSetsBlock = buildCurrentTopSetsBlock(allWorkouts, until ?? today);
 
+  // ── Layer 1 Intelligence Composers ──────────────────────────────────────────
+  //
+  // Filter allWorkouts to 90-day window for the identity / history composers.
+  // The composer functions are pure — they don't call Supabase.
+  const workouts90d = allWorkouts.filter((w) => w.date >= since90d);
+  const foodEntries = (foodLogRows ?? []) as FoodLogEntry[];
+
+  const identity = composeAthleteIdentity(workouts90d, foodEntries);
+
+  // Build the adapted profile shape composeConstraints expects.
+  // The real data lives in athleteProfileRow.intake_payload (IntakePayload),
+  // not in separate document columns. We map the relevant intake fields:
+  //   health.active_injuries → current_injuries (with graceful defaults for
+  //     fields the real schema doesn't carry: severity defaults to "mild",
+  //     weeks_since_onset defaults to 0 since IntakePayload doesn't store onset dates)
+  //   training.equipment → gym_type (commercial when barbell+rack present,
+  //     home otherwise)
+  //   lifestyle fields → lifestyle_constraints keywords
+  const intakePayload = athleteProfileRow?.intake_payload as IntakePayload | null | undefined;
+  const adaptedProfileForConstraints = intakePayload
+    ? {
+        athlete_profile_documents: [
+          {
+            current_injuries: (intakePayload.health.active_injuries ?? []).map(
+              (inj) => ({
+                area: inj.joint,
+                // severity not present in IntakePayload — default to "mild"
+                severity: "mild",
+                // weeks_since_onset not tracked in intake form — default to 0
+                // (composeConstraints maps <4 → acute, ≥4 → chronic; with 0
+                //  all injuries will show as acute — see CONCERNS in report)
+                weeks_since_onset: 0,
+                // restriction is a prose note, not a list of exercises to avoid
+                exercises_to_avoid: inj.restriction ? [inj.restriction] : undefined,
+              }),
+            ),
+            // Derive gym_type from training.equipment.
+            // commercial = has barbell + rack OR has cables OR has machines.
+            // home = only free weights / bands present.
+            gym_type:
+              intakePayload.training.equipment.barbell ||
+              intakePayload.training.equipment.rack ||
+              intakePayload.training.equipment.cables ||
+              intakePayload.training.equipment.machines
+                ? "commercial"
+                : "home",
+            // Derive lifestyle_constraints from structured lifestyle fields.
+            lifestyle_constraints: buildLifestyleConstraints(intakePayload),
+          },
+        ],
+      }
+    : null;
+
+  const constraints = composeConstraints(adaptedProfileForConstraints);
+  const history = composeCoachHistory(workouts90d, (logs ?? []) as DailyLogRow[]);
+
+  const athleteIntelligenceBlock = renderAthleteIntelligenceBlock(identity, constraints, history);
+
   const fmt = (v: number | null | undefined, unit = "") =>
     v === null || v === undefined ? "—" : `${v}${unit}`;
 
@@ -426,6 +610,11 @@ export async function buildSnapshot(inputs: SnapshotInputs): Promise<SnapshotRes
           todayTargets,
         )]
       : []),
+    // Layer 1 intelligence block — identity, constraints, history.
+    // Placed after the profile summary (same "who is this athlete" context zone)
+    // and before DAILY LOGS (which is time-series operational data).
+    ``,
+    athleteIntelligenceBlock,
     ``,
     `DAILY LOGS (${since} → ${until ?? today}):`,
     logLines || `  (no logs in window)`,
