@@ -82,6 +82,7 @@ import {
   type StabilityTier,
   type ROMBias,
 } from "@/lib/coach/exercise-library";
+import { buildExplicitIntervention, recordIntervention, deriveSwapReason } from "@/lib/coach/interventions/record";
 
 // ── Allowlist (cross-checked against lib/data/types.ts:DailyLog + schema.sql) ─
 export const ALLOWED_COLUMNS = [
@@ -2874,6 +2875,47 @@ export async function executeCommitSessionToday(opts: {
     return { ok: false, error: { error: "Couldn't save today's session override. Please try again.", code: updateErr.code ?? "update_failed" }, meta: { ms: Date.now() - t0, range_days: 0 } };
   }
 
+  // ── Explicit intervention capture (best-effort — never breaks the commit) ──
+  try {
+    // Derive from_exercise / to_exercise by comparing the first changed name.
+    const prevExercises = (existing[p.weekday] ?? []) as PlannedExercise[];
+    const prevNames = prevExercises.map((e) => e.name);
+    const newNames = p.exercises.map((e) => e.name);
+    const from_exercise = prevNames.find((n) => !newNames.includes(n)) ?? prevNames[0] ?? "unknown";
+    const to_exercise = newNames.find((n) => !prevNames.includes(n)) ?? newNames[0] ?? "unknown";
+
+    // Fetch active block for block context (nullable).
+    const { data: activeBlockRow } = await opts.supabase
+      .from("training_blocks")
+      .select("id, start_date, end_date, target_hit_at_week, target_value, target_metric, primary_lift, status, goal_text, target_unit, diet_goal, endurance_focus, created_at, completed_at, updated_at")
+      .eq("user_id", opts.userId)
+      .eq("status", "active")
+      .maybeSingle();
+    const activeBlock = (activeBlockRow as import("@/lib/data/types").TrainingBlock | null) ?? null;
+
+    let block_week: number | null = null;
+    if (activeBlock) {
+      const start = new Date(activeBlock.start_date + "T00:00:00Z");
+      const todayMs = new Date(today + "T00:00:00Z").getTime();
+      const days = Math.floor((todayMs - start.getTime()) / (24 * 60 * 60 * 1000));
+      block_week = Math.max(1, Math.floor(days / 7) + 1);
+    }
+
+    const built = buildExplicitIntervention({
+      kind: "exercise_swap",
+      started_on: today,
+      block_id: activeBlock?.id ?? null,
+      block_phase: null, // phase evaluation requires more context; Task 4 can enrich this
+      block_week,
+      from_exercise,
+      to_exercise,
+      reason: deriveSwapReason(p.rationale),
+    });
+    await recordIntervention(opts.supabase, opts.userId, built);
+  } catch (captureErr) {
+    console.warn("[executeCommitSessionToday] intervention capture failed — commit unaffected:", captureErr);
+  }
+
   return {
     ok: true,
     data: { week_start, weekday: p.weekday, exercises: p.exercises },
@@ -3023,6 +3065,55 @@ export async function executeCommitSessionTemplate(opts: {
     return { ok: false, error: { error: "Couldn't save the session template. Please try again.", code: upsertErr.code ?? "upsert_failed" }, meta: { ms: Date.now() - t0, range_days: 0 } };
   }
 
+  // ── Explicit intervention capture (best-effort — never breaks the commit) ──
+  try {
+    const today = todayInUserTz(new Date(), await getUserTimezone(opts.userId));
+
+    // Load prior template to derive from_exercise (best-effort; may be absent on first setup).
+    const { data: priorTemplate } = await opts.supabase
+      .from("user_session_templates")
+      .select("exercises")
+      .eq("user_id", opts.userId)
+      .eq("session_type", p.session_type)
+      .maybeSingle();
+    const prevExercises = ((priorTemplate?.exercises ?? []) as PlannedExercise[]);
+    const prevNames = prevExercises.map((e) => e.name);
+    const newNames = p.exercises.map((e) => e.name);
+    const from_exercise = prevNames.find((n) => !newNames.includes(n)) ?? prevNames[0] ?? "unknown";
+    const to_exercise = newNames.find((n) => !prevNames.includes(n)) ?? newNames[0] ?? "unknown";
+
+    // Fetch active block for block context (nullable).
+    const { data: activeBlockRow } = await opts.supabase
+      .from("training_blocks")
+      .select("id, start_date, end_date, target_hit_at_week, target_value, target_metric, primary_lift, status, goal_text, target_unit, diet_goal, endurance_focus, created_at, completed_at, updated_at")
+      .eq("user_id", opts.userId)
+      .eq("status", "active")
+      .maybeSingle();
+    const activeBlock = (activeBlockRow as import("@/lib/data/types").TrainingBlock | null) ?? null;
+
+    let block_week: number | null = null;
+    if (activeBlock) {
+      const start = new Date(activeBlock.start_date + "T00:00:00Z");
+      const todayMs = new Date(today + "T00:00:00Z").getTime();
+      const days = Math.floor((todayMs - start.getTime()) / (24 * 60 * 60 * 1000));
+      block_week = Math.max(1, Math.floor(days / 7) + 1);
+    }
+
+    const built = buildExplicitIntervention({
+      kind: "exercise_swap",
+      started_on: today,
+      block_id: activeBlock?.id ?? null,
+      block_phase: null,
+      block_week,
+      from_exercise,
+      to_exercise,
+      reason: deriveSwapReason(p.rationale),
+    });
+    await recordIntervention(opts.supabase, opts.userId, built);
+  } catch (captureErr) {
+    console.warn("[executeCommitSessionTemplate] intervention capture failed — commit unaffected:", captureErr);
+  }
+
   return {
     ok: true,
     data: { session_type: p.session_type, exercises: p.exercises },
@@ -3137,6 +3228,50 @@ export async function executeCommitNutritionTargets(opts: {
   if (error) {
     return { ok: false, error: { error: "Couldn't save nutrition targets. Please try again.", code: error.code ?? "update_failed" }, meta: { ms: Date.now() - t0, range_days: 0 } };
   }
+
+  // ── Explicit intervention capture (best-effort — never breaks the commit) ──
+  try {
+    const today = todayInUserTz(new Date(), await getUserTimezone(opts.userId));
+
+    // Derive the most-significant changed field + from/to values.
+    // kcal is the primary signal; fall back to macro_ratios, then meal_ratios.
+    const prevKcal = typeof current.kcal === "number" ? current.kcal : null;
+    const captureField = "kcal";
+    const captureFrom: number | string | null = prevKcal;
+    const captureTo: number | string | null = p.kcal;
+
+    // Fetch active block for block context (nullable).
+    const { data: activeBlockRow } = await opts.supabase
+      .from("training_blocks")
+      .select("id, start_date, end_date, target_hit_at_week, target_value, target_metric, primary_lift, status, goal_text, target_unit, diet_goal, endurance_focus, created_at, completed_at, updated_at")
+      .eq("user_id", opts.userId)
+      .eq("status", "active")
+      .maybeSingle();
+    const activeBlock = (activeBlockRow as import("@/lib/data/types").TrainingBlock | null) ?? null;
+
+    let block_week: number | null = null;
+    if (activeBlock) {
+      const start = new Date(activeBlock.start_date + "T00:00:00Z");
+      const todayMs = new Date(today + "T00:00:00Z").getTime();
+      const days = Math.floor((todayMs - start.getTime()) / (24 * 60 * 60 * 1000));
+      block_week = Math.max(1, Math.floor(days / 7) + 1);
+    }
+
+    const built = buildExplicitIntervention({
+      kind: "nutrition_change",
+      started_on: today,
+      block_id: activeBlock?.id ?? null,
+      block_phase: null,
+      block_week,
+      field: captureField,
+      from: captureFrom,
+      to: captureTo,
+    });
+    await recordIntervention(opts.supabase, opts.userId, built);
+  } catch (captureErr) {
+    console.warn("[executeCommitNutritionTargets] intervention capture failed — commit unaffected:", captureErr);
+  }
+
   return {
     ok: true,
     data: { applied: { kcal: p.kcal, macro_ratios: p.macro_ratios, meal_ratios: p.meal_ratios } },
