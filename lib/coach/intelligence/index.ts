@@ -304,8 +304,9 @@ export function assembleIntelligence(data: IntelligenceData): AthleteIntelligenc
   });
 
   // Strength-endurance interference: last 28 days
+  // last 28d — computeTssRatio's chronic baseline assumes a 28-day window
   const interference = composeInterference({
-    dailyLogs: dailyLogs.map((d) => ({
+    dailyLogs: dailyLogs.slice(0, 28).map((d) => ({
       date: d.date,
       endurance_load: d.endurance_load,
     })),
