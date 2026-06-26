@@ -186,6 +186,8 @@ const FULL_FIXTURE_DATA: IntelligenceData = {
     protein_g: 200,
     phase: "recomp",
   },
+  // Empty for tests — real data comes from coach_interventions fetch in buildAthleteIntelligence
+  interventionRows: [],
   today: "2026-06-26",
 };
 
