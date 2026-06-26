@@ -235,6 +235,37 @@ export function LoggerSheet(props: Props) {
     void saveDraft(updated);
   }, [draft, props.editMode]);
 
+  // Stable callbacks for ExerciseCard — use functional setDraft so they don't
+  // close over the draft snapshot and stay reference-equal across renders.
+  // React.memo on ExerciseCard then skips re-renders caused by unrelated state.
+  //
+  // These MUST be declared before any early return below: `draft` starts null
+  // and loads async, so the first render takes the `if (!draft)` guard. Hooks
+  // placed after that guard run on only some renders → React error #310
+  // (changed hook order). See lib/logger/__tests__/hook-order.test.ts.
+  const handleExerciseChange = useCallback((index: number, next: ExerciseDraft) => {
+    setDraft((prev) => {
+      if (!prev) return prev;
+      return { ...prev, exercises: prev.exercises.map((e, j) => j === index ? next : e) };
+    });
+  }, []);
+
+  const handleExerciseRemove = useCallback((index: number) => {
+    setDraft((prev) => {
+      if (!prev) return prev;
+      return { ...prev, exercises: prev.exercises.filter((_, j) => j !== index) };
+    });
+  }, []);
+
+  const handleExerciseReplace = useCallback((index: number) => {
+    setPickerMode({ replace_index: index });
+    setPickerOpen(true);
+  }, []);
+
+  const handleReorderAll = useCallback(() => {
+    setReorderOpen(true);
+  }, []);
+
   const isPaused = !!draft?.paused_at;
 
   if (resumePrompt && !draft) {
@@ -443,32 +474,6 @@ export function LoggerSheet(props: Props) {
       queryKey: queryKeys.userSessionTemplates.one(draft.user_id, draft.session_type),
     });
   }
-
-  // Stable callbacks for ExerciseCard — use functional setDraft so they don't
-  // close over the draft snapshot and stay reference-equal across renders.
-  // React.memo on ExerciseCard then skips re-renders caused by unrelated state.
-  const handleExerciseChange = useCallback((index: number, next: ExerciseDraft) => {
-    setDraft((prev) => {
-      if (!prev) return prev;
-      return { ...prev, exercises: prev.exercises.map((e, j) => j === index ? next : e) };
-    });
-  }, []);
-
-  const handleExerciseRemove = useCallback((index: number) => {
-    setDraft((prev) => {
-      if (!prev) return prev;
-      return { ...prev, exercises: prev.exercises.filter((_, j) => j !== index) };
-    });
-  }, []);
-
-  const handleExerciseReplace = useCallback((index: number) => {
-    setPickerMode({ replace_index: index });
-    setPickerOpen(true);
-  }, []);
-
-  const handleReorderAll = useCallback(() => {
-    setReorderOpen(true);
-  }, []);
 
   return (
     <div className="fixed inset-0 bg-black z-40 flex flex-col">
