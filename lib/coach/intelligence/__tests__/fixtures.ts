@@ -478,3 +478,150 @@ export const SAMPLE_FOOD_LOG_90D: FoodLogEntry[] = Array.from(
 // Salmon:         1/week × 12 = 12 entries
 // Oats:           1/week × 12 = 12 entries
 // Almonds:        1/week × 12 = 12 entries
+
+// ---------------------------------------------------------------------------
+// SAMPLE_PROFILE — Profile with athlete_profile_documents including
+// injury and constraint data for Task 3 testing
+// ---------------------------------------------------------------------------
+
+export const SAMPLE_PROFILE = {
+  user_id: "test-user",
+  name: "Test Athlete",
+  age: 36,
+  height_cm: 180,
+  timezone: "Asia/Dubai",
+  athlete_profile_documents: [
+    {
+      id: "doc-001",
+      user_id: "test-user",
+      version: 1,
+      status: "active",
+      intake_payload: {
+        schema_version: 1,
+        health: {
+          conditions: {
+            cardiac: false,
+            hypertension: false,
+            diabetes: "none" as const,
+            autoimmune: false,
+            joint_surgeries: [],
+            other: "",
+          },
+          medications: "",
+          recent_illness_injury: "",
+          active_injuries: [],
+          allergies: "",
+        },
+        training: {
+          years_lifting: 8,
+          training_age: "advanced" as const,
+          sessions_per_week: 4,
+          typical_session_minutes: 60,
+          equipment: {
+            barbell: true,
+            rack: true,
+            bench: true,
+            dumbbells: true,
+            cables: true,
+            machines: true,
+            platform: false,
+            ghd: false,
+            sled: false,
+            treadmill: false,
+            rower: false,
+            bike: false,
+            kettlebells: false,
+            bands: false,
+            other: "",
+          },
+          current_e1rm: {
+            squat: 140,
+            bench: 100,
+            deadlift: 160,
+            ohp: 60,
+          },
+          best_ever_pr: {
+            squat: 145,
+            bench: 105,
+            deadlift: 170,
+            ohp: 65,
+          },
+          previous_programs: "",
+          recent_plateaus: "",
+        },
+        lifestyle: {
+          job_demands: "sedentary" as const,
+          commute_minutes: 15,
+          has_dependents: false,
+          dependent_notes: "",
+          stress_self_rating: 3 as const,
+          days_available: {
+            mon: true,
+            tue: true,
+            wed: true,
+            thu: true,
+            fri: true,
+            sat: true,
+            sun: false,
+          },
+          earliest_session_time: "17:00",
+          latest_session_time: "21:00",
+          travel_frequency: "monthly" as const,
+        },
+        nutrition: {
+          current_phase: "recomp" as const,
+          current_kcal: 2500,
+          current_macros: {
+            protein_g: 200,
+            carb_g: 250,
+            fat_g: 80,
+          },
+          tracking_experience: "consistent" as const,
+          restrictions: "",
+          alcohol_drinks_per_week: 2,
+          caffeine_mg_per_day: 400,
+          supplements: "",
+        },
+        sleep_recovery: {
+          avg_sleep_hours: 7.5,
+          typical_bedtime: "22:30",
+          typical_wake_time: "06:30",
+          sleep_latency_minutes: 10,
+          awakenings: "none" as const,
+          mobility_work: "Yes, 3x/week",
+          soreness_frequency: "common" as const,
+        },
+        goals: {
+          primary_type: "strength",
+          primary_metric: "Deadlift E1RM",
+          target_value: 200,
+          target_unit: "kg",
+          target_date: "2026-12-31",
+          why_narrative: "Build strength and performance",
+        },
+      },
+      rendered_md: null,
+      acknowledged_at: "2026-06-01T10:00:00Z",
+      superseded_at: null,
+      superseded_by: null,
+      endurance_profile: null,
+      // ── Fields from the task brief ──────────────────────────────────────────
+      current_injuries: [
+        {
+          area: "shoulder",
+          severity: "mild",
+          weeks_since_onset: 3,
+          exercises_to_avoid: ["OHP", "Weighted Chins", "Heavy Bench Press"],
+        },
+      ],
+      gym_type: "commercial",
+      lifestyle_constraints: [
+        "Work 9-5, can only train evenings",
+        "Family time 7-9pm, max 3 sessions/week",
+        "Travel every 3rd week",
+      ],
+      created_at: "2026-06-01T10:00:00Z",
+      updated_at: "2026-06-01T10:00:00Z",
+    },
+  ],
+};
