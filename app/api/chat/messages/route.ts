@@ -540,6 +540,10 @@ export async function POST(req: Request) {
   let windowAsc: WindowRow[];
   let imgsByMsg: Map<string, { storage_path: string }[]>;
   let messages: RichMessage[];
+  // Hoisted so the ReadableStream.start() callback can use them without a
+  // redundant getUserTimezone round-trip (Phase 4 Win 3 dedup).
+  let tzForToday: string;
+  let todayIso: string;
 
   // ── Cold-path timing instrumentation ────────────────────────────────────
   // Gated behind CHAT_COLDPATH_PROFILE=1 so it is zero-overhead in normal
@@ -555,9 +559,9 @@ export async function POST(req: Request) {
   let _cpPreStreamDone = 0;
 
   try {
-    const tzForToday = await getUserTimezone(user.id);
+    tzForToday = await getUserTimezone(user.id);
     if (_cpEnabled) _cpTzDone = performance.now() - _cpT0;
-    const todayIso = todayInUserTz(new Date(), tzForToday);
+    todayIso = todayInUserTz(new Date(), tzForToday);
     const sinceDate = new Date(`${todayIso}T00:00:00Z`);
     sinceDate.setUTCDate(sinceDate.getUTCDate() - 14);
     const since = sinceDate.toISOString().slice(0, 10);
@@ -570,6 +574,16 @@ export async function POST(req: Request) {
     const workoutsSinceDate = new Date(`${todayIso}T00:00:00Z`);
     workoutsSinceDate.setUTCDate(workoutsSinceDate.getUTCDate() - 14);
     const workoutsSince = workoutsSinceDate.toISOString().slice(0, 10);
+
+    // Win 1 (HIGH): kick off buildEphemeralHeader immediately — it only needs
+    // tzForToday (available from Phase 0) and has zero dependency on Phase 1
+    // or buildSystemPrompt. Starting it here lets its 3-concurrent-DB-read
+    // internal Promise.all overlap fully with the Phase 1 Promise.all below.
+    const ephemeralHeaderPromise = buildEphemeralHeader({
+      supabase: sr as unknown as SupabaseClient,
+      userId: user.id,
+      tz: tzForToday,
+    });
 
     const [
       { data: profileRow },
@@ -639,18 +653,28 @@ export async function POST(req: Request) {
       proteinToday_g,
     });
 
-    // Resolve effective system prompt via mode-aware assembler.
+    // Win 2 (MEDIUM): run buildSystemPrompt concurrently with the already
+    // in-flight ephemeralHeaderPromise. buildSystemPrompt needs activeTriggers
+    // + userPromptOverride (both just computed above); ephemeralHeaderPromise
+    // was kicked off right after Phase 0 and has been running in parallel with
+    // Phase 1 — we merely await it here alongside buildSystemPrompt.
     const userPromptOverride =
       typeof profileRow?.system_prompt === "string" && profileRow.system_prompt.length > 0
         ? profileRow.system_prompt
         : null;
-    finalSystemPrompt = await buildSystemPrompt({
-      supabase: sr as unknown as SupabaseClient,
-      userId: user.id,
-      mode: effectiveMode,
-      userPromptOverride,
-      activeTriggers,
-    });
+    [finalSystemPrompt] = await Promise.all([
+      buildSystemPrompt({
+        supabase: sr as unknown as SupabaseClient,
+        userId: user.id,
+        mode: effectiveMode,
+        userPromptOverride,
+        activeTriggers,
+      }),
+      // Await the early-started ephemeralHeaderPromise in this same batch so
+      // that buildSystemPrompt's DB round-trips (plan_week / setup_block modes)
+      // overlap with the ephemeralHeader DB round-trips rather than sequencing.
+      ephemeralHeaderPromise,
+    ]);
     if (_cpEnabled) _cpSystemPromptDone = performance.now() - _cpT0;
 
     // Graceful degradation as the user approaches the daily cap: append a
@@ -755,11 +779,9 @@ export async function POST(req: Request) {
     // the actual content). Stays out of the cached snapshot prefix and adjacent
     // to the user's question so the model has the freshest context next to the
     // ask. Not marked cache_control — must NOT be cached.
-    const ephemeralHeader = await buildEphemeralHeader({
-      supabase: sr as unknown as SupabaseClient,
-      userId: user.id,
-      tz: tzForToday,
-    });
+    // ephemeralHeaderPromise was already awaited in the Promise.all above with
+    // buildSystemPrompt; by this point it is settled and re-awaiting is free.
+    const ephemeralHeader = await ephemeralHeaderPromise;
     if (_cpEnabled) _cpEphemeralHeaderDone = performance.now() - _cpT0;
     const headerBlock: ContentBlock = { type: "text", text: ephemeralHeader };
     messages.push({ role: "user", content: [headerBlock, ...newTurnBlocks] });
@@ -804,22 +826,25 @@ export async function POST(req: Request) {
       const activeSpeaker: Speaker = initialSpeaker;
       // Build the specialist-activity context block for Peter turns. Non-blocking
       // on failure — a DB error here should never prevent the chat from streaming.
-      const peterContext = initialSpeaker === "peter"
-        ? await buildPeterContextBlock(sr, user.id).catch((err) => {
-            console.warn("[chat] buildPeterContextBlock failed", err);
-            return null;
-          })
-        : null;
-      const tz = await getUserTimezone(user.id);
-      const today = todayInUserTz(new Date(), tz);
-      const peterDashboardBlock = initialSpeaker === "peter"
-        ? await loadLatestPeterDashboard(sr, user.id, today)
-            .then((row) => row?.narrative_md ?? null)
-            .catch((err) => {
-              console.warn("[chat] loadLatestPeterDashboard failed", err);
+      //
+      // Win 3 (MEDIUM): run buildPeterContextBlock and loadLatestPeterDashboard
+      // in parallel — they are independent DB reads. Also eliminate the redundant
+      // getUserTimezone call: tzForToday / todayIso were computed in Phase 0 and
+      // are in scope (hoisted to outer let declarations above the try block).
+      const [peterContext, peterDashboardBlock] = initialSpeaker === "peter"
+        ? await Promise.all([
+            buildPeterContextBlock(sr, user.id).catch((err) => {
+              console.warn("[chat] buildPeterContextBlock failed", err);
               return null;
-            })
-        : null;
+            }),
+            loadLatestPeterDashboard(sr, user.id, todayIso)
+              .then((row) => row?.narrative_md ?? null)
+              .catch((err) => {
+                console.warn("[chat] loadLatestPeterDashboard failed", err);
+                return null;
+              }),
+          ])
+        : [null, null];
       const carterContext = initialSpeaker === "carter"
         ? await (async () => {
             const [exercisesBlock, frameworkBlock, prescriptionBlock] = await Promise.all([
