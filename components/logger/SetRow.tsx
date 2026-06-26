@@ -66,12 +66,14 @@ export function SetRow({
   // 250ms re-renders aren't dead-stripped.
   void tick;
 
+  // Warmup rows don't get a "previous" hint — the column would either be
+  // blank or, worse, surface last week's heavy working set as the comparison.
   const prev = usePreviousSet({
     userId,
     exerciseName,
-    setIndex: set.set_index,
+    workingSetOrdinal: workingSetNumber,
     excludeWorkoutExternalId,
-    enabled: !set.committed_at,
+    enabled: !set.committed_at && !set.warmup,
   });
 
   const committed = !!set.committed_at;
