@@ -1,5 +1,8 @@
+"use client";
+
 import { fmtNum } from "@/lib/ui/score";
 import { COLOR } from "@/lib/ui/theme";
+import { GlossaryHint } from "@/components/ui/GlossaryHint";
 
 type Status = "ok" | "watch" | "alert" | "muted";
 
@@ -13,6 +16,8 @@ type MonitorTileProps = {
   status?: Status;
   /** Decorative left accent color override; defaults from status. */
   accent?: string;
+  /** When provided, wraps the label with a GlossaryHint tooltip. */
+  glossaryKey?: string;
 };
 
 const STATUS_TOKENS: Record<Status, { dot: string; label: string; tint: string }> = {
@@ -30,6 +35,7 @@ export function MonitorTile({
   detail,
   status = "muted",
   accent,
+  glossaryKey,
 }: MonitorTileProps) {
   const tok = STATUS_TOKENS[status];
   const dotColor = accent ?? tok.dot;
@@ -45,7 +51,11 @@ export function MonitorTile({
           className="text-[10px] uppercase tracking-[0.14em] font-medium"
           style={{ color: COLOR.textMuted }}
         >
-          {label}
+          {glossaryKey ? (
+            <GlossaryHint term={label} glossaryKey={glossaryKey} />
+          ) : (
+            label
+          )}
         </span>
         <span className="flex items-center gap-1.5">
           <span

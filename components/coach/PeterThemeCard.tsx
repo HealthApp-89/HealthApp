@@ -21,6 +21,13 @@ const SEVERITY_COLOR: Record<Severity, string> = {
   urgent: COLOR.danger,
 };
 
+/** Accessible text label paired with the severity dot. */
+const SEVERITY_LABEL: Record<Severity, string> = {
+  ok:     "Good",
+  warn:   "Watch",
+  urgent: "Action",
+};
+
 type Props = {
   theme: ThemePayload;
   narrative: string | null;
@@ -63,15 +70,40 @@ export function PeterThemeCard({ theme, narrative, expanded, onToggle }: Props) 
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span
-            aria-hidden
             style={{
-              display: 'inline-block',
-              width: 8,
-              height: 8,
-              borderRadius: 4,
-              background: SEVERITY_COLOR[theme.severity],
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 4,
+              padding: '2px 6px',
+              borderRadius: 9999,
+              background: `${SEVERITY_COLOR[theme.severity]}22`,
+              border: `1px solid ${SEVERITY_COLOR[theme.severity]}66`,
             }}
-          />
+            aria-label={`Severity: ${SEVERITY_LABEL[theme.severity]}`}
+          >
+            <span
+              aria-hidden
+              style={{
+                display: 'inline-block',
+                width: 6,
+                height: 6,
+                borderRadius: 3,
+                background: SEVERITY_COLOR[theme.severity],
+                flexShrink: 0,
+              }}
+            />
+            <span
+              style={{
+                fontSize: 9,
+                fontWeight: 700,
+                color: SEVERITY_COLOR[theme.severity],
+                letterSpacing: '0.06em',
+                textTransform: 'uppercase',
+              }}
+            >
+              {SEVERITY_LABEL[theme.severity]}
+            </span>
+          </span>
           <span
             style={{
               fontSize: 12,

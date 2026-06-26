@@ -237,9 +237,9 @@ function BriefHydration({ hydration }: { hydration: MorningBriefHydration }) {
 }
 
 const BAND_LABEL: Record<"low" | "moderate" | "high", string> = {
-  low: "Take it easy",
-  moderate: "Moderate",
-  high: "Primed",
+  low:      "Action",
+  moderate: "Watch",
+  high:     "Good",
 };
 
 const BAND_GRADIENT: Record<"low" | "moderate" | "high", string> = {

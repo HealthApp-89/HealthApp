@@ -97,6 +97,7 @@ export async function WeeklyRollups({ userId, today, todayHrv, todayRhr, hrvBase
                   : `Baseline ${fmtNum(hrvBaseline)} ms`
               }
               accent={METRIC_COLOR.hrv}
+              glossaryKey="HRV"
             />
             <MonitorTile
               label="Resting HR"
@@ -105,6 +106,7 @@ export async function WeeklyRollups({ userId, today, todayHrv, todayRhr, hrvBase
               status={rhrStatus(todayRhr)}
               detail={rhrAvg7 != null ? `7d avg ${fmtNum(rhrAvg7)} bpm` : null}
               accent={METRIC_COLOR.resting_hr}
+              glossaryKey="Resting HR"
             />
           </div>
         </DashboardSection>

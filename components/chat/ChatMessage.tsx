@@ -132,8 +132,8 @@ export function ChatMessage({
               of same-speaker turns; consecutive turns from the same coach
               skip the chip to match the avatar's grouping cadence. */}
           {isFirstInGroup && isCoachSpeaker(message.speaker) && (
-            <div style={{ marginBottom: 4 }}>
-              <SpeakerChip speaker={message.speaker as Speaker} />
+            <div style={{ marginBottom: 6 }}>
+              <SpeakerChip speaker={message.speaker as Speaker} size="md" />
             </div>
           )}
           <div

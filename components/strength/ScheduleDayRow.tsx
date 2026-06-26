@@ -7,6 +7,7 @@ import { LoggerSheet } from "@/components/logger/LoggerSheet";
 import { DaySwapSheet } from "@/components/strength/DaySwapSheet";
 import { useExistingLoggerDraft } from "@/lib/logger/use-existing-draft";
 import { COLOR } from "@/lib/ui/theme";
+import { CircleDot, CheckCircle2, XCircle, Clock, Minus } from "lucide-react";
 
 /** Date-class discriminator — controls which footer CTAs render. */
 export type DayClass = "today" | "past_logged" | "past_unlogged" | "future" | "rest";
@@ -67,15 +68,27 @@ export function ScheduleDayRow({
   const isRest = dayClass === "rest";
 
   const pillLabel =
-    dayClass === "today" ? "Today" :
-    dayClass === "past_logged" ? "Logged" :
-    isRest ? "Rest" :
+    dayClass === "today"          ? "Today" :
+    dayClass === "past_logged"    ? "Logged" :
+    dayClass === "past_unlogged"  ? "Not logged" :
+    dayClass === "future"         ? "Upcoming" :
+    isRest                        ? "Rest" :
     sessionType;
   const pillBg =
-    dayClass === "today" ? COLOR.warning :
-    dayClass === "past_logged" ? COLOR.success :
-    isRest ? COLOR.textMuted :
+    dayClass === "today"          ? COLOR.warning :
+    dayClass === "past_logged"    ? COLOR.success :
+    dayClass === "past_unlogged"  ? COLOR.danger :
+    dayClass === "future"         ? COLOR.accent :
+    isRest                        ? COLOR.textMuted :
     COLOR.accent;
+
+  const PillIcon =
+    dayClass === "today"          ? CircleDot :
+    dayClass === "past_logged"    ? CheckCircle2 :
+    dayClass === "past_unlogged"  ? XCircle :
+    dayClass === "future"         ? Clock :
+    isRest                        ? Minus :
+    null;
 
   const showFooterToday = dayClass === "today" && !isRest;
   const showFooterFuture = dayClass === "future" && !isRest;
@@ -140,8 +153,12 @@ export function ScheduleDayRow({
               letterSpacing: "0.04em",
               textTransform: "uppercase",
               borderRadius: 9999,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
             }}
           >
+            {PillIcon && <PillIcon size={10} aria-hidden="true" />}
             {pillLabel}
           </span>
 

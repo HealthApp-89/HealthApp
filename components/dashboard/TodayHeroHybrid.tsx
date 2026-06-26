@@ -5,12 +5,20 @@ import Link from "next/link";
 import { ArrowRight, Activity, Moon, Zap } from "lucide-react";
 import { COLOR, RADIUS, SHADOW, METRIC_COLOR } from "@/lib/ui/theme";
 import { fmtNum } from "@/lib/ui/score";
+import { GlossaryHint } from "@/components/ui/GlossaryHint";
 
 export type HeroMetricCell = {
   key: "hrv" | "sleep" | "strain";
   value: number | null;
   deltaLabel: string;
   deltaTone: "ok" | "alert" | "mute";
+};
+
+/** Map from hero metric key → glossary lookup key (matches GLOSSARY in GlossaryHint). */
+const GLOSSARY_KEY: Record<HeroMetricCell["key"], string> = {
+  hrv:    "HRV",
+  sleep:  "Sleep Performance",
+  strain: "Strain",
 };
 
 type Props = {
@@ -22,10 +30,10 @@ type Props = {
 };
 
 const BAND_LABEL: Record<Props["band"], string> = {
-  primed:   "Primed",
-  moderate: "Solid",
-  easy:     "Easy day",
-  rest:     "Rest day",
+  primed:   "Good",
+  moderate: "Watch",
+  easy:     "Action",
+  rest:     "Rest",
 };
 
 const ICON_FOR: Record<HeroMetricCell["key"], React.ComponentType<{ size?: number; color?: string }>> = {
@@ -145,7 +153,7 @@ export function TodayHeroHybrid({ narrative, score, band, metrics, briefHref }: 
                     fontWeight: 600,
                   }}
                 >
-                  {METRIC_NAME[m.key]}
+                  <GlossaryHint term={METRIC_NAME[m.key]} glossaryKey={GLOSSARY_KEY[m.key]} />
                 </div>
                 <div style={{ fontSize: 11, fontWeight: 700, color: tone }}>
                   {m.deltaLabel}
