@@ -38,6 +38,10 @@
       "schedule": "0 2 * * *"
     },
     {
+      "path": "/api/coach/interventions/sweep",
+      "schedule": "0 2 * * *"
+    },
+    {
       "path": "/api/coach/eating-identity/sync",
       "schedule": "30 3 * * *"
     },
