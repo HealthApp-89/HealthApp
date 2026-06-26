@@ -86,7 +86,7 @@ export function BlockProposalCard({
         )}
       </div>
 
-      <div style={{ display: "flex", gap: "8px", marginTop: "12px" }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginTop: "12px" }}>
         <button
           disabled={busy}
           onClick={() => {

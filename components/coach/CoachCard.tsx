@@ -76,6 +76,7 @@ function Actions({ children }: { children: React.ReactNode }) {
     <div
       style={{
         display: "flex",
+        flexWrap: "wrap",
         gap: 8,
         padding: "0 16px 16px",
         justifyContent: "flex-end",
