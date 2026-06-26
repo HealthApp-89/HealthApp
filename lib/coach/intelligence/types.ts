@@ -1,8 +1,9 @@
 // lib/coach/intelligence/types.ts
 //
 // Zod schemas and TypeScript types for the coach intelligence layer.
-// Covers Layer 1 (identity, constraints) and Layer 2 (history) payloads
-// plus the unified AthleteIntelligencePayload.
+// Covers Layer 1 (identity, constraints) and Layer 2 (history, recovery,
+// nutrition-performance, interference, body-comp) payloads plus the unified
+// AthleteIntelligencePayload.
 //
 // Naming conventions:
 //   - <Feature>Payload  for data blocks persisted / passed between layers
@@ -10,6 +11,12 @@
 //   - Enum constants (const) for discriminated union values
 
 import { z } from "zod";
+
+// Layer 2 schemas — imported from their composer files and re-composed here.
+import { RecoveryReadinessResultSchema } from "./recovery-readiness";
+import { NutritionPerformanceResultSchema } from "./nutrition-performance-linker";
+import { InterferenceResultSchema } from "./interference-checker";
+import { BodyCompDirectionResultSchema } from "./body-comp-direction";
 
 // ---------------------------------------------------------------------------
 // Shared primitives
@@ -209,12 +216,19 @@ export type HistoryPayload = z.infer<typeof HistoryPayloadSchema>;
 
 /**
  * AthleteIntelligencePayload — the full synthesized intelligence document
- * combining identity, constraints, and history layers.
+ * combining Layer 1 (identity, constraints, history) and Layer 2 (recovery
+ * readiness, nutrition-performance, interference, body-comp direction).
  */
 export const AthleteIntelligencePayloadSchema = z.object({
+  // ── Layer 1 ───────────────────────────────────────────────────────────────
   identity: IdentityPayloadSchema,
   constraints: ConstraintPayloadSchema,
   history: HistoryPayloadSchema,
+  // ── Layer 2 ───────────────────────────────────────────────────────────────
+  recovery_readiness: RecoveryReadinessResultSchema,
+  nutrition_performance: NutritionPerformanceResultSchema,
+  interference: InterferenceResultSchema,
+  body_comp_direction: BodyCompDirectionResultSchema,
   /** ISO 8601 datetime when this payload was generated */
   generated_on: ISODatetime,
 });

@@ -387,11 +387,53 @@ describe("HistoryPayloadSchema", () => {
 // AthleteIntelligencePayload
 // ---------------------------------------------------------------------------
 
+// Layer 2 fixtures (minimal valid shapes matching each composer's result schema)
+const validRecoveryReadiness = {
+  status: "recovering_well" as const,
+  confidence: 0.85,
+  drivers: ["HRV stable"],
+  recommendation: "continue_training" as const,
+  narrative: "HRV stable near baseline — recovery on track.",
+};
+
+const validNutritionPerformance = {
+  protein_status: "adequate" as const,
+  carb_timing_suboptimal: false,
+  deficit_severity: "not_in_deficit" as const,
+  predicted_muscle_loss_risk: "low" as const,
+  drivers: [],
+  narrative: "Nutrition on track.",
+};
+
+const validInterference = {
+  interference_level: "none" as const,
+  tss_ratio_7d_28d: null,
+  lift_trend: "progressing" as const,
+  action: null,
+  drivers: [],
+  narrative: "No endurance load — no interference.",
+};
+
+const validBodyCompDirection = {
+  direction: "neutral" as const,
+  confidence: 0.6,
+  weeks_of_data: 4,
+  weight_trend_kg_per_week: null,
+  bodyfat_trend_pct_per_week: null,
+  lift_trend: "progressing" as const,
+  drivers: [],
+  narrative: "Weight and body fat within flat-band thresholds.",
+};
+
 describe("AthleteIntelligencePayloadSchema", () => {
   const validPayload = {
     identity: validIdentity,
     constraints: validConstraint,
     history: validHistory,
+    recovery_readiness: validRecoveryReadiness,
+    nutrition_performance: validNutritionPerformance,
+    interference: validInterference,
+    body_comp_direction: validBodyCompDirection,
     generated_on: "2026-06-26T08:00:00.000Z",
   };
 

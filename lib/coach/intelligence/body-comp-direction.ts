@@ -297,13 +297,16 @@ export function composeBodyCompDirection(
   const sortedLogs = [...dailyLogs].sort((a, b) => b.date.localeCompare(a.date));
   const sortedWorkouts = [...workouts].sort((a, b) => b.date.localeCompare(a.date));
 
-  // Derive anchor date from most-recent log
+  // Derive anchor date from most-recent log.
+  // The final fallback is unreachable: the early-return guard at the top of
+  // this function already handles the case where BOTH inputs are empty. A
+  // literal placeholder avoids a raw new Date() call (timezone-audit gate).
   const anchorDate =
     sortedLogs.length > 0
       ? sortedLogs[0].date
       : sortedWorkouts.length > 0
         ? sortedWorkouts[0].date
-        : new Date().toISOString().slice(0, 10);
+        : "1970-01-01"; // unreachable — empty-input case returned early above
 
   // ── Weight trend ──────────────────────────────────────────────────────────
   const weightRows = sortedLogs.map((l) => ({ date: l.date, value: l.weight_kg }));
