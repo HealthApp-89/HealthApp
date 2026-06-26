@@ -370,6 +370,9 @@ export function composeBodyCompDirection(
   const liftHolding = lift_trend === "progressing" || lift_trend === "flat";
   const liftDeclining = lift_trend === "declining";
 
+  // Track which losing_muscle path fired, to build an accurate narrative.
+  let losingMuscleViaFfm = false;
+
   let direction: BodyCompDirectionResult["direction"];
 
   if (noBodyData) {
@@ -386,14 +389,14 @@ export function composeBodyCompDirection(
     liftDeclining &&
     (bfFlat || bfUp || bodyfat_trend_pct_per_week === null)
   ) {
-    // Weight loss + strength loss + no bf improvement = muscle loss
+    // Weight loss + strength loss + no bf improvement = muscle loss (primary path)
     direction = "losing_muscle";
   } else if (ffmClearlyDown && (bfFlat || bfUp)) {
-    // FFM clearly falling with no bf improvement = muscle loss (supplementary)
+    // FFM clearly falling with no bf improvement = muscle loss (supplementary path)
     direction = "losing_muscle";
+    losingMuscleViaFfm = true;
   } else if (
     weightUp &&
-    liftHolding &&
     lift_trend === "progressing" &&
     (bfFlat || bfDown)
   ) {
@@ -517,15 +520,25 @@ export function composeBodyCompDirection(
         : "";
     narrative = `Weight down${wtStr}${bfStr} and ${liftLabel} e1RM still ${lift_trend === "progressing" ? "climbing" : "holding"} — you're losing fat while preserving muscle.`;
   } else if (direction === "losing_muscle") {
-    const wtStr =
-      weight_trend_kg_per_week !== null
-        ? ` ${Math.abs(Math.round(weight_trend_kg_per_week * 100) / 100).toFixed(2)} kg/wk`
-        : "";
     const gKgStr =
       gPerKg !== null
         ? ` (protein ${(Math.round(gPerKg * 100) / 100).toFixed(1)} g/kg)`
         : "";
-    narrative = `Weight down${wtStr} with ${liftLabel} e1RM declining${gKgStr} — likely losing muscle; raise protein and ease the deficit.`;
+    if (losingMuscleViaFfm) {
+      // FFM-supplementary path: cite fat-free mass decline, not lifts or weight direction
+      const ffmStr =
+        ffmSlopePerWeek !== null
+          ? ` (${Math.abs(Math.round(ffmSlopePerWeek * 100) / 100).toFixed(2)} kg/wk)`
+          : "";
+      narrative = `Fat-free mass trending down${ffmStr}${gKgStr} — likely losing muscle; raise protein and ease the deficit.`;
+    } else {
+      // Primary path: weight down + lifts declining
+      const wtStr =
+        weight_trend_kg_per_week !== null
+          ? ` ${Math.abs(Math.round(weight_trend_kg_per_week * 100) / 100).toFixed(2)} kg/wk`
+          : "";
+      narrative = `Weight down${wtStr} with ${liftLabel} e1RM declining${gKgStr} — likely losing muscle; raise protein and ease the deficit.`;
+    }
   } else if (direction === "gaining_muscle") {
     const wtStr =
       weight_trend_kg_per_week !== null

@@ -367,10 +367,59 @@ describe("composeBodyCompDirection — empty input", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Test 9: Output validates against schema
+// Test 9: FFM supplementary path → 'losing_muscle' with FFM-based narrative
 // ---------------------------------------------------------------------------
 
-describe("composeBodyCompDirection — schema validation", () => {
+describe("composeBodyCompDirection — FFM supplementary path", () => {
+  it("returns losing_muscle via FFM path and cites fat-free mass, not e1RM, in narrative", () => {
+    // Weight: roughly flat (101.5 → 101.3 over 28d ≈ −0.05 kg/wk → within ±0.1)
+    // BF: flat (27.0 → 27.05) → no bf improvement, stays within ±0.05%/wk
+    // FFM: 73.5 → 70.5 over 28d → −3 kg / 4 wks = −0.75 kg/wk → clearly below −0.1 threshold
+    const dailyLogs = Array.from({ length: 28 }, (_, i) => {
+      const t = 1 - i / 27; // t=1 is most recent, t=0 is oldest
+      const weight_kg = 101.5 + t * (101.3 - 101.5); // near-flat: 101.5 → 101.3
+      const body_fat_pct = 27.0 + t * (27.05 - 27.0); // flat: 27.0 → 27.05
+      const fat_free_mass_kg = 73.5 + t * (70.5 - 73.5); // clearly declining: 73.5 → 70.5
+      return makeLog(daysAgo(i), weight_kg, body_fat_pct, fat_free_mass_kg, 150);
+    });
+
+    // Lifts: flat — NOT declining (same weight, same reps in both windows)
+    const workouts: WorkoutSession[] = [
+      makeWorkout(daysAgo(25), 120, 5), // prior 14d
+      makeWorkout(daysAgo(20), 120, 5),
+      makeWorkout(daysAgo(16), 120, 5),
+      makeWorkout(daysAgo(10), 120, 5), // recent 14d — identical load
+      makeWorkout(daysAgo(5), 120, 5),
+      makeWorkout(daysAgo(1), 120, 5),
+    ];
+
+    const input: BodyCompInput = {
+      dailyLogs,
+      workouts,
+      bodyweight_kg: 101.3,
+    };
+    const result = composeBodyCompDirection(input);
+
+    // Direction must be losing_muscle
+    expect(result.direction).toBe("losing_muscle");
+
+    // Lift trend must NOT be declining (FFM path fires, not primary path)
+    expect(result.lift_trend).not.toBe("declining");
+
+    // Narrative must NOT contain a false "e1RM declining" claim
+    expect(result.narrative).not.toMatch(/e1rm declining/i);
+    expect(result.narrative).not.toMatch(/lift.*declining/i);
+
+    // Narrative must reference fat-free mass
+    expect(result.narrative).toMatch(/fat-free mass/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Test 10: Output validates against schema
+// ---------------------------------------------------------------------------
+
+describe("composeBodyCompDirection — schema validation (all scenarios)", () => {
   it("produces output that validates against BodyCompDirectionResultSchema in all scenarios", () => {
     const scenarios: BodyCompInput[] = [
       // Scenario A: losing fat
