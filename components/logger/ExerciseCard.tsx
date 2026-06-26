@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, memo, useCallback, useMemo, useState } from "react";
 import type { ExerciseDraft, ExerciseSetDraft } from "@/lib/logger/types";
 import { SetRow } from "@/components/logger/SetRow";
 import { RestBar } from "@/components/logger/RestBar";
@@ -14,14 +14,14 @@ type Props = {
   exerciseIndex: number;
   allExercises: ExerciseDraft[];
   /** Mutate exercise's sets/name; caller persists the new draft. */
-  onChange: (next: ExerciseDraft) => void;
-  onReplace: () => void;
-  onRemove: () => void;
+  onExerciseChange: (index: number, next: ExerciseDraft) => void;
+  onReplace: (index: number) => void;
+  onRemove: (index: number) => void;
   onReorderAll: () => void;
 };
 
-export function ExerciseCard({
-  userId, externalId, exercise, exerciseIndex, allExercises, onChange, onReplace, onRemove, onReorderAll,
+function ExerciseCardInner({
+  userId, externalId, exercise, exerciseIndex, allExercises, onExerciseChange, onReplace, onRemove, onReorderAll,
 }: Props) {
   // Tier + rest prescription from session-structure annotation.
   const annotated = useMemo(() => {
@@ -40,7 +40,7 @@ export function ExerciseCard({
   const [restDialogOpen, setRestDialogOpen] = useState(false);
   const [unparsedBanner, setUnparsedBanner] = useState<string | null>(null);
 
-  function commitSet(setIndex: number) {
+  const commitSet = useCallback((setIndex: number) => {
     const nowIso = new Date().toISOString();
     const now = Date.now();
     const nextSets = exercise.sets.map((s, i) => {
@@ -49,25 +49,25 @@ export function ExerciseCard({
     });
 
     // rest_seconds_actual on the NEXT pending set is captured at its own commit time.
-    onChange({ ...exercise, sets: nextSets });
+    onExerciseChange(exerciseIndex, { ...exercise, sets: nextSets });
     setRestAfterSetIndex(setIndex);
     setActiveRestSeconds(effectiveRest);
     setActiveRestStartedAt(now);
-  }
+  }, [exercise, exerciseIndex, onExerciseChange, effectiveRest]);
 
-  function uncommitSet(setIndex: number) {
+  const uncommitSet = useCallback((setIndex: number) => {
     const nextSets = exercise.sets.map((s, i) =>
       i === setIndex ? { ...s, committed_at: null } : s,
     );
-    onChange({ ...exercise, sets: nextSets });
-  }
+    onExerciseChange(exerciseIndex, { ...exercise, sets: nextSets });
+  }, [exercise, exerciseIndex, onExerciseChange]);
 
-  function patchSet(setIndex: number, patch: Partial<ExerciseSetDraft>) {
+  const patchSet = useCallback((setIndex: number, patch: Partial<ExerciseSetDraft>) => {
     const nextSets = exercise.sets.map((s, i) => (i === setIndex ? { ...s, ...patch } : s));
-    onChange({ ...exercise, sets: nextSets });
-  }
+    onExerciseChange(exerciseIndex, { ...exercise, sets: nextSets });
+  }, [exercise, exerciseIndex, onExerciseChange]);
 
-  function addSet() {
+  const addSet = useCallback(() => {
     const last = exercise.sets[exercise.sets.length - 1];
     const isTimeBased = exercise.prescribed.duration_seconds != null;
     const next: ExerciseSetDraft = {
@@ -79,8 +79,8 @@ export function ExerciseCard({
       failure: false,
       committed_at: null,
     };
-    onChange({ ...exercise, sets: [...exercise.sets, next] });
-  }
+    onExerciseChange(exerciseIndex, { ...exercise, sets: [...exercise.sets, next] });
+  }, [exercise, exerciseIndex, onExerciseChange]);
 
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-3 mb-3">
@@ -95,10 +95,10 @@ export function ExerciseCard({
           <button onClick={() => setMenuOpen((v) => !v)} className="text-zinc-500 text-base" aria-label="Exercise menu">⋯</button>
           {menuOpen && (
             <div className="absolute right-0 top-6 bg-zinc-800 border border-zinc-700 rounded-lg p-1 text-xs z-10 min-w-[160px]">
-              <button onClick={() => { setMenuOpen(false); onReplace(); }} className="block w-full text-left px-2 py-1.5 hover:bg-zinc-700 rounded text-zinc-200">Replace</button>
+              <button onClick={() => { setMenuOpen(false); onReplace(exerciseIndex); }} className="block w-full text-left px-2 py-1.5 hover:bg-zinc-700 rounded text-zinc-200">Replace</button>
               <button onClick={() => { setMenuOpen(false); onReorderAll(); }} className="block w-full text-left px-2 py-1.5 hover:bg-zinc-700 rounded text-zinc-200">Reorder exercises</button>
               <button onClick={() => { setMenuOpen(false); setRestDialogOpen(true); }} className="block w-full text-left px-2 py-1.5 hover:bg-zinc-700 rounded text-zinc-200">Edit rest time</button>
-              <button onClick={() => { setMenuOpen(false); onRemove(); }} className="block w-full text-left px-2 py-1.5 hover:bg-zinc-700 rounded text-red-400">Remove</button>
+              <button onClick={() => { setMenuOpen(false); onRemove(exerciseIndex); }} className="block w-full text-left px-2 py-1.5 hover:bg-zinc-700 rounded text-red-400">Remove</button>
             </div>
           )}
         </div>
@@ -178,3 +178,11 @@ export function ExerciseCard({
     </div>
   );
 }
+
+/**
+ * Memoized export. Re-renders only when the exercise data or its position in
+ * allExercises changes. The stable `onExerciseChange` / `onReplace` / `onRemove`
+ * callbacks from LoggerSheet (wrapped in useCallback with functional setDraft)
+ * ensure memo is not defeated on each parent render.
+ */
+export const ExerciseCard = memo(ExerciseCardInner);

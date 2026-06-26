@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import type { PlannedExercise } from "@/lib/coach/sessionPlans";
@@ -66,7 +66,10 @@ function makeDraftFromPlan(args: {
   };
 }
 
-function getElapsedMs(draft: LoggerDraft, now: number): number {
+function getElapsedMs(
+  draft: Pick<LoggerDraft, "started_at" | "paused_at" | "paused_ms_total">,
+  now: number,
+): number {
   const start = new Date(draft.started_at).getTime();
   const end = draft.paused_at ? new Date(draft.paused_at).getTime() : now;
   return Math.max(0, end - start - draft.paused_ms_total);
@@ -101,6 +104,45 @@ function formatElapsed(ms: number): string {
   const min = Math.floor(totalSec / 60);
   const sec = totalSec % 60;
   return `${min}:${sec.toString().padStart(2, "0")}`;
+}
+
+/**
+ * Isolated elapsed-time display. Owns its own per-second tick so it never
+ * triggers a re-render of the parent LoggerSheet or the exercise list.
+ */
+function ElapsedTimer({
+  startedAt,
+  pausedAt,
+  pausedMsTotal,
+  sessionType,
+}: {
+  startedAt: string;
+  pausedAt: string | null;
+  pausedMsTotal: number;
+  sessionType: string;
+}) {
+  const [now, setNow] = useState(() => Date.now());
+  const isPaused = !!pausedAt;
+
+  useEffect(() => {
+    if (isPaused) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [isPaused]);
+
+  const elapsedMs = getElapsedMs(
+    { started_at: startedAt, paused_at: pausedAt, paused_ms_total: pausedMsTotal },
+    now,
+  );
+  const label = formatElapsed(elapsedMs);
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <span className={`w-1.5 h-1.5 rounded-full ${isPaused ? "bg-yellow-500" : "bg-green-500"}`}></span>
+      <span className="font-mono tabular-nums">{label}</span>
+      <span>· {sessionType}</span>
+    </div>
+  );
 }
 
 function hasFirstCommit(draft: LoggerDraft) {
@@ -145,7 +187,6 @@ export function LoggerSheet(props: Props) {
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
   const [reorderOpen, setReorderOpen] = useState(false);
   const [committing, setCommitting] = useState(false);
-  const [now, setNow] = useState(() => Date.now());
 
   useWakeLock(!!draft);
 
@@ -194,16 +235,6 @@ export function LoggerSheet(props: Props) {
     void saveDraft(updated);
   }, [draft, props.editMode]);
 
-  // 3) Tick clock for elapsed. Skip ticks while paused — the displayed value
-  //    is derived from draft.paused_at, which doesn't move.
-  useEffect(() => {
-    if (draft?.paused_at) return;
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, [draft?.paused_at]);
-
-  const elapsedMs = draft ? getElapsedMs(draft, now) : 0;
-  const elapsedLabel = formatElapsed(elapsedMs);
   const isPaused = !!draft?.paused_at;
 
   if (resumePrompt && !draft) {
@@ -260,7 +291,6 @@ export function LoggerSheet(props: Props) {
         paused_at: null,
         paused_ms_total: draft.paused_ms_total + pausedMs,
       });
-      setNow(Date.now());
     } else {
       setDraft({ ...draft, paused_at: new Date().toISOString() });
     }
@@ -414,6 +444,32 @@ export function LoggerSheet(props: Props) {
     });
   }
 
+  // Stable callbacks for ExerciseCard — use functional setDraft so they don't
+  // close over the draft snapshot and stay reference-equal across renders.
+  // React.memo on ExerciseCard then skips re-renders caused by unrelated state.
+  const handleExerciseChange = useCallback((index: number, next: ExerciseDraft) => {
+    setDraft((prev) => {
+      if (!prev) return prev;
+      return { ...prev, exercises: prev.exercises.map((e, j) => j === index ? next : e) };
+    });
+  }, []);
+
+  const handleExerciseRemove = useCallback((index: number) => {
+    setDraft((prev) => {
+      if (!prev) return prev;
+      return { ...prev, exercises: prev.exercises.filter((_, j) => j !== index) };
+    });
+  }, []);
+
+  const handleExerciseReplace = useCallback((index: number) => {
+    setPickerMode({ replace_index: index });
+    setPickerOpen(true);
+  }, []);
+
+  const handleReorderAll = useCallback(() => {
+    setReorderOpen(true);
+  }, []);
+
   return (
     <div className="fixed inset-0 bg-black z-40 flex flex-col">
       <div className="flex items-center justify-between p-3 border-b border-zinc-900 pt-[env(safe-area-inset-top)]">
@@ -423,11 +479,12 @@ export function LoggerSheet(props: Props) {
             <span className="font-mono tabular-nums text-zinc-400">Editing · {draft.session_type}</span>
           ) : (
             <>
-              <div className="flex items-center gap-1.5">
-                <span className={`w-1.5 h-1.5 rounded-full ${isPaused ? "bg-yellow-500" : "bg-green-500"}`}></span>
-                <span className="font-mono tabular-nums">{elapsedLabel}</span>
-                <span>· {draft.session_type}</span>
-              </div>
+              <ElapsedTimer
+                startedAt={draft.started_at}
+                pausedAt={draft.paused_at}
+                pausedMsTotal={draft.paused_ms_total}
+                sessionType={draft.session_type}
+              />
               <button
                 onClick={togglePause}
                 className="text-[11px] font-semibold uppercase tracking-wide text-zinc-300 bg-zinc-800 hover:bg-zinc-700 px-2 py-1 rounded-md"
@@ -468,10 +525,10 @@ export function LoggerSheet(props: Props) {
             exercise={ex}
             exerciseIndex={i}
             allExercises={draft.exercises}
-            onChange={(next) => setDraft({ ...draft, exercises: draft.exercises.map((e, j) => j === i ? next : e) })}
-            onReplace={() => { setPickerMode({ replace_index: i }); setPickerOpen(true); }}
-            onRemove={() => setDraft({ ...draft, exercises: draft.exercises.filter((_, j) => j !== i) })}
-            onReorderAll={() => setReorderOpen(true)}
+            onExerciseChange={handleExerciseChange}
+            onReplace={handleExerciseReplace}
+            onRemove={handleExerciseRemove}
+            onReorderAll={handleReorderAll}
           />
         ))}
 
@@ -612,7 +669,7 @@ export function LoggerSheet(props: Props) {
             </p>
             <div className="flex gap-2">
               <button
-                onClick={() => { setDraft(resetDraft(draft)); setNow(Date.now()); setResetConfirmOpen(false); }}
+                onClick={() => { setDraft(resetDraft(draft)); setResetConfirmOpen(false); }}
                 className="flex-1 bg-red-600 text-white rounded-lg py-2 text-sm font-medium"
               >
                 Reset
