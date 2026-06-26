@@ -391,11 +391,21 @@ async function buildNutritionOutcome(
     .gte("date", row.started_on)
     .lte("date", windowEnd);
 
-  // sub_kind from context; default to protein_increase if missing
-  const sub_kind = (row.context.sub_kind as NutritionEvalCtx["sub_kind"]) ?? "protein_increase";
-  const caloric_target = typeof row.context.caloric_target === "number"
-    ? row.context.caloric_target
-    : undefined;
+  // Derive sub_kind from the real NutritionContext fields written by buildExplicitIntervention.
+  // The writer stores { field, from, to } — NOT sub_kind / caloric_target.
+  const field = typeof row.context.field === "string" ? row.context.field : null;
+  const sub_kind: NutritionEvalCtx["sub_kind"] =
+    field === "kcal"
+      ? "caloric_adjustment"
+      : field === "protein_g"
+      ? "protein_increase"
+      : field === "weight_kg" || field === "body_fat_pct" || field === "fat_mass_kg"
+      ? "body_comp_improve"
+      : "protein_increase"; // safe fallback for unknown fields
+  const caloric_target =
+    field === "kcal" && typeof row.context.to === "number"
+      ? row.context.to
+      : undefined;
 
   const ctx: NutritionEvalCtx = {
     triggered_at: row.started_on,
