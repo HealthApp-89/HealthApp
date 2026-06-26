@@ -154,8 +154,6 @@ export async function POST(
   }
 
   // Upsert the weekday slot in the override map.
-  const existing =
-    (row.exercise_overrides as ExerciseOverrides | null) ?? ({} as ExerciseOverrides);
   const next: ExerciseOverrides = { ...existing, [weekday]: exercises };
 
   const { error: updateErr } = await supabase
