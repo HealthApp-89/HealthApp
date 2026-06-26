@@ -541,8 +541,22 @@ export async function POST(req: Request) {
   let imgsByMsg: Map<string, { storage_path: string }[]>;
   let messages: RichMessage[];
 
+  // ── Cold-path timing instrumentation ────────────────────────────────────
+  // Gated behind CHAT_COLDPATH_PROFILE=1 so it is zero-overhead in normal
+  // runs. Each mark captures wall-clock delta from t0 (start of the try
+  // block). A single summary log fires before the stream opens.
+  // Usage: CHAT_COLDPATH_PROFILE=1 npm run dev  → watch server terminal.
+  const _cpEnabled = process.env.CHAT_COLDPATH_PROFILE === "1";
+  const _cpT0 = _cpEnabled ? performance.now() : 0;
+  let _cpTzDone = 0;
+  let _cpPromiseAllDone = 0;
+  let _cpSystemPromptDone = 0;
+  let _cpEphemeralHeaderDone = 0;
+  let _cpPreStreamDone = 0;
+
   try {
     const tzForToday = await getUserTimezone(user.id);
+    if (_cpEnabled) _cpTzDone = performance.now() - _cpT0;
     const todayIso = todayInUserTz(new Date(), tzForToday);
     const sinceDate = new Date(`${todayIso}T00:00:00Z`);
     sinceDate.setUTCDate(sinceDate.getUTCDate() - 14);
@@ -603,6 +617,7 @@ export async function POST(req: Request) {
         return null;
       }),
     ]);
+    if (_cpEnabled) _cpPromiseAllDone = performance.now() - _cpT0;
 
     snapshot = snapshotBody;
 
@@ -636,6 +651,7 @@ export async function POST(req: Request) {
       userPromptOverride,
       activeTriggers,
     });
+    if (_cpEnabled) _cpSystemPromptDone = performance.now() - _cpT0;
 
     // Graceful degradation as the user approaches the daily cap: append a
     // terseness directive so replies stay short rather than hard-failing
@@ -744,6 +760,7 @@ export async function POST(req: Request) {
       userId: user.id,
       tz: tzForToday,
     });
+    if (_cpEnabled) _cpEphemeralHeaderDone = performance.now() - _cpT0;
     const headerBlock: ContentBlock = { type: "text", text: ephemeralHeader };
     messages.push({ role: "user", content: [headerBlock, ...newTurnBlocks] });
   } catch (setupErr) {
@@ -853,6 +870,24 @@ export async function POST(req: Request) {
             }
           })()
         : null;
+      // Mark: all pre-stream context blocks resolved; stream is about to open.
+      if (_cpEnabled) _cpPreStreamDone = performance.now() - _cpT0;
+      if (_cpEnabled) {
+        // eslint-disable-next-line no-console
+        console.info(
+          "[chat-cold] summary " +
+          JSON.stringify({
+            speaker: initialSpeaker,
+            mode: effectiveMode,
+            tz_ms: Math.round(_cpTzDone),
+            promise_all_ms: Math.round(_cpPromiseAllDone - _cpTzDone),
+            system_prompt_ms: Math.round(_cpSystemPromptDone - _cpPromiseAllDone),
+            ephemeral_header_ms: Math.round(_cpEphemeralHeaderDone - _cpSystemPromptDone),
+            speaker_context_ms: Math.round(_cpPreStreamDone - _cpEphemeralHeaderDone),
+            total_pre_stream_ms: Math.round(_cpPreStreamDone),
+          }),
+        );
+      }
       try {
         // Drain one runChatStream pass, piping all SSE events to the client.
         // Pin to local — TS loses control-flow narrowing through async closures.
