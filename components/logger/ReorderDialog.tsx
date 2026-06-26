@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import type { ExerciseDraft } from "@/lib/logger/types";
 
 type Props = {
@@ -22,6 +23,11 @@ export function ReorderDialog({ exercises, onConfirm, onCancel }: Props) {
   const [local, setLocal] = useState<ExerciseDraft[]>(exercises);
   // Per-row text buffer so typing "12" on a 10-item list doesn't snap mid-type.
   const [posDraft, setPosDraft] = useState<Record<string, string>>({});
+  // Portal to <body> so the dialog escapes the LoggerSheet stacking context
+  // (the sheet is `fixed z-40`, which would otherwise trap our z-50 underneath
+  // the body-level BottomNav and clip the Done button below the home indicator).
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   function bump(from: number, delta: -1 | 1) {
     setLocal((prev) => moveItem(prev, from, from + delta));
@@ -44,7 +50,9 @@ export function ReorderDialog({ exercises, onConfirm, onCancel }: Props) {
     setPosDraft({});
   }
 
-  return (
+  if (!mounted) return null;
+
+  return createPortal(
     <div className="fixed inset-0 bg-black/70 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
       <div className="bg-zinc-900 border border-zinc-800 rounded-t-2xl sm:rounded-2xl p-4 max-w-md w-full h-[100dvh] sm:h-auto sm:max-h-[85dvh] flex flex-col">
         <div className="flex items-center justify-between mb-2">
@@ -136,6 +144,7 @@ export function ReorderDialog({ exercises, onConfirm, onCancel }: Props) {
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
