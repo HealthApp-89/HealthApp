@@ -213,11 +213,14 @@ function buildCurrentTopSetsBlock(
 async function renderEnduranceBlocks(
   supabase: SupabaseClient,
   userId: string,
+  tz: string,
 ): Promise<string> {
-  const today = new Date();
-  const d28 = new Date(today.getTime() - 28 * 86_400_000);
-  const d7 = new Date(today.getTime() - 7 * 86_400_000);
-  const fmtDate = (d: Date) => d.toISOString().slice(0, 10);
+  const nowMs = Date.now();
+  const todayIso = todayInUserTz(new Date(nowMs), tz);
+  const d28Iso = new Date(new Date(`${todayIso}T00:00:00Z`).getTime() - 28 * 86_400_000)
+    .toISOString().slice(0, 10);
+  const d7Iso = new Date(new Date(`${todayIso}T00:00:00Z`).getTime() - 7 * 86_400_000)
+    .toISOString().slice(0, 10);
 
   const [{ data: profileRow }, { data: dailyRows }, { data: lastActs }] = await Promise.all([
     supabase
@@ -232,8 +235,8 @@ async function renderEnduranceBlocks(
       .from("daily_logs")
       .select("date, endurance_load, endurance_minutes, endurance_z2_minutes")
       .eq("user_id", userId)
-      .gte("date", fmtDate(d28))
-      .lte("date", fmtDate(today))
+      .gte("date", d28Iso)
+      .lte("date", todayIso)
       .order("date", { ascending: false }),
     supabase
       .from("endurance_activities")
@@ -263,7 +266,6 @@ async function renderEnduranceBlocks(
     out += `ENDURANCE_PROFILE: not configured (user has not completed /profile endurance setup)\n`;
   }
 
-  const d7Iso = fmtDate(d7);
   const rows = (dailyRows ?? []) as Array<{
     date: string;
     endurance_load: number | null;
@@ -452,7 +454,7 @@ export async function buildSnapshot(inputs: SnapshotInputs): Promise<SnapshotRes
     // Endurance pillar: profile + 28d load + last 3 activities, rendered as
     // three blocks. Hoisted into Promise.all so its 3 internal reads don't
     // serialize behind the other queries.
-    renderEnduranceBlocks(supabase, userId),
+    renderEnduranceBlocks(supabase, userId, tz),
     // Intelligence orchestrator: all 7 composers (Layer 1 + Layer 2).
     // Self-fetches its own data windows (56d logs, 90d food, workouts, baselines,
     // targets). Resilient — returns safe-default payload on any error so the
@@ -634,20 +636,35 @@ export async function getSyncFreshness(
   );
 }
 
-/** Render hours-ago in `Nh Mm ago (today|yesterday|N days ago)` form. */
-export function formatFreshness(now: Date, last: string | null): string {
+/** Render hours-ago in `Nh Mm ago (today|yesterday|N days ago)` form.
+ *  The day-bucket label is derived from the user's timezone so that "today"
+ *  and "yesterday" match the user's local calendar, not the UTC calendar.
+ *  At 22:00 UTC (= 02:00 Dubai next day) a sync that happened at 08:00 UTC
+ *  is Dubai "yesterday" — without the tz-aware boundary it would mis-label
+ *  as "today" because both timestamps share the same UTC date. */
+export function formatFreshness(now: Date, last: string | null, tz: string): string {
   if (!last) return "no data";
   const lastDate = new Date(last);
   const ms = now.getTime() - lastDate.getTime();
   const minutes = Math.max(0, Math.floor(ms / 60_000));
   const hours = Math.floor(minutes / 60);
   const mins = minutes % 60;
-  // Day bucket: compare calendar dates in user's tz proxy (UTC here is fine
-  // for the bucket label since the precision is ±1 day; the hours-ago value
-  // is the load-bearing number).
-  const today = new Date(now.toISOString().slice(0, 10) + "T00:00:00Z");
-  const lastDay = new Date(last.slice(0, 10) + "T00:00:00Z");
-  const dayDelta = Math.round((today.getTime() - lastDay.getTime()) / 86_400_000);
+  // Day bucket: derive both "today" and "last write date" in the user's
+  // timezone so the label reflects the user's local calendar. The hours-ago
+  // value is load-bearing; the label is directional context.
+  //
+  // Key: `last_write_at` is a UTC timestamp. At 22:00 UTC on 2026-06-26
+  // (= 02:00 Dubai on 2026-06-27), a sync that happened at 08:00 UTC on
+  // 2026-06-26 is Dubai "yesterday" — both share UTC date 2026-06-26 but
+  // Dubai "today" is 2026-06-27. Conversely, a sync at 22:00 UTC on
+  // 2026-06-27 (= 02:00 Dubai 2026-06-28) is Dubai "today" even though its
+  // UTC date is still 2026-06-27.
+  const todayIso = todayInUserTz(now, tz);
+  const todayMs = new Date(`${todayIso}T00:00:00Z`).getTime();
+  // Convert the last_write_at timestamp to a calendar date in the user's tz.
+  const lastDateInUserTz = todayInUserTz(lastDate, tz);
+  const lastDay = new Date(`${lastDateInUserTz}T00:00:00Z`);
+  const dayDelta = Math.round((todayMs - lastDay.getTime()) / 86_400_000);
   let dayLabel: string;
   if (dayDelta <= 0) dayLabel = "today";
   else if (dayDelta === 1) dayLabel = "yesterday";
@@ -710,7 +727,7 @@ export async function buildEphemeralHeader(opts: {
 
   const nowJsDate = new Date();
   const freshnessLines = freshness.map(
-    (f) => `  ${f.source} last write: ${formatFreshness(nowJsDate, f.last_write_at)}`,
+    (f) => `  ${f.source} last write: ${formatFreshness(nowJsDate, f.last_write_at, tz)}`,
   );
 
   return [
