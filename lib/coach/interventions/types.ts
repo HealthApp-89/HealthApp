@@ -41,13 +41,18 @@ export const DeloadOutcomeSchema = z.object({
   hrv_recovery_days: z.number().nullable(),
   performance_resumed: z.boolean(),
 });
+export type DeloadOutcome = z.infer<typeof DeloadOutcomeSchema>;
+
 export const SwapOutcomeSchema = z.object({
   success: z.boolean().nullable(),
   pain_resolved: z.boolean(),
   swap_stuck: z.boolean(),
 });
+export type SwapOutcome = z.infer<typeof SwapOutcomeSchema>;
+
 export const NutritionOutcomeSchema = z.object({
   success: z.boolean().nullable(),
   signal: z.string(),
   improved: z.boolean(),
 });
+export type NutritionOutcome = z.infer<typeof NutritionOutcomeSchema>;
