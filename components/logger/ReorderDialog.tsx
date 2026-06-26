@@ -46,7 +46,7 @@ export function ReorderDialog({ exercises, onConfirm, onCancel }: Props) {
 
   return (
     <div className="fixed inset-0 bg-black/70 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
-      <div className="bg-zinc-900 border border-zinc-800 rounded-t-2xl sm:rounded-2xl p-4 max-w-md w-full max-h-[85dvh] flex flex-col">
+      <div className="bg-zinc-900 border border-zinc-800 rounded-t-2xl sm:rounded-2xl p-4 max-w-md w-full h-screen sm:max-h-[85dvh] flex flex-col">
         <div className="flex items-center justify-between mb-2">
           <h3 className="text-base font-semibold text-zinc-50">Reorder exercises</h3>
           <button
@@ -121,7 +121,7 @@ export function ReorderDialog({ exercises, onConfirm, onCancel }: Props) {
           </ul>
         </div>
 
-        <div className="flex gap-2 mt-3 pt-3 border-t border-zinc-800">
+        <div className="sticky bottom-0 left-0 right-0 bg-zinc-900 flex gap-2 mt-3 pt-3 pb-4 -mx-4 px-4 border-t border-zinc-800">
           <button
             onClick={onCancel}
             className="flex-1 bg-zinc-800 text-zinc-300 rounded-lg py-2 text-sm"
