@@ -134,7 +134,8 @@ test("composeConstraints extracts schedule constraints from keywords", () => {
 test("composeConstraints detects travel frequency constraint", () => {
   const result = composeConstraints(SAMPLE_PROFILE);
 
-  expect(result.schedule_constraints).toContain("Travel every 3rd week");
+  // No invented cadence — just signals that travel disrupts schedule
+  expect(result.schedule_constraints).toContain("Travel disrupts schedule");
 });
 
 test("composeConstraints handles null profile gracefully", () => {

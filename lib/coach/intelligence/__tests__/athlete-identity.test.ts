@@ -233,25 +233,22 @@ describe("composeAthleteIdentity — training_style_signature", () => {
     expect(validValues).toContain(result.training_style_signature.volume_preference);
   });
 
-  it("stubs intensity_distribution_percent as {rpe_6_7: 60, rpe_8_9: 30, rpe_10: 10}", () => {
+  it("intensity_distribution_percent is null (Phase 2 — not yet derived)", () => {
     const result = composeAthleteIdentity(SAMPLE_WORKOUTS_90D, SAMPLE_FOOD_LOG_90D);
-    expect(result.training_style_signature.intensity_distribution_percent).toEqual({
-      rpe_6_7: 60,
-      rpe_8_9: 30,
-      rpe_10: 10,
-    });
+    // Phase 2 stub: must be null, not a fabricated constant
+    expect(result.training_style_signature.intensity_distribution_percent).toBeNull();
   });
 
-  it("stubs recovery_speed_days as 5 or 6 (reasonable int in [2,14])", () => {
+  it("recovery_speed_days is null (Phase 2 — not yet derived)", () => {
     const result = composeAthleteIdentity(SAMPLE_WORKOUTS_90D, SAMPLE_FOOD_LOG_90D);
-    expect(result.training_style_signature.recovery_speed_days).toBeGreaterThanOrEqual(2);
-    expect(result.training_style_signature.recovery_speed_days).toBeLessThanOrEqual(14);
+    // Phase 2 stub: must be null, not a fabricated constant
+    expect(result.training_style_signature.recovery_speed_days).toBeNull();
   });
 
-  it("stubs session_duration_preference_min as reasonable value", () => {
+  it("session_duration_preference_min is null (Phase 2 — not yet derived)", () => {
     const result = composeAthleteIdentity(SAMPLE_WORKOUTS_90D, SAMPLE_FOOD_LOG_90D);
-    expect(result.training_style_signature.session_duration_preference_min).toBeGreaterThanOrEqual(20);
-    expect(result.training_style_signature.session_duration_preference_min).toBeLessThanOrEqual(180);
+    // Phase 2 stub: must be null, not a fabricated constant
+    expect(result.training_style_signature.session_duration_preference_min).toBeNull();
   });
 });
 

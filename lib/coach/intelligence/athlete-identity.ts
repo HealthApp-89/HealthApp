@@ -314,7 +314,7 @@ function computeEatingIdentity(
     top_proteins: topFive(proteinCounts),
     top_carbs: topFive(carbCounts),
     top_fats: topFive(fatCounts),
-    cuisines: ["Mediterranean", "Asian"], // Phase 1 stub
+    cuisines: [], // Phase 2 — not yet derived; empty until computed
     monotone_flags: monotoneFlags,
   };
 }
@@ -380,10 +380,12 @@ export function composeAthleteIdentity(
     eating_identity,
     training_style_signature: {
       volume_preference,
-      // Phase 1 stubs — replace with real analysis in Phase 2
-      intensity_distribution_percent: { rpe_6_7: 60, rpe_8_9: 30, rpe_10: 10 },
-      recovery_speed_days: 5,
-      session_duration_preference_min: 60,
+      // Phase 2 — not yet derived; null until computed
+      intensity_distribution_percent: null,
+      // Phase 2 — not yet derived; null until computed
+      recovery_speed_days: null,
+      // Phase 2 — not yet derived; null until computed
+      session_duration_preference_min: null,
     },
   };
 

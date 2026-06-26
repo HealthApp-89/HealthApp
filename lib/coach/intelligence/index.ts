@@ -69,9 +69,12 @@ const SAFE_IDENTITY: IdentityPayload = {
   },
   training_style_signature: {
     volume_preference: "low",
-    intensity_distribution_percent: { rpe_6_7: 60, rpe_8_9: 30, rpe_10: 10 },
-    recovery_speed_days: 5,
-    session_duration_preference_min: 60,
+    // Phase 2 — not yet derived; null until computed
+    intensity_distribution_percent: null,
+    // Phase 2 — not yet derived; null until computed
+    recovery_speed_days: null,
+    // Phase 2 — not yet derived; null until computed
+    session_duration_preference_min: null,
   },
 };
 

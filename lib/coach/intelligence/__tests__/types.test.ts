@@ -24,6 +24,15 @@ import {
 
 const validTrainingStyle = {
   volume_preference: "moderate",
+  // Phase 2 stubs — null is the correct value until these are computed
+  intensity_distribution_percent: null,
+  recovery_speed_days: null,
+  session_duration_preference_min: null,
+};
+
+// Non-null version used for tests that exercise the bounds/refine logic
+const validTrainingStyleNonNull = {
+  volume_preference: "moderate",
   intensity_distribution_percent: { rpe_6_7: 40, rpe_8_9: 50, rpe_10: 10 },
   recovery_speed_days: 3,
   session_duration_preference_min: 60,
@@ -110,11 +119,35 @@ describe("IdentityPayloadSchema", () => {
     expect(result.success).toBe(false);
   });
 
+  it("accepts intensity_distribution_percent as null (Phase 2 stub)", () => {
+    const valid = {
+      ...validIdentity,
+      training_style_signature: {
+        ...validTrainingStyleNonNull,
+        intensity_distribution_percent: null,
+      },
+    };
+    const result = IdentityPayloadSchema.safeParse(valid);
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts intensity_distribution_percent when non-null and sums to 100", () => {
+    const valid = {
+      ...validIdentity,
+      training_style_signature: {
+        ...validTrainingStyleNonNull,
+        intensity_distribution_percent: { rpe_6_7: 60, rpe_8_9: 30, rpe_10: 10 },
+      },
+    };
+    const result = IdentityPayloadSchema.safeParse(valid);
+    expect(result.success).toBe(true);
+  });
+
   it("rejects intensity_distribution_percent that does not sum to 100", () => {
     const invalid = {
       ...validIdentity,
       training_style_signature: {
-        ...validTrainingStyle,
+        ...validTrainingStyleNonNull,
         intensity_distribution_percent: { rpe_6_7: 50, rpe_8_9: 50, rpe_10: 10 }, // sums to 110
       },
     };
@@ -126,7 +159,7 @@ describe("IdentityPayloadSchema", () => {
     const invalid = {
       ...validIdentity,
       training_style_signature: {
-        ...validTrainingStyle,
+        ...validTrainingStyleNonNull,
         recovery_speed_days: 1, // below min of 2
       },
     };
@@ -138,7 +171,7 @@ describe("IdentityPayloadSchema", () => {
     const invalid = {
       ...validIdentity,
       training_style_signature: {
-        ...validTrainingStyle,
+        ...validTrainingStyleNonNull,
         recovery_speed_days: 15, // above max of 14
       },
     };
@@ -150,7 +183,7 @@ describe("IdentityPayloadSchema", () => {
     const invalid = {
       ...validIdentity,
       training_style_signature: {
-        ...validTrainingStyle,
+        ...validTrainingStyleNonNull,
         session_duration_preference_min: 10, // below min of 20
       },
     };

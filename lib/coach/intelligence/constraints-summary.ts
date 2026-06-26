@@ -110,7 +110,7 @@ export function composeConstraints(profile: ProfileWithDocuments): ConstraintPay
       }
       // Check for travel frequency
       if (constraint.toLowerCase().includes("travel")) {
-        scheduleConstraints.push("Travel every 3rd week");
+        scheduleConstraints.push("Travel disrupts schedule");
       }
     }
   }

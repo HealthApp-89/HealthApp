@@ -93,11 +93,12 @@ export type IntensityDistribution = z.infer<typeof IntensityDistributionSchema>;
 /** Athlete's training style signature derived from historical data */
 export const TrainingStyleSignatureSchema = z.object({
   volume_preference: VolumePreferenceSchema,
-  intensity_distribution_percent: IntensityDistributionSchema,
-  /** Days needed to feel recovered after a hard session (2–14) */
-  recovery_speed_days: z.number().int().min(2).max(14),
-  /** Preferred session length in minutes (20–180) */
-  session_duration_preference_min: z.number().int().min(20).max(180),
+  /** Phase 2 — not yet derived; null until computed from RPE history */
+  intensity_distribution_percent: IntensityDistributionSchema.nullable(),
+  /** Phase 2 — not yet derived; null until computed (days to recover after hard session, 2–14) */
+  recovery_speed_days: z.number().int().min(2).max(14).nullable(),
+  /** Phase 2 — not yet derived; null until computed (preferred session length in minutes, 20–180) */
+  session_duration_preference_min: z.number().int().min(20).max(180).nullable(),
 });
 export type TrainingStyleSignature = z.infer<typeof TrainingStyleSignatureSchema>;
 
