@@ -88,8 +88,8 @@ test("composeConstraints flattens exercise exclusions into a Set", () => {
 test("composeConstraints maps gym_type to equipment_access", () => {
   const result = composeConstraints(SAMPLE_PROFILE);
 
-  // gym_type = "commercial" should map to "full_gym"
-  expect(result.equipment_access).toBe("full_gym");
+  // gym_type = "commercial" should map to "commercial_gym"
+  expect(result.equipment_access).toBe("commercial_gym");
 });
 
 test("composeConstraints maps home gym correctly", () => {
@@ -105,10 +105,10 @@ test("composeConstraints maps home gym correctly", () => {
 
   const result = composeConstraints(profile);
 
-  expect(result.equipment_access).toBe("home_full");
+  expect(result.equipment_access).toBe("home_gym");
 });
 
-test("composeConstraints defaults to hotel for unknown gym_type", () => {
+test("composeConstraints defaults to mixed for unknown gym_type", () => {
   const profile = {
     ...SAMPLE_PROFILE,
     athlete_profile_documents: [
@@ -121,7 +121,7 @@ test("composeConstraints defaults to hotel for unknown gym_type", () => {
 
   const result = composeConstraints(profile);
 
-  expect(result.equipment_access).toBe("hotel");
+  expect(result.equipment_access).toBe("mixed");
 });
 
 test("composeConstraints extracts schedule constraints from keywords", () => {
@@ -142,7 +142,7 @@ test("composeConstraints handles null profile gracefully", () => {
 
   expect(result.active_injuries).toEqual([]);
   expect(result.exercise_exclusions).toEqual([]);
-  expect(result.equipment_access).toBe("full_gym");
+  expect(result.equipment_access).toBe("commercial_gym");
   expect(result.schedule_constraints).toEqual([]);
 });
 
@@ -156,7 +156,7 @@ test("composeConstraints handles missing athlete_profile_documents", () => {
 
   expect(result.active_injuries).toEqual([]);
   expect(result.exercise_exclusions).toEqual([]);
-  expect(result.equipment_access).toBe("full_gym");
+  expect(result.equipment_access).toBe("commercial_gym");
   expect(result.schedule_constraints).toEqual([]);
 });
 
@@ -170,7 +170,7 @@ test("composeConstraints handles empty athlete_profile_documents", () => {
 
   expect(result.active_injuries).toEqual([]);
   expect(result.exercise_exclusions).toEqual([]);
-  expect(result.equipment_access).toBe("full_gym");
+  expect(result.equipment_access).toBe("commercial_gym");
   expect(result.schedule_constraints).toEqual([]);
 });
 
@@ -222,7 +222,7 @@ test("composeConstraints validates return type against ConstraintPayloadSchema",
   expect(Array.isArray(result.schedule_constraints)).toBe(true);
 
   // Validate equipment_access is one of the allowed values
-  expect(["full_gym", "home_basic", "home_full", "bodyweight_only", "hotel"]).toContain(
+  expect(["home_gym", "commercial_gym", "mixed"]).toContain(
     result.equipment_access
   );
 });

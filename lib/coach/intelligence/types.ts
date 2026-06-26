@@ -126,11 +126,9 @@ export type InjuryRecord = z.infer<typeof InjuryRecordSchema>;
 
 /** Equipment access level */
 export const EquipmentAccessValues = [
-  "full_gym",
-  "home_basic",
-  "home_full",
-  "bodyweight_only",
-  "hotel",
+  "home_gym",
+  "commercial_gym",
+  "mixed",
 ] as const;
 export const EquipmentAccessSchema = z.enum(EquipmentAccessValues);
 export type EquipmentAccess = z.infer<typeof EquipmentAccessSchema>;

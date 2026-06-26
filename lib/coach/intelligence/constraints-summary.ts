@@ -82,15 +82,15 @@ export function composeConstraints(profile: ProfileWithDocuments): ConstraintPay
   // ─────────────────────────────────────────────────────────────────────────
 
   const gymType = activeDoc?.gym_type ?? "commercial";
-  let equipmentAccess: "full_gym" | "home_basic" | "home_full" | "bodyweight_only" | "hotel";
+  let equipmentAccess: "home_gym" | "commercial_gym" | "mixed";
 
   if (gymType === "home") {
-    equipmentAccess = "home_full";
+    equipmentAccess = "home_gym";
   } else if (gymType === "commercial") {
-    equipmentAccess = "full_gym";
+    equipmentAccess = "commercial_gym";
   } else {
     // Unknown or mixed
-    equipmentAccess = "hotel";
+    equipmentAccess = "mixed";
   }
 
   // ─────────────────────────────────────────────────────────────────────────

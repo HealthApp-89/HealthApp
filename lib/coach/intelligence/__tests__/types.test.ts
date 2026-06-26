@@ -55,7 +55,7 @@ const validConstraint = {
     { area: "lower_back", status: "recovering", weeks_ago_onset: 3 },
   ],
   exercise_exclusions: ["Good Morning"],
-  equipment_access: "full_gym",
+  equipment_access: "commercial_gym",
   schedule_constraints: ["no_early_mornings"],
 };
 
