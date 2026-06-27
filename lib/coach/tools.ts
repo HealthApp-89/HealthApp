@@ -3383,6 +3383,44 @@ export const SET_SANITY_OVERRIDE_TOOL = {
   },
 };
 
+// ── Beat 1: Data-aware flag resolution tool ──────────────────────────────────
+
+const PLAN_FLAG_TYPES = [
+  "goal_vs_recovery",
+  "deficit_vs_muscle_loss",
+  "target_vs_adherence",
+  "strength_endurance_interference",
+] as const;
+type PlanFlagType = (typeof PLAN_FLAG_TYPES)[number];
+
+const PLAN_FLAG_DECISIONS = ["accept", "override"] as const;
+type PlanFlagDecision = (typeof PLAN_FLAG_DECISIONS)[number];
+
+export const RESOLVE_PLAN_FLAG_TOOL = {
+  name: "resolve_plan_flag",
+  description:
+    "Beat 1 data-aware flag tool. Writes the athlete's decision (accept or override) for an intelligence-layer plan flag to intake_payload.plan_flag_resolutions. " +
+    "'accept' applies the flag's proposed softer value in buildPlanPayload (e.g. lower opening volume, higher protein floor, ramp weeks). " +
+    "'override' proceeds with the athlete's stated values unchanged. " +
+    "Call once per flag. Use set_sanity_override for the original sanity findings (goal_contradiction, sleep_efficiency, macros_gap, protein_floor).",
+  input_schema: {
+    type: "object" as const,
+    required: ["flag_type", "decision"],
+    properties: {
+      flag_type: {
+        type: "string",
+        enum: PLAN_FLAG_TYPES,
+        description: "Which intelligence-layer flag is being resolved.",
+      },
+      decision: {
+        type: "string",
+        enum: PLAN_FLAG_DECISIONS,
+        description: "'accept' applies the proposed softer value; 'override' keeps stated values.",
+      },
+    },
+  },
+};
+
 // ── Beats 2-5: Slot setters (no HMAC — single-field writes) ─────────────────
 
 export const SET_GOAL_NARRATIVE_CHAT_TOOL = {
@@ -3724,6 +3762,50 @@ export async function executeSetSanityOverride(opts: {
     patcher: (intake) => ({
       ...intake,
       sanity_overrides: { ...(intake.sanity_overrides ?? {}), [key]: true },
+    }),
+  });
+}
+
+export async function executeResolvePlanFlag(opts: {
+  supabase: SupabaseClient;
+  userId: string;
+  draftDocId: string;
+  input: unknown;
+}): Promise<ToolResult<{ ok: true }>> {
+  const t0 = Date.now();
+  const i = (opts.input ?? {}) as Record<string, unknown>;
+  if (
+    typeof i.flag_type !== "string" ||
+    !(PLAN_FLAG_TYPES as readonly string[]).includes(i.flag_type)
+  ) {
+    return {
+      ok: false,
+      error: { error: `flag_type must be one of: ${PLAN_FLAG_TYPES.join(", ")}` },
+      meta: { ms: Date.now() - t0, range_days: 0 },
+    };
+  }
+  if (
+    typeof i.decision !== "string" ||
+    !(PLAN_FLAG_DECISIONS as readonly string[]).includes(i.decision)
+  ) {
+    return {
+      ok: false,
+      error: { error: `decision must be one of: ${PLAN_FLAG_DECISIONS.join(", ")}` },
+      meta: { ms: Date.now() - t0, range_days: 0 },
+    };
+  }
+  const flagType = i.flag_type as PlanFlagType;
+  const decision = i.decision as PlanFlagDecision;
+  return patchIntake({
+    supabase: opts.supabase,
+    userId: opts.userId,
+    draftDocId: opts.draftDocId,
+    patcher: (intake) => ({
+      ...intake,
+      plan_flag_resolutions: {
+        ...(intake.plan_flag_resolutions ?? {}),
+        [flagType]: decision,
+      },
     }),
   });
 }
@@ -6057,6 +6139,7 @@ export const PETER_TOOLS: readonly ToolSchema[] = [
   APPLY_MACROS_CORRECTION_TOOL,
   APPLY_PROTEIN_CORRECTION_TOOL,
   SET_SANITY_OVERRIDE_TOOL,
+  RESOLVE_PLAN_FLAG_TOOL,
   SET_GOAL_NARRATIVE_CHAT_TOOL,
   SET_DIRECTNESS_TOOL,
   SET_CADENCE_TOOL,

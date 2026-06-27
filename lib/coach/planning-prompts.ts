@@ -14,6 +14,9 @@ import {
 } from "@/lib/coach/system-prompts";
 import { getAutoregulationSignals } from "@/lib/coach/autoregulation";
 import { computeTargetRecommendation } from "@/lib/coach/prescription/calibrate-target";
+import { buildAthleteIntelligence } from "@/lib/coach/intelligence/index";
+import { summarizeResponsiveness } from "@/lib/coach/interventions/responsiveness";
+import { planIntelligenceChecks } from "@/lib/coach/plan-builder/plan-intelligence-checks";
 import { todayInUserTz } from "@/lib/time";
 import { getUserTimezone } from "@/lib/time/get-user-tz";
 import type { ChatMode, IntakePayload, PrimaryLift, TrainingBlock } from "@/lib/data/types";
@@ -156,6 +159,13 @@ When user taps "Override" chip:
     sleep_efficiency → 'sleep_efficiency_acknowledged'
     macros_gap → 'macros_gap_acknowledged'
     protein_floor → 'protein_floor_acknowledged'
+
+Data-aware flags (marked [data-aware flag] in the context block) use a
+different tool: resolve_plan_flag. When user responds to a data-aware flag:
+  - "Accept" / "Use proposed" chip → resolve_plan_flag({ flag_type, decision: "accept" })
+  - "Override" / "Keep as-is" chip → resolve_plan_flag({ flag_type, decision: "override" })
+  These flags: goal_vs_recovery, deficit_vs_muscle_loss, target_vs_adherence,
+  strength_endurance_interference.
 
 Do NOT proceed to Beat 2 until all findings have been handled. The findings
 list refreshes after each tool call — if a finding's underlying intake field
@@ -438,19 +448,63 @@ async function fetchIntakeContext(
 
   // Run sanity checks
   const { runSanityChecks } = await import("@/lib/coach/plan-builder/sanity-check");
-  const findings = runSanityChecks({
+  const sanityFindings = runSanityChecks({
     intake,
     current_bodyweight_kg: latestWeight,
     rolling_7d_kcal: rolling7dKcal,
     today,
   });
 
+  // Intelligence-layer flags (guarded: failure returns [] so Beat-1 proceeds
+  // with only the deterministic sanity findings — acceptable double-fetch with
+  // buildPlanPayload at propose time; both are guarded independently).
+  let flagFindings: Awaited<ReturnType<typeof planIntelligenceChecks>> = [];
+  try {
+    const intelligence = await buildAthleteIntelligence(supabase, userId, tz).catch(() => null);
+
+    let responsiveness = null;
+    if (intelligence !== null) {
+      try {
+        const ninety = new Date(`${today}T00:00:00Z`);
+        ninety.setUTCDate(ninety.getUTCDate() - 90);
+        const since90 = ninety.toISOString().slice(0, 10);
+        const { data: interventionRows } = await supabase
+          .from("coach_interventions")
+          .select("id, user_id, kind, source, started_on, context, outcome, outcome_evaluated_at, created_at")
+          .eq("user_id", userId)
+          .not("outcome", "is", null)
+          .gte("started_on", since90)
+          .order("started_on", { ascending: false });
+        responsiveness = summarizeResponsiveness(interventionRows ?? [], today);
+      } catch {
+        // No responsiveness notes, flags still fire
+        responsiveness = null;
+      }
+    }
+
+    flagFindings = planIntelligenceChecks({ intake, intelligence, responsiveness });
+  } catch {
+    // Graceful: intelligence unavailable → proceed with sanity findings only
+    flagFindings = [];
+  }
+
+  const allFindings = [...sanityFindings, ...flagFindings];
+
   // Render findings as text for the system prompt
   const findingsBlock =
-    findings.length === 0
+    allFindings.length === 0
       ? "(none — all sanity checks pass; proceed directly to Beat 2)"
-      : findings
-          .map((f, i) => `Finding ${i + 1}: ${f.type}\n  Rationale: ${f.rationale}`)
+      : allFindings
+          .map((f, i) => {
+            const extra =
+              f.type === "goal_vs_recovery" ||
+              f.type === "deficit_vs_muscle_loss" ||
+              f.type === "target_vs_adherence" ||
+              f.type === "strength_endurance_interference"
+                ? " [data-aware flag — use resolve_plan_flag to accept or override]"
+                : "";
+            return `Finding ${i + 1}: ${f.type}${extra}\n  Rationale: ${f.rationale}`;
+          })
           .join("\n\n");
 
   return [

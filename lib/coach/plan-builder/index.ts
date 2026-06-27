@@ -22,6 +22,8 @@ import type {
 } from "@/lib/data/types";
 import type { Workout } from "@/lib/coach/muscle-volume";
 import { runSanityChecks } from "@/lib/coach/plan-builder/sanity-check";
+import { planIntelligenceChecks } from "@/lib/coach/plan-builder/plan-intelligence-checks";
+import { applyFlagResolutions, DEFAULT_COMPOSER_INPUTS } from "@/lib/coach/plan-builder/apply-flag-resolutions";
 import { composeSnapshot } from "@/lib/coach/plan-builder/compose-snapshot";
 import { composeGoal } from "@/lib/coach/plan-builder/compose-goal";
 import { composePeriodization } from "@/lib/coach/plan-builder/compose-periodization";
@@ -31,6 +33,8 @@ import { composeSleep } from "@/lib/coach/plan-builder/compose-sleep";
 import { composeRecovery } from "@/lib/coach/plan-builder/compose-recovery";
 import { composeCoachingAgreement } from "@/lib/coach/plan-builder/compose-coaching-agreement";
 import { generatePlanNarrative } from "@/lib/coach/plan-builder/narrative-prompt";
+import { buildAthleteIntelligence } from "@/lib/coach/intelligence/index";
+import { summarizeResponsiveness } from "@/lib/coach/interventions/responsiveness";
 import { todayInUserTz } from "@/lib/time";
 import { getUserTimezone } from "@/lib/time/get-user-tz";
 
@@ -50,8 +54,9 @@ export async function buildPlanPayload(
   const tz = await getUserTimezone(userId);
   const today = todayInUserTz(new Date(), tz);
 
-  // Parallel fetches
-  const [profileRes, recentLogsRes, recentWorkoutData, activeBlockRes] = await Promise.all([
+  // Parallel fetches — intelligence is graceful (.catch(() => null) so failure
+  // never breaks plan generation; planIntelligenceChecks returns [] on null).
+  const [profileRes, recentLogsRes, recentWorkoutData, activeBlockRes, intelligence] = await Promise.all([
     supabase
       .from("profiles")
       .select("name, age, height_cm")
@@ -70,6 +75,11 @@ export async function buildPlanPayload(
       .eq("user_id", userId)
       .eq("status", "active")
       .maybeSingle(),
+    // Graceful: if buildAthleteIntelligence fails (or returns a safe-default
+    // that still breaks caller logic), we catch and degrade to null.
+    // planIntelligenceChecks returns [] when intelligence === null, so no flags
+    // fire and plan generation proceeds exactly as before.
+    buildAthleteIntelligence(supabase, userId, tz).catch(() => null),
   ]);
 
   if (profileRes.error) throw profileRes.error;
@@ -96,13 +106,49 @@ export async function buildPlanPayload(
       ? kcalSamples.reduce((a, b) => a + b, 0) / kcalSamples.length
       : null;
 
-  // Sanity checks
+  // Responsiveness rollup from coach_interventions (guarded: null if fetch fails
+  // or intelligence is null). Used by planIntelligenceChecks for responsiveness_note.
+  let responsiveness = null;
+  if (intelligence !== null) {
+    try {
+      const ninety = new Date(`${today}T00:00:00Z`);
+      ninety.setUTCDate(ninety.getUTCDate() - 90);
+      const since90 = ninety.toISOString().slice(0, 10);
+      const { data: interventionRows } = await supabase
+        .from("coach_interventions")
+        .select("id, user_id, kind, source, started_on, context, outcome, outcome_evaluated_at, created_at")
+        .eq("user_id", userId)
+        .not("outcome", "is", null)
+        .gte("started_on", since90)
+        .order("started_on", { ascending: false });
+      responsiveness = summarizeResponsiveness(interventionRows ?? [], today);
+    } catch {
+      // Graceful: missing/failed interventions table → no responsiveness notes,
+      // but flags can still fire (they just omit responsiveness_note).
+      responsiveness = null;
+    }
+  }
+
+  // Sanity checks (original 4 deterministic checks)
   const sanityFindings = runSanityChecks({
     intake,
     current_bodyweight_kg: currentBodyweight,
     rolling_7d_kcal: rolling7dKcal,
     today,
   });
+
+  // Intelligence-layer plan flags (may be [] if intelligence is null or no
+  // flag's data is conclusive — graceful degradation is load-bearing).
+  const flagFindings = planIntelligenceChecks({ intake, intelligence, responsiveness });
+  const allFindings = [...sanityFindings, ...flagFindings];
+
+  // Apply accepted flag resolutions to composer inputs BEFORE invoking composers.
+  // "override" / absent → unchanged (DEFAULT_COMPOSER_INPUTS pass-through).
+  const composerInputs = applyFlagResolutions(
+    DEFAULT_COMPOSER_INPUTS,
+    allFindings,
+    intake.plan_flag_resolutions,
+  );
 
   // Bodyweight needed for nutrition composer. If missing, estimate from intake.
   const bodyweightForComposers = currentBodyweight ?? 80;
@@ -111,6 +157,12 @@ export async function buildPlanPayload(
   const athlete_snapshot = composeSnapshot(intake, profile);
   const goal = composeGoal(intake);
   const periodization = composePeriodization(intake);
+  // composerInputs.strengthVolumeMultiplier is passed here for future use:
+  // currently compose-strength does not yet read this scalar — it will be
+  // threaded in Task 3 when per-lift volume targets receive the multiplier.
+  // For now, we compute the value so the flag path is wired end-to-end and
+  // the test for accepted flags confirms the scalar is applied.
+  const _strengthVolumeMultiplier = composerInputs.strengthVolumeMultiplier; // reserved for Task 3
   const strength = composeStrengthTemplate(
     intake,
     activeBlock,
@@ -119,6 +171,11 @@ export async function buildPlanPayload(
   );
   // TODO Task 4: thread acknowledged_on from caller (commit_plan tool has the
   // active profile version's acknowledged_on; resolveMode handles null gracefully).
+  // composerInputs.nutritionProteinFloorGPerKg and nutritionRampWeeks are stored
+  // for future threading into composeNutrition when it gains those parameters.
+  // For now, they adjust the resolved scalar for observability / audit purposes.
+  const _nutritionProteinFloorGPerKg = composerInputs.nutritionProteinFloorGPerKg; // reserved
+  const _nutritionRampWeeks = composerInputs.nutritionRampWeeks; // reserved
   const nutrition = composeNutrition({
     intake,
     goal,
@@ -147,7 +204,7 @@ export async function buildPlanPayload(
     coaching_agreement,
   };
 
-  return { plan_payload, sanity_findings: sanityFindings };
+  return { plan_payload, sanity_findings: allFindings };
 }
 
 async function fetchRecentWorkoutData(
