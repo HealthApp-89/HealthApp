@@ -170,8 +170,9 @@ describe("mapToHistory — reactive_deload mapping", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("mapToHistory — exercise_swap mapping", () => {
-  it("maps a successful swap (kept) to ExerciseSwapRecord", () => {
-    // swap_stuck = false → result = "reverted" (athlete went back to original)
+  it("maps a successful swap (success:true) to result='kept'", () => {
+    // The base fixture has success:true, swap_stuck:false — matches real evaluator output.
+    // swap_stuck is a failure signal; a kept/successful swap always has swap_stuck:false.
     const row = makeSwapRow();
     const result = mapToHistory([row]);
     expect(result.exercise_swaps_8w).toHaveLength(1);
@@ -179,17 +180,19 @@ describe("mapToHistory — exercise_swap mapping", () => {
     expect(record.from).toBe("Romanian Deadlift (RDL)");
     expect(record.to).toBe("Leg Curl (Machine)");
     expect(record.reason).toBe("pain");
-    // swap_stuck = false → athlete reverted to original
-    expect(record.result).toBe("reverted");
+    // success:true → result = "kept" (athlete adopted the replacement)
+    expect(record.result).toBe("kept");
     expect(record.date).toBe("2026-06-05");
   });
 
-  it("maps swap_stuck = true → result = 'kept'", () => {
+  it("maps a failed swap (success:false, swap_stuck:true) to result='reverted'", () => {
+    // swap_stuck:true means the replacement did NOT progress — a genuine failure row.
+    // The old inverted mapping would have returned "kept" here, which was wrong.
     const row = makeSwapRow({
-      outcome: { success: true, pain_resolved: true, swap_stuck: true },
+      outcome: { success: false, pain_resolved: false, swap_stuck: true },
     });
     const result = mapToHistory([row]);
-    expect(result.exercise_swaps_8w[0].result).toBe("kept");
+    expect(result.exercise_swaps_8w[0].result).toBe("reverted");
   });
 
   it("drops swap row when outcome.success is null (inconclusive)", () => {
@@ -206,14 +209,13 @@ describe("mapToHistory — exercise_swap mapping", () => {
     expect(result.exercise_swaps_8w).toHaveLength(0);
   });
 
-  it("maps a failed swap to ExerciseSwapRecord with success=false", () => {
+  it("maps a failed swap (success:false, swap_stuck:false) to result='reverted'", () => {
+    // success:false is the decisive signal — result is "reverted" regardless of swap_stuck.
     const row = makeSwapRow({
       outcome: { success: false, pain_resolved: false, swap_stuck: false },
     });
     const result = mapToHistory([row]);
     expect(result.exercise_swaps_8w).toHaveLength(1);
-    // success is captured via adopted for nutrition, but swap has no 'adopted' field
-    // — the schema does not carry 'success' directly on ExerciseSwapRecord
     expect(result.exercise_swaps_8w[0].result).toBe("reverted");
   });
 });

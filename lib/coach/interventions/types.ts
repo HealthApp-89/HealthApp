@@ -46,6 +46,7 @@ export type DeloadOutcome = z.infer<typeof DeloadOutcomeSchema>;
 export const SwapOutcomeSchema = z.object({
   success: z.boolean().nullable(),
   pain_resolved: z.boolean(),
+  // swap_stuck = replacement did NOT progress (failure signal); a kept/successful swap has swap_stuck: false.
   swap_stuck: z.boolean(),
 });
 export type SwapOutcome = z.infer<typeof SwapOutcomeSchema>;

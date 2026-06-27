@@ -39,10 +39,6 @@ function str(v: unknown, fallback = ""): string {
   return typeof v === "string" && v.length > 0 ? v : fallback;
 }
 
-function num(v: unknown, fallback = 0): number {
-  return typeof v === "number" && isFinite(v) ? v : fallback;
-}
-
 function bool(v: unknown): boolean {
   return v === true;
 }
@@ -89,10 +85,13 @@ function mapSwap(row: CoachInterventionRow): HistoryPayload["exercise_swaps_8w"]
   const to = str(ctx.to_exercise, "unknown");
   const reason = str(ctx.reason, "swap");
 
-  // swap_stuck = true → athlete kept the new exercise (it was an improvement);
-  // swap_stuck = false → athlete reverted to original.
+  // Map from success, not swap_stuck.
+  // success: true  → athlete kept the replacement (it worked).
+  // success: false → athlete reverted or the swap failed to progress.
+  // NOTE: swap_stuck is a FAILURE signal (replacement did NOT progress);
+  //   a kept/successful swap always has swap_stuck: false. Do NOT map from swap_stuck.
   const result: HistoryPayload["exercise_swaps_8w"][number]["result"] =
-    bool(out.swap_stuck) ? "kept" : "reverted";
+    out.success === true ? "kept" : "reverted";
 
   return {
     from,
