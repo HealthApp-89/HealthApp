@@ -687,6 +687,14 @@ export type IntakePayload = {
     macros_gap_acknowledged?: boolean;
     protein_floor_acknowledged?: boolean;
   };
+
+  /** Athlete decisions on data-aware plan flags. Missing = unresolved (blocks
+   *  propose, like an unaddressed sanity finding). "accept" applies the flag's
+   *  proposed softer value in buildPlanPayload; "override" proceeds as stated. */
+  plan_flag_resolutions?: Partial<Record<
+    "goal_vs_recovery" | "deficit_vs_muscle_loss" | "target_vs_adherence" | "strength_endurance_interference",
+    "accept" | "override"
+  >>;
 };
 
 // ── Sanity-check finding from plan-builder (Beat 1 input) ───────────────────
@@ -726,6 +734,41 @@ export type SanityFinding =
       proposed_protein_g: number;
       proposed_fat_g: number;
       rationale: string;
+    }
+  // ── Intelligence-layer plan flags (Task 1 — data-aware plan generation) ────
+  | {
+      type: "goal_vs_recovery";
+      recovery_status: "warning_overreach";
+      /** Proposed opening-week volume fraction (e.g. 0.8 = open 20% lighter). */
+      proposed_opening_volume_pct: number;
+      rationale: string;
+      responsiveness_note?: string;
+    }
+  | {
+      type: "deficit_vs_muscle_loss";
+      muscle_loss_risk: "high";
+      body_comp_direction: "losing_muscle" | "neutral" | "losing_fat" | "gaining_muscle" | "recomp" | "unknown";
+      /** Proposed protein floor in g/kg BW. */
+      proposed_protein_floor_g_per_kg: number;
+      rationale: string;
+      responsiveness_note?: string;
+    }
+  | {
+      type: "target_vs_adherence";
+      target_field: "protein_g" | "kcal";
+      recent_avg_g_per_kg: number;
+      target_g_per_kg: number;
+      proposed_ramp_weeks: number;
+      rationale: string;
+      responsiveness_note?: string;
+    }
+  | {
+      type: "strength_endurance_interference";
+      interference_level: "mild" | "high";
+      /** Proposed strength volume fraction (e.g. 0.9 = trim 10%). */
+      proposed_strength_volume_pct: number;
+      rationale: string;
+      responsiveness_note?: string;
     };
 
 // ── PlanPayload — Phase 2 prescribed coaching plan jsonb ────────────────────
@@ -865,6 +908,10 @@ export type PlanPayload = {
     unprompted_actions_allowed: string[];
     re_evaluation_cadence_weeks: number;
   };
+
+  /** Auto-applied mechanical adjustments (constraint/identity-driven exercise
+   *  swaps), surfaced for transparency. Empty when none applied. */
+  adjustments?: { from: string; to: string; reason: string }[];
 };
 
 /** Row mirror of public.athlete_profile_documents. */

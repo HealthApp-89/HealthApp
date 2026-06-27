@@ -22,6 +22,8 @@ import type {
 } from "@/lib/data/types";
 import type { Workout } from "@/lib/coach/muscle-volume";
 import { runSanityChecks } from "@/lib/coach/plan-builder/sanity-check";
+import { planIntelligenceChecks } from "@/lib/coach/plan-builder/plan-intelligence-checks";
+import { applyFlagResolutions, DEFAULT_COMPOSER_INPUTS } from "@/lib/coach/plan-builder/apply-flag-resolutions";
 import { composeSnapshot } from "@/lib/coach/plan-builder/compose-snapshot";
 import { composeGoal } from "@/lib/coach/plan-builder/compose-goal";
 import { composePeriodization } from "@/lib/coach/plan-builder/compose-periodization";
@@ -31,8 +33,17 @@ import { composeSleep } from "@/lib/coach/plan-builder/compose-sleep";
 import { composeRecovery } from "@/lib/coach/plan-builder/compose-recovery";
 import { composeCoachingAgreement } from "@/lib/coach/plan-builder/compose-coaching-agreement";
 import { generatePlanNarrative } from "@/lib/coach/plan-builder/narrative-prompt";
+import { buildAthleteIntelligence } from "@/lib/coach/intelligence/index";
+import { summarizeResponsiveness } from "@/lib/coach/interventions/responsiveness";
 import { todayInUserTz } from "@/lib/time";
 import { getUserTimezone } from "@/lib/time/get-user-tz";
+
+/**
+ * Fallback bodyweight (kg) used when no recent weigh-in is available.
+ * Single source of truth — referenced by buildPlanPayload and planIntelligenceChecks
+ * so both surfaces stay in sync without separate magic numbers.
+ */
+export const FALLBACK_BODYWEIGHT_KG = 85;
 
 export type BuildPlanResult = {
   plan_payload: PlanPayload;
@@ -50,8 +61,9 @@ export async function buildPlanPayload(
   const tz = await getUserTimezone(userId);
   const today = todayInUserTz(new Date(), tz);
 
-  // Parallel fetches
-  const [profileRes, recentLogsRes, recentWorkoutData, activeBlockRes] = await Promise.all([
+  // Parallel fetches — intelligence is graceful (.catch(() => null) so failure
+  // never breaks plan generation; planIntelligenceChecks returns [] on null).
+  const [profileRes, recentLogsRes, recentWorkoutData, activeBlockRes, intelligence] = await Promise.all([
     supabase
       .from("profiles")
       .select("name, age, height_cm")
@@ -70,6 +82,11 @@ export async function buildPlanPayload(
       .eq("user_id", userId)
       .eq("status", "active")
       .maybeSingle(),
+    // Graceful: if buildAthleteIntelligence fails (or returns a safe-default
+    // that still breaks caller logic), we catch and degrade to null.
+    // planIntelligenceChecks returns [] when intelligence === null, so no flags
+    // fire and plan generation proceeds exactly as before.
+    buildAthleteIntelligence(supabase, userId, tz).catch(() => null),
   ]);
 
   if (profileRes.error) throw profileRes.error;
@@ -96,7 +113,30 @@ export async function buildPlanPayload(
       ? kcalSamples.reduce((a, b) => a + b, 0) / kcalSamples.length
       : null;
 
-  // Sanity checks
+  // Responsiveness rollup from coach_interventions (guarded: null if fetch fails
+  // or intelligence is null). Used by planIntelligenceChecks for responsiveness_note.
+  let responsiveness = null;
+  if (intelligence !== null) {
+    try {
+      const ninety = new Date(`${today}T00:00:00Z`);
+      ninety.setUTCDate(ninety.getUTCDate() - 90);
+      const since90 = ninety.toISOString().slice(0, 10);
+      const { data: interventionRows } = await supabase
+        .from("coach_interventions")
+        .select("id, user_id, kind, source, started_on, context, outcome, outcome_evaluated_at, created_at")
+        .eq("user_id", userId)
+        .not("outcome", "is", null)
+        .gte("started_on", since90)
+        .order("started_on", { ascending: false });
+      responsiveness = summarizeResponsiveness(interventionRows ?? [], today);
+    } catch {
+      // Graceful: missing/failed interventions table → no responsiveness notes,
+      // but flags can still fire (they just omit responsiveness_note).
+      responsiveness = null;
+    }
+  }
+
+  // Sanity checks (original 4 deterministic checks)
   const sanityFindings = runSanityChecks({
     intake,
     current_bodyweight_kg: currentBodyweight,
@@ -104,26 +144,76 @@ export async function buildPlanPayload(
     today,
   });
 
-  // Bodyweight needed for nutrition composer. If missing, estimate from intake.
-  const bodyweightForComposers = currentBodyweight ?? 80;
+  // Intelligence-layer plan flags (may be [] if intelligence is null or no
+  // flag's data is conclusive — graceful degradation is load-bearing).
+  const flagFindings = planIntelligenceChecks({ intake, intelligence, responsiveness });
+  const allFindings = [...sanityFindings, ...flagFindings];
+
+  // Apply accepted flag resolutions to composer inputs BEFORE invoking composers.
+  // "override" / absent → unchanged (DEFAULT_COMPOSER_INPUTS pass-through).
+  const composerInputs = applyFlagResolutions(
+    DEFAULT_COMPOSER_INPUTS,
+    allFindings,
+    intake.plan_flag_resolutions,
+  );
+
+  // Bodyweight needed for nutrition composer.
+  //
+  // Signal chain:
+  //   1. currentBodyweight — most recent non-null weight_kg from the 30-day
+  //      daily_logs window (primary; already fetched above).
+  //   2. intelligence.body_comp_direction — does NOT carry an absolute weight
+  //      (only a per-week slope). No second source available from the payload.
+  //   3. Numeric default (85 kg) — only when genuinely nothing is logged.
+  //      console.warn so the default is auditable in Vercel logs.
+  //
+  // The common path (currentBodyweight present) is byte-identical to before.
+  const BODYWEIGHT_DEFAULT_KG = FALLBACK_BODYWEIGHT_KG;
+  if (currentBodyweight === null) {
+    console.warn(
+      `[buildPlanPayload] userId=${userId}: no weight logged in last 30d — ` +
+        `falling back to ${BODYWEIGHT_DEFAULT_KG} kg for nutrition composer. ` +
+        `Athlete should log a weigh-in before committing the plan.`,
+    );
+  }
+  const bodyweightForComposers = currentBodyweight ?? BODYWEIGHT_DEFAULT_KG;
+
+  // Extract constraints + identity from intelligence (null when intelligence unavailable).
+  // Both optional → composeStrengthTemplate gracefully omits constraint-aware selection.
+  const constraints = intelligence?.constraints ?? null;
+  const identity = intelligence?.identity ?? null;
 
   // Deterministic skeleton
   const athlete_snapshot = composeSnapshot(intake, profile);
   const goal = composeGoal(intake);
   const periodization = composePeriodization(intake);
-  const strength = composeStrengthTemplate(
+
+  // Thread strengthVolumeMultiplier + constraint/identity into composeStrengthTemplate.
+  // When no flags accepted, multiplier = 1.0 → byte-identical to prior behavior.
+  // When constraints/identity absent, exercise selection is unchanged.
+  const { strength, adjustments: exerciseAdjustments } = composeStrengthTemplate(
     intake,
     activeBlock,
     recentWorkoutData.e1rms,
     recentWorkoutData.workouts,
+    {
+      strengthVolumeMultiplier: composerInputs.strengthVolumeMultiplier,
+      constraints,
+      identity,
+    },
   );
+
   // TODO Task 4: thread acknowledged_on from caller (commit_plan tool has the
   // active profile version's acknowledged_on; resolveMode handles null gracefully).
+  // nutritionProteinFloorGPerKg and nutritionRampWeeks now threaded into composeNutrition.
+  // When no flags accepted: floor = 1.6 (default), rampWeeks = 0 → byte-identical to prior behavior.
   const nutrition = composeNutrition({
     intake,
     goal,
     bodyweight_kg: bodyweightForComposers,
     acknowledged_on: null,
+    nutritionProteinFloorGPerKg: composerInputs.nutritionProteinFloorGPerKg,
+    nutritionRampWeeks: composerInputs.nutritionRampWeeks,
   });
   const sleep = composeSleep(intake);
   const recovery = composeRecovery(intake);
@@ -133,6 +223,7 @@ export async function buildPlanPayload(
   const narrative = await generatePlanNarrative({
     intake,
     skeleton: { goal, strength, nutrition, sleep, recovery, coaching_agreement },
+    adjustments: exerciseAdjustments,
   });
 
   const plan_payload: PlanPayload = {
@@ -145,9 +236,11 @@ export async function buildPlanPayload(
     sleep,
     recovery,
     coaching_agreement,
+    // Constraint/identity exercise adjustments — empty array when none applied.
+    adjustments: exerciseAdjustments,
   };
 
-  return { plan_payload, sanity_findings: sanityFindings };
+  return { plan_payload, sanity_findings: allFindings };
 }
 
 async function fetchRecentWorkoutData(

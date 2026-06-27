@@ -23,6 +23,12 @@ import {
   computeWeeklyMuscleVolume,
   type Workout,
 } from "@/lib/coach/muscle-volume";
+import type { ConstraintPayload, IdentityPayload } from "@/lib/coach/intelligence/types";
+import {
+  applyConstraintAwareSelection,
+  type ExerciseAdjustment,
+} from "@/lib/coach/plan-builder/constraint-aware-exercises";
+import { SESSION_PLANS } from "@/lib/coach/sessionPlans";
 
 export type RecentE1RMsForStrength = {
   squat: number | null;
@@ -31,12 +37,39 @@ export type RecentE1RMsForStrength = {
   ohp: number | null;
 };
 
+/** Optional intelligence-layer inputs for composeStrengthTemplate.
+ *  All optional → backward-compatible: absent = today's behavior, zero adjustments. */
+export type StrengthTemplateOptions = {
+  /** Multiplier applied to weekly_volume_targets reps/sets.
+   *  1.0 (default) = full prescribed volume.
+   *  <1.0 = trimmed (e.g. 0.8 when goal_vs_recovery flag accepted). */
+  strengthVolumeMultiplier?: number;
+  /** Constraint payload from intelligence layer. When present + non-empty,
+   *  exercises in each session type are run through constraint-aware selection. */
+  constraints?: ConstraintPayload | null;
+  /** Identity payload from intelligence layer. When present, latitude accessories
+   *  are swapped to identity-preferred alternatives. */
+  identity?: IdentityPayload | null;
+};
+
+export type StrengthTemplateResult = {
+  strength: PlanPayload["strength"];
+  /** Exercise substitutions applied. Empty when no constraints/identity present
+   *  or no substitutions were needed. Caller puts these on plan_payload.adjustments. */
+  adjustments: ExerciseAdjustment[];
+};
+
 export function composeStrengthTemplate(
   intake: IntakePayload,
   activeBlock: Pick<TrainingBlock, "primary_lift"> | null,
   recentE1RMs: RecentE1RMsForStrength,
   recentWorkouts: Workout[],
-): PlanPayload["strength"] {
+  options?: StrengthTemplateOptions,
+): StrengthTemplateResult {
+  const strengthVolumeMultiplier = options?.strengthVolumeMultiplier ?? 1.0;
+  const constraints = options?.constraints ?? null;
+  const identity = options?.identity ?? null;
+
   const sessionsPerWeek = intake.training.sessions_per_week;
   const dayPattern = composeDayPattern(intake, sessionsPerWeek);
   const sessionTypes = Array.from(new Set(Object.values(dayPattern))) as Array<
@@ -48,18 +81,42 @@ export function composeStrengthTemplate(
     recentWorkouts,
   );
 
-  return {
+  // ── Constraint-aware + identity-favoring exercise selection ──────────────
+  // For each session type in the plan, run applyConstraintAwareSelection over
+  // its exercises. Adjustments are accumulated across all session types.
+  // When constraints + identity both absent, this is a no-op.
+  const allAdjustments: ExerciseAdjustment[] = [];
+
+  if (constraints || identity) {
+    for (const sessionType of sessionTypes) {
+      if (sessionType === "REST" || sessionType === "Mobility") continue;
+      const planned = SESSION_PLANS[sessionType];
+      if (!planned || planned.length === 0) continue;
+
+      const { adjustments } = applyConstraintAwareSelection({
+        exercises: planned,
+        constraints,
+        identity,
+      });
+      allAdjustments.push(...adjustments);
+    }
+  }
+
+  const strength: PlanPayload["strength"] = {
     sessions_per_week: sessionsPerWeek,
     day_pattern: dayPattern,
     template_session_types: sessionTypes,
     weekly_volume_targets: composeVolumeTargets(
       intake,
       activeBlock?.primary_lift ?? null,
+      strengthVolumeMultiplier,
     ),
     progression_rule: composeProgressionRule(intake.training.training_age),
     notes: null, // populated by AI narrative pass
     muscle_volume,
   };
+
+  return { strength, adjustments: allAdjustments };
 }
 
 /** Builds a Mon-Sun map of session types from intake.lifestyle.days_available.
@@ -97,10 +154,13 @@ function composeDayPattern(
   return pattern;
 }
 
-/** Volume targets per primary lift, scaled by training_age. */
+/** Volume targets per primary lift, scaled by training_age and strengthVolumeMultiplier.
+ *  multiplier = 1.0 → full prescribed volume (default, unchanged from prior behavior).
+ *  multiplier < 1.0 → trimmed volume (e.g. 0.8 when goal_vs_recovery flag accepted). */
 function composeVolumeTargets(
   intake: IntakePayload,
   primaryLift: "squat" | "bench" | "deadlift" | "ohp" | null,
+  multiplier: number = 1.0,
 ): { [lift: string]: { reps_per_week: number; sets_per_week: number } } {
   const targets: { [lift: string]: { reps_per_week: number; sets_per_week: number } } = {};
   const lifts = primaryLift
@@ -108,7 +168,10 @@ function composeVolumeTargets(
     : (["squat", "bench", "deadlift", "ohp"] as const);
   const profile = volumeProfileForAge(intake.training.training_age);
   for (const lift of lifts) {
-    targets[lift] = { ...profile };
+    targets[lift] = {
+      reps_per_week: Math.round(profile.reps_per_week * multiplier),
+      sets_per_week: Math.round(profile.sets_per_week * multiplier),
+    };
   }
   return targets;
 }

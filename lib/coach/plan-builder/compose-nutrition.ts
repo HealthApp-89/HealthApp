@@ -32,8 +32,22 @@ export function composeNutrition(args: {
   goal: PlanPayload["goal"];
   bodyweight_kg: number;
   acknowledged_on: string | null;
+  /** Raise-only protein floor in g/kg BW. Default 1.6 (classical minimum).
+   *  When a flag is accepted (e.g. deficit_vs_muscle_loss), this may be raised
+   *  to e.g. 1.8 by applyFlagResolutions. Never lowered. */
+  nutritionProteinFloorGPerKg?: number;
+  /** Progressive ramp from current intake to full target over N weeks.
+   *  0 (default) = full target from day 1. Non-zero = ramped.
+   *  When accepted (target_vs_adherence), the classical_phases[0] rationale
+   *  notes the ramp so the AI narrative can surface it. */
+  nutritionRampWeeks?: number;
 }): PlanPayload["nutrition"] {
   const { intake, goal, bodyweight_kg, acknowledged_on } = args;
+  // Raise-only protein floor: use the larger of the passed floor and the
+  // GLP-1 module's computed floor (which may be higher). Default 1.6.
+  const proteinFloorGPerKg = args.nutritionProteinFloorGPerKg ?? 1.6;
+  const rampWeeks = args.nutritionRampWeeks ?? 0;
+
   const status = intake.health.glp1_status ?? null;
   const phase = intake.nutrition.current_phase;
   const resolvedPhase = phase === "unsure" ? "maintain" : phase;
@@ -41,17 +55,23 @@ export function composeNutrition(args: {
   // ── GLP-1 branch ─────────────────────────────────────────────────────────
   if (status && !isPastEnd(status.expected_end)) {
     const glp1 = composeGlp1Config(status, intake, bodyweight_kg);
-    const kcalTarget = deriveTodayKcalGlp1(glp1, phase);
-    const kcalRange = deriveKcalRangeGlp1(glp1, phase);
-    const carbG = derivePhaseCarbsGlp1(phase, bodyweight_kg, glp1);
+    // Raise-only: respect the flag-derived floor if it exceeds the GLP-1 floor
+    const effectiveGlp1ProteinFloor = Math.max(glp1.protein_g_per_kg_bw, proteinFloorGPerKg);
+    const glp1WithFloor: typeof glp1 = {
+      ...glp1,
+      protein_g_per_kg_bw: effectiveGlp1ProteinFloor,
+    };
+    const kcalTarget = deriveTodayKcalGlp1(glp1WithFloor, phase);
+    const kcalRange = deriveKcalRangeGlp1(glp1WithFloor, phase);
+    const carbG = derivePhaseCarbsGlp1(phase, bodyweight_kg, glp1WithFloor);
     const fatG = derivePhaseFatGlp1(bodyweight_kg);
 
     return {
       phase: resolvedPhase,
       kcal_target: kcalTarget,
       kcal_range: kcalRange,
-      protein_g_per_kg_bw: glp1.protein_g_per_kg_bw,
-      protein_g: Math.round(bodyweight_kg * glp1.protein_g_per_kg_bw),
+      protein_g_per_kg_bw: glp1WithFloor.protein_g_per_kg_bw,
+      protein_g: Math.round(bodyweight_kg * glp1WithFloor.protein_g_per_kg_bw),
       carb_g: carbG,
       fat_g: fatG,
       training_day_uplift: null,   // GLP-1 mode does not uplift
@@ -59,24 +79,28 @@ export function composeNutrition(args: {
       refeed_uplift: null,
       hard_rules: composeHardRules(intake),
       notes: null,
-      glp1,
+      glp1: glp1WithFloor,
       classical_phases: null,
       rest_day_delta: null,
     };
   }
 
   // ── Classical branch ─────────────────────────────────────────────────────
+  // Raise-only: ensure floor never goes below classical minimum 1.6
+  const classicalProteinFactor = Math.max(1.6, proteinFloorGPerKg);
+
   const classical_phases = composePhaseSequence({
     current_phase: phase,
     goal_target_date: goal.target_date,
     acknowledged_on,
     bodyweight_kg,
-    bodyweight_kg_protein_factor: 1.6,
+    bodyweight_kg_protein_factor: classicalProteinFactor,
+    ramp_weeks: rampWeeks,
   });
 
   const today = classical_phases?.[0] ?? null;
   const fallbackKcal = estimateMaintenance(bodyweight_kg);
-  const fallbackProtein = Math.round(bodyweight_kg * 1.6);
+  const fallbackProtein = Math.round(bodyweight_kg * classicalProteinFactor);
 
   return {
     phase: resolvedPhase,
@@ -84,7 +108,7 @@ export function composeNutrition(args: {
     kcal_range: today
       ? [Math.round(today.kcal * 0.95), Math.round(today.kcal * 1.05)]
       : [Math.round(fallbackKcal * 0.95), Math.round(fallbackKcal * 1.05)],
-    protein_g_per_kg_bw: 1.6,
+    protein_g_per_kg_bw: classicalProteinFactor,
     protein_g: today?.protein_g ?? fallbackProtein,
     carb_g: today?.carb_g ?? 200,
     fat_g: today?.fat_g ?? 60,
@@ -169,9 +193,16 @@ export function composePhaseSequence(args: {
   acknowledged_on: string | null;
   bodyweight_kg: number;
   bodyweight_kg_protein_factor: number;
+  /** Number of weeks to ramp protein from current intake to target.
+   *  0 (default) = full target from day 1. Non-zero = ramped.
+   *  When > 0, the first cut block's rationale notes the ramp duration so
+   *  the AI narrative can surface the gradual approach to the athlete. */
+  ramp_weeks?: number;
 }): PhaseStep[] | null {
   // Only cut gets a phase sequence; other phases stay single-state.
   if (args.current_phase !== "cut") return null;
+
+  const rampWeeks = args.ramp_weeks ?? 0;
 
   const ackDate = args.acknowledged_on
     ? new Date(args.acknowledged_on)
@@ -182,7 +213,7 @@ export function composePhaseSequence(args: {
     Math.floor((targetDate.getTime() - ackDate.getTime()) / (7 * 86_400_000)),
   );
 
-  // Baseline cut macros (1.6 g/kg BW protein for classical mode).
+  // Baseline cut macros — protein_factor may be raised by flag resolution.
   const proteinG = Math.round(args.bodyweight_kg * args.bodyweight_kg_protein_factor);
   const cutKcal = Math.round(estimateMaintenance(args.bodyweight_kg) * 0.80);  // 20% deficit
   const cutFatG = 55;
@@ -199,6 +230,14 @@ export function composePhaseSequence(args: {
 
   while (week < cuttingWindow) {
     const cutEnd = Math.min(week + 8, cuttingWindow);
+    const isFirstCut = cutBlockNo === 0;
+    const proteinRationale =
+      args.bodyweight_kg_protein_factor > 1.6
+        ? `protein floor raised to ${args.bodyweight_kg_protein_factor} g/kg BW`
+        : `protein floor 1.6 g/kg BW`;
+    const rampNote =
+      isFirstCut && rampWeeks > 0 ? ` — ${rampWeeks}-week protein ramp to target` : "";
+
     out.push({
       start_week: week,
       end_week: cutEnd,
@@ -207,8 +246,8 @@ export function composePhaseSequence(args: {
       protein_g: proteinG,
       carb_g: cutCarbG,
       fat_g: cutFatG,
-      rationale: cutBlockNo === 0
-        ? "Cut phase — 20% deficit, protein floor 1.6 g/kg BW"
+      rationale: isFirstCut
+        ? `Cut phase — 20% deficit, ${proteinRationale}${rampNote}`
         : `Cut block ${cutBlockNo + 1} — sustained deficit after diet break`,
     });
     cutBlockNo += 1;

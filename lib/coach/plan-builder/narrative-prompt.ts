@@ -25,6 +25,8 @@ export type NarrativeContext = {
     recovery: PlanPayload["recovery"];
     coaching_agreement: PlanPayload["coaching_agreement"];
   };
+  /** Auto-applied exercise swaps (constraint/identity-driven). Empty when none. */
+  adjustments?: { from: string; to: string; reason: string }[];
 };
 
 export type PlanNarrative = {
@@ -49,6 +51,21 @@ export async function generatePlanNarrative(
     },
   );
   return parseNarrative(result);
+}
+
+/**
+ * Builds the adjustments block injected into the strength_notes instruction.
+ * Returns an empty string when no adjustments occurred — the AI sees nothing
+ * and says nothing about swaps.
+ */
+function buildAdjustmentBlock(adjustments: { from: string; to: string; reason: string }[]): string {
+  if (adjustments.length === 0) return "";
+  const lines = adjustments
+    .map((a) => `  - swapped "${a.from}" → "${a.to}": ${a.reason}`)
+    .join("\n");
+  return `   Exercise swaps were auto-applied (cite ONLY these reasons — observed facts, not speculation):
+${lines}
+   Mention each swap naturally in strength_notes. Do NOT invent reasons beyond those listed.`;
 }
 
 function buildSystemPrompt(ctx: NarrativeContext): string {
@@ -84,6 +101,7 @@ Write THREE short narrative fields:
 1. **goal_summary** (2-3 sentences) — synthesize the form narrative + chat-deepened narrative (if present) into the athlete's voice. Reference the goal target. Make it feel like THEIR goal, not a coach's prescription.
 
 2. **strength_notes** (1-2 sentences) — context for the strength prescription. Reference the primary lift focus + day pattern. Note progression rule briefly. Don't restate numbers.
+${buildAdjustmentBlock(ctx.adjustments ?? [])}
 
 3. **nutrition_notes** (1-2 sentences) — context for the nutrition prescription. Reference the phase + protein-per-kg-BW choice. If GLP-1 mentioned in medications, note the elevated importance of hitting protein floor consistently (hunger cues may be blunted). If refeed cadence set, note it.
 

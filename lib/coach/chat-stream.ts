@@ -51,6 +51,7 @@ import {
   executeApplyMacrosCorrection,
   executeApplyProteinCorrection,
   executeSetSanityOverride,
+  executeResolvePlanFlag,
   executeSetGoalNarrativeChat,
   executeSetDirectness,
   executeSetCadence,
@@ -354,6 +355,7 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
         name === "query_workouts" ||
         name.startsWith("apply_") ||
         (name.startsWith("set_") && name !== "set_glp1_taper_started" && !isEnduranceMilestone) ||
+        name === "resolve_plan_flag" ||
         name === "propose_plan" ||
         name === "commit_plan"
       );
@@ -393,6 +395,11 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
     if (name.startsWith("commit_")) return false;
     if (name.startsWith("apply_")) return false;
     if (name.startsWith("set_") && name !== "set_glp1_taper_started" && name !== "set_rotation_priority_lift") return false;
+    // Intake-only tool: onboarding has its own capture path; block in default
+    // mode for consistency (the executor requires a draftDocId only set in
+    // intake mode, so there's no data risk, but explicit blocking keeps the
+    // tool list honest and avoids confusing the model).
+    if (name === "resolve_plan_flag") return false;
     return true;
   };
 
@@ -831,6 +838,7 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
           block.name === "apply_macros_correction" ||
           block.name === "apply_protein_correction" ||
           block.name === "set_sanity_override" ||
+          block.name === "resolve_plan_flag" ||
           block.name === "set_goal_narrative_chat" ||
           block.name === "set_directness" ||
           block.name === "set_cadence" ||
@@ -880,6 +888,13 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
             });
           } else if (block.name === "set_sanity_override") {
             result = await executeSetSanityOverride({
+              supabase: opts.sr,
+              userId: opts.userId,
+              draftDocId,
+              input: block.input,
+            });
+          } else if (block.name === "resolve_plan_flag") {
+            result = await executeResolvePlanFlag({
               supabase: opts.sr,
               userId: opts.userId,
               draftDocId,
