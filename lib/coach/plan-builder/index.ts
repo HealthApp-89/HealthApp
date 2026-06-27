@@ -150,8 +150,26 @@ export async function buildPlanPayload(
     intake.plan_flag_resolutions,
   );
 
-  // Bodyweight needed for nutrition composer. If missing, estimate from intake.
-  const bodyweightForComposers = currentBodyweight ?? 80;
+  // Bodyweight needed for nutrition composer.
+  //
+  // Signal chain:
+  //   1. currentBodyweight — most recent non-null weight_kg from the 30-day
+  //      daily_logs window (primary; already fetched above).
+  //   2. intelligence.body_comp_direction — does NOT carry an absolute weight
+  //      (only a per-week slope). No second source available from the payload.
+  //   3. Numeric default (85 kg) — only when genuinely nothing is logged.
+  //      console.warn so the default is auditable in Vercel logs.
+  //
+  // The common path (currentBodyweight present) is byte-identical to before.
+  const BODYWEIGHT_DEFAULT_KG = 85;
+  if (currentBodyweight === null) {
+    console.warn(
+      `[buildPlanPayload] userId=${userId}: no weight logged in last 30d — ` +
+        `falling back to ${BODYWEIGHT_DEFAULT_KG} kg for nutrition composer. ` +
+        `Athlete should log a weigh-in before committing the plan.`,
+    );
+  }
+  const bodyweightForComposers = currentBodyweight ?? BODYWEIGHT_DEFAULT_KG;
 
   // Extract constraints + identity from intelligence (null when intelligence unavailable).
   // Both optional → composeStrengthTemplate gracefully omits constraint-aware selection.
