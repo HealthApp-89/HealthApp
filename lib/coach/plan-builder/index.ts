@@ -153,34 +153,42 @@ export async function buildPlanPayload(
   // Bodyweight needed for nutrition composer. If missing, estimate from intake.
   const bodyweightForComposers = currentBodyweight ?? 80;
 
+  // Extract constraints + identity from intelligence (null when intelligence unavailable).
+  // Both optional → composeStrengthTemplate gracefully omits constraint-aware selection.
+  const constraints = intelligence?.constraints ?? null;
+  const identity = intelligence?.identity ?? null;
+
   // Deterministic skeleton
   const athlete_snapshot = composeSnapshot(intake, profile);
   const goal = composeGoal(intake);
   const periodization = composePeriodization(intake);
-  // composerInputs.strengthVolumeMultiplier is passed here for future use:
-  // currently compose-strength does not yet read this scalar — it will be
-  // threaded in Task 3 when per-lift volume targets receive the multiplier.
-  // For now, we compute the value so the flag path is wired end-to-end and
-  // the test for accepted flags confirms the scalar is applied.
-  const _strengthVolumeMultiplier = composerInputs.strengthVolumeMultiplier; // reserved for Task 3
-  const strength = composeStrengthTemplate(
+
+  // Thread strengthVolumeMultiplier + constraint/identity into composeStrengthTemplate.
+  // When no flags accepted, multiplier = 1.0 → byte-identical to prior behavior.
+  // When constraints/identity absent, exercise selection is unchanged.
+  const { strength, adjustments: exerciseAdjustments } = composeStrengthTemplate(
     intake,
     activeBlock,
     recentWorkoutData.e1rms,
     recentWorkoutData.workouts,
+    {
+      strengthVolumeMultiplier: composerInputs.strengthVolumeMultiplier,
+      constraints,
+      identity,
+    },
   );
+
   // TODO Task 4: thread acknowledged_on from caller (commit_plan tool has the
   // active profile version's acknowledged_on; resolveMode handles null gracefully).
-  // composerInputs.nutritionProteinFloorGPerKg and nutritionRampWeeks are stored
-  // for future threading into composeNutrition when it gains those parameters.
-  // For now, they adjust the resolved scalar for observability / audit purposes.
-  const _nutritionProteinFloorGPerKg = composerInputs.nutritionProteinFloorGPerKg; // reserved
-  const _nutritionRampWeeks = composerInputs.nutritionRampWeeks; // reserved
+  // nutritionProteinFloorGPerKg and nutritionRampWeeks now threaded into composeNutrition.
+  // When no flags accepted: floor = 1.6 (default), rampWeeks = 0 → byte-identical to prior behavior.
   const nutrition = composeNutrition({
     intake,
     goal,
     bodyweight_kg: bodyweightForComposers,
     acknowledged_on: null,
+    nutritionProteinFloorGPerKg: composerInputs.nutritionProteinFloorGPerKg,
+    nutritionRampWeeks: composerInputs.nutritionRampWeeks,
   });
   const sleep = composeSleep(intake);
   const recovery = composeRecovery(intake);
@@ -202,6 +210,8 @@ export async function buildPlanPayload(
     sleep,
     recovery,
     coaching_agreement,
+    // Constraint/identity exercise adjustments — empty array when none applied.
+    adjustments: exerciseAdjustments.length > 0 ? exerciseAdjustments : undefined,
   };
 
   return { plan_payload, sanity_findings: allFindings };
