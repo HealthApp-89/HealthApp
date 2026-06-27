@@ -25,7 +25,7 @@ import { todayInUserTz } from "@/lib/time";
 import { loadWorkouts } from "@/lib/data/workouts-server";
 import type { WorkoutSession } from "@/lib/data/workouts";
 import type { FoodLogEntry } from "@/lib/food/types";
-import type { Rolling30dBaselines, IntakePayload, WhoopBaselinesJsonb } from "@/lib/data/types";
+import type { Rolling30dBaselines, IntakePayload, WhoopBaselinesJsonb, CoachInterventionRow } from "@/lib/data/types";
 import { getTodayTargets } from "@/lib/morning/brief/get-today-targets";
 
 // Layer 1 composers
@@ -222,6 +222,11 @@ export type IntelligenceData = {
     protein_g: number;
     phase: "cut" | "maintain" | "lean_bulk" | "recomp" | "unsure";
   } | null;
+  /**
+   * Evaluated coach_interventions rows (last ~90d, outcome IS NOT NULL).
+   * Defaults to empty array when no table exists or fetch fails.
+   */
+  interventionRows: CoachInterventionRow[];
   /** ISO date string derived from tz-aware "today" — used as generated_on anchor */
   today: string;
 };
@@ -248,6 +253,7 @@ export function assembleIntelligence(data: IntelligenceData): AthleteIntelligenc
     baselines,
     intake,
     targets,
+    interventionRows,
     today,
   } = data;
 
@@ -281,7 +287,7 @@ export function assembleIntelligence(data: IntelligenceData): AthleteIntelligenc
     carbs_g: l.carbs_g,
     fat_g: l.fat_g,
   }));
-  const history = composeCoachHistory(workouts90d, historyLogs);
+  const history = composeCoachHistory(workouts90d, historyLogs, interventionRows);
 
   // ── Layer 2 composers ───────────────────────────────────────────────────────
 
@@ -399,6 +405,7 @@ export async function buildAthleteIntelligence(
       { data: athleteProfileData },
       todayTargets,
       { data: foodLogData },
+      { data: interventionsData },
     ] = await Promise.all([
       // All workouts — identity and interference composers filter/slice internally.
       loadWorkouts(userId),
@@ -444,6 +451,17 @@ export async function buildAthleteIntelligence(
         .eq("status", "committed")
         .gte("eaten_at", since90d + "T00:00:00Z")
         .order("eaten_at", { ascending: false }),
+
+      // Last 90 days of evaluated coach_interventions (outcome IS NOT NULL).
+      // Inconclusive rows (outcome.success = null) are filtered at the mapper level,
+      // not here — we fetch all evaluated rows and let mapToHistory decide.
+      supabase
+        .from("coach_interventions")
+        .select("id, user_id, kind, source, started_on, context, outcome, outcome_evaluated_at, created_at")
+        .eq("user_id", userId)
+        .not("outcome", "is", null)
+        .gte("started_on", since90d)
+        .order("started_on", { ascending: false }),
     ]);
 
     // ── Extract baselines ────────────────────────────────────────────────────
@@ -470,6 +488,7 @@ export async function buildAthleteIntelligence(
       baselines,
       intake,
       targets,
+      interventionRows: (interventionsData ?? []) as CoachInterventionRow[],
       today,
     });
   } catch (err) {

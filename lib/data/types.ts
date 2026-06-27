@@ -1906,3 +1906,22 @@ export type {
   Narrative as PeterDashboardNarrative,
   PeterDashboardPayload,
 } from '@/lib/coach/peter-dashboard/types';
+
+// ── coach_interventions (0043_coach_interventions) ────────────────────────────
+
+/** A recorded coaching intervention + its later-stamped outcome.
+ *  See docs/superpowers/specs/2026-06-26-coach-responsiveness-memory-design.md */
+export type CoachInterventionKind = "reactive_deload" | "exercise_swap" | "nutrition_change";
+export type CoachInterventionSource = "explicit" | "inferred";
+
+export type CoachInterventionRow = {
+  id: string;
+  user_id: string;
+  kind: CoachInterventionKind;
+  source: CoachInterventionSource;
+  started_on: string;          // YYYY-MM-DD
+  context: Record<string, unknown>;
+  outcome: Record<string, unknown> | null;
+  outcome_evaluated_at: string | null;
+  created_at: string;
+};

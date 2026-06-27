@@ -1,16 +1,24 @@
 // lib/coach/intelligence/coach-history.ts
 //
-// Coach History Composer — detects deload outcomes, exercise swaps, nutrition experiments.
-// Phase 1 returns empty arrays; the structure enables Layer 1 snapshot integration.
+// Coach History Composer — maps evaluated intervention rows to the HistoryPayload.
 //
-// Signature: composeCoachHistory(workouts, dailyLogs): HistoryPayload
-// Returns: { recent_deloads: [], exercise_swaps_8w: [], nutrition_interventions: [] }
-// Validates against HistoryPayload schema before returning.
+// Phase 1 returned empty arrays.
+// Phase 2 (this task) delegates to mapToHistory() which reads real
+// coach_interventions rows and maps them to the typed sub-schemas.
+//
+// Signature: composeCoachHistory(workouts, dailyLogs, interventionRows): HistoryPayload
+//
+// workouts and dailyLogs are kept in the signature for future inference
+// (e.g. auto-detecting planned deloads from workout gaps) but are unused now.
+// The single caller (orchestrator) passes them through; the live data comes
+// from interventionRows.
 
-import { HistoryPayloadSchema, type HistoryPayload } from "./types";
 import type { WorkoutSession } from "@/lib/data/workouts";
+import type { CoachInterventionRow } from "@/lib/data/types";
+import { mapToHistory } from "@/lib/coach/interventions/map-to-history";
+import type { HistoryPayload } from "./types";
 
-/** Daily log row shape consumed by the history composer */
+/** Daily log row shape (kept for future inference work) */
 type DailyLogRow = {
   date: string;
   hrv: number | null;
@@ -29,33 +37,21 @@ type DailyLogRow = {
 };
 
 /**
- * Compose the history layer payload — detects deload outcomes, exercise swaps, nutrition experiments.
+ * Compose the history layer payload from evaluated intervention rows.
  *
- * Phase 1: Returns empty arrays. The structure allows Task 5 to wire the history layer
- * into the snapshot without import errors. Detection logic is Phase 2 work.
+ * Delegates to mapToHistory() to map rows where outcome.success ∈ {true, false}.
+ * Inconclusive rows (success: null) are dropped by mapToHistory.
  *
- * @param _workouts - Workout sessions (intentionally unused in Phase 1)
- * @param _dailyLogs - Daily log rows (intentionally unused in Phase 1)
- * @returns HistoryPayload with all arrays empty
- * @throws If the return value fails HistoryPayload schema validation
+ * @param _workouts        Workout sessions (available for future inference; unused now)
+ * @param _dailyLogs       Daily log rows (available for future inference; unused now)
+ * @param interventionRows Evaluated coach_interventions rows (filtered to ~90d by orchestrator)
+ * @returns HistoryPayload with mapped intervention records
+ * @throws If mapToHistory fails schema validation (should not happen in practice)
  */
 export function composeCoachHistory(
   _workouts: WorkoutSession[],
   _dailyLogs: DailyLogRow[],
+  interventionRows: CoachInterventionRow[],
 ): HistoryPayload {
-  const payload: HistoryPayload = {
-    recent_deloads: [],
-    exercise_swaps_8w: [],
-    nutrition_interventions: [],
-  };
-
-  // Validate against schema before returning
-  const parsed = HistoryPayloadSchema.safeParse(payload);
-  if (!parsed.success) {
-    throw new Error(
-      `HistoryPayload schema validation failed: ${JSON.stringify(parsed.error.issues, null, 2)}`,
-    );
-  }
-
-  return payload;
+  return mapToHistory(interventionRows);
 }
