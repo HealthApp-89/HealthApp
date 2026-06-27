@@ -38,6 +38,13 @@ import { summarizeResponsiveness } from "@/lib/coach/interventions/responsivenes
 import { todayInUserTz } from "@/lib/time";
 import { getUserTimezone } from "@/lib/time/get-user-tz";
 
+/**
+ * Fallback bodyweight (kg) used when no recent weigh-in is available.
+ * Single source of truth — referenced by buildPlanPayload and planIntelligenceChecks
+ * so both surfaces stay in sync without separate magic numbers.
+ */
+export const FALLBACK_BODYWEIGHT_KG = 85;
+
 export type BuildPlanResult = {
   plan_payload: PlanPayload;
   /** Sanity findings detected during build. Caller surfaces in chat Beat 1
@@ -161,7 +168,7 @@ export async function buildPlanPayload(
   //      console.warn so the default is auditable in Vercel logs.
   //
   // The common path (currentBodyweight present) is byte-identical to before.
-  const BODYWEIGHT_DEFAULT_KG = 85;
+  const BODYWEIGHT_DEFAULT_KG = FALLBACK_BODYWEIGHT_KG;
   if (currentBodyweight === null) {
     console.warn(
       `[buildPlanPayload] userId=${userId}: no weight logged in last 30d — ` +

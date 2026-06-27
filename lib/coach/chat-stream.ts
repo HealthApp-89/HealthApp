@@ -395,6 +395,11 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
     if (name.startsWith("commit_")) return false;
     if (name.startsWith("apply_")) return false;
     if (name.startsWith("set_") && name !== "set_glp1_taper_started" && name !== "set_rotation_priority_lift") return false;
+    // Intake-only tool: onboarding has its own capture path; block in default
+    // mode for consistency (the executor requires a draftDocId only set in
+    // intake mode, so there's no data risk, but explicit blocking keeps the
+    // tool list honest and avoids confusing the model).
+    if (name === "resolve_plan_flag") return false;
     return true;
   };
 

@@ -18,6 +18,7 @@
 import type { SanityFinding, IntakePayload } from "@/lib/data/types";
 import type { AthleteIntelligencePayload } from "@/lib/coach/intelligence/types";
 import type { ResponsivenessRollup } from "@/lib/coach/interventions/responsiveness";
+import { FALLBACK_BODYWEIGHT_KG } from "@/lib/coach/plan-builder/index";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Thresholds — all documented inline
@@ -263,7 +264,7 @@ function checkTargetVsAdherence(
   // For a plan-flag we use the intake protein target directly;
   // the "recent avg" is marked at ~80% of target for critically_low, ~90% for marginally_short.
   // These are conservative estimates — the actual driver is protein_status.
-  const estimatedBwKg = 80; // default when no BW in intake (no BW field on IntakePayload)
+  const estimatedBwKg = FALLBACK_BODYWEIGHT_KG; // default when no BW in intake (no BW field on IntakePayload)
   const targetGPerKg = Math.round((targetProtein_g / estimatedBwKg) * 100) / 100;
 
   // Recent avg estimate based on status
