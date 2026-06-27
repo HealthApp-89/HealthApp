@@ -216,6 +216,7 @@ export async function buildPlanPayload(
   const narrative = await generatePlanNarrative({
     intake,
     skeleton: { goal, strength, nutrition, sleep, recovery, coaching_agreement },
+    adjustments: exerciseAdjustments,
   });
 
   const plan_payload: PlanPayload = {
@@ -229,7 +230,7 @@ export async function buildPlanPayload(
     recovery,
     coaching_agreement,
     // Constraint/identity exercise adjustments — empty array when none applied.
-    adjustments: exerciseAdjustments.length > 0 ? exerciseAdjustments : undefined,
+    adjustments: exerciseAdjustments,
   };
 
   return { plan_payload, sanity_findings: allFindings };
