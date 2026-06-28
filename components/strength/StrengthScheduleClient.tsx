@@ -200,6 +200,7 @@ export function StrengthScheduleClient({ userId }: Props) {
 
       {/* Activity strip — quick-add per-week one-off activities */}
       <WeekActivityStrip
+        userId={userId}
         weekStart={weekStart}
         initialActivities={(trainingWeek?.planned_activities ?? []) as import("@/lib/coach/activity/types").PlannedActivity[]}
       />
