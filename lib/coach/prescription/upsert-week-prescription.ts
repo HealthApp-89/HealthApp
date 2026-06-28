@@ -18,12 +18,29 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
+  SessionPlan,
   SessionPrescriptions,
   TrainingBlock,
   TrainingWeek,
   WeekdayLong,
 } from "@/lib/data/types";
-import { prescribeWeek } from "@/lib/coach/prescription/prescribe-week";
+import { prescribeWeek, computeActivityLayoutProposal } from "@/lib/coach/prescription/prescribe-week";
+import type { ActivityConflictFlag } from "@/lib/coach/activity/sequence-week";
+import type { MuscleRegion } from "@/lib/coach/activity/types";
+
+/** Summary of the activity-aware layout proposal for a week.
+ *  When `hasMoves` is true, the athlete should be prompted to review
+ *  and optionally approve the proposed session-day changes.
+ *  Apply via POST /api/training-weeks/[week_start]/apply-activity-layout. */
+export type ActivityLayoutProposal = {
+  proposedPlan: SessionPlan;
+  lightenDays: Record<string, MuscleRegion[]>;
+  flags: ActivityConflictFlag[];
+  /** True when proposedPlan differs from the committed session_plan. */
+  hasMoves: boolean;
+  /** True when unresolvable conflicts exist (require athlete decision). */
+  hasFlags: boolean;
+};
 
 export type UpsertWeekPrescriptionResult = {
   week_start: string;
@@ -33,6 +50,9 @@ export type UpsertWeekPrescriptionResult = {
    *  existing row was updated. The caller can use this to decide whether
    *  to emit a "first prescription written" event downstream. */
   inserted: boolean;
+  /** Activity-aware layout proposal. hasMoves=false and hasFlags=false
+   *  when no activities are detected (graceful no-op). */
+  activityLayoutProposal: ActivityLayoutProposal;
 };
 
 export async function upsertWeekPrescription(opts: {
@@ -116,6 +136,16 @@ export async function upsertWeekPrescription(opts: {
     todayIso,
   });
 
+  // Compute the activity layout proposal in parallel with the DB write.
+  // Graceful: any failure → empty proposal (hasMoves=false, hasFlags=false).
+  const layoutProposalPromise = computeActivityLayoutProposal({
+    supabase,
+    userId,
+    block,
+    week: workingRow,
+    todayIso,
+  });
+
   // Split INSERT vs UPDATE explicitly. Using `.upsert()` here would trip the
   // NOT NULL constraint on session_plan when the row exists — Postgres
   // validates the would-be INSERT row before applying ON CONFLICT, so a
@@ -152,11 +182,15 @@ export async function upsertWeekPrescription(opts: {
     if (error) throw error;
   }
 
+  // Await the layout proposal (computed concurrently with the DB write above).
+  const activityLayoutProposal = await layoutProposalPromise;
+
   return {
     week_start: weekStart,
     block_id: block?.id ?? null,
     session_prescriptions: prescription,
     inserted: !existing,
+    activityLayoutProposal,
   };
 }
 
