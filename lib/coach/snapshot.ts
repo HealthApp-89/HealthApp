@@ -461,7 +461,7 @@ export async function buildSnapshot(inputs: SnapshotInputs): Promise<SnapshotRes
   // Current week start (Monday-keyed) — used for planned activities lookup.
   const currentWeekStart = mondayOf(today);
 
-  const [{ data: profile }, { data: logs }, allWorkouts, { data: athleteProfileRow }, todayTargets, enduranceBlocks, intelligence, { data: rawInterventions }, { data: currentWeekRow }] = await Promise.all([
+  const [{ data: profile }, { data: logs }, allWorkouts, { data: athleteProfileRow }, todayTargets, enduranceBlocks, intelligence, { data: rawInterventions }, { data: currentWeekRow }, recurringActivitiesRaw] = await Promise.all([
     supabase
       .from("profiles")
       .select("name, goal, whoop_baselines")
@@ -510,6 +510,23 @@ export async function buildSnapshot(inputs: SnapshotInputs): Promise<SnapshotRes
       .eq("user_id", userId)
       .eq("week_start", currentWeekStart)
       .maybeSingle(),
+    // recurring_activities from profile — needed by renderPlannedActivitiesBlock
+    // for the "Recurring:" summary line. loadPlannedActivities also reads this
+    // internally for merge logic, but the renderer needs the raw list separately.
+    // Parallelized here (was a serial await after plannedActivities) so it runs
+    // in the same batch as the other profile/week reads. Failure → [] (graceful).
+    (async (): Promise<RecurringActivity[]> => {
+      try {
+        const { data } = await supabase
+          .from("profiles")
+          .select("recurring_activities")
+          .eq("user_id", userId)
+          .single();
+        return (data?.recurring_activities as RecurringActivity[]) ?? [];
+      } catch {
+        return [];
+      }
+    })(),
   ]);
 
   const workouts = until
@@ -576,23 +593,7 @@ export async function buildSnapshot(inputs: SnapshotInputs): Promise<SnapshotRes
       ).catch(() => [])
     : [];
 
-  // Pull recurring from profile for the "Recurring" summary line in the block.
-  // loadPlannedActivities already fetches this internally for merge logic, but
-  // we need it here for the renderer. Guarded separately; failure → empty array.
-  const recurringActivities = await (async (): Promise<RecurringActivity[]> => {
-    try {
-      const { data } = await supabase
-        .from("profiles")
-        .select("recurring_activities")
-        .eq("user_id", userId)
-        .single();
-      return (data?.recurring_activities as RecurringActivity[]) ?? [];
-    } catch {
-      return [];
-    }
-  })();
-
-  const activitiesBlock = renderPlannedActivitiesBlock(plannedActivities, recurringActivities);
+  const activitiesBlock = renderPlannedActivitiesBlock(plannedActivities, recurringActivitiesRaw);
 
   const fmt = (v: number | null | undefined, unit = "") =>
     v === null || v === undefined ? "—" : `${v}${unit}`;
