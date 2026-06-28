@@ -62,26 +62,51 @@ export async function PUT(
 
   const activities = parsed.data;
 
-  // Upsert the row — insert if it doesn't exist, update planned_activities if
-  // it does. training_weeks rows are created by the weekly-planning flow; we
-  // allow writes to non-existent rows so the UI can log activities without
-  // first setting up a formal plan.
-  const { error: upsertErr } = await supabase
+  // Check that a training_weeks row already exists for this week. We must not
+  // attempt an INSERT — session_plan is NOT NULL, so a bare upsert with only
+  // planned_activities would violate the constraint and 500. The per-week
+  // activity strip should only be reachable for weeks that have a committed
+  // plan; return a clear 409 otherwise.
+  const { data: existingRow, error: checkErr } = await supabase
     .from("training_weeks")
-    .upsert(
-      {
-        user_id: user.id,
-        week_start,
-        planned_activities: activities,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "user_id,week_start", ignoreDuplicates: false },
-    );
+    .select("id")
+    .eq("user_id", user.id)
+    .eq("week_start", week_start)
+    .maybeSingle();
 
-  if (upsertErr) {
-    console.error("[/api/training-weeks/.../activities] upsert failed", upsertErr);
+  if (checkErr) {
+    console.error("[/api/training-weeks/.../activities] row-check failed", checkErr);
     return NextResponse.json(
-      { ok: false, error: `upsert failed: ${upsertErr.message}` },
+      { ok: false, error: `row check failed: ${checkErr.message}` },
+      { status: 500 },
+    );
+  }
+
+  if (!existingRow) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "no_training_week",
+        message: "Set up this week's plan before adding activities to it.",
+      },
+      { status: 409 },
+    );
+  }
+
+  // Row exists — safe to UPDATE (no NOT-NULL risk).
+  const { error: updateErr } = await supabase
+    .from("training_weeks")
+    .update({
+      planned_activities: activities,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("user_id", user.id)
+    .eq("week_start", week_start);
+
+  if (updateErr) {
+    console.error("[/api/training-weeks/.../activities] update failed", updateErr);
+    return NextResponse.json(
+      { ok: false, error: `update failed: ${updateErr.message}` },
       { status: 500 },
     );
   }

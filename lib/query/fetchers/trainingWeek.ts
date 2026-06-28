@@ -4,7 +4,7 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import type { TrainingWeek } from "@/lib/data/types";
 
 const COLS =
-  "id, user_id, block_id, week_start, session_plan, exercise_overrides, session_prescriptions, weekly_focus, intensity_modifier, rir_target, research_phase, proposed_by, chat_message_id, committed_at, created_at, updated_at";
+  "id, user_id, block_id, week_start, session_plan, exercise_overrides, session_prescriptions, planned_activities, weekly_focus, intensity_modifier, rir_target, research_phase, proposed_by, chat_message_id, committed_at, created_at, updated_at";
 
 /** Server-side: fetch the single training_week row for `weekStart`, or null
  *  if not committed. Throws on supabase errors so TanStack Query lights up
