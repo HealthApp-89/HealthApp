@@ -424,8 +424,11 @@ export type WeekdayLong =
   | "Saturday"
   | "Sunday";
 export type { BlockPhase } from "@/lib/coach/prescription/types";
-/** Session-type strings keyed in SESSION_PLANS, plus the literal "REST". */
-export type SessionPlan = Partial<Record<Weekday, string>>;
+/** Session-type strings keyed by weekday (short or long form).
+ *  The DB type is Weekday (short) but AI-committed rows use WeekdayLong;
+ *  all readers must use readSessionForDay() from lib/coach/session-plan-reader.ts.
+ *  Long-term: normalize to WeekdayLong; short form is a legacy artifact. */
+export type SessionPlan = Partial<Record<Weekday | WeekdayLong, string>>;
 /** Per-primary-lift intensity multipliers; missing keys default to 1.0. */
 export type IntensityModifier = Partial<Record<PrimaryLift, number>>;
 

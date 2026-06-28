@@ -2,8 +2,9 @@ import { describe, it, expect } from "vitest";
 import { mergePlannedActivities } from "../read-planned";
 import type { PlannedActivity, RecurringActivity } from "../types";
 
-// The week under test starts on 2026-06-23 (Monday).
-// Weekday→date mapping (Monday-keyed week, 0=Sun..6=Sat):
+// The week under test starts on 2026-06-23 (Tuesday — used as the week_start
+// input; the code does not validate that week_start is a calendar Monday).
+// Weekday→date mapping (week_start-relative, 0=Sun..6=Sat):
 //   weekday 0 (Sun)  → 2026-06-29
 //   weekday 1 (Mon)  → 2026-06-23
 //   weekday 2 (Tue)  → 2026-06-24
@@ -11,7 +12,7 @@ import type { PlannedActivity, RecurringActivity } from "../types";
 //   weekday 4 (Thu)  → 2026-06-26
 //   weekday 5 (Fri)  → 2026-06-27
 //   weekday 6 (Sat)  → 2026-06-28
-const WEEK_START = "2026-06-23"; // Monday
+const WEEK_START = "2026-06-23"; // Tuesday (used as week_start; dates above are correct relative to it)
 
 describe("mergePlannedActivities", () => {
   it("empty everything → empty output", () => {

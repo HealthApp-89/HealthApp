@@ -315,10 +315,6 @@ export async function POST(
   //     Only fires when the swap originated from a reactive morning-brief
   //     suggestion (body.reactive_context is present). Uses exercise_swap kind
   //     (closest fit for both swap_exercise and swap_day rungs).
-  // 11. Record intervention (best-effort — NEVER blocks the swap response).
-  //     Only fires when the swap originated from a reactive morning-brief
-  //     suggestion (body.reactive_context is present). Uses exercise_swap kind
-  //     (closest fit for both swap_exercise and swap_day rungs).
   const capturedReactiveCtx = body.reactive_context; // narrow for async closure
   if (capturedReactiveCtx) {
     void (async () => {

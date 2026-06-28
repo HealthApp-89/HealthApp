@@ -495,4 +495,135 @@ describe("proposeActivityAwareLayout", () => {
       expect(SESSION_REGION_MAP["Mobility"]).toEqual([]);
     });
   });
+
+  // ── LONG-KEY wiring test (regression for the production key-form bug) ──────
+  //
+  // Production session_plan rows committed by the AI planning bot use FULL
+  // weekday names ("Monday", "Tuesday", …). The planner must handle both key
+  // forms correctly. This test feeds a long-keyed plan and verifies:
+  //   1. Conflicts are detected correctly (padel hard Tue within 1.83d of Legs Mon).
+  //   2. The move resolution fires and moves Legs to Thu.
+  //   3. The output plan uses the same long-key form as the input.
+  //   4. No lightenDays entry and no flags (move fully resolved the conflict).
+  //
+  // This test MUST fail against the old short-key-only logic and pass after the
+  // key-normalization fix. Against the old code:
+  //   - weekdayIndex("Monday") → WEEKDAY_SHORT.indexOf("Monday") → -1
+  //   - daysBetween(-1, -1) → 0 → dist=0 < window → conflicts fire on EVERY day
+  //   - daysAvailable built with sessionPlan["Mon"] → undefined → all-false
+  //   - No valid move target (all days unavailable) → LIGHTEN or FLAG, not MOVE
+  describe("LONG-KEY plan (production key form) — padel(hard) Tue + Legs Mon → MOVE to Thu", () => {
+    /**
+     * Plan: { Monday: "Legs", Tuesday: "REST", Wednesday: "REST", Thursday: "REST",
+     *         Friday: "Back", Saturday: "REST", Sunday: "REST" }
+     *
+     * Activity: padel hard on 2026-07-07 (Tuesday).
+     * Recovery window: 44h = 1.83d.
+     * Legs Monday: dist(Mon,Tue) = 1 < 1.83 → CONFLICT.
+     * Thu: dist=2 ≥ 1.83, currently REST → valid move target.
+     * Expected: Legs moves to Thursday in the output plan (long-keyed output).
+     */
+    it("long-keyed plan: detects conflict and moves Legs to Thursday; output plan uses long keys", () => {
+      const longKeyPlan: SessionPlan = {
+        Monday: "Legs",
+        Tuesday: "REST",    // padel activity day
+        Wednesday: "REST",  // dist=1 from Tue, within window but REST
+        Thursday: "REST",   // dist=2 from Tue → safe free slot
+        Friday: "Back",
+        Saturday: "REST",
+        Sunday: "REST",
+      };
+
+      const result = proposeActivityAwareLayout({
+        sessionPlan: longKeyPlan,
+        plannedActivities: [padelHard("2026-07-07")], // Tuesday
+        daysAvailable: ALL_DAYS,
+      });
+
+      // Legs must NOT remain on Monday (conflict detected and resolved).
+      expect(result.proposedPlan["Monday"]).not.toBe("Legs");
+
+      // Legs must land on Thursday (nearest free day outside window).
+      expect(result.proposedPlan["Thursday"]).toBe("Legs");
+
+      // The output plan must use long keys (matching the input convention).
+      // Verify by checking that a long key ("Thursday") is set and the short
+      // key ("Thu") is NOT set in the output.
+      expect(result.proposedPlan["Thu"]).toBeUndefined();
+
+      // Move fully resolved the conflict — no lighten, no flags.
+      expect(result.lightenDays).toEqual({});
+      expect(result.flags).toHaveLength(0);
+
+      // Output plan is NOT reference-equal to input (a mutation occurred).
+      expect(result.proposedPlan).not.toBe(longKeyPlan);
+    });
+
+    it("long-keyed plan with no activities → reference-equal (graceful path unaffected)", () => {
+      const longKeyPlan: SessionPlan = {
+        Monday: "Legs",
+        Tuesday: "Chest",
+        Wednesday: "REST",
+        Thursday: "Back",
+        Friday: "Arms",
+        Saturday: "REST",
+        Sunday: "Mobility",
+      };
+
+      const result = proposeActivityAwareLayout({
+        sessionPlan: longKeyPlan,
+        plannedActivities: [],
+        daysAvailable: ALL_DAYS,
+      });
+
+      // Graceful path fires before normalization — reference equality preserved.
+      expect(result.proposedPlan).toBe(longKeyPlan);
+      expect(result.lightenDays).toEqual({});
+      expect(result.flags).toHaveLength(0);
+    });
+
+    it("long-keyed plan: lighten fires on the correct day when no move possible", () => {
+      /**
+       * Plan: { Monday: "Legs", Tuesday: "REST", Wednesday: "Chest", Thursday: "Back",
+       *         Friday: "REST", Saturday: "REST", Sunday: "REST" }
+       * Activity: padel hard Tue. Thu is occupied (Back) — no free safe slot.
+       * Tight availability: only Mon-Thu. Expect lightenDays["Mon"] to be set.
+       *
+       * Against old code: daysAvailable was all-false so MOVE was never possible,
+       * but conflict detection also misfired (dist=-1 for every long key) → some
+       * days got wrongly lightened. This test pins the correct outcome.
+       */
+      const longKeyTightPlan: SessionPlan = {
+        Monday: "Legs",
+        Tuesday: "REST",
+        Wednesday: "Chest",
+        Thursday: "Back",
+        Friday: "REST",
+        Saturday: "REST",
+        Sunday: "REST",
+      };
+
+      const tightDays: DaysAvailable = {
+        mon: true, tue: true, wed: true, thu: true,
+        fri: false, sat: false, sun: false,
+      };
+
+      const result = proposeActivityAwareLayout({
+        sessionPlan: longKeyTightPlan,
+        plannedActivities: [padelHard("2026-07-07")], // Tue
+        daysAvailable: tightDays,
+      });
+
+      // Legs stays on Monday (no valid move).
+      expect(result.proposedPlan["Monday"]).toBe("Legs");
+
+      // lightenDays must flag Mon (short key — lightenDays always uses short keys).
+      expect(result.lightenDays["Mon"]).toBeDefined();
+      expect(result.lightenDays["Mon"]).toContain("legs");
+
+      // Chest on Wed conflicts (shoulders overlap padel), but Wed already within window;
+      // verify it is also addressed (lightened or moved). Main check: Mon is lightened.
+      expect(result.flags).toHaveLength(0);
+    });
+  });
 });

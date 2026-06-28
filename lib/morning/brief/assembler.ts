@@ -27,7 +27,6 @@ import type {
 } from "@/lib/data/types";
 import type { EnduranceSessionPlan } from "@/lib/coach/endurance/types";
 import { SESSION_PLANS, type PlannedExercise, getEffectiveSessionPlan } from "@/lib/coach/sessionPlans";
-import { muscleOverlap } from "@/lib/morning/brief/session-muscles";
 import { annotateSession } from "@/lib/coach/session-structure";
 import type { ExerciseOverrides } from "@/lib/data/types";
 import { roundToValidWeight, minNonZeroIncrement } from "@/lib/coach/weight-rounding";

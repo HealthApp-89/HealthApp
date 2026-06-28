@@ -54,6 +54,16 @@ function sessionRegions(sessionType: string): MuscleRegion[] {
 const WEEKDAY_SHORT: Weekday[] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const WEEKDAY_LONG = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
+/** Normalize any weekday key (short "Mon" or long "Monday") to the canonical
+ *  short form. Unknown keys are returned unchanged — callers then get -1 from
+ *  weekdayIndex, which is the safe failure mode. */
+function toShortWeekday(key: string): Weekday {
+  if (WEEKDAY_SHORT.includes(key as Weekday)) return key as Weekday;
+  const idx = WEEKDAY_LONG.indexOf(key);
+  if (idx !== -1) return WEEKDAY_SHORT[idx];
+  return key as Weekday; // unknown — pass through, weekdayIndex will return -1
+}
+
 /** YYYY-MM-DD → short weekday ("Mon"…"Sun"). Monday-relative, ISO week. */
 function dateToWeekday(dateIso: string): Weekday {
   const d = new Date(dateIso + "T12:00:00Z");
@@ -63,9 +73,9 @@ function dateToWeekday(dateIso: string): Weekday {
   return WEEKDAY_SHORT[idx];
 }
 
-/** 0=Mon … 6=Sun index from Weekday short name. */
-function weekdayIndex(wd: Weekday): number {
-  return WEEKDAY_SHORT.indexOf(wd);
+/** 0=Mon … 6=Sun index from Weekday short name (or long name — normalizes first). */
+function weekdayIndex(wd: string): number {
+  return WEEKDAY_SHORT.indexOf(toShortWeekday(wd));
 }
 
 /** Absolute difference in days between two weekday indices. Min of wrap vs direct. */
@@ -191,7 +201,7 @@ function detectConflicts(
     // A same-day session is 0 days apart (always within any window > 0h).
     const windowDays = windowHours / 24;
 
-    for (const [wd, sessionType] of Object.entries(plan) as [Weekday, string][]) {
+    for (const [rawWd, sessionType] of Object.entries(plan)) {
       if (!sessionType || sessionType === "REST" || sessionType === "Mobility") continue;
 
       const sesRegs = sessionRegions(sessionType);
@@ -200,6 +210,8 @@ function detectConflicts(
       const overlap = regionOverlap(sesRegs, actRegs);
       if (overlap.length === 0) continue;
 
+      // Normalize to short form so all downstream comparisons use a canonical key.
+      const wd = toShortWeekday(rawWd);
       const sesIdx = weekdayIndex(wd);
       const dist = daysBetween(actIdx, sesIdx);
 
@@ -303,6 +315,52 @@ function findMoveTarget(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Plan key normalization helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Detect whether a SessionPlan uses long weekday keys ("Monday") or short ones ("Mon").
+ * Returns "long" when the first key encountered is a long name, "short" otherwise.
+ * Empty plans default to "short".
+ */
+function detectKeyForm(plan: SessionPlan): "short" | "long" {
+  for (const key of Object.keys(plan)) {
+    if (WEEKDAY_LONG.includes(key)) return "long";
+    return "short";
+  }
+  return "short";
+}
+
+/**
+ * Return a new plan with all keys normalized to short form.
+ * { Monday: "Legs" } → { Mon: "Legs" }
+ */
+function normalizeToShortKeys(plan: SessionPlan): SessionPlan {
+  const out: SessionPlan = {};
+  for (const [key, val] of Object.entries(plan)) {
+    out[toShortWeekday(key)] = val;
+  }
+  return out;
+}
+
+/**
+ * Return a new plan with all keys converted to long form.
+ * { Mon: "Legs" } → { Monday: "Legs" }
+ */
+function normalizeToLongKeys(plan: SessionPlan): SessionPlan {
+  const shortToLong: Record<string, string> = {
+    Mon: "Monday", Tue: "Tuesday", Wed: "Wednesday", Thu: "Thursday",
+    Fri: "Friday", Sat: "Saturday", Sun: "Sunday",
+  };
+  const out: SessionPlan = {};
+  for (const [key, val] of Object.entries(plan)) {
+    const longKey = (shortToLong[key] ?? key) as keyof SessionPlan;
+    out[longKey] = val;
+  }
+  return out;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Main entry point
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -318,8 +376,15 @@ export function proposeActivityAwareLayout(args: ProposeLayoutArgs): ProposeLayo
     };
   }
 
-  // Work with a mutable copy of the plan.
-  let proposedPlan: SessionPlan = { ...sessionPlan };
+  // Detect and preserve the input key form so the output plan matches.
+  const inputKeyForm = detectKeyForm(sessionPlan);
+
+  // Normalize the plan to short keys for all internal processing. This makes
+  // every lookup in detectConflicts, findMoveTarget, and the resolution loop
+  // work correctly regardless of whether the caller used "Mon" or "Monday".
+  // Production data committed by the AI planning bot uses full weekday names;
+  // keeping short keys internally is the canonical form for the planner.
+  let proposedPlan: SessionPlan = normalizeToShortKeys(sessionPlan);
 
   const lightenDays: Record<string, MuscleRegion[]> = {};
   const flags: ActivityConflictFlag[] = [];
@@ -522,5 +587,11 @@ export function proposeActivityAwareLayout(args: ProposeLayoutArgs): ProposeLayo
     lightenDays[day] = [...new Set(lightenDays[day])];
   }
 
-  return { proposedPlan, lightenDays, flags };
+  // Re-emit the proposed plan in the same key form as the input so callers
+  // (swap engine, apply-activity-layout) receive a clean, consistent plan.
+  // lightenDays always uses short keys (Weekday) — callers are documented to
+  // expect short keys and the prescribe-week conversion step (LONG_TO_SHORT) handles it.
+  const outputPlan = inputKeyForm === "long" ? normalizeToLongKeys(proposedPlan) : proposedPlan;
+
+  return { proposedPlan: outputPlan, lightenDays, flags };
 }

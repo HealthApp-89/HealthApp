@@ -42,7 +42,7 @@ const ALL_DAYS_AVAILABLE: DaysAvailable = {
   sun: true,
 };
 
-const WEEK_START = "2026-06-23"; // Monday
+const WEEK_START = "2026-06-23"; // Tuesday (used as week_start; code does not validate calendar day)
 
 // ─── proposeActivityAwareLayout ──────────────────────────────────────────────
 

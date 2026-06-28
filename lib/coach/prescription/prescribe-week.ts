@@ -37,6 +37,7 @@ import type { TargetedMuscleGroup, MuscleVolumeSnapshot } from "@/lib/data/types
 import { loadPlannedActivities } from "@/lib/coach/activity/read-planned";
 import { proposeActivityAwareLayout, SESSION_REGION_MAP } from "@/lib/coach/activity/sequence-week";
 import type { MuscleRegion } from "@/lib/coach/activity/types";
+import { readSessionForDay } from "@/lib/coach/session-plan-reader";
 
 const FOCUS_BLOCK_CLAMP = 0.92;
 
@@ -169,14 +170,17 @@ export async function prescribeWeek(opts: {
       // already has a training session (not REST/Mobility/unset). This tells
       // the planner which days the athlete is willing to train on.
       const sessionPlan = week.session_plan ?? {};
+      // Use readSessionForDay for key-agnostic lookups: production data uses
+      // full weekday names ("Monday") but short-keyed plans ("Mon") are also
+      // valid. Direct indexing by short key silently returns undefined on prod data.
       const daysAvailable = {
-        mon: !!(sessionPlan["Mon"] && sessionPlan["Mon"] !== "REST"),
-        tue: !!(sessionPlan["Tue"] && sessionPlan["Tue"] !== "REST"),
-        wed: !!(sessionPlan["Wed"] && sessionPlan["Wed"] !== "REST"),
-        thu: !!(sessionPlan["Thu"] && sessionPlan["Thu"] !== "REST"),
-        fri: !!(sessionPlan["Fri"] && sessionPlan["Fri"] !== "REST"),
-        sat: !!(sessionPlan["Sat"] && sessionPlan["Sat"] !== "REST"),
-        sun: !!(sessionPlan["Sun"] && sessionPlan["Sun"] !== "REST"),
+        mon: !!(readSessionForDay(sessionPlan, "Mon") && readSessionForDay(sessionPlan, "Mon") !== "REST"),
+        tue: !!(readSessionForDay(sessionPlan, "Tue") && readSessionForDay(sessionPlan, "Tue") !== "REST"),
+        wed: !!(readSessionForDay(sessionPlan, "Wed") && readSessionForDay(sessionPlan, "Wed") !== "REST"),
+        thu: !!(readSessionForDay(sessionPlan, "Thu") && readSessionForDay(sessionPlan, "Thu") !== "REST"),
+        fri: !!(readSessionForDay(sessionPlan, "Fri") && readSessionForDay(sessionPlan, "Fri") !== "REST"),
+        sat: !!(readSessionForDay(sessionPlan, "Sat") && readSessionForDay(sessionPlan, "Sat") !== "REST"),
+        sun: !!(readSessionForDay(sessionPlan, "Sun") && readSessionForDay(sessionPlan, "Sun") !== "REST"),
       };
       const result = proposeActivityAwareLayout({
         sessionPlan,
@@ -365,14 +369,15 @@ export async function computeActivityLayoutProposal(opts: {
     const plannedActivities = await loadPlannedActivities(supabase, userId, week, todayIso);
     if (plannedActivities.length === 0) return empty;
 
+    // Use readSessionForDay for key-agnostic lookups (same rationale as above).
     const daysAvailable = {
-      mon: !!(sessionPlan["Mon"] && sessionPlan["Mon"] !== "REST"),
-      tue: !!(sessionPlan["Tue"] && sessionPlan["Tue"] !== "REST"),
-      wed: !!(sessionPlan["Wed"] && sessionPlan["Wed"] !== "REST"),
-      thu: !!(sessionPlan["Thu"] && sessionPlan["Thu"] !== "REST"),
-      fri: !!(sessionPlan["Fri"] && sessionPlan["Fri"] !== "REST"),
-      sat: !!(sessionPlan["Sat"] && sessionPlan["Sat"] !== "REST"),
-      sun: !!(sessionPlan["Sun"] && sessionPlan["Sun"] !== "REST"),
+      mon: !!(readSessionForDay(sessionPlan, "Mon") && readSessionForDay(sessionPlan, "Mon") !== "REST"),
+      tue: !!(readSessionForDay(sessionPlan, "Tue") && readSessionForDay(sessionPlan, "Tue") !== "REST"),
+      wed: !!(readSessionForDay(sessionPlan, "Wed") && readSessionForDay(sessionPlan, "Wed") !== "REST"),
+      thu: !!(readSessionForDay(sessionPlan, "Thu") && readSessionForDay(sessionPlan, "Thu") !== "REST"),
+      fri: !!(readSessionForDay(sessionPlan, "Fri") && readSessionForDay(sessionPlan, "Fri") !== "REST"),
+      sat: !!(readSessionForDay(sessionPlan, "Sat") && readSessionForDay(sessionPlan, "Sat") !== "REST"),
+      sun: !!(readSessionForDay(sessionPlan, "Sun") && readSessionForDay(sessionPlan, "Sun") !== "REST"),
     };
 
     const result = proposeActivityAwareLayout({
