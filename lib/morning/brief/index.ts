@@ -19,6 +19,7 @@ import {
   getThisWeekEndurancePlan,
   getYesterdayWorkoutFlat,
   getPreviousCommittedReview,
+  loadRecentActivityForBrief,
 } from "@/lib/morning/brief/data-sources";
 import { assembleBriefExceptAdvice } from "@/lib/morning/brief/assembler";
 import { computeAdviceFlags, evaluateMuscleVolumeGapsForBrief } from "@/lib/morning/brief/flags";
@@ -53,6 +54,7 @@ export async function prepareBriefExceptAdvice(
     yesterdayWorkoutForBlock,
     previousCommittedReview,
     yesterdayFoodEntriesRes,
+    recentActivity,
   ] = await Promise.all([
     fetchBriefInputs(supabase, userId, today, tz),
     getThisWeekPrescription(supabase, userId, today),
@@ -66,6 +68,10 @@ export async function prepareBriefExceptAdvice(
       .eq("status", "committed")
       .gte("eaten_at", `${yesterday}T00:00:00Z`)
       .lte("eaten_at", `${yesterday}T23:59:59Z`),
+    // Reactive-ladder activity signals (Task 8). Graceful: any DB error
+    // returns [] so the ladder falls back to its grace rule (no signals
+    // → none rung → suggestion unchanged vs. pre-Task-8 brief).
+    loadRecentActivityForBrief(supabase, userId, today),
   ]);
 
   // Top items yesterday — computed from food_log_entries. Degrade gracefully
@@ -151,6 +157,10 @@ export async function prepareBriefExceptAdvice(
     // Set provisionally to false; flags.ts is the authoritative computation,
     // and we re-build the assembler call with the real value below.
     phaseTransitionThisWeek: false,
+    // Activity signals for the reactive ladder (Task 8). Defaults to []
+    // from fetchBriefInputs; overwritten here with the parallel-fetched
+    // result so pickCoachSuggestion and annotateSession both see live data.
+    recentActivity,
   };
   const provisionalPartial = assembleBriefExceptAdvice(enrichedInputs);
   const flags = computeAdviceFlags({

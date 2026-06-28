@@ -33,6 +33,10 @@ import type { ExerciseOverrides } from "@/lib/data/types";
 import { roundToValidWeight, minNonZeroIncrement } from "@/lib/coach/weight-rounding";
 import type { TodayTargets } from "@/lib/morning/brief/get-today-targets";
 import { composeYesterdayVsPlan, type YesterdayWorkoutForBlock } from "@/lib/morning/brief/yesterday-vs-plan";
+import type { MuscleRegion } from "@/lib/coach/activity/types";
+import type { RecentActivitySignal } from "@/lib/coach/activity/reactive-ladder";
+import { selectReactiveRung } from "@/lib/coach/activity/reactive-ladder";
+import { SESSION_REGION_MAP } from "@/lib/coach/activity/sequence-week";
 
 /** Yesterday's workout summary — pre-aggregated by the data source. */
 export type YesterdayWorkoutSummary = {
@@ -98,6 +102,11 @@ export type BriefInputs = {
    *  committed review. Drives the kickoff "phase changed this week"
    *  explainer in the AI prompt + the renderer's NEW PHASE chip. */
   phaseTransitionThisWeek: boolean;
+  /** Recent activities still inside their recovery window, used by the
+   *  reactive ladder (selectReactiveRung) to pick the graded suggestion
+   *  rung. Empty array when no training_weeks row exists for today's week
+   *  or when the activity load could not be fetched (graceful degradation). */
+  recentActivity: RecentActivitySignal[];
 };
 
 export function assembleBriefExceptAdvice(
@@ -145,6 +154,7 @@ export function assembleBriefExceptAdvice(
         fatigue: inputs.todayCheckin?.fatigue ?? null,
       },
       recovery: inputs.todayLog?.recovery ?? null,
+      recentActivity: inputs.recentActivity,
     }),
     this_week_plan: thisWeekPlan,
     yesterday_vs_plan: yesterdayVsPlan,
@@ -193,11 +203,31 @@ function composeReadiness(inputs: BriefInputs): MorningBriefReadiness {
   };
 }
 
+/** Maps soreness_areas strings (intake vocabulary) to MuscleRegion[].
+ *  The intake vocabulary is a subset of MuscleRegion; direct cast is safe
+ *  for the common values. Unrecognised strings are silently dropped. */
+function sorenessAreasToRegions(areas: string[] | null): MuscleRegion[] {
+  if (!areas) return [];
+  const VALID: ReadonlySet<MuscleRegion> = new Set([
+    "legs", "lower_back", "shoulders", "chest", "back", "arms", "core",
+  ] as MuscleRegion[]);
+  return areas.filter((a): a is MuscleRegion => VALID.has(a as MuscleRegion));
+}
+
 /** Deterministic trigger for the morning brief's coach_suggestion chip.
  *  Returns null when:
  *  - No training_weeks row for today (the swap POST would 404).
  *  - Today's session is REST / Mobility / Sick (already a recovery day).
  *  - No rule fires.
+ *
+ *  Rule priority (highest → lowest):
+ *   1. Reactive ladder (soreness + recent activity) — graded load_down /
+ *      volume_down / swap_exercise / swap_day suggestions.
+ *   2. Low readiness band (existing rule) — swap_to_mobility.
+ *   3. Recovery crash + heavy fatigue (existing rule) — reduce_intensity.
+ *
+ *  GRACE RULE: no soreness + no recent overlapping activity → reactive
+ *  ladder returns "none" → existing fallback rules run as before.
  */
 export function pickCoachSuggestion(args: {
   band: "low" | "moderate" | "high";
@@ -209,29 +239,72 @@ export function pickCoachSuggestion(args: {
     fatigue: "none" | "some" | "heavy" | null;
   };
   recovery: number | null;
+  recentActivity: RecentActivitySignal[];
 }): MorningBriefCoachSuggestion {
   if (!args.hasTrainingWeek) return null;
   const lower = args.sessionType.toLowerCase().trim();
   if (lower === "rest" || lower === "mobility" || lower === "sick") return null;
 
-  // Rule 1: sharp soreness in a muscle today's session targets.
-  if (args.intake.soreness_severity === "sharp") {
-    const overlap = muscleOverlap(args.intake.soreness_areas, args.sessionType);
-    if (overlap.length > 0) {
-      return {
-        kind: "swap_to_mobility",
-        rationale: "high_soreness",
-        detail: `sharp soreness in ${overlap.join(", ")}`,
-      };
+  // ── Reactive ladder (Task 8) ───────────────────────────────────────────────
+  // Build the selectReactiveRung inputs from intake soreness + recentActivity.
+  // SESSION_REGION_MAP gives today's loaded regions; first element is primary.
+  const sessionRegions: MuscleRegion[] = SESSION_REGION_MAP[args.sessionType] ?? [];
+  const soreRegions = sorenessAreasToRegions(args.intake.soreness_areas);
+
+  const ladderResult = selectReactiveRung({
+    sessionRegions,
+    soreRegions,
+    soreSeverity: args.intake.soreness_severity ?? null,
+    fatigue: args.intake.fatigue ?? null,
+    recentActivity: args.recentActivity,
+  });
+
+  if (ladderResult.rung !== "none") {
+    // Map reactive-ladder rungs to the MorningBriefCoachSuggestion union.
+    // swap_day → swap_to_mobility (full session replacement by the chip).
+    switch (ladderResult.rung) {
+      case "load_down":
+        return {
+          kind: "load_down",
+          rationale: "activity_fatigue",
+          detail: ladderResult.rationale,
+        };
+      case "volume_down":
+        return {
+          kind: "volume_down",
+          rationale: "activity_fatigue",
+          detail: ladderResult.rationale,
+        };
+      case "swap_exercise":
+        return {
+          kind: "swap_exercise",
+          rationale: "activity_muscle_overlap",
+          // Surface the first affected exercise name as the target when
+          // available; falls back to a generic placeholder. The chip UI
+          // uses target_exercise as a display hint only.
+          target_exercise: ladderResult.regions[0] ?? "affected exercise",
+          detail: ladderResult.rationale,
+        };
+      case "swap_day":
+        // swap_day from the ladder takes precedence over all other rules.
+        return {
+          kind: "swap_to_mobility",
+          rationale: ladderResult.regions.length > 0 ? "high_soreness" : "low_readiness",
+          detail: ladderResult.rationale,
+        };
     }
   }
 
-  // Rule 2 (existing): low readiness band.
+  // ── Fallback rules (preserved from pre-Task-8) ─────────────────────────────
+  // These only run when the reactive ladder returns "none" (no overlapping
+  // soreness AND no in-window overlapping activity).
+
+  // Fallback Rule 1: low readiness band.
   if (args.band === "low") {
     return { kind: "swap_to_mobility", rationale: "low_readiness" };
   }
 
-  // Rule 3: WHOOP recovery crash combined with heavy fatigue.
+  // Fallback Rule 2: WHOOP recovery crash combined with heavy fatigue.
   if (
     args.recovery !== null &&
     args.recovery < 40 &&
@@ -409,8 +482,31 @@ function composeSession(
     sessionPrescriptions,
     overrides,
   );
+  // Build the soreness context for the session annotator.
+  // Only provide it when the reactive ladder would produce a non-none rung
+  // on this session — avoids touching exercises when nothing is relevant.
+  const sessionRegionsForAnnotation: MuscleRegion[] = SESSION_REGION_MAP[inputs.sessionType] ?? [];
+  const soreRegionsForAnnotation = sorenessAreasToRegions(
+    inputs.todayCheckin?.soreness_areas ?? null,
+  );
+  const ladderForAnnotation =
+    sessionRegionsForAnnotation.length > 0 && soreRegionsForAnnotation.length > 0
+      ? selectReactiveRung({
+          sessionRegions: sessionRegionsForAnnotation,
+          soreRegions: soreRegionsForAnnotation,
+          soreSeverity: inputs.todayCheckin?.soreness_severity ?? null,
+          fatigue: inputs.todayCheckin?.fatigue ?? null,
+          recentActivity: inputs.recentActivity,
+        })
+      : null;
+
+  const annotateCtx =
+    ladderForAnnotation && ladderForAnnotation.rung !== "none"
+      ? { soreRegions: ladderForAnnotation.regions, rung: ladderForAnnotation.rung }
+      : undefined;
+
   const structure =
-    effectivePlan.length === 0 ? null : annotateSession(effectivePlan);
+    effectivePlan.length === 0 ? null : annotateSession(effectivePlan, annotateCtx);
 
   return {
     type: inputs.sessionType,
