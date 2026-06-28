@@ -1164,9 +1164,22 @@ export type SwapConflict = {
   session_type: string;
 };
 
+/** Optional context stamped when the swap originates from a reactive
+ *  morning-brief suggestion (activity-aware planning, Task 9).
+ *  Carried through to the swap route so a coach_interventions row can be
+ *  recorded best-effort. Never required — omitting it is always valid. */
+export type ReactiveSwapContext = {
+  /** The ladder rung that produced this suggestion. */
+  rung: "swap_exercise" | "swap_day";
+  /** Free-text rationale from the reactive ladder (rationale field on the suggestion). */
+  rationale: string;
+  /** Muscle regions that triggered the escalation. */
+  regions: string[];
+};
+
 export type SwapBody =
-  | { action: "swap"; source_day: Weekday; target_day: Weekday }
-  | { action: "replace"; source_day: Weekday; session_type: string };
+  | { action: "swap"; source_day: Weekday; target_day: Weekday; reactive_context?: ReactiveSwapContext }
+  | { action: "replace"; source_day: Weekday; session_type: string; reactive_context?: ReactiveSwapContext };
 
 export type SwapResult = {
   week: TrainingWeek;

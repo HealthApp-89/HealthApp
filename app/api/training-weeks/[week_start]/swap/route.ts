@@ -34,8 +34,11 @@ import { SESSION_PLANS } from "@/lib/coach/sessionPlans";
 import { prescribeWeek } from "@/lib/coach/prescription/prescribe-week";
 import { getUserTimezone } from "@/lib/time/get-user-tz";
 import { todayInUserTz } from "@/lib/time";
+import { buildExplicitIntervention, recordIntervention } from "@/lib/coach/interventions/record";
 import type {
+  BlockPhase,
   ExerciseOverrides,
+  ReactiveSwapContext,
   SessionPlan,
   SessionPrescriptions,
   SwapBody,
@@ -69,6 +72,21 @@ function isYmd(s: unknown): s is string {
   return typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s);
 }
 
+/** Loosely validates a ReactiveSwapContext from the request body.
+ *  Returns undefined when the field is absent or malformed — reactive_context
+ *  is always optional; a bad shape is silently dropped rather than rejecting
+ *  the entire swap request. */
+function parseReactiveContext(raw: unknown): ReactiveSwapContext | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const r = raw as Record<string, unknown>;
+  if ((r.rung !== "swap_exercise" && r.rung !== "swap_day") ||
+      typeof r.rationale !== "string") return undefined;
+  const regions = Array.isArray(r.regions)
+    ? (r.regions as unknown[]).filter((x): x is string => typeof x === "string")
+    : [];
+  return { rung: r.rung, rationale: r.rationale, regions };
+}
+
 function parseBody(raw: unknown): SwapBody | { error: string } {
   if (!raw || typeof raw !== "object") return { error: "body must be an object" };
   const b = raw as Record<string, unknown>;
@@ -78,11 +96,12 @@ function parseBody(raw: unknown): SwapBody | { error: string } {
   if (!isWeekday(b.source_day)) {
     return { error: "source_day must be one of Mon|Tue|Wed|Thu|Fri|Sat|Sun" };
   }
+  const reactive_context = parseReactiveContext(b.reactive_context);
   if (b.action === "swap") {
     if (!isWeekday(b.target_day)) {
       return { error: "target_day must be one of Mon|Tue|Wed|Thu|Fri|Sat|Sun" };
     }
-    return { action: "swap", source_day: b.source_day, target_day: b.target_day };
+    return { action: "swap", source_day: b.source_day, target_day: b.target_day, reactive_context };
   }
   // action === 'replace'
   if (typeof b.session_type !== "string" || !REPLACE_TYPES.has(b.session_type)) {
@@ -90,7 +109,7 @@ function parseBody(raw: unknown): SwapBody | { error: string } {
       error: `session_type must be one of: ${[...REPLACE_TYPES].sort().join(", ")}`,
     };
   }
-  return { action: "replace", source_day: b.source_day, session_type: b.session_type };
+  return { action: "replace", source_day: b.source_day, session_type: b.session_type, reactive_context };
 }
 
 export async function POST(
@@ -291,6 +310,75 @@ export async function POST(
     readSessionForDay(current as Record<string, string>, body.source_day) ?? "";
   const after =
     readSessionForDay(newPlan as Record<string, string>, body.source_day) ?? "";
+
+  // 11. Record intervention (best-effort — NEVER blocks the swap response).
+  //     Only fires when the swap originated from a reactive morning-brief
+  //     suggestion (body.reactive_context is present). Uses exercise_swap kind
+  //     (closest fit for both swap_exercise and swap_day rungs).
+  // 11. Record intervention (best-effort — NEVER blocks the swap response).
+  //     Only fires when the swap originated from a reactive morning-brief
+  //     suggestion (body.reactive_context is present). Uses exercise_swap kind
+  //     (closest fit for both swap_exercise and swap_day rungs).
+  const capturedReactiveCtx = body.reactive_context; // narrow for async closure
+  if (capturedReactiveCtx) {
+    void (async () => {
+      try {
+        // Resolve block context — use the training_weeks row's block_id + a
+        // lightweight block select. Falls back to null fields when no active block.
+        const blockId = (row as TrainingWeek).block_id ?? null;
+        let blockPhase: BlockPhase | null = null;
+        let blockWeek: number | null = null;
+
+        if (blockId) {
+          const { data: blk } = await supabase
+            .from("training_blocks")
+            .select("id, status, current_week, block_phase")
+            .eq("id", blockId)
+            .maybeSingle();
+          if (blk) {
+            blockPhase = (blk as { block_phase?: BlockPhase }).block_phase ?? null;
+            blockWeek = (blk as { current_week?: number }).current_week ?? null;
+          }
+        }
+
+        // Resolve today's date in the user's timezone for the started_on stamp.
+        // Falls back to week_start (Monday of the week) on any error.
+        let startedOn = week_start;
+        try {
+          const tz = await getUserTimezone(user.id);
+          startedOn = todayInUserTz(new Date(), tz);
+        } catch {
+          // tz lookup failed — week_start is an acceptable fallback
+        }
+
+        const built = buildExplicitIntervention({
+          kind: "exercise_swap",
+          started_on: startedOn,
+          block_id: blockId,
+          block_phase: blockPhase,
+          block_week: blockWeek,
+          // from_exercise: the original session type (what was swapped away from)
+          from_exercise: before || body.source_day,
+          // to_exercise: the replacement session type ("Mobility" in swap_day case)
+          to_exercise: after || (body.action === "replace" ? body.session_type : ""),
+          // reason: closest SwapContext reason — activity/soreness overlap maps to "pain"
+          reason: "pain",
+        });
+
+        // Stamp the sore regions + rung into context for the evaluator
+        (built.context as Record<string, unknown>)["reactive_rung"] = capturedReactiveCtx.rung;
+        (built.context as Record<string, unknown>)["reactive_rationale"] = capturedReactiveCtx.rationale;
+        if (capturedReactiveCtx.regions.length > 0) {
+          (built.context as Record<string, unknown>)["reactive_regions"] = capturedReactiveCtx.regions;
+        }
+
+        await recordIntervention(supabase, user.id, built);
+      } catch (e) {
+        // Capture failure must NEVER surface as a swap error. Log + continue.
+        console.warn("[swap] intervention capture failed — swap already succeeded", e);
+      }
+    })();
+  }
 
   return NextResponse.json(
     {

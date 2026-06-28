@@ -11,7 +11,7 @@ import { readSessionForDay } from "@/lib/coach/session-plan-reader";
 import { todayInUserTz, weekdayInUserTz } from "@/lib/time";
 import { useProfile } from "@/lib/query/hooks/useProfile";
 import { useUserToday } from "@/lib/query/hooks/useUserToday";
-import type { MorningBriefCoachSuggestion, Weekday } from "@/lib/data/types";
+import type { MorningBriefCoachSuggestion, ReactiveSwapContext, Weekday } from "@/lib/data/types";
 
 const FULL_TO_SHORT: Record<string, Weekday> = {
   Monday: "Mon",
@@ -179,9 +179,26 @@ export function BriefCoachSuggestion({
     );
   }
 
+  // Capture reactive context before onSwap to avoid TypeScript nullability issues
+  // with suggestion inside a nested function body. At this point in the component
+  // tree, suggestion is non-null and has kind === "swap_to_mobility".
+  const reactiveSwapCtx: ReactiveSwapContext | undefined =
+    suggestion !== null && suggestion.rationale === "high_soreness"
+      ? {
+          rung: "swap_day",
+          rationale: ("detail" in suggestion ? suggestion.detail : undefined) ?? "Reactive ladder: swap_day",
+          regions: [],
+        }
+      : undefined;
+
   function onSwap() {
     mutation.mutate({
-      body: { action: "replace", source_day: sourceDay, session_type: "Mobility" },
+      body: {
+        action: "replace",
+        source_day: sourceDay,
+        session_type: "Mobility",
+        reactive_context: reactiveSwapCtx,
+      },
       confirm: true, // brief chip skips the 48h conflict gate at 7am
     });
   }
