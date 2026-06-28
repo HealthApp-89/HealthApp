@@ -354,6 +354,96 @@ describe("proposeActivityAwareLayout", () => {
     });
   });
 
+  // ── isPriority divergence: priority → FLAG; non-priority → LIGHTEN ────────
+  //
+  // These two tests are intentionally symmetric: same plan, same activity, same
+  // tight DaysAvailable — the ONLY difference is the `block` argument.
+  // Before the isPriority fix, both produced a lightenDays entry (isPriority was
+  // computed but never read). After the fix they diverge.
+  describe("isPriority divergence (single conflicting activity, no free day)", () => {
+    /**
+     * Setup:
+     *   Plan: Mon=Legs, Tue=REST (padel hard), Wed=Chest, Thu=Arms, Fri-Sun=REST
+     *   Activity: padel hard Tue 2026-07-07 → window=1.83d; dist(Mon,Tue)=1 < 1.83 → conflict.
+     *   Tight days: only Mon-Thu available. Thu is occupied (Arms), so no free+safe slot.
+     *   → MOVE is impossible.
+     *
+     * With block.primary_lift='squat' → Legs is priority → should FLAG (not lighten).
+     * Without block (no primary_lift)  → Legs is non-priority → should LIGHTEN (not flag).
+     */
+    const tightPlan: SessionPlan = {
+      Mon: "Legs",
+      Tue: "REST",   // padel activity day — no lifting session
+      Wed: "Chest",  // occupied; also within Tue window (dist=1 < 1.83, shoulders → padel shoulders overlap)
+      Thu: "Arms",   // occupied — not a free slot for Legs move
+      Fri: "REST",
+      Sat: "REST",
+      Sun: "REST",
+    };
+
+    const tightDays: DaysAvailable = {
+      mon: true, tue: true, wed: true, thu: true,
+      fri: false, sat: false, sun: false,
+    };
+
+    const squatBlock: TrainingBlock = {
+      id: "block-squat",
+      user_id: "user-1",
+      status: "active",
+      start_date: "2026-07-06",
+      end_date: "2026-08-10",
+      goal_text: "Increase squat",
+      primary_lift: "squat",
+      target_metric: "working_weight",
+      target_value: 80,
+      target_hit_at_week: null,
+      target_unit: "kg",
+      diet_goal: null,
+      endurance_focus: null,
+      created_at: "2026-07-06T00:00:00Z",
+      completed_at: null,
+      updated_at: "2026-07-06T00:00:00Z",
+    };
+
+    it("PRIORITY (squat block, Legs=priority): no move possible → FLAG, NOT lightenDays", () => {
+      const result = proposeActivityAwareLayout({
+        sessionPlan: tightPlan,
+        plannedActivities: [padelHard("2026-07-07")], // Tue
+        daysAvailable: tightDays,
+        block: squatBlock,
+      });
+
+      // Must emit a strategic flag for Mon/Legs.
+      const priorityFlag = result.flags.find(
+        (f) => f.sessionDay === "Mon" && f.sessionType === "Legs",
+      );
+      expect(priorityFlag).toBeDefined();
+      // Flag reason must mention the activity and the session.
+      expect(priorityFlag!.reason).toContain("padel");
+      expect(priorityFlag!.reason).toContain("Legs");
+      // Must NOT silently lighten the key session — that defeats the block purpose.
+      expect(result.lightenDays["Mon"]).toBeUndefined();
+    });
+
+    it("NON-PRIORITY (no block): no move possible → lightenDays entry, NOT a flag", () => {
+      const result = proposeActivityAwareLayout({
+        sessionPlan: tightPlan,
+        plannedActivities: [padelHard("2026-07-07")], // Tue
+        daysAvailable: tightDays,
+        // block intentionally omitted — Legs is not a priority session
+      });
+
+      // Must emit a lightenDays entry for Mon with the overlapping regions.
+      expect(result.lightenDays["Mon"]).toBeDefined();
+      expect(result.lightenDays["Mon"]).toContain("legs");
+      // Must NOT escalate to a flag (lighten was possible and sufficient).
+      const legsMonFlag = result.flags.find(
+        (f) => f.sessionDay === "Mon" && f.sessionType === "Legs",
+      );
+      expect(legsMonFlag).toBeUndefined();
+    });
+  });
+
   // ── Determinism ──────────────────────────────────────────────────────────
   describe("determinism", () => {
     it("identical inputs produce identical outputs on repeated calls", () => {

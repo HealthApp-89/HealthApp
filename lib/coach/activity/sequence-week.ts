@@ -393,6 +393,27 @@ export function proposeActivityAwareLayout(args: ProposeLayoutArgs): ProposeLayo
       }
     }
 
+    // Priority check: when the conflicting session is the block's focus session
+    // (isPriority=true) and no move was possible, do NOT lighten — lightening
+    // quietly dilutes the key adaptation. Instead emit a strategic flag so the
+    // athlete can make a conscious decision.
+    if (conflict.isPriority) {
+      const flagKey = `${sessionDay}:priority:${activity.date}`;
+      if (!flagged.has(flagKey)) {
+        flagged.add(flagKey);
+        flags.push({
+          activity,
+          sessionType: currentSession,
+          sessionDay,
+          overlapRegions: currentOverlap,
+          reason:
+            `Your ${activity.type} is competing with your ${currentSession} block — ` +
+            `consider moving the activity or easing the block.`,
+        });
+      }
+      continue; // Priority path: no lighten.
+    }
+
     // 2. LIGHTEN: no free slot available. Accumulate regions per day.
     const key = `${sessionDay}:${activity.date}`;
     if (!flagged.has(key) && !lightened.has(sessionDay)) {
@@ -450,6 +471,24 @@ export function proposeActivityAwareLayout(args: ProposeLayoutArgs): ProposeLayo
 
     const flagKey = `${sessionDay}:${activity.type}:${activity.date}`;
     if (flagged.has(flagKey)) continue;
+
+    // Priority path in post-pass: emit strategic flag directly, no lighten.
+    if (conflict.isPriority) {
+      const priorityFlagKey = `${sessionDay}:priority:${activity.date}`;
+      if (!flagged.has(priorityFlagKey)) {
+        flagged.add(priorityFlagKey);
+        flags.push({
+          activity,
+          sessionType: currentSession,
+          sessionDay,
+          overlapRegions,
+          reason:
+            `Your ${activity.type} is competing with your ${currentSession} block — ` +
+            `consider moving the activity or easing the block.`,
+        });
+      }
+      continue;
+    }
 
     // New unprocessed conflict: lighten first, escalate to flag if a second
     // activity also conflicts with this day.
