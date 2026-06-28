@@ -83,6 +83,16 @@ import {
   type ROMBias,
 } from "@/lib/coach/exercise-library";
 import { buildExplicitIntervention, recordIntervention, deriveSwapReason } from "@/lib/coach/interventions/record";
+import {
+  ACTIVITY_TYPES,
+  ActivityIntensitySchema,
+  ActivityTypeSchema,
+  PlannedActivitySchema,
+  type ActivityIntensity,
+  type ActivityType,
+  type PlannedActivity,
+} from "@/lib/coach/activity/types";
+import { mondayOf } from "@/lib/coach/weekly-review/date-utils";
 
 // ── Allowlist (cross-checked against lib/data/types.ts:DailyLog + schema.sql) ─
 export const ALLOWED_COLUMNS = [
@@ -6098,6 +6108,164 @@ export const PROPOSE_NUTRITION_ADJUSTMENT_TOOL = {
   },
 };
 
+// ── add_planned_activity tool ─────────────────────────────────────────────
+// Direct-write (no HMAC). Requires an existing training_weeks row for the
+// current week. Merges the new activity into planned_activities, deduping on
+// (date, type). Returns { ok:true, added } or { ok:false, error }.
+
+export const ADD_PLANNED_ACTIVITY_TOOL = {
+  name: "add_planned_activity",
+  description:
+    "Record a self-directed activity (padel, run, ride…) for THIS week's schedule. " +
+    "Writes immediately — no approval token required. Only succeeds when a training_weeks " +
+    "row already exists for the current week (ask the athlete to set up their week plan first if absent). " +
+    "The actual training-load rearrangement triggered by the activity is shown on the Schedule tab " +
+    "as an Approve card — this tool only registers the declared activity.",
+  input_schema: {
+    type: "object" as const,
+    required: ["type", "weekday", "intensity"],
+    properties: {
+      type: {
+        type: "string",
+        enum: ACTIVITY_TYPES as unknown as string[],
+        description: "Sport type. One of: padel, running, cycling, swimming, other.",
+      },
+      weekday: {
+        type: "integer",
+        minimum: 0,
+        maximum: 6,
+        description:
+          "Day of week (0=Sun, 1=Mon … 6=Sat). Must fall within THIS week (Mon–Sun in the user's timezone).",
+      },
+      intensity: {
+        type: "string",
+        enum: ["light", "moderate", "hard"],
+        description: "Estimated effort for the activity.",
+      },
+    },
+  },
+};
+
+export async function executeAddPlannedActivity(opts: {
+  supabase: SupabaseClient;
+  userId: string;
+  input: unknown;
+}): Promise<ToolResult<{ ok: true; added: { type: ActivityType; date: string; intensity: ActivityIntensity } }>> {
+  const t0 = Date.now();
+  const i = (opts.input ?? {}) as Record<string, unknown>;
+
+  // ── Validate inputs ──────────────────────────────────────────────────────
+  const typeParsed = ActivityTypeSchema.safeParse(i.type);
+  if (!typeParsed.success) {
+    return {
+      ok: false,
+      error: { error: `type must be one of: ${ACTIVITY_TYPES.join(", ")}` },
+      meta: { ms: Date.now() - t0, range_days: 0 },
+    };
+  }
+  const activityType = typeParsed.data;
+
+  const weekdayRaw = i.weekday;
+  if (typeof weekdayRaw !== "number" || !Number.isInteger(weekdayRaw) || weekdayRaw < 0 || weekdayRaw > 6) {
+    return {
+      ok: false,
+      error: { error: "weekday must be an integer 0–6 (0=Sun, 1=Mon … 6=Sat)" },
+      meta: { ms: Date.now() - t0, range_days: 0 },
+    };
+  }
+  const weekday = weekdayRaw as number;
+
+  const intensityParsed = ActivityIntensitySchema.safeParse(i.intensity);
+  if (!intensityParsed.success) {
+    return {
+      ok: false,
+      error: { error: "intensity must be one of: light, moderate, hard" },
+      meta: { ms: Date.now() - t0, range_days: 0 },
+    };
+  }
+  const intensity = intensityParsed.data;
+
+  // ── Resolve current week_start (user-tz Monday) ──────────────────────────
+  const tz = await getUserTimezone(opts.userId);
+  const todayIso = todayInUserTz(new Date(), tz);
+  const weekStartIso = mondayOf(todayIso);
+
+  // ── Require an existing training_weeks row ────────────────────────────────
+  const { data: existingRow, error: checkErr } = await opts.supabase
+    .from("training_weeks")
+    .select("id, planned_activities")
+    .eq("user_id", opts.userId)
+    .eq("week_start", weekStartIso)
+    .maybeSingle();
+
+  if (checkErr) {
+    return {
+      ok: false,
+      error: { error: `row_check_failed: ${checkErr.message}` },
+      meta: { ms: Date.now() - t0, range_days: 0 },
+    };
+  }
+
+  if (!existingRow) {
+    return {
+      ok: false,
+      error: { error: "no_training_week", hint: "Set up this week's plan first." },
+      meta: { ms: Date.now() - t0, range_days: 0 },
+    };
+  }
+
+  // ── Resolve weekday → ISO date within this week ───────────────────────────
+  // Convention: 0=Sun…6=Sat; offset = weekday===0 ? 6 : weekday-1
+  // Mirrors weekdayToDate in lib/coach/activity/read-planned.ts
+  const base = new Date(weekStartIso + "T00:00:00Z");
+  const offset = weekday === 0 ? 6 : weekday - 1;
+  const activityDate = new Date(base.getTime() + offset * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+
+  // ── Build validated PlannedActivity ──────────────────────────────────────
+  const newActivity: PlannedActivity = PlannedActivitySchema.parse({
+    date: activityDate,
+    type: activityType,
+    intensity_estimate: intensity,
+    source: "manual",
+  });
+
+  // ── Merge with dedup on (date, type) ─────────────────────────────────────
+  const existing = (existingRow.planned_activities as PlannedActivity[] | null) ?? [];
+  const filtered = existing.filter(
+    (a) => !(a.date === activityDate && a.type === activityType),
+  );
+  const merged = [...filtered, newActivity];
+
+  // ── UPDATE the row ────────────────────────────────────────────────────────
+  const { error: updateErr } = await opts.supabase
+    .from("training_weeks")
+    .update({
+      planned_activities: merged,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("user_id", opts.userId)
+    .eq("week_start", weekStartIso);
+
+  if (updateErr) {
+    return {
+      ok: false,
+      error: { error: `update_failed: ${updateErr.message}` },
+      meta: { ms: Date.now() - t0, range_days: 0 },
+    };
+  }
+
+  return {
+    ok: true,
+    data: {
+      ok: true,
+      added: { type: activityType, date: activityDate, intensity },
+    },
+    meta: { ms: Date.now() - t0, result_rows: 1, range_days: 0, truncated: false },
+  };
+}
+
 // ── Per-speaker tool partitions ──────────────────────────────────────────
 // Peter has every tool. Carter/Nora/Remi each get a narrower lane-specific
 // subset (column-restricted at execute time via colsForSpeaker(speaker)).
@@ -6159,6 +6327,7 @@ export const PETER_TOOLS: readonly ToolSchema[] = [
   COMMIT_WEEKLY_PLAN_TOOL,
   REGENERATE_WEEKLY_REVIEW_TOOL,
   PROPOSE_NUTRITION_ADJUSTMENT_TOOL,
+  ADD_PLANNED_ACTIVITY_TOOL,
 ];
 
 // Carter: strength/training. Reads workouts + recovery-relevant daily_logs
@@ -6190,6 +6359,7 @@ export const CARTER_TOOLS: readonly ToolSchema[] = [
   SET_ENDURANCE_DISCIPLINE_TOOL,
   SET_THRESHOLD_HR_TOOL,
   SET_FTP_TOOL,
+  ADD_PLANNED_ACTIVITY_TOOL,
 ];
 
 // Nora: nutrition. Reads food log + nutrition/body-comp daily_logs columns;
