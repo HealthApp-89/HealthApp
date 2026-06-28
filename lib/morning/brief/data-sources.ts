@@ -23,6 +23,9 @@ import { weekdayInUserTz } from "@/lib/time";
 import { getTodayTargets, type TodayTargets } from "@/lib/morning/brief/get-today-targets";
 import type { BriefInputs, YesterdayWorkoutSummary, WhoopBaselineForBand } from "@/lib/morning/brief/assembler";
 import type { YesterdayWorkoutForBlock } from "@/lib/morning/brief/yesterday-vs-plan";
+import { loadPlannedActivities } from "@/lib/coach/activity/read-planned";
+import { activityRegions, recoveryWindowHours } from "@/lib/coach/activity/model";
+import type { RecentActivitySignal } from "@/lib/coach/activity/reactive-ladder";
 
 const PRIMARY_LIFT_REGEX: Record<PrimaryLift, RegExp> = {
   squat: /\b(back\s+squat|squat)\b/i,
@@ -196,6 +199,10 @@ export async function fetchBriefInputs(
     yesterdayWorkoutForBlock: null,
     swapAppliedYesterday: false,
     phaseTransitionThisWeek: false,
+    // Populated by the orchestrator (prepareBriefExceptAdvice) in parallel
+    // with other sub-project fields. Defaulted empty so the base fetcher's
+    // return is a valid BriefInputs; the orchestrator overwrites via spread.
+    recentActivity: [],
   };
 }
 
@@ -371,6 +378,65 @@ export async function getYesterdayWorkoutFlat(
     ),
   };
   return flat;
+}
+
+/**
+ * Loads recent activities for today's week and converts them to
+ * `RecentActivitySignal[]` for the reactive ladder.
+ *
+ * Conversion: for each PlannedActivity with a date BEFORE today, compute
+ * whether the activity is still within its recovery window as of the
+ * moment `today` starts (midnight of today in UTC).
+ *
+ * Graceful: any DB error returns [] so the reactive ladder falls back
+ * to its grace-rule (no signals → none rung → existing brief unchanged).
+ */
+export async function loadRecentActivityForBrief(
+  supabase: SupabaseClient,
+  userId: string,
+  today: string,       // "YYYY-MM-DD" in user's timezone
+): Promise<RecentActivitySignal[]> {
+  try {
+    const weekStart = mondayOf(today);
+
+    // Fetch the minimal training_weeks fields needed by loadPlannedActivities.
+    const { data: twData, error: twErr } = await supabase
+      .from("training_weeks")
+      .select("week_start, planned_activities")
+      .eq("user_id", userId)
+      .eq("week_start", weekStart)
+      .maybeSingle();
+
+    if (twErr) return [];
+    if (!twData) return [];
+
+    const week = twData as Pick<TrainingWeek, "week_start" | "planned_activities">;
+    const allActivities = await loadPlannedActivities(supabase, userId, week, today);
+
+    // Convert to RecentActivitySignal[]: keep only activities before today
+    // that load at least one muscle region (type="other" loads nothing).
+    const todayMs = new Date(`${today}T00:00:00Z`).getTime();
+
+    return allActivities
+      .filter((a) => {
+        if (a.date >= today) return false; // exclude today and future
+        const regions = activityRegions(a.type);
+        return regions.length > 0;
+      })
+      .map((a): RecentActivitySignal => {
+        const actMs = new Date(`${a.date}T00:00:00Z`).getTime();
+        const elapsedHours = (todayMs - actMs) / 3_600_000;
+        const windowHours = recoveryWindowHours(a.type, a.intensity_estimate);
+        return {
+          regions: activityRegions(a.type),
+          intensity: a.intensity_estimate,
+          withinRecoveryWindow: elapsedHours < windowHours,
+        };
+      });
+  } catch {
+    // Graceful: any uncaught error → empty signals → grace rule fires.
+    return [];
+  }
 }
 
 /** Reads the most recent committed weekly_review for the week immediately

@@ -4,6 +4,8 @@ import { useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Card } from "@/components/ui/Card";
 import { WeekScheduleAccordion, type WeekDayEntry } from "@/components/strength/WeekScheduleAccordion";
+import { WeekActivityStrip } from "@/components/activity/WeekActivityStrip";
+import { ActivityLayoutProposalCard } from "@/components/activity/ActivityLayoutProposalCard";
 import { useTrainingWeek } from "@/lib/query/hooks/useTrainingWeek";
 import { useFullWorkouts } from "@/lib/query/hooks/useFullWorkouts";
 import { useUserSessionTemplates } from "@/lib/query/hooks/useUserSessionTemplates";
@@ -195,6 +197,19 @@ export function StrengthScheduleClient({ userId }: Props) {
           ›
         </button>
       </div>
+
+      {/* Activity strip — quick-add per-week one-off activities */}
+      <WeekActivityStrip
+        weekStart={weekStart}
+        initialActivities={(trainingWeek?.planned_activities ?? []) as import("@/lib/coach/activity/types").PlannedActivity[]}
+      />
+
+      {/* Activity-aware layout proposal — shown only when there are moves or flags */}
+      <ActivityLayoutProposalCard
+        userId={userId}
+        weekStart={weekStart}
+        currentSessionPlan={(trainingWeek?.session_plan ?? null) as import("@/lib/data/types").SessionPlan | null}
+      />
 
       {/* Default-plan banner */}
       {!isLoading && !hasCommittedWeek && (

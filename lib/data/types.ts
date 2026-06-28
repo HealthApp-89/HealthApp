@@ -7,6 +7,7 @@ import type {
   EnduranceFocus,
   EnduranceSport,
 } from "@/lib/coach/endurance/types";
+import type { PlannedActivity, RecurringActivity } from "@/lib/coach/activity/types";
 
 // ── Multi-coach team (coach-team arc) ─────────────────────────────────────────
 
@@ -92,6 +93,10 @@ export type Profile = {
   /** IANA timezone (e.g., "Asia/Dubai"). Authoritative for all per-user "today"
    *  / week-boundary / day-attribution computations. NOT NULL DEFAULT in DB. */
   timezone: string;
+  /** Activity-aware planning (migration 0044): user-configured recurring
+   *  activities (e.g. padel every Tue/Thu) that the planning engine and
+   *  morning brief use to anticipate fatigue on lift days. */
+  recurring_activities: RecurringActivity[];
 };
 
 export type WhoopTokensRow = {
@@ -419,8 +424,11 @@ export type WeekdayLong =
   | "Saturday"
   | "Sunday";
 export type { BlockPhase } from "@/lib/coach/prescription/types";
-/** Session-type strings keyed in SESSION_PLANS, plus the literal "REST". */
-export type SessionPlan = Partial<Record<Weekday, string>>;
+/** Session-type strings keyed by weekday (short or long form).
+ *  The DB type is Weekday (short) but AI-committed rows use WeekdayLong;
+ *  all readers must use readSessionForDay() from lib/coach/session-plan-reader.ts.
+ *  Long-term: normalize to WeekdayLong; short form is a legacy artifact. */
+export type SessionPlan = Partial<Record<Weekday | WeekdayLong, string>>;
 /** Per-primary-lift intensity multipliers; missing keys default to 1.0. */
 export type IntensityModifier = Partial<Record<PrimaryLift, number>>;
 
@@ -487,6 +495,10 @@ export type TrainingWeek = {
   /** Endurance pillar (migration 0040): per-weekday endurance session
    *  prescriptions (keys 0..6 for Sun..Sat). NULL on strength-only weeks. */
   endurance_session_plan: EnduranceSessionPlan | null;
+  /** Activity-aware planning (migration 0044): planned non-training activities
+   *  for this week (padel sessions, runs, etc.) that the brief and prescription
+   *  engine use to apply fatigue adjustments on adjacent lift days. */
+  planned_activities: PlannedActivity[];
   committed_at: string;
   created_at: string;
   updated_at: string;
@@ -1155,9 +1167,22 @@ export type SwapConflict = {
   session_type: string;
 };
 
+/** Optional context stamped when the swap originates from a reactive
+ *  morning-brief suggestion (activity-aware planning, Task 9).
+ *  Carried through to the swap route so a coach_interventions row can be
+ *  recorded best-effort. Never required — omitting it is always valid. */
+export type ReactiveSwapContext = {
+  /** The ladder rung that produced this suggestion. */
+  rung: "swap_exercise" | "swap_day";
+  /** Free-text rationale from the reactive ladder (rationale field on the suggestion). */
+  rationale: string;
+  /** Muscle regions that triggered the escalation. */
+  regions: string[];
+};
+
 export type SwapBody =
-  | { action: "swap"; source_day: Weekday; target_day: Weekday }
-  | { action: "replace"; source_day: Weekday; session_type: string };
+  | { action: "swap"; source_day: Weekday; target_day: Weekday; reactive_context?: ReactiveSwapContext }
+  | { action: "replace"; source_day: Weekday; session_type: string; reactive_context?: ReactiveSwapContext };
 
 export type SwapResult = {
   week: TrainingWeek;
@@ -1188,6 +1213,9 @@ export type SwapConflictResponse = {
 export type MorningBriefCoachSuggestion =
   | { kind: "swap_to_mobility"; rationale: "low_readiness" | "high_soreness"; detail?: string }
   | { kind: "reduce_intensity"; rationale: "recovery_crash"; detail?: string }
+  | { kind: "load_down"; rationale: "activity_fatigue"; detail?: string }
+  | { kind: "volume_down"; rationale: "activity_fatigue"; detail?: string }
+  | { kind: "swap_exercise"; rationale: "activity_muscle_overlap"; target_exercise: string; detail?: string }
   | null;
 
 // ── GLP-1-aware nutrition helper types ──────────────────────────────────────

@@ -15,6 +15,7 @@ import type {
   PrimaryLift,
   TargetMetric,
   WeekdayLong,
+  Weekday,
 } from "@/lib/data/types";
 import type { PlannedExercise } from "@/lib/coach/sessionPlans";
 import { SESSION_PLANS } from "@/lib/coach/sessionPlans";
@@ -33,8 +34,98 @@ import {
 } from "@/lib/coach/exercise-muscles";
 import { literatureBand } from "@/lib/coach/volume-landmarks";
 import type { TargetedMuscleGroup, MuscleVolumeSnapshot } from "@/lib/data/types";
+import { loadPlannedActivities } from "@/lib/coach/activity/read-planned";
+import { proposeActivityAwareLayout, SESSION_REGION_MAP } from "@/lib/coach/activity/sequence-week";
+import type { MuscleRegion } from "@/lib/coach/activity/types";
+import { readSessionForDay } from "@/lib/coach/session-plan-reader";
 
 const FOCUS_BLOCK_CLAMP = 0.92;
+
+// ── Activity-aware lighten helpers ─────────────────────────────────────────────
+
+/** Map from long weekday name → short Weekday (used by proposeActivityAwareLayout). */
+const LONG_TO_SHORT: Record<string, Weekday> = {
+  Monday: "Mon",
+  Tuesday: "Tue",
+  Wednesday: "Wed",
+  Thursday: "Thu",
+  Friday: "Fri",
+  Saturday: "Sat",
+  Sunday: "Sun",
+};
+
+/** TargetedMuscleGroup → MuscleRegion mapping for per-exercise lighten gating.
+ *  Exercises whose primary targeted muscle falls in an affected region should
+ *  have their volume trimmed. Falls back to session-level gating when unknown. */
+const TARGETED_GROUP_TO_REGION: Partial<Record<TargetedMuscleGroup, MuscleRegion>> = {
+  Quads: "legs",
+  Hams: "legs",
+  Glutes: "legs",
+  Calves: "legs",
+  Chest: "chest",
+  Lats: "back",
+  Traps: "back",
+  RearDelts: "shoulders",
+  Biceps: "arms",
+  Triceps: "arms",
+};
+
+/**
+ * Determine the primary MuscleRegion for an exercise by name.
+ * Uses getExerciseMuscles → TARGET_GROUP_FOR_MUSCLE → TARGETED_GROUP_TO_REGION.
+ * Returns null when the exercise is unmapped or targets non-regional muscles.
+ */
+function exerciseRegion(name: string): MuscleRegion | null {
+  const mapping = getExerciseMuscles(name);
+  if (!mapping) return null;
+  for (const mid of mapping.primary) {
+    const group = TARGET_GROUP_FOR_MUSCLE[mid];
+    if (group) {
+      const region = TARGETED_GROUP_TO_REGION[group];
+      if (region) return region;
+    }
+  }
+  return null;
+}
+
+/**
+ * Apply volume lighten to one exercise:
+ *   - Trim working sets by 1 (floor 1) — warmup sets are untouched.
+ *   - Trim baseReps by 1 (floor 1) as a secondary load signal.
+ * Only applies when the exercise's muscle region (or the session's fallback
+ * regions) overlap the affected lighten regions.
+ */
+function lightenExercise(
+  ex: PlannedExercise,
+  sessionType: string,
+  affectedRegions: MuscleRegion[],
+): PlannedExercise {
+  // Warmup sets are structural — never lighten them.
+  if (ex.warmup) return ex;
+  // Skip exercises without set/rep targets (bodyweight/time-based with no baseReps).
+  if (ex.sets == null && ex.baseReps == null) return ex;
+
+  // Per-exercise region check: if we can resolve the exercise's region, only
+  // lighten when it overlaps the affected set. Falls back to session-level
+  // (lighten all loaded exercises in the session) when unmapped.
+  const exRegion = exerciseRegion(ex.name);
+  if (exRegion !== null) {
+    // We have a specific region — only lighten if it's in the affected set.
+    if (!affectedRegions.includes(exRegion)) return ex;
+  } else {
+    // Unmapped exercise — fall back to session-level gating: lighten only
+    // when the session itself has at least one overlapping region.
+    const sessionRegs = SESSION_REGION_MAP[sessionType] ?? [];
+    const hasOverlap = sessionRegs.some((r) => affectedRegions.includes(r));
+    if (!hasOverlap) return ex;
+  }
+
+  return {
+    ...ex,
+    sets: ex.sets != null ? Math.max(1, ex.sets - 1) : ex.sets,
+    baseReps: ex.baseReps != null ? Math.max(1, ex.baseReps - 1) : ex.baseReps,
+  };
+}
 
 /** Exercise-name patterns that identify a primary-lift instance. DB stores
  *  free-form exercise names ("Deadlift (Barbell)"), not keys — we use case-
@@ -64,6 +155,46 @@ export async function prescribeWeek(opts: {
 }): Promise<SessionPrescriptions> {
   const { supabase, userId, block, week, todayIso } = opts;
   const out: SessionPrescriptions = {};
+
+  // ── Activity-aware lighten: load planned activities for the week and detect
+  //    which days should have their volume trimmed due to sport/activity overlap.
+  //
+  //    GRACEFUL: any failure (fetch error, empty profile, missing columns) →
+  //    lightenDays stays empty → prescriptions are byte-identical to today's
+  //    behavior. Users with no activities see zero change.
+  let lightenDays: Record<string, MuscleRegion[]> = {};
+  try {
+    const plannedActivities = await loadPlannedActivities(supabase, userId, week, todayIso);
+    if (plannedActivities.length > 0) {
+      // Build a DaysAvailable from session_plan: a day is "available" when it
+      // already has a training session (not REST/Mobility/unset). This tells
+      // the planner which days the athlete is willing to train on.
+      const sessionPlan = week.session_plan ?? {};
+      // Use readSessionForDay for key-agnostic lookups: production data uses
+      // full weekday names ("Monday") but short-keyed plans ("Mon") are also
+      // valid. Direct indexing by short key silently returns undefined on prod data.
+      const daysAvailable = {
+        mon: !!(readSessionForDay(sessionPlan, "Mon") && readSessionForDay(sessionPlan, "Mon") !== "REST"),
+        tue: !!(readSessionForDay(sessionPlan, "Tue") && readSessionForDay(sessionPlan, "Tue") !== "REST"),
+        wed: !!(readSessionForDay(sessionPlan, "Wed") && readSessionForDay(sessionPlan, "Wed") !== "REST"),
+        thu: !!(readSessionForDay(sessionPlan, "Thu") && readSessionForDay(sessionPlan, "Thu") !== "REST"),
+        fri: !!(readSessionForDay(sessionPlan, "Fri") && readSessionForDay(sessionPlan, "Fri") !== "REST"),
+        sat: !!(readSessionForDay(sessionPlan, "Sat") && readSessionForDay(sessionPlan, "Sat") !== "REST"),
+        sun: !!(readSessionForDay(sessionPlan, "Sun") && readSessionForDay(sessionPlan, "Sun") !== "REST"),
+      };
+      const result = proposeActivityAwareLayout({
+        sessionPlan,
+        plannedActivities,
+        daysAvailable,
+        block: block ?? undefined,
+        today: todayIso,
+      });
+      lightenDays = result.lightenDays;
+    }
+  } catch {
+    // Graceful: activity load or layout proposal failed → no lighten applied.
+    lightenDays = {};
+  }
 
   // rir_target is nullable on the row; default to 2 (the RP/Helms hypertrophy
   // default) so downstream rule modules — whose params are non-null number —
@@ -174,10 +305,103 @@ export async function prescribeWeek(opts: {
       }
     }
 
-    out[weekday] = augmentFirstLoadedCompoundWithWarmups(exercises);
+    const augmented = augmentFirstLoadedCompoundWithWarmups(exercises);
+
+    // Apply lighten: if this weekday has affected regions (from activity
+    // overlap), trim volume on exercises that target those regions.
+    // lightenDays uses Weekday short-form keys ("Mon"); weekday here is
+    // WeekdayLong ("Monday") — convert to short for the lookup.
+    const weekdayShort = LONG_TO_SHORT[weekday];
+    const affectedRegions = weekdayShort ? lightenDays[weekdayShort] : undefined;
+
+    if (affectedRegions && affectedRegions.length > 0) {
+      out[weekday] = augmented.map((ex) =>
+        lightenExercise(ex, sessionType, affectedRegions),
+      );
+    } else {
+      out[weekday] = augmented;
+    }
   }
 
   return out;
+}
+
+// ── Activity layout proposal (exported for Sunday cron + weekly review) ─────────
+
+/**
+ * Compute the activity-aware layout proposal for a given week.
+ *
+ * Returns `proposedPlan` (day moves), `lightenDays` (volume-trim signals),
+ * and `flags` (unresolvable conflicts for athlete review). Graceful: any
+ * fetch failure → empty result (same as "no activities").
+ *
+ * Callers that want to surface the proposal to the athlete:
+ *   - Compare `proposedPlan` vs `week.session_plan` to find moved days
+ *   - Present moved days + flag rationale strings to the athlete
+ *   - On Approve, call POST /api/training-weeks/[week_start]/apply-activity-layout
+ *     with `proposedPlan` to apply via the existing swap engine
+ */
+export async function computeActivityLayoutProposal(opts: {
+  supabase: SupabaseClient;
+  userId: string;
+  block: TrainingBlock | null;
+  week: TrainingWeek;
+  todayIso: string;
+}): Promise<{
+  proposedPlan: import("@/lib/data/types").SessionPlan;
+  lightenDays: Record<string, MuscleRegion[]>;
+  flags: import("@/lib/coach/activity/sequence-week").ActivityConflictFlag[];
+  hasMoves: boolean;
+  hasFlags: boolean;
+}> {
+  const { supabase, userId, block, week, todayIso } = opts;
+  const sessionPlan = week.session_plan ?? {};
+
+  const empty = {
+    proposedPlan: sessionPlan,
+    lightenDays: {},
+    flags: [],
+    hasMoves: false,
+    hasFlags: false,
+  };
+
+  try {
+    const plannedActivities = await loadPlannedActivities(supabase, userId, week, todayIso);
+    if (plannedActivities.length === 0) return empty;
+
+    // Use readSessionForDay for key-agnostic lookups (same rationale as above).
+    const daysAvailable = {
+      mon: !!(readSessionForDay(sessionPlan, "Mon") && readSessionForDay(sessionPlan, "Mon") !== "REST"),
+      tue: !!(readSessionForDay(sessionPlan, "Tue") && readSessionForDay(sessionPlan, "Tue") !== "REST"),
+      wed: !!(readSessionForDay(sessionPlan, "Wed") && readSessionForDay(sessionPlan, "Wed") !== "REST"),
+      thu: !!(readSessionForDay(sessionPlan, "Thu") && readSessionForDay(sessionPlan, "Thu") !== "REST"),
+      fri: !!(readSessionForDay(sessionPlan, "Fri") && readSessionForDay(sessionPlan, "Fri") !== "REST"),
+      sat: !!(readSessionForDay(sessionPlan, "Sat") && readSessionForDay(sessionPlan, "Sat") !== "REST"),
+      sun: !!(readSessionForDay(sessionPlan, "Sun") && readSessionForDay(sessionPlan, "Sun") !== "REST"),
+    };
+
+    const result = proposeActivityAwareLayout({
+      sessionPlan,
+      plannedActivities,
+      daysAvailable,
+      block: block ?? undefined,
+      today: todayIso,
+    });
+
+    // Detect whether the proposed plan differs from the committed plan.
+    const { plansEqual } = await import("@/lib/training-weeks/apply-swap");
+    const hasMoves = !plansEqual(sessionPlan, result.proposedPlan);
+
+    return {
+      proposedPlan: result.proposedPlan,
+      lightenDays: result.lightenDays,
+      flags: result.flags,
+      hasMoves,
+      hasFlags: result.flags.length > 0,
+    };
+  } catch {
+    return empty;
+  }
 }
 
 /** Adds two ramped warmup entries before the first loaded compound of a

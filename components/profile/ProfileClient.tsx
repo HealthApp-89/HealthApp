@@ -25,6 +25,7 @@ import { GoalSection } from "@/components/profile/GoalSection";
 import { EnduranceSetupSection } from "@/components/profile/EnduranceSetupSection";
 import { TimezoneSection } from "@/components/profile/TimezoneSection";
 import { useAthleteProfile } from "@/lib/query/hooks/useAthleteProfile";
+import { RecurringActivitySection } from "@/components/profile/RecurringActivitySection";
 
 export function ProfileClient({
   userId,
@@ -186,6 +187,9 @@ export function ProfileClient({
         <EnduranceSetupSection
           initial={activeProfile?.endurance_profile ?? null}
           stravaConnected={stravaConnected}
+        />
+        <RecurringActivitySection
+          initial={profile?.recurring_activities ?? []}
         />
         {showLabCard && <LabPromptCard userId={userId} />}
       </div>

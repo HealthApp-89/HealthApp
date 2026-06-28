@@ -42,7 +42,18 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "block_fetch_failed", detail: blocksErr.message }, { status: 500 });
   }
 
-  const results: Array<{ user_id: string; ok: boolean; detail?: string; inserted?: boolean; week_start?: string }> = [];
+  const results: Array<{
+    user_id: string;
+    ok: boolean;
+    detail?: string;
+    inserted?: boolean;
+    week_start?: string;
+    activity_proposal?: {
+      has_moves: boolean;
+      has_flags: boolean;
+      flag_count: number;
+    };
+  }> = [];
   for (const row of activeBlocks ?? []) {
     const userId = (row as { user_id: string }).user_id;
     try {
@@ -61,7 +72,17 @@ export async function GET(req: Request) {
         weekStart: nextMonday,
         todayIso,
       });
-      results.push({ user_id: userId, ok: true, inserted: out.inserted, week_start: nextMonday });
+      results.push({
+        user_id: userId,
+        ok: true,
+        inserted: out.inserted,
+        week_start: nextMonday,
+        activity_proposal: {
+          has_moves: out.activityLayoutProposal.hasMoves,
+          has_flags: out.activityLayoutProposal.hasFlags,
+          flag_count: out.activityLayoutProposal.flags.length,
+        },
+      });
     } catch (e) {
       console.error("[sunday-prescriptions.sync] user failed", userId, e);
       results.push({ user_id: userId, ok: false, detail: String(e) });

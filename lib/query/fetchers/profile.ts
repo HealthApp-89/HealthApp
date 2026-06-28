@@ -2,8 +2,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import type { PrimaryLift, DietaryExclusions } from "@/lib/data/types";
+import type { RecurringActivity } from "@/lib/coach/activity/types";
 
-const COLS = "name, age, height_cm, goal, system_prompt, whoop_baselines, disable_yazio_ingest, disable_strong_ingest, rotation_priority_lift, dietary_exclusions, timezone, created_at";
+const COLS = "name, age, height_cm, goal, system_prompt, whoop_baselines, disable_yazio_ingest, disable_strong_ingest, rotation_priority_lift, dietary_exclusions, timezone, recurring_activities, created_at";
 
 export type Profile = {
   name: string | null;
@@ -17,6 +18,7 @@ export type Profile = {
   rotation_priority_lift: PrimaryLift | null;
   dietary_exclusions: DietaryExclusions | null;
   timezone: string;
+  recurring_activities: RecurringActivity[];
   created_at: string;
 };
 
