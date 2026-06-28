@@ -19,6 +19,34 @@ test("returns null when no activities (block omitted)", () => {
   expect(renderPlannedActivitiesBlock([], [])).toBeNull();
 });
 
+/**
+ * GRACEFUL DEGRADATION — load-bearing guard
+ *
+ * Contract: when there are no planned activities AND no recurring patterns,
+ * `renderPlannedActivitiesBlock` MUST return null.
+ *
+ * The snapshot builder (lib/coach/snapshot.ts) spreads the block conditionally:
+ *   ...(activitiesBlock ? [``, activitiesBlock] : [])
+ *
+ * null-return → conditional evaluates to false → nothing is pushed into the
+ * prefix lines → the coach context is byte-identical to what it was before
+ * the activity feature was added.  No "PLANNED ACTIVITIES" heading, no load
+ * note, no coach behavioural change.
+ *
+ * If this test fails it means the builder now emits a block even for zero
+ * inputs — that would inject activity-awareness context into every coach turn,
+ * including users who have never entered an activity.
+ */
+test("GRACEFUL GUARD: renderPlannedActivitiesBlock([], []) → null — block omitted, coach context unchanged", () => {
+  const result = renderPlannedActivitiesBlock([], []);
+
+  // Primary: must be null, not an empty string or a stub block.
+  expect(result).toBeNull();
+
+  // Belt-and-suspenders: definitely not a string of any kind.
+  expect(typeof result).not.toBe("string");
+});
+
 test("includes recurring patterns when present", () => {
   const block = renderPlannedActivitiesBlock([], [{ type: "padel", weekdays: [2, 4], typical_intensity: "moderate" }]);
   expect(block).not.toBeNull();
