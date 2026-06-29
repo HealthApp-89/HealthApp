@@ -37,7 +37,7 @@ import { getTodayTargets } from "@/lib/morning/brief/get-today-targets";
 import { typedTargetsForAllSlots, DEFAULT_MEAL_RATIOS } from "@/lib/food/meal-targets";
 import { validateWeekPrescription } from "@/lib/coach/prescription/validate-week";
 import { maintenanceLoadFor } from "@/lib/coach/prescription/maintenance-baseline";
-import { prescribeWeek } from "@/lib/coach/prescription/prescribe-week";
+import { prescribeWeek, computeActivityLayoutProposal } from "@/lib/coach/prescription/prescribe-week";
 import { upsertWeekPrescription } from "@/lib/coach/prescription/upsert-week-prescription";
 import { computeTargetRecommendation, type TargetRecommendation } from "@/lib/coach/prescription/calibrate-target";
 import { generateBlockOutcome, type GenerateBlockOutcomeResult } from "@/lib/coach/block-outcomes";
@@ -6119,8 +6119,7 @@ export const ADD_PLANNED_ACTIVITY_TOOL = {
     "Record a self-directed activity (padel, run, ride…) for THIS week's schedule. " +
     "Writes immediately — no approval token required. Only succeeds when a training_weeks " +
     "row already exists for the current week (ask the athlete to set up their week plan first if absent). " +
-    "The actual training-load rearrangement triggered by the activity is shown on the Schedule tab " +
-    "as an Approve card — this tool only registers the declared activity.",
+    "Returns a `conflict` summary: when has_conflict is true, immediately offer to adjust the affected session via propose_activity_adjustment (resolution='move' relocates the session; 'lighten' trims it in place; 'flag' means a priority session is blocked — ask the athlete).",
   input_schema: {
     type: "object" as const,
     required: ["type", "weekday", "intensity"],
@@ -6150,7 +6149,11 @@ export async function executeAddPlannedActivity(opts: {
   supabase: SupabaseClient;
   userId: string;
   input: unknown;
-}): Promise<ToolResult<{ ok: true; added: { type: ActivityType; date: string; intensity: ActivityIntensity } }>> {
+}): Promise<ToolResult<{
+  ok: true;
+  added: { type: ActivityType; date: string; intensity: ActivityIntensity };
+  conflict: { has_conflict: boolean; resolution: "move" | "lighten" | "flag" | "none"; week_start: string };
+}>> {
   const t0 = Date.now();
   const i = (opts.input ?? {}) as Record<string, unknown>;
 
@@ -6256,12 +6259,47 @@ export async function executeAddPlannedActivity(opts: {
     };
   }
 
+  // Re-load the row (now with the merged activity) and run the layout proposal
+  // so Carter knows whether to offer a move/lighten. Graceful: any failure →
+  // has_conflict:false so the add still succeeds.
+  let conflict: { has_conflict: boolean; resolution: "move" | "lighten" | "flag" | "none"; week_start: string } = {
+    has_conflict: false,
+    resolution: "none",
+    week_start: weekStartIso,
+  };
+  try {
+    const { data: freshRow } = await opts.supabase
+      .from("training_weeks")
+      .select("id, user_id, block_id, week_start, session_plan, planned_activities, session_prescriptions, exercise_overrides, rir_target")
+      .eq("user_id", opts.userId)
+      .eq("week_start", weekStartIso)
+      .maybeSingle();
+    if (freshRow) {
+      const { data: blockRow } = await opts.supabase
+        .from("training_blocks")
+        .select("*")
+        .eq("user_id", opts.userId)
+        .eq("status", "active")
+        .maybeSingle();
+      const proposal = await computeActivityLayoutProposal({
+        supabase: opts.supabase,
+        userId: opts.userId,
+        block: (blockRow as TrainingBlock | null) ?? null,
+        week: freshRow as unknown as TrainingWeek,
+        todayIso,
+      });
+      const hasLighten = Object.values(proposal.lightenDays).some((r) => r.length > 0);
+      const resolution: "move" | "lighten" | "flag" | "none" =
+        proposal.hasMoves ? "move" : hasLighten ? "lighten" : proposal.hasFlags ? "flag" : "none";
+      conflict = { has_conflict: resolution !== "none", resolution, week_start: weekStartIso };
+    }
+  } catch {
+    // keep conflict = none
+  }
+
   return {
     ok: true,
-    data: {
-      ok: true,
-      added: { type: activityType, date: activityDate, intensity },
-    },
+    data: { ok: true, added: { type: activityType, date: activityDate, intensity }, conflict },
     meta: { ms: Date.now() - t0, result_rows: 1, range_days: 0, truncated: false },
   };
 }
