@@ -27,6 +27,7 @@ li{margin:2px 0}
 .leaf .tw{visibility:hidden}
 .badge{font-size:10px;padding:1px 6px;border-radius:999px;border:1px solid}
 .badge.stale{color:var(--stale);border-color:var(--stale)}
+.badge.needs-desc{color:var(--warn);border-color:var(--warn)}
 .hidden{display:none}
 #detail h2{margin:0 0 8px;font-size:18px}
 #detail .uh{margin-top:14px;color:var(--muted);font-size:12px;border-top:1px dashed var(--line);padding-top:10px}
@@ -117,10 +118,11 @@ search.oninput=()=>{
 };
 
 // drift footer in detail panel
-if((DATA.drift.undocumented.length+DATA.drift.stale.length)>0){
+if(((DATA.drift.undocumented?.length||0)+(DATA.drift.stale?.length||0)+(DATA.drift.unnarratedScreens?.length||0))>0){
   const d=el('div',{id:'drift'});
-  if(DATA.drift.undocumented.length) d.append(el('div',{},el('b',{textContent:'Undocumented in code: '}), document.createTextNode(DATA.drift.undocumented.join(', '))));
-  if(DATA.drift.stale.length) d.append(el('div',{},el('b',{textContent:'Stale (described but gone): '}), document.createTextNode(DATA.drift.stale.join(', '))));
+  if(DATA.drift.undocumented?.length) d.append(el('div',{},el('b',{textContent:'Undocumented in code: '}), document.createTextNode(DATA.drift.undocumented.join(', '))));
+  if(DATA.drift.stale?.length) d.append(el('div',{},el('b',{textContent:'Stale (described but gone): '}), document.createTextNode(DATA.drift.stale.join(', '))));
+  if(DATA.drift.unnarratedScreens?.length) d.append(el('div',{},el('b',{textContent:'Screens needing a plain-language description: '}), document.createTextNode(DATA.drift.unnarratedScreens.join(', '))));
   document.getElementById('detail').append(d);
 }
 </script>

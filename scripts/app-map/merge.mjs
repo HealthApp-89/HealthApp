@@ -1,6 +1,8 @@
 // scripts/app-map/merge.mjs
 
-export function buildTree(manifest, facts) {
+export function buildTree(manifest, facts, options = {}) {
+  const exemptScreens = new Set(options.exemptScreens ?? []);
+
   const allFacts = {
     route: facts.routes,
     apiRoute: facts.apiRoutes,
@@ -8,6 +10,16 @@ export function buildTree(manifest, facts) {
     tool: [...new Set(facts.coaches.flatMap((c) => c.tools))],
     migration: facts.migrations,
   };
+
+  // Pre-pass: collect every route narrated by an explicit Array in any node's code.routes.
+  // (Excludes '*' sentinel — those are the catch-all absorbers.)
+  const narratedRoutes = new Set();
+  function collectNarratedRoutes(node) {
+    const val = node.code?.routes;
+    if (Array.isArray(val)) for (const r of val) narratedRoutes.add(r);
+    for (const ch of node.children ?? []) collectNarratedRoutes(ch);
+  }
+  collectNarratedRoutes(manifest);
 
   const claimed = { route: new Set(), apiRoute: new Set(), coach: new Set(), tool: new Set(), migration: new Set() };
   const starKinds = { route: false, apiRoute: false, tool: false };
@@ -40,7 +52,7 @@ export function buildTree(manifest, facts) {
         out.underHood.push(`migrations: ${allFacts.migration.length} files`);
       }
     }
-    const synthesized = synthChildren(node, allFacts);
+    const synthesized = synthChildren(node, allFacts, narratedRoutes, exemptScreens);
     const realChildren = (node.children ?? []).map(clone);
     const children = [...realChildren, ...synthesized];
     if (children.length) out.children = children;
@@ -62,11 +74,17 @@ export function buildTree(manifest, facts) {
   // undocumented are by definition unclaimed, so they live in no node. They are
   // reported in `drift` and surfaced by the renderer as a dedicated list.
 
-  return { tree, drift: { undocumented: undocumented.sort(), stale: [...new Set(stale)].sort() } };
+  // Compute unnarrated screens: page routes not narrated by any screens-branch node
+  // and not in the exempt list.
+  const unnarratedScreens = facts.routes
+    .filter((r) => !narratedRoutes.has(r) && !exemptScreens.has(r))
+    .sort();
+
+  return { tree, drift: { undocumented: undocumented.sort(), stale: [...new Set(stale)].sort(), unnarratedScreens } };
 }
 
 /** For '*'/all nodes, synthesize one plain leaf per fact. */
-function synthChildren(node, allFacts) {
+function synthChildren(node, allFacts, narratedRoutes, exemptScreens) {
   const code = node.code;
   if (!code) return [];
   const out = [];
@@ -74,7 +92,13 @@ function synthChildren(node, allFacts) {
   for (const [kind, singular] of Object.entries(map)) {
     if (code[kind] === '*') {
       for (const f of allFacts[singular]) {
-        out.push({ id: `${node.id}--${slug(f)}`, label: f, description: '', badges: [], underHood: [] });
+        // For route leaves synthesized under a '*' node, badge them as 'needs-desc'
+        // when the route is not narrated by any explicit screens-branch node and not exempt.
+        const badges =
+          singular === 'route' && !narratedRoutes.has(f) && !exemptScreens.has(f)
+            ? ['needs-desc']
+            : [];
+        out.push({ id: `${node.id}--${slug(f)}`, label: f, description: '', badges, underHood: [] });
       }
     }
   }

@@ -90,9 +90,16 @@ export const manifest = {
         { id: 'screen-home', label: 'Home', description: 'Your daily readiness view at a glance.', code: { routes: ['/'] } },
         { id: 'screen-diet', label: 'Meals', description: 'Your food journal, meal by meal.', code: { routes: ['/diet'] } },
         { id: 'screen-health', label: 'Metrics & log', description: 'Your numbers — recovery, sleep, body — and the place to enter or correct them by hand.', code: { routes: ['/health'] } },
-        { id: 'screen-coach', label: 'Coach', description: 'Chat with the coaching team and see Peter’s dashboard.', code: { routes: ['/coach'] } },
+        { id: 'screen-coach', label: 'Coach', description: 'Chat with the coaching team and see Peter’s dashboard.', code: { routes: ['/coach'] }, children: [
+          { id: 'screen-coach-reviews', label: 'Past weekly reviews', description: 'A list of your previous Sunday recaps, so you can look back at any week.', code: { routes: ['/coach/reviews'] } },
+          { id: 'screen-coach-week', label: 'A week in detail', description: 'The full write-up for one week — what you did, how it went, and the plan that came out of it.', code: { routes: ['/coach/weeks/:week_start'] } },
+          { id: 'screen-coach-session', label: 'A workout in detail', description: 'Everything about one logged training session — the exercises, sets, and weights.', code: { routes: ['/coach/sessions/:workout_id'] } },
+        ] },
         { id: 'screen-strength', label: 'Strength', description: 'Today’s session and your lifting plan.', code: { routes: ['/strength'] } },
-        { id: 'screen-profile', label: 'Profile', description: 'Your goals, settings, device connections and food library.', code: { routes: ['/profile'] } },
+        { id: 'screen-profile', label: 'Profile', description: 'Your goals, settings, device connections and food library.', code: { routes: ['/profile'] }, children: [
+          { id: 'screen-profile-prompts', label: 'How your coaches talk', description: 'A place to tweak the style and tone your coaching team uses when they message you.', code: { routes: ['/profile/coach-prompts'] } },
+          { id: 'screen-profile-library', label: 'Your food library', description: 'Your saved foods and recipes, so logging the meals you eat often is one tap.', code: { routes: ['/profile/library'] } },
+        ] },
         { id: 'screen-onboarding', label: 'Onboarding', description: 'The first-time setup that captures your history and goals.', code: { routes: ['/onboarding'] } },
       ],
     },
@@ -121,3 +128,8 @@ export const manifest = {
     },
   ],
 };
+
+// Page routes that legitimately have no plain-language screen node (non-content/utility pages).
+// Any page route NOT narrated by a screens-branch node and NOT listed here is reported as
+// "needs a plain-language description" by the drift check.
+export const screensExempt = ['/login', '/privacy'];

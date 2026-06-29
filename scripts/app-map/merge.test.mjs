@@ -103,4 +103,43 @@ assert.ok(p.underHood.some((x) => x.includes('peter')), 'peter underHood resolve
   assert.equal(childSqlLeaves.length, 2, 'child synthesizes exactly 2 migration leaves');
 }
 
+// ── Regression: unnarratedScreens drift + needs-desc badge on synthesized route leaves
+{
+  const tManifest = {
+    id: 'root3', label: 'root3', description: 'd',
+    children: [
+      {
+        id: 'screens3', label: 'screens3', description: 'd',
+        children: [
+          { id: 's-a', label: 'A', description: 'd', code: { routes: ['/a'] } },
+        ],
+      },
+      {
+        id: 'under-the-hood3', label: 'under-the-hood3', description: 'd',
+        children: [
+          { id: 'ur3', label: 'routes', description: 'd', code: { routes: '*' } },
+        ],
+      },
+    ],
+  };
+
+  const tFacts = { routes: ['/a', '/b', '/login'], apiRoutes: [], coaches: [], migrations: [] };
+
+  const { tree: tree3, drift: drift3 } = buildTree(tManifest, tFacts, { exemptScreens: ['/login'] });
+
+  // /a is narrated, /login is exempt → only /b is unnarrated.
+  assert.deepEqual(drift3.unnarratedScreens, ['/b'], 'unnarratedScreens is ["/b"]');
+
+  // In the synthesized route leaves under 'ur3', /b should carry 'needs-desc' badge;
+  // /a and /login should NOT carry 'needs-desc'.
+  const uth3 = tree3.children.find((c) => c.id === 'under-the-hood3');
+  const ur3 = uth3.children.find((c) => c.id === 'ur3');
+  const leafB = (ur3.children ?? []).find((c) => c.label === '/b');
+  const leafA = (ur3.children ?? []).find((c) => c.label === '/a');
+  const leafLogin = (ur3.children ?? []).find((c) => c.label === '/login');
+  assert.ok(leafB && leafB.badges.includes('needs-desc'), '/b synthesized leaf has needs-desc badge');
+  assert.ok(leafA && !leafA.badges.includes('needs-desc'), '/a synthesized leaf does NOT have needs-desc badge');
+  assert.ok(leafLogin && !leafLogin.badges.includes('needs-desc'), '/login synthesized leaf does NOT have needs-desc badge');
+}
+
 console.log('merge.test.mjs OK');

@@ -103,3 +103,7 @@ Self-contained single file. Dark theme matching the app's aesthetic. **Zero exte
 - A non-technical reader can open the file and understand the coaches, inputs, features, and screens without encountering jargon (branches 1–5).
 - Adding a new route or coach tool to the code, then running `npm run map`, surfaces it as `undocumented` until described in the manifest.
 - Removing/renaming code that the manifest references surfaces as `stale`.
+
+## Follow-up (2026-06-29): screen-narration drift
+
+Page routes not narrated by any branches-1–5 node (i.e., no explicit `code.routes` array pointing to that route) and not listed in `screensExempt` are collected as `unnarratedScreens` in the drift result. They surface as: a `△ screen needs a plain-language description: <route>` console warning in `build.mjs`, a "Screens needing a plain-language description" line in the in-page drift footer, a `needs-desc` badge on the synthesized route leaf inside the "All screens" branch-6 node, and a `--strict` failure. API endpoints, coach tools, and migrations continue to be absorbed by the `'*'`/`'all'` sentinels — this check is intentionally scoped to user-facing page routes only. `screensExempt` (exported from `manifest.mjs`) lists utility pages that have no plain-language node by design (`/login`, `/privacy`). This closes the success-criterion gap where a newly-added screen could never surface as drift because the `'*'` absorber in branch-6 always claimed it.
