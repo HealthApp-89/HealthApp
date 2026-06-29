@@ -25,6 +25,7 @@ import type {
   IntakePayload,
   MealSuggestion,
   PlanPayload,
+  SessionPlan,
   SessionPrescriptions,
   Speaker,
   SuggestEngineOutput,
@@ -37,7 +38,7 @@ import { getTodayTargets } from "@/lib/morning/brief/get-today-targets";
 import { typedTargetsForAllSlots, DEFAULT_MEAL_RATIOS } from "@/lib/food/meal-targets";
 import { validateWeekPrescription } from "@/lib/coach/prescription/validate-week";
 import { maintenanceLoadFor } from "@/lib/coach/prescription/maintenance-baseline";
-import { prescribeWeek } from "@/lib/coach/prescription/prescribe-week";
+import { prescribeWeek, computeActivityLayoutProposal } from "@/lib/coach/prescription/prescribe-week";
 import { upsertWeekPrescription } from "@/lib/coach/prescription/upsert-week-prescription";
 import { computeTargetRecommendation, type TargetRecommendation } from "@/lib/coach/prescription/calibrate-target";
 import { generateBlockOutcome, type GenerateBlockOutcomeResult } from "@/lib/coach/block-outcomes";
@@ -93,6 +94,7 @@ import {
   type PlannedActivity,
 } from "@/lib/coach/activity/types";
 import { mondayOf } from "@/lib/coach/weekly-review/date-utils";
+import { applyActivityLayout } from "@/lib/training-weeks/apply-activity-layout";
 
 // ── Allowlist (cross-checked against lib/data/types.ts:DailyLog + schema.sql) ─
 export const ALLOWED_COLUMNS = [
@@ -1711,6 +1713,32 @@ export const COMMIT_WEEK_PLAN_TOOL = {
   },
 };
 
+export const PROPOSE_ACTIVITY_ADJUSTMENT_TOOL = {
+  name: "propose_activity_adjustment",
+  description:
+    "Preview an adjustment to THIS week's training to accommodate a logged activity (padel, run, ride). Does NOT write. The server runs the move→lighten ladder: it relocates the conflicting session to a free day when possible, otherwise applies a tiered volume lighten (hold load on the main lift, cut eccentric accessory volume, raise RIR). Returns a preview (moves + per-exercise lightened deltas + flags) and an approval_token. Quote the preview verbatim, then call commit_activity_adjustment after the athlete approves. Do NOT author loads yourself — the engine owns them.",
+  input_schema: {
+    type: "object" as const,
+    required: ["week_start"],
+    properties: {
+      week_start: { type: "string", format: "date", description: "Monday of THIS week (user timezone)." },
+    },
+  },
+};
+
+export const COMMIT_ACTIVITY_ADJUSTMENT_TOOL = {
+  name: "commit_activity_adjustment",
+  description:
+    "Apply a previously proposed activity adjustment. Requires the approval_token from propose_activity_adjustment. Recomputes prescriptions at write time so the stored plan reflects any workout committed since the proposal. Idempotent.",
+  input_schema: {
+    type: "object" as const,
+    required: ["approval_token"],
+    properties: {
+      approval_token: { type: "string", minLength: 60 },
+    },
+  },
+};
+
 export const PROPOSE_NUTRITION_TARGETS_TOOL = {
   name: "propose_nutrition_targets",
   description:
@@ -2647,6 +2675,155 @@ export async function executeCommitWeekPlan(opts: {
   return {
     ok: true,
     data: data as TrainingWeek,
+    meta: { ms: Date.now() - t0, result_rows: 1, range_days: 7, truncated: false },
+  };
+}
+
+// ── propose_activity_adjustment / commit_activity_adjustment ─────────────────
+//
+// Propose → commit pair for accommodating a logged unplanned activity (padel,
+// run, ride). The propose runs the move→lighten ladder (Task 2) and returns a
+// preview + HMAC token. The commit verifies the token and applies the change
+// via applyActivityLayout (Task 3) — which recomputes session_prescriptions
+// via prescribeWeek at write time so the stored plan is always engine-owned.
+
+type ActivityAdjustmentPreview = {
+  week_start: string;
+  moves: Array<{ day: string; before: string | null; after: string | null }>;
+  lightened: Array<{ day: string; exercise: string; before: { sets?: number; baseReps?: number }; after: { sets?: number; baseReps?: number; rir?: number } }>;
+  flags: Array<{ session_type: string; day: string; reason: string }>;
+};
+
+export async function executeProposeActivityAdjustment(opts: {
+  supabase: SupabaseClient;
+  userId: string;
+  input: unknown;
+}): Promise<ToolResult<{ preview: ActivityAdjustmentPreview; approval_token: string }>> {
+  const t0 = Date.now();
+  const i = (opts.input ?? {}) as Record<string, unknown>;
+  if (!isYmd(i.week_start)) {
+    return { ok: false, error: { error: "week_start must be YYYY-MM-DD" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  const weekStart = i.week_start as string;
+
+  const { data: row } = await opts.supabase
+    .from("training_weeks")
+    .select("id, user_id, block_id, week_start, session_plan, planned_activities, session_prescriptions, exercise_overrides, rir_target")
+    .eq("user_id", opts.userId)
+    .eq("week_start", weekStart)
+    .maybeSingle();
+  if (!row) {
+    return { ok: false, error: { error: "no_training_week", code: "no_week" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+
+  const { data: blockRow } = await opts.supabase
+    .from("training_blocks").select("*").eq("user_id", opts.userId).eq("status", "active").maybeSingle();
+  const block = (blockRow as TrainingBlock | null) ?? null;
+
+  const today = todayInUserTz(new Date(), await getUserTimezone(opts.userId));
+  const proposal = await computeActivityLayoutProposal({
+    supabase: opts.supabase, userId: opts.userId, block, week: row as unknown as TrainingWeek, todayIso: today,
+  });
+
+  // Compute new prescriptions under the proposed plan (engine applies the
+  // tiered lighten + moves). Diff against the row's current prescriptions.
+  let newPrescriptions: SessionPrescriptions = {};
+  try {
+    newPrescriptions = await prescribeWeek({
+      supabase: opts.supabase, userId: opts.userId, block,
+      week: { ...(row as unknown as TrainingWeek), session_plan: proposal.proposedPlan },
+      todayIso: today,
+    });
+  } catch (e) {
+    return { ok: false, error: { error: `prescribe_failed: ${String(e)}`, code: "prescribe_failed" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+
+  const currentPrescriptions = (row.session_prescriptions as SessionPrescriptions | null) ?? {};
+  const lightened: ActivityAdjustmentPreview["lightened"] = [];
+  for (const [day, exs] of Object.entries(newPrescriptions)) {
+    const before = (currentPrescriptions as Record<string, PlannedExercise[]>)[day] ?? [];
+    const beforeByName = new Map(before.map((e) => [e.name, e]));
+    for (const ex of exs as PlannedExercise[]) {
+      const b = beforeByName.get(ex.name);
+      const changed = b ? (b.sets !== ex.sets || b.baseReps !== ex.baseReps) : false;
+      if (changed || ex.rir != null) {
+        lightened.push({
+          day, exercise: ex.name,
+          before: { sets: b?.sets, baseReps: b?.baseReps },
+          after: { sets: ex.sets, baseReps: ex.baseReps, rir: ex.rir },
+        });
+      }
+    }
+  }
+
+  const moves: ActivityAdjustmentPreview["moves"] = [];
+  if (proposal.hasMoves) {
+    const cur = row.session_plan as Record<string, string>;
+    const prop = proposal.proposedPlan as Record<string, string>;
+    for (const k of Object.keys({ ...cur, ...prop })) {
+      if ((cur[k] ?? null) !== (prop[k] ?? null)) moves.push({ day: k, before: cur[k] ?? null, after: prop[k] ?? null });
+    }
+  }
+
+  const preview: ActivityAdjustmentPreview = {
+    week_start: weekStart,
+    moves,
+    lightened,
+    flags: proposal.flags.map((f) => ({ session_type: f.sessionType, day: f.sessionDay, reason: f.reason })),
+  };
+
+  if (moves.length === 0 && lightened.length === 0 && preview.flags.length === 0) {
+    return { ok: false, error: { error: "no_adjustment_needed", code: "no_conflict" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+
+  const token = signApprovalToken({
+    userId: opts.userId,
+    action: "activity_adjustment",
+    payload: { week_start: weekStart, proposed_plan: proposal.proposedPlan },
+  });
+  return { ok: true, data: { preview, approval_token: token }, meta: { ms: Date.now() - t0, result_rows: 1, range_days: 7, truncated: false } };
+}
+
+export async function executeCommitActivityAdjustment(opts: {
+  supabase: SupabaseClient;
+  userId: string;
+  input: unknown;
+  chatMessageId?: string | null;
+}): Promise<ToolResult<{ week: TrainingWeek; changed_days: Array<{ day: string; before: string | null; after: string | null }>; lightened_count: number }>> {
+  const t0 = Date.now();
+  const i = (opts.input ?? {}) as Record<string, unknown>;
+  const token = i.approval_token;
+  if (typeof token !== "string") {
+    return { ok: false, error: { error: "approval_token required" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  let envelope;
+  try {
+    envelope = verifyApprovalToken({ token, userId: opts.userId, action: "activity_adjustment" });
+  } catch (e) {
+    if (e instanceof ApprovalTokenError) {
+      return { ok: false, error: { error: approvalTokenUserMessage(e.code), code: e.code }, meta: { ms: Date.now() - t0, range_days: 0 } };
+    }
+    return { ok: false, error: { error: (e as Error).message, code: "verify_failed" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  const p = (envelope.payload ?? {}) as { week_start?: string; proposed_plan?: SessionPlan };
+  if (!p.week_start || !p.proposed_plan) {
+    return { ok: false, error: { error: "That approval is missing the adjustment. Please re-propose.", code: "missing_payload" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+
+  const result = await applyActivityLayout({
+    supabase: opts.supabase, userId: opts.userId, weekStart: p.week_start, proposedPlan: p.proposed_plan,
+  });
+  if (!result.ok) {
+    return { ok: false, error: { error: "Couldn't apply the adjustment. Please try again.", code: result.code }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  // Count lightened exercises (rir stamped) in the persisted prescriptions.
+  let lightenedCount = 0;
+  for (const exs of Object.values((result.week.session_prescriptions as SessionPrescriptions | null) ?? {})) {
+    for (const ex of (exs as PlannedExercise[]) ?? []) if (ex.rir != null) lightenedCount++;
+  }
+  return {
+    ok: true,
+    data: { week: result.week, changed_days: result.changedDays, lightened_count: lightenedCount },
     meta: { ms: Date.now() - t0, result_rows: 1, range_days: 7, truncated: false },
   };
 }
@@ -6119,8 +6296,7 @@ export const ADD_PLANNED_ACTIVITY_TOOL = {
     "Record a self-directed activity (padel, run, ride…) for THIS week's schedule. " +
     "Writes immediately — no approval token required. Only succeeds when a training_weeks " +
     "row already exists for the current week (ask the athlete to set up their week plan first if absent). " +
-    "The actual training-load rearrangement triggered by the activity is shown on the Schedule tab " +
-    "as an Approve card — this tool only registers the declared activity.",
+    "Returns a `conflict` summary: when has_conflict is true, immediately offer to adjust the affected session via propose_activity_adjustment (resolution='move' relocates the session; 'lighten' trims it in place; 'flag' means a priority session is blocked — ask the athlete).",
   input_schema: {
     type: "object" as const,
     required: ["type", "weekday", "intensity"],
@@ -6150,7 +6326,11 @@ export async function executeAddPlannedActivity(opts: {
   supabase: SupabaseClient;
   userId: string;
   input: unknown;
-}): Promise<ToolResult<{ ok: true; added: { type: ActivityType; date: string; intensity: ActivityIntensity } }>> {
+}): Promise<ToolResult<{
+  ok: true;
+  added: { type: ActivityType; date: string; intensity: ActivityIntensity };
+  conflict: { has_conflict: boolean; resolution: "move" | "lighten" | "flag" | "none"; week_start: string };
+}>> {
   const t0 = Date.now();
   const i = (opts.input ?? {}) as Record<string, unknown>;
 
@@ -6256,12 +6436,47 @@ export async function executeAddPlannedActivity(opts: {
     };
   }
 
+  // Re-load the row (now with the merged activity) and run the layout proposal
+  // so Carter knows whether to offer a move/lighten. Graceful: any failure →
+  // has_conflict:false so the add still succeeds.
+  let conflict: { has_conflict: boolean; resolution: "move" | "lighten" | "flag" | "none"; week_start: string } = {
+    has_conflict: false,
+    resolution: "none",
+    week_start: weekStartIso,
+  };
+  try {
+    const { data: freshRow } = await opts.supabase
+      .from("training_weeks")
+      .select("id, user_id, block_id, week_start, session_plan, planned_activities, session_prescriptions, exercise_overrides, rir_target")
+      .eq("user_id", opts.userId)
+      .eq("week_start", weekStartIso)
+      .maybeSingle();
+    if (freshRow) {
+      const { data: blockRow } = await opts.supabase
+        .from("training_blocks")
+        .select("*")
+        .eq("user_id", opts.userId)
+        .eq("status", "active")
+        .maybeSingle();
+      const proposal = await computeActivityLayoutProposal({
+        supabase: opts.supabase,
+        userId: opts.userId,
+        block: (blockRow as TrainingBlock | null) ?? null,
+        week: freshRow as unknown as TrainingWeek,
+        todayIso,
+      });
+      const hasLighten = Object.values(proposal.lightenDays).some((r) => r.length > 0);
+      const resolution: "move" | "lighten" | "flag" | "none" =
+        proposal.hasMoves ? "move" : hasLighten ? "lighten" : proposal.hasFlags ? "flag" : "none";
+      conflict = { has_conflict: resolution !== "none", resolution, week_start: weekStartIso };
+    }
+  } catch {
+    // keep conflict = none
+  }
+
   return {
     ok: true,
-    data: {
-      ok: true,
-      added: { type: activityType, date: activityDate, intensity },
-    },
+    data: { ok: true, added: { type: activityType, date: activityDate, intensity }, conflict },
     meta: { ms: Date.now() - t0, result_rows: 1, range_days: 0, truncated: false },
   };
 }
@@ -6328,6 +6543,8 @@ export const PETER_TOOLS: readonly ToolSchema[] = [
   REGENERATE_WEEKLY_REVIEW_TOOL,
   PROPOSE_NUTRITION_ADJUSTMENT_TOOL,
   ADD_PLANNED_ACTIVITY_TOOL,
+  PROPOSE_ACTIVITY_ADJUSTMENT_TOOL,
+  COMMIT_ACTIVITY_ADJUSTMENT_TOOL,
 ];
 
 // Carter: strength/training. Reads workouts + recovery-relevant daily_logs
@@ -6360,6 +6577,8 @@ export const CARTER_TOOLS: readonly ToolSchema[] = [
   SET_THRESHOLD_HR_TOOL,
   SET_FTP_TOOL,
   ADD_PLANNED_ACTIVITY_TOOL,
+  PROPOSE_ACTIVITY_ADJUSTMENT_TOOL,
+  COMMIT_ACTIVITY_ADJUSTMENT_TOOL,
 ];
 
 // Nora: nutrition. Reads food log + nutrition/body-comp daily_logs columns;

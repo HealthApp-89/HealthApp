@@ -12,6 +12,11 @@ export type PlannedExercise = {
   sets?: number;
   key?: string;
   note?: string;
+  /** Per-exercise reps-in-reserve target. When set (e.g. by the activity-aware
+   *  lighten), it overrides the tier-derived RPE string in annotateSession and
+   *  is displayed on the brief + strength card. Absent = use the session-level
+   *  rir_target / tier default. */
+  rir?: number;
   /** Valid weight increments. Used by the morning brief and progressive-overload
    *  suggestions to round prescribed weights to physically-loadable values.
    *  `step` = base increment (e.g., 2.5kg barbell w/ 1.25 plates).

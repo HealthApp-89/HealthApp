@@ -20,21 +20,16 @@
 
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { prescribeWeek, computeActivityLayoutProposal } from "@/lib/coach/prescription/prescribe-week";
+import { computeActivityLayoutProposal } from "@/lib/coach/prescription/prescribe-week";
 import { getUserTimezone } from "@/lib/time/get-user-tz";
 import { todayInUserTz } from "@/lib/time";
 import { plansEqual } from "@/lib/training-weeks/apply-swap";
-import { readSessionForDay, SHORT_TO_FULL } from "@/lib/coach/session-plan-reader";
+import { applyActivityLayout } from "@/lib/training-weeks/apply-activity-layout";
 import type {
-  ExerciseOverrides,
   SessionPlan,
-  SessionPrescriptions,
   TrainingBlock,
   TrainingWeek,
-  Weekday,
 } from "@/lib/data/types";
-
-const WEEKDAYS: ReadonlyArray<Weekday> = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 function isYmd(s: unknown): s is string {
   return typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s);
@@ -161,115 +156,24 @@ export async function POST(
   }
 
   const current = row.session_plan as SessionPlan;
-  const original = row.original_session_plan as SessionPlan | null;
 
   // Identity check — no-op if proposed === current
   if (plansEqual(proposedPlan, current)) {
     return NextResponse.json({ ok: true, week: row, changed_days: [] }, { status: 200 });
   }
 
-  // Detect which days changed for overrides cleanup + prescription recompute.
-  const changedShort: Weekday[] = [];
-  const changedFull: string[] = [];
-  for (const shortKey of WEEKDAYS) {
-    const before = readSessionForDay(current as Record<string, string>, shortKey);
-    const after = readSessionForDay(proposedPlan as Record<string, string>, shortKey);
-    if (before !== after) {
-      changedShort.push(shortKey);
-      changedFull.push(SHORT_TO_FULL[shortKey]);
-    }
+  const result = await applyActivityLayout({
+    supabase,
+    userId: user.id,
+    weekStart: week_start,
+    proposedPlan,
+  });
+  if (!result.ok) {
+    const status = result.code === "no_week" ? 404 : 500;
+    return NextResponse.json({ ok: false, error: result.error }, { status });
   }
-
-  // Clear exercise_overrides for any day whose session type changed.
-  const currentOverrides =
-    (row.exercise_overrides as ExerciseOverrides | null) ?? null;
-  let nextOverrides: ExerciseOverrides | null = currentOverrides;
-  if (currentOverrides && changedFull.length > 0) {
-    const drop = changedFull.filter((k) => currentOverrides[k]);
-    if (drop.length > 0) {
-      const cleaned: ExerciseOverrides = { ...currentOverrides };
-      for (const k of drop) delete cleaned[k];
-      nextOverrides = Object.keys(cleaned).length > 0 ? cleaned : null;
-    }
-  }
-
-  // Recompute session_prescriptions via the same engine as the swap endpoint.
-  const currentPrescriptions =
-    (row.session_prescriptions as SessionPrescriptions | null) ?? null;
-  let nextPrescriptions: SessionPrescriptions | null = currentPrescriptions;
-
-  const { data: blockRow } = await supabase
-    .from("training_blocks")
-    .select("*")
-    .eq("user_id", user.id)
-    .eq("status", "active")
-    .maybeSingle();
-  const block = (blockRow as TrainingBlock | null) ?? null;
-
-  const workingRow: TrainingWeek = {
-    ...(row as TrainingWeek),
-    session_plan: proposedPlan,
-    exercise_overrides: nextOverrides,
-    session_prescriptions: currentPrescriptions,
-  };
-
-  try {
-    const tz = await getUserTimezone(user.id);
-    const todayIso = todayInUserTz(new Date(), tz);
-    nextPrescriptions = await prescribeWeek({
-      supabase,
-      userId: user.id,
-      block,
-      week: workingRow,
-      todayIso,
-    });
-  } catch (e) {
-    console.error("[apply-activity-layout] prescription recompute failed; clearing stale entries", e);
-    if (currentPrescriptions && changedFull.length > 0) {
-      const cleared: SessionPrescriptions = { ...currentPrescriptions };
-      for (const k of changedFull) delete cleared[k as keyof SessionPrescriptions];
-      nextPrescriptions = Object.keys(cleared).length > 0 ? cleared : null;
-    }
-  }
-
-  // Identity-restore detection (same as swap endpoint).
-  const isIdentityRestore = original !== null && plansEqual(proposedPlan, original);
-
-  const update: Record<string, unknown> = {
-    session_plan: proposedPlan,
-    exercise_overrides: nextOverrides,
-    session_prescriptions: nextPrescriptions,
-    updated_at: new Date().toISOString(),
-  };
-  if (isIdentityRestore) {
-    update.original_session_plan = null;
-  } else if (original === null) {
-    update.original_session_plan = current;
-  }
-
-  const { data: updated, error: updateErr } = await supabase
-    .from("training_weeks")
-    .update(update)
-    .eq("user_id", user.id)
-    .eq("week_start", week_start)
-    .select(TRAINING_WEEK_SELECT)
-    .single();
-  if (updateErr || !updated) {
-    return NextResponse.json(
-      { ok: false, error: `update failed: ${updateErr?.message ?? "no row returned"}` },
-      { status: 500 },
-    );
-  }
-
-  // Build per-day change summary.
-  const changedDays = changedShort.map((shortKey) => ({
-    day: shortKey,
-    before: readSessionForDay(current as Record<string, string>, shortKey) ?? null,
-    after: readSessionForDay(proposedPlan as Record<string, string>, shortKey) ?? null,
-  }));
-
   return NextResponse.json(
-    { ok: true, week: updated as TrainingWeek, changed_days: changedDays },
+    { ok: true, week: result.week, changed_days: result.changedDays },
     { status: 200 },
   );
 }

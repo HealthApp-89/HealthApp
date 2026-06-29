@@ -38,6 +38,7 @@ import { loadPlannedActivities } from "@/lib/coach/activity/read-planned";
 import { proposeActivityAwareLayout, SESSION_REGION_MAP } from "@/lib/coach/activity/sequence-week";
 import type { MuscleRegion } from "@/lib/coach/activity/types";
 import { readSessionForDay } from "@/lib/coach/session-plan-reader";
+import { BIG_FOUR_SET } from "@/lib/coach/session-structure/tiers";
 
 const FOCUS_BLOCK_CLAMP = 0.92;
 
@@ -88,43 +89,68 @@ function exerciseRegion(name: string): MuscleRegion | null {
   return null;
 }
 
+export type LightenTier =
+  | "primary_compound"
+  | "eccentric_accessory"
+  | "other_accessory";
+
 /**
- * Apply volume lighten to one exercise:
- *   - Trim working sets by 1 (floor 1) — warmup sets are untouched.
- *   - Trim baseReps by 1 (floor 1) as a secondary load signal.
- * Only applies when the exercise's muscle region (or the session's fallback
- * regions) overlap the affected lighten regions.
+ * Classify an exercise for activity-aware lightening. Drives the magnitude of
+ * the volume cut and the RIR bump (evidence-based: hold the compound as a
+ * low-volume primer, gut the eccentric accessory volume that drives DOMS).
+ *   - primary_compound:     a known primary lift OR a BIG_FOUR member.
+ *   - eccentric_accessory:  not primary, region overlaps the affected set, and
+ *                           it's high-rep/isolation (baseReps ≥ 10).
+ *   - other_accessory:      everything else that reaches the lighten path.
  */
-function lightenExercise(
+export function classifyLightenTier(
+  ex: PlannedExercise,
+  affectedRegions: MuscleRegion[],
+): LightenTier {
+  const isPrimary = inferPrimaryLiftFromName(ex.name) != null || BIG_FOUR_SET.has(ex.name);
+  if (isPrimary) return "primary_compound";
+  const region = exerciseRegion(ex.name);
+  const inAffected = region != null && affectedRegions.includes(region);
+  const highRepOrIsolation = (ex.baseReps ?? 0) >= 10;
+  if (inAffected && highRepOrIsolation) return "eccentric_accessory";
+  return "other_accessory";
+}
+
+/**
+ * Apply a tiered, RIR-aware volume lighten to one exercise. Load (baseKg) is
+ * always held — the research lever is volume + RIR, never intensity on the
+ * main lift. Warmups and target-less exercises are untouched. Region gating is
+ * preserved: an exercise whose region doesn't overlap the affected set (and
+ * whose session has no fallback overlap) is returned unchanged.
+ */
+export function lightenExercise(
   ex: PlannedExercise,
   sessionType: string,
   affectedRegions: MuscleRegion[],
 ): PlannedExercise {
-  // Warmup sets are structural — never lighten them.
   if (ex.warmup) return ex;
-  // Skip exercises without set/rep targets (bodyweight/time-based with no baseReps).
   if (ex.sets == null && ex.baseReps == null) return ex;
 
-  // Per-exercise region check: if we can resolve the exercise's region, only
-  // lighten when it overlaps the affected set. Falls back to session-level
-  // (lighten all loaded exercises in the session) when unmapped.
   const exRegion = exerciseRegion(ex.name);
   if (exRegion !== null) {
-    // We have a specific region — only lighten if it's in the affected set.
     if (!affectedRegions.includes(exRegion)) return ex;
   } else {
-    // Unmapped exercise — fall back to session-level gating: lighten only
-    // when the session itself has at least one overlapping region.
     const sessionRegs = SESSION_REGION_MAP[sessionType] ?? [];
-    const hasOverlap = sessionRegs.some((r) => affectedRegions.includes(r));
-    if (!hasOverlap) return ex;
+    if (!sessionRegs.some((r) => affectedRegions.includes(r))) return ex;
   }
 
-  return {
-    ...ex,
-    sets: ex.sets != null ? Math.max(1, ex.sets - 1) : ex.sets,
-    baseReps: ex.baseReps != null ? Math.max(1, ex.baseReps - 1) : ex.baseReps,
-  };
+  const baseRir = ex.rir ?? 2; // week default rir_target is 2
+  const trim = (n: number | undefined, by: number, floor: number) =>
+    n != null ? Math.max(floor, n - by) : n;
+
+  const tier = classifyLightenTier(ex, affectedRegions);
+  if (tier === "primary_compound") {
+    return { ...ex, sets: trim(ex.sets, 1, 2), baseReps: trim(ex.baseReps, 1, 1), rir: Math.min(5, baseRir + 1) };
+  }
+  if (tier === "eccentric_accessory") {
+    return { ...ex, sets: trim(ex.sets, 2, 1), baseReps: trim(ex.baseReps, 2, 1), rir: Math.min(5, baseRir + 2) };
+  }
+  return { ...ex, sets: trim(ex.sets, 1, 1), baseReps: trim(ex.baseReps, 1, 1), rir: Math.min(5, baseRir + 1) };
 }
 
 /** Exercise-name patterns that identify a primary-lift instance. DB stores

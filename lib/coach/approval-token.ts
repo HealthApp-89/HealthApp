@@ -14,7 +14,7 @@ import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 const TOKEN_VERSION = 2 as const;
 const TTL_MS = 30 * 60 * 1000; // 30 minutes — users may step away to read a long proposal before approving
 
-export type ApprovalAction = "block" | "close_block" | "week" | "plan" | "weekly_review" | "nutrition_targets" | "session_today" | "session_template" | "meal_log" | "endurance_week";
+export type ApprovalAction = "block" | "close_block" | "week" | "plan" | "weekly_review" | "nutrition_targets" | "session_today" | "session_template" | "meal_log" | "endurance_week" | "activity_adjustment";
 
 // What gets HMAC-signed and embedded base64url in the token. `payload` is
 // the full proposal for actions whose payload fits comfortably (block, week,

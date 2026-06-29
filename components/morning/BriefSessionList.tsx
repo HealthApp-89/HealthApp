@@ -201,7 +201,7 @@ export function BriefSessionList({
                 <div style={{ fontSize: 11, color: COLOR.textMuted, lineHeight: 1.2 }}>
                   {e.sets} × {e.reps}
                 </div>
-                {planEntry && planEntry.rir_target != null && (
+                {planEntry && planEntry.rir_target != null && findAnnotation(session.structure, e.name)?.rir == null && (
                   <div
                     style={{
                       fontSize: 10,
