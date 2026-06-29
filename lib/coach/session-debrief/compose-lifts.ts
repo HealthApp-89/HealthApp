@@ -56,7 +56,7 @@ export async function composeLifts(
 
   // Pull all exercises across those prior workouts in one shot, then their sets.
   let priorExercises: Array<{ id: string; workout_id: string; name: string }> = [];
-  let priorSets: Array<{ exercise_id: string; kg: number | null; reps: number | null; duration_seconds: number | null; warmup: boolean; failure: boolean }> = [];
+  let priorSets: Array<{ exercise_id: string; kg: number | null; reps: number | null; duration_seconds: number | null; warmup: boolean; failure: boolean; rir: number | null }> = [];
   if (priorWorkoutIds.length > 0) {
     const exRes = await supabase
       .from("exercises")
@@ -69,7 +69,7 @@ export async function composeLifts(
     if (exIds.length > 0) {
       const setsRes = await supabase
         .from("exercise_sets")
-        .select("exercise_id, kg, reps, duration_seconds, warmup, failure")
+        .select("exercise_id, kg, reps, duration_seconds, warmup, failure, rir")
         .in("exercise_id", exIds);
       if (setsRes.error) throw new Error(`prior sets lookup failed: ${setsRes.error.message}`);
       priorSets = (setsRes.data ?? []) as typeof priorSets;
@@ -96,8 +96,20 @@ export async function composeLifts(
       duration_seconds: s.duration_seconds,
       warmup: s.warmup,
       failure: s.failure,
+      rir: s.rir,
     });
   }
+
+  // Pairwise comparable e1RM: use effort-adjusted values only when BOTH tops
+  // carry RIR (symmetric — avoids a transition artifact where a held-back
+  // session today would falsely outrank a pre-RIR to-failure session).
+  const comparablePair = (
+    a: { e1RM: number | null; e1RM_effort: number | null; rir: number | null } | null,
+    b: { e1RM: number | null; e1RM_effort: number | null; rir: number | null } | null,
+  ): [number | null, number | null] => {
+    if (a?.rir != null && b?.rir != null) return [a.e1RM_effort, b.e1RM_effort];
+    return [a?.e1RM ?? null, b?.e1RM ?? null];
+  };
 
   // For each of today's exercises, build the lift entry.
   const lifts: WorkoutDebriefPayload["lifts"] = [];
@@ -121,31 +133,40 @@ export async function composeLifts(
       }
     }
 
-    // PR detection: today's e1RM beats the best in the last PR_HISTORY_DEPTH sessions.
-    let bestPriorE1rm: number | null = null;
-    for (const pw of priorWorkouts ?? []) {
-      const wmap = byWorkoutByName.get(pw.id as string);
-      const sets = wmap?.get(key);
-      if (sets && sets.length > 0) {
-        const t = topSet(sets);
-        if (t?.e1RM != null && (bestPriorE1rm == null || t.e1RM > bestPriorE1rm)) {
-          bestPriorE1rm = t.e1RM;
-        }
-      }
-    }
-
+    // delta_e1rm is always in RAW terms (physically meaningful kg delta).
     const todayE1rm = todayTop?.e1RM ?? null;
     const lastE1rm = lastTop?.e1RM ?? null;
     const deltaE1rm = todayE1rm != null && lastE1rm != null
       ? Math.round((todayE1rm - lastE1rm) * 10) / 10
       : null;
 
-    // Tagging
+    // Regression / stall: compare today vs most recent prior on the same footing.
+    const [todayCmpLast, lastCmp] = comparablePair(todayTop, lastTop);
+
+    // PR detection: find the best prior session's top set (by its pairwise-
+    // comparable value vs today), then compare today vs that best on the same
+    // footing. This keeps the comparison symmetric per-pair.
     let tag: "PR" | "stall" | "regression" | null = null;
-    if (todayE1rm != null && bestPriorE1rm != null && todayE1rm > bestPriorE1rm) {
+    let bestPriorTop: ReturnType<typeof topSet> = null;
+    let bestPriorCmp: number | null = null;
+    for (const pw of priorWorkouts ?? []) {
+      const wmap = byWorkoutByName.get(pw.id as string);
+      const sets = wmap?.get(key);
+      if (sets && sets.length > 0) {
+        const t = topSet(sets);
+        const [, priorCmp] = comparablePair(todayTop, t);
+        if (priorCmp != null && (bestPriorCmp == null || priorCmp > bestPriorCmp)) {
+          bestPriorCmp = priorCmp;
+          bestPriorTop = t;
+        }
+      }
+    }
+
+    const [todayCmpBest, bestCmp] = comparablePair(todayTop, bestPriorTop);
+    if (todayCmpBest != null && bestCmp != null && todayCmpBest > bestCmp) {
       tag = "PR";
-    } else if (todayE1rm != null && lastE1rm != null) {
-      const ratio = todayE1rm / lastE1rm;
+    } else if (todayCmpLast != null && lastCmp != null) {
+      const ratio = todayCmpLast / lastCmp;
       if (ratio < 1 - REGRESSION_THRESHOLD_PCT) tag = "regression";
       else if (Math.abs(ratio - 1) <= STALL_THRESHOLD_PCT) tag = "stall";
     }
@@ -164,7 +185,7 @@ export async function composeLifts(
         date: lastDate,
       },
       delta_e1rm: deltaE1rm,
-      rir_today: null, // RIR isn't currently captured per-set; populate when added
+      rir_today: todayTop?.rir ?? null,
       tag,
     });
   }
