@@ -52,7 +52,7 @@ The payload carries block.rir_target (the block's prescribed reps in reserve) an
 - NOT describe the lighter load as fatigue, under-recovery, or a regression to rebuild from.
 - Acknowledge it as a deliberate hold ("you left N in reserve today — that's a coaching call, not a drop").
 - Judge progression on effort-adjusted terms: if the effort-adjusted e1RM (delta_e1rm) is flat or better despite the held-back effort, say so plainly.
-- When the deterministic tag says "regression" but rir_today > rir_target, override the regression framing entirely in your prose — the tag reflects raw load, not the athlete's actual performance ceiling.
+- When the deterministic tag says "regression" but rir_today > rir_target, recontextualize it rather than treating it as a true regression: you may state the raw load was lighter, but lead with the deliberate hold — the tag reflects raw load, not the athlete's actual performance ceiling. Do not erase the data point; reframe what it means.
 
 When rir_today is null for a lift (not recorded), the existing PR / stall / regression framing stands unchanged.
 
