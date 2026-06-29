@@ -11,6 +11,7 @@ import { evaluateBlockPhase, prescribePrimaryFromPhase } from "@/lib/coach/presc
 import { prescribeSecondaryAutoregulated } from "@/lib/coach/prescription/autoregulation-rule";
 import { brzycki, bestComparisonValue, metricLabel } from "@/lib/coach/e1rm";
 import { annotateSession } from "@/lib/coach/session-structure/annotate";
+import { classifyLightenTier, lightenExercise } from "@/lib/coach/prescription/prescribe-week";
 
 let pass = 0;
 let fail = 0;
@@ -665,6 +666,41 @@ console.log("\n## annotate.ts — per-exercise rir override\n");
     !b.rpe_target.includes("RIR ("),
     `got "${b.rpe_target}"`,
   );
+}
+
+console.log("\n## lightenExercise / classifyLightenTier — tiered RIR-aware lighten\n");
+
+const LEGS = ["legs"];
+{
+  // Primary compound: hold load, drop 1 set (floor 2), baseReps -1, +1 RIR.
+  const sq = { name: "Squat (Barbell)", baseKg: 100, baseReps: 6, sets: 3, key: "squat" };
+  assert("squat is primary_compound", classifyLightenTier(sq, LEGS) === "primary_compound", `got ${classifyLightenTier(sq, LEGS)}`);
+  const out = lightenExercise(sq, "Legs", LEGS);
+  assert("primary holds load", out.baseKg === 100, `got ${out.baseKg}`);
+  assert("primary drops 1 set to 2", out.sets === 2, `primary drops 1 set to 2, got ${out.sets}`);
+  assert("primary reps 6→5", out.baseReps === 5, `primary reps 6→5, got ${out.baseReps}`);
+  assert("primary rir default(2)+1=3", out.rir === 3, `primary rir default(2)+1=3, got ${out.rir}`);
+}
+{
+  // Eccentric accessory in affected region: hold load, drop 2 sets (floor 1), +2 RIR.
+  const lp = { name: "Leg Press", baseKg: 85, baseReps: 12, sets: 3, key: "leg_press" };
+  assert("leg press is eccentric_accessory", classifyLightenTier(lp, LEGS) === "eccentric_accessory", `got ${classifyLightenTier(lp, LEGS)}`);
+  const out = lightenExercise(lp, "Legs", LEGS);
+  assert("accessory holds load", out.baseKg === 85, `got ${out.baseKg}`);
+  assert("accessory drops 2 sets to floor 1", out.sets === 1, `accessory drops 2 sets to floor 1, got ${out.sets}`);
+  assert("accessory rir default(2)+2=4", out.rir === 4, `accessory rir default(2)+2=4, got ${out.rir}`);
+}
+{
+  // Non-affected region exercise is untouched (region gating preserved).
+  const bench = { name: "Decline Bench Press (Barbell)", baseKg: 60, baseReps: 8, sets: 3, key: "decline_bench" };
+  const out = lightenExercise(bench, "Chest", LEGS);
+  assert("off-region exercise unchanged", out.sets === 3 && out.baseReps === 8 && out.rir === undefined, `sets=${out.sets} reps=${out.baseReps} rir=${out.rir}`);
+}
+{
+  // Warmup never lightened.
+  const wu = { name: "Squat (Barbell)", warmup: true, baseKg: 60, baseReps: 5, sets: 1 };
+  const out = lightenExercise(wu, "Legs", LEGS);
+  assert("warmup returned unchanged", out === wu, `got different object`);
 }
 
 console.log(`\n${pass} passed, ${fail} failed.`);
