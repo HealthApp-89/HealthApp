@@ -100,13 +100,17 @@ search.oninput=()=>{
   const q=search.value.trim().toLowerCase();
   document.querySelectorAll('#tree li').forEach(li=>li.classList.remove('hidden'));
   document.querySelectorAll('#tree ul').forEach(u=>{ if(u.parentElement.tagName==='LI'&&!q) u.classList.add('hidden'); });
-  if(!q){ return; }
+  if(!q){
+    // reset toggle arrows on parent rows
+    document.querySelectorAll('#tree .row').forEach(row=>{ if(row.nextElementSibling&&row.nextElementSibling.tagName==='UL'){ const tw=row.querySelector('.tw'); if(tw) tw.textContent='▸'; } });
+    return;
+  }
   document.querySelectorAll('#tree .row').forEach(row=>{
     const match=row.textContent.toLowerCase().includes(q);
     if(match){ let li=row.closest('li'); while(li){ li.classList.remove('hidden'); const ul=li.parentElement.closest('li'); const sub=li.querySelector(':scope > ul'); if(sub) sub.classList.remove('hidden'); li=ul; } }
   });
-  // hide non-matching leaves
-  document.querySelectorAll('#tree li').forEach(li=>{
+  // hide non-matching items — iterate in reverse DOM order so leaves are hidden before ancestors
+  [...document.querySelectorAll('#tree li')].reverse().forEach(li=>{
     const row=li.querySelector(':scope > .row');
     const anyVisibleChild=li.querySelector(':scope > ul > li:not(.hidden)');
     if(row && !row.textContent.toLowerCase().includes(q) && !anyVisibleChild) li.classList.add('hidden');
@@ -121,5 +125,6 @@ if((DATA.drift.undocumented.length+DATA.drift.stale.length)>0){
   document.getElementById('detail').append(d);
 }
 </script>
-</body></html>`;
+</body></html>
+`;
 }
