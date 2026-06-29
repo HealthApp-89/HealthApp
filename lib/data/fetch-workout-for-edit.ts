@@ -8,6 +8,7 @@ export type WorkoutForEditSet = {
   duration_seconds: number | null;
   warmup: boolean;
   failure: boolean;
+  rir?: number | null;
   rest_seconds_actual: number | null;
 };
 

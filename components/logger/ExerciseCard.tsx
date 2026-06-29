@@ -86,6 +86,7 @@ function ExerciseCardInner({
       duration_seconds: null,
       warmup: false,
       failure: false,
+      rir: isTimeBased ? null : (last?.rir ?? null),
       committed_at: null,
     };
     onExerciseChange(exerciseIndex, { ...exercise, sets: [...exercise.sets, next] });

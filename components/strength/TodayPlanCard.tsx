@@ -224,6 +224,7 @@ export function TodayPlanCard({ plan, committedFromPlan, rirTarget, researchPhas
         weekdayLong={weekday}
         weekOverrides={weekOverrides}
         weekPrescriptions={weekPrescriptions ?? null}
+        weekRirTarget={rirTarget ?? null}
         onClose={() => { setLoggerOpen(false); setDraftEpoch((e) => e + 1); }}
       />
     )}

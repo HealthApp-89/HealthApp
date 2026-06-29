@@ -28,6 +28,10 @@ type Props = {
   /** When set, LoggerSheet boots in edit mode: seeds state from initialDraft,
    *  skips draft-store reads/writes, hides timer controls. */
   editMode?: { initialDraft: LoggerDraft };
+  /** Week-level prescribed RIR (training_weeks.rir_target). Seeds new working
+   *  sets so effort is captured by default; athlete edits per set on deviation.
+   *  Defaults to 2 (the engine's RP/Helms hypertrophy default) when absent. */
+  weekRirTarget?: number | null;
 };
 
 function makeDraftFromPlan(args: {
@@ -35,6 +39,7 @@ function makeDraftFromPlan(args: {
   sessionType: string;
   date: string;
   plan: PlannedExercise[];
+  weekRirTarget: number | null;
 }): LoggerDraft {
   const externalId = `logger-${crypto.randomUUID()}`;
   const nowIso = new Date().toISOString();
@@ -49,6 +54,10 @@ function makeDraftFromPlan(args: {
       duration_seconds: null,
       warmup: !!p.warmup && j === 0,
       failure: false,
+      // warmups and duration-based exercises carry no RIR
+      rir: (!!p.warmup && j === 0) || p.duration_seconds != null
+        ? null
+        : (args.weekRirTarget ?? 2),
       committed_at: null,
     })),
   }));
@@ -93,6 +102,7 @@ function resetDraft(draft: LoggerDraft): LoggerDraft {
         duration_seconds: null,
         warmup: !!ex.prescribed.warmup && j === 0,
         failure: false,
+        rir: null,
         committed_at: null,
       })),
     })),
@@ -221,6 +231,7 @@ export function LoggerSheet(props: Props) {
         sessionType: props.sessionType,
         date: props.date,
         plan: resolved.exercises,
+        weekRirTarget: props.weekRirTarget ?? 2,
       });
       setDraft(fresh);
     })().catch((e) => console.error("LoggerSheet mount failed", e));
@@ -300,6 +311,7 @@ export function LoggerSheet(props: Props) {
           setDraft(makeDraftFromPlan({
             userId: props.userId, sessionType: props.sessionType,
             date: props.date, plan: resolved.exercises,
+            weekRirTarget: props.weekRirTarget ?? 2,
           }));
         }}
       />
@@ -401,6 +413,7 @@ export function LoggerSheet(props: Props) {
               duration_seconds: s.duration_seconds,
               warmup: s.warmup,
               failure: s.failure,
+              rir: s.rir,
               rest_seconds_actual: restActual,
             };
           }),
@@ -555,7 +568,7 @@ export function LoggerSheet(props: Props) {
                 position: draft.exercises.length,
                 prescribed: { name, sets: 3, baseReps: 10 },
                 sets: Array.from({ length: 3 }, (_x, j) => ({
-                  set_index: j, kg: null, reps: null, duration_seconds: null, warmup: false, failure: false, committed_at: null,
+                  set_index: j, kg: null, reps: null, duration_seconds: null, warmup: false, failure: false, rir: props.weekRirTarget ?? 2, committed_at: null,
                 })),
               };
               setDraft({ ...draft, exercises: [...draft.exercises, newEx] });

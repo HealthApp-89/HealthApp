@@ -240,6 +240,7 @@ export function StrengthScheduleClient({ userId }: Props) {
           days={days}
           weekOverrides={trainingWeek?.exercise_overrides ?? null}
           weekPrescriptions={trainingWeek?.session_prescriptions ?? null}
+          weekRirTarget={trainingWeek?.rir_target ?? null}
           sessionPlan={(trainingWeek?.session_plan ?? {}) as SessionPlan}
         />
       )}

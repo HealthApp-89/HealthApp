@@ -14,6 +14,9 @@ export type ExerciseSetDraft = {
   duration_seconds: number | null;
   warmup: boolean;
   failure: boolean;
+  /** Reps in reserve the athlete left on this set (0 = to failure). null =
+   *  not recorded. Effort signal for the effort-adjusted e1RM debrief. */
+  rir: number | null;
   committed_at: string | null; // ISO timestamp on ✓
   /** Carried across edit cycles: the timer-recorded rest before this set
    *  when re-committing an edited workout. Undefined on fresh logger sessions
@@ -72,6 +75,7 @@ export type CommitSessionPayload = {
       duration_seconds: number | null;
       warmup: boolean;
       failure: boolean;
+      rir: number | null;
       rest_seconds_actual: number | null;
     }[];
   }[];
