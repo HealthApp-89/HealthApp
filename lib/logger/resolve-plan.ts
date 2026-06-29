@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { SESSION_PLANS, type PlannedExercise } from "@/lib/coach/sessionPlans";
+import { SESSION_PLANS, applyOrderingOverride, type PlannedExercise } from "@/lib/coach/sessionPlans";
 import type { ExerciseOverrides, SessionPrescriptions } from "@/lib/data/types";
 import { discoverEffectiveExercises } from "@/lib/coach/prescription/recent-workouts-discovery";
 
@@ -32,14 +32,23 @@ export async function resolveSessionPlan(args: {
 }> {
   const { supabase, userId, sessionType, weekdayLong, weekOverrides, weekPrescriptions } = args;
 
-  // 1. session_prescriptions (NEW TOP — Sunday-prescription system)
+  // 1. session_prescriptions (NEW TOP — Sunday-prescription system). When an
+  //    exercise_override also exists for the day, it layers ordering on top of
+  //    the prescription (engine owns loads, user owns order) — mirrors
+  //    getEffectiveSessionPlan.
   const presc = weekPrescriptions?.[weekdayLong as keyof SessionPrescriptions];
+  const weekOverride = weekOverrides?.[weekdayLong];
   if (presc && presc.length > 0) {
+    if (weekOverride && weekOverride.length > 0) {
+      return {
+        exercises: applyOrderingOverride(presc, weekOverride.map((e) => e.name)),
+        source: "week_prescription",
+      };
+    }
     return { exercises: presc, source: "week_prescription" };
   }
 
   // 2. exercise_overrides (existing — permutation-only)
-  const weekOverride = weekOverrides?.[weekdayLong];
   if (weekOverride && weekOverride.length > 0) {
     return { exercises: weekOverride, source: "week_override" };
   }

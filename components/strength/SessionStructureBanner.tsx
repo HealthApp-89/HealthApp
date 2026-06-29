@@ -2,7 +2,9 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { COLOR } from "@/lib/ui/theme";
+import { queryKeys } from "@/lib/query/keys";
 import type { SessionStructure } from "@/lib/coach/session-structure";
 
 type Props = {
@@ -11,13 +13,17 @@ type Props = {
   weekStart: string;
   /** Full weekday name ("Monday"...) — the override key. */
   weekday: string;
+  /** Owner — needed to invalidate the TanStack trainingWeek cache that the
+   *  card + logger read from after the override lands. */
+  userId: string;
 };
 
 /** Yellow banner shown when session-structure ordering rules fire. Renders
  *  the warnings inline, exposes an Apply-reorder button when
  *  suggested_order is non-null, and POSTs the override on click. */
-export function SessionStructureBanner({ structure, weekStart, weekday }: Props) {
+export function SessionStructureBanner({ structure, weekStart, weekday, userId }: Props) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [, startTransition] = useTransition();
@@ -47,6 +53,12 @@ export function SessionStructureBanner({ structure, weekStart, weekday }: Props)
         const body = await res.json().catch(() => ({}));
         throw new Error(body?.error ?? `HTTP ${res.status}`);
       }
+      // The card + logger read the committed week from the TanStack cache, not
+      // the server tree — invalidate it so the new ordering shows immediately.
+      // router.refresh() additionally re-renders server surfaces (morning brief).
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.trainingWeeks.one(userId, weekStart),
+      });
       startTransition(() => {
         router.refresh();
       });

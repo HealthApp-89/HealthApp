@@ -113,6 +113,29 @@ export function getTodaySession(tz: string): string {
 
 import type { ExerciseOverrides, SessionPrescriptions } from "@/lib/data/types";
 
+/** Re-sequence `base` to follow the name order in `orderNames`, preserving each
+ *  exercise's fields (loads/reps/sets stay engine-owned). Exercises whose names
+ *  aren't present in `orderNames` keep their original relative order, appended
+ *  after the ranked ones. This is how a user reorder (exercise_overrides) layers
+ *  on top of an engine-owned prescription without masking its loads — the
+ *  override carries ordering only. Single source of truth, mirrored verbatim by
+ *  the async server resolver in lib/logger/resolve-plan.ts. */
+export function applyOrderingOverride(
+  base: PlannedExercise[],
+  orderNames: string[],
+): PlannedExercise[] {
+  const rank = new Map(orderNames.map((n, i) => [n, i] as const));
+  const UNRANKED = Number.MAX_SAFE_INTEGER;
+  return base
+    .map((ex, i) => ({ ex, i }))
+    .sort((a, b) => {
+      const ra = rank.get(a.ex.name) ?? UNRANKED;
+      const rb = rank.get(b.ex.name) ?? UNRANKED;
+      return ra !== rb ? ra - rb : a.i - b.i;
+    })
+    .map((x) => x.ex);
+}
+
 /** Returns the effective exercise list for a given session type + weekday.
  *  Resolution chain (matches lib/logger/resolve-plan.ts): per-weekday Sunday
  *  prescription in training_weeks.session_prescriptions → per-weekday override
@@ -120,6 +143,10 @@ import type { ExerciseOverrides, SessionPrescriptions } from "@/lib/data/types";
  *  user_session_templates → static SESSION_PLANS code default. Returns []
  *  when no source has exercises (e.g. an unknown session type with no
  *  override and no template).
+ *
+ *  When a prescription AND an override both exist for the weekday, the override
+ *  is treated as an ordering layer over the prescription (see
+ *  applyOrderingOverride) — the engine still owns loads, the user owns order.
  *
  *  This is the synchronous variant used by client components that already
  *  fetch override + template via TanStack hooks. The async server-side
@@ -132,8 +159,13 @@ export function getEffectiveSessionPlan(
   userTemplate?: PlannedExercise[] | null,
 ): PlannedExercise[] {
   const presc = sessionPrescriptions?.[weekday as keyof SessionPrescriptions];
-  if (presc && presc.length > 0) return presc;
   const override = overrides?.[weekday];
+  if (presc && presc.length > 0) {
+    if (override && override.length > 0) {
+      return applyOrderingOverride(presc, override.map((e) => e.name));
+    }
+    return presc;
+  }
   if (override && override.length > 0) return override;
   if (userTemplate && userTemplate.length > 0) return userTemplate;
   return SESSION_PLANS[sessionType] ?? [];

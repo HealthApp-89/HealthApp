@@ -13,7 +13,7 @@ import { revalidatePath } from "next/cache";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SESSION_PLANS, type PlannedExercise } from "@/lib/coach/sessionPlans";
 import { readSessionForDay } from "@/lib/coach/session-plan-reader";
-import type { ExerciseOverrides } from "@/lib/data/types";
+import type { ExerciseOverrides, SessionPrescriptions } from "@/lib/data/types";
 
 const FULL_WEEKDAYS = new Set([
   "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday",
@@ -92,7 +92,7 @@ export async function POST(
   // Load the row.
   const { data: row, error: loadErr } = await supabase
     .from("training_weeks")
-    .select("session_plan, exercise_overrides")
+    .select("session_plan, exercise_overrides, session_prescriptions")
     .eq("user_id", user.id)
     .eq("week_start", week_start)
     .maybeSingle();
@@ -126,10 +126,18 @@ export async function POST(
     );
   }
 
-  // If there's an existing override for this weekday, validate against IT (permutation).
-  // Otherwise validate against the static plan (to enforce static-plan structure).
+  // Validate the permutation against what the athlete actually sees, i.e. the
+  // effective exercise list: prescription for the day (top of the resolution
+  // chain) → existing override → static plan. Using staticPlan unconditionally
+  // would reject a valid reorder whenever the Sunday engine prescribed a name
+  // set that diverges from SESSION_PLANS.
   const existing = (row.exercise_overrides ?? {}) as ExerciseOverrides;
-  const baselineExercises = existing?.[weekday] ?? staticPlan;
+  const prescriptions = (row.session_prescriptions ?? null) as SessionPrescriptions | null;
+  const prescForDay = prescriptions?.[weekday as keyof SessionPrescriptions];
+  const baselineExercises =
+    prescForDay && prescForDay.length > 0
+      ? prescForDay
+      : existing?.[weekday] ?? staticPlan;
   if (exercises.length !== baselineExercises.length) {
     return NextResponse.json(
       {

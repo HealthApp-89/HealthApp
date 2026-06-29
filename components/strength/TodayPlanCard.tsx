@@ -122,6 +122,7 @@ export function TodayPlanCard({ plan, committedFromPlan, rirTarget, researchPhas
           structure={plan.structure}
           weekStart={weekStart}
           weekday={weekday}
+          userId={userId}
         />
       )}
 
