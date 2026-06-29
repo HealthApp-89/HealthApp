@@ -102,6 +102,7 @@ function resetDraft(draft: LoggerDraft): LoggerDraft {
         duration_seconds: null,
         warmup: !!ex.prescribed.warmup && j === 0,
         failure: false,
+        // reset starts RIR blank; athlete re-enters per set
         rir: null,
         committed_at: null,
       })),
