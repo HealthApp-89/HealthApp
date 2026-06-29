@@ -25,6 +25,9 @@ import { buildAthleteIntelligence } from "@/lib/coach/intelligence";
 import type { AthleteIntelligencePayload } from "@/lib/coach/intelligence/types";
 import { summarizeResponsiveness, renderResponsivenessLines } from "@/lib/coach/interventions/responsiveness";
 import type { CoachInterventionRow } from "@/lib/data/types";
+import { loadPlannedActivities } from "@/lib/coach/activity/read-planned";
+import { renderPlannedActivitiesBlock } from "@/lib/coach/activity/render-activities-block";
+import type { RecurringActivity } from "@/lib/coach/activity/types";
 
 /** Compose the NOW header for the LLM snapshot prefix. Includes an explicit
  *  "current week" anchor (Mon→Sun of the user's current week) because LLMs
@@ -455,7 +458,10 @@ export async function buildSnapshot(inputs: SnapshotInputs): Promise<SnapshotRes
   d90.setUTCDate(d90.getUTCDate() - 90);
   const since90d = d90.toISOString().slice(0, 10);
 
-  const [{ data: profile }, { data: logs }, allWorkouts, { data: athleteProfileRow }, todayTargets, enduranceBlocks, intelligence, { data: rawInterventions }] = await Promise.all([
+  // Current week start (Monday-keyed) — used for planned activities lookup.
+  const currentWeekStart = mondayOf(today);
+
+  const [{ data: profile }, { data: logs }, allWorkouts, { data: athleteProfileRow }, todayTargets, enduranceBlocks, intelligence, { data: rawInterventions }, { data: currentWeekRow }, recurringActivitiesRaw] = await Promise.all([
     supabase
       .from("profiles")
       .select("name, goal, whoop_baselines")
@@ -495,6 +501,32 @@ export async function buildSnapshot(inputs: SnapshotInputs): Promise<SnapshotRes
       .not("outcome", "is", null)
       .gte("started_on", since90d)
       .order("started_on", { ascending: false }),
+    // Current week row — needed for loadPlannedActivities (declared activities
+    // live on training_weeks.planned_activities). Fetched in the same Promise.all
+    // to avoid serialization. Failure → null → no activities block.
+    supabase
+      .from("training_weeks")
+      .select("week_start, planned_activities")
+      .eq("user_id", userId)
+      .eq("week_start", currentWeekStart)
+      .maybeSingle(),
+    // recurring_activities from profile — needed by renderPlannedActivitiesBlock
+    // for the "Recurring:" summary line. loadPlannedActivities also reads this
+    // internally for merge logic, but the renderer needs the raw list separately.
+    // Parallelized here (was a serial await after plannedActivities) so it runs
+    // in the same batch as the other profile/week reads. Failure → [] (graceful).
+    (async (): Promise<RecurringActivity[]> => {
+      try {
+        const { data } = await supabase
+          .from("profiles")
+          .select("recurring_activities")
+          .eq("user_id", userId)
+          .single();
+        return (data?.recurring_activities as RecurringActivity[]) ?? [];
+      } catch {
+        return [];
+      }
+    })(),
   ]);
 
   const workouts = until
@@ -546,6 +578,23 @@ export async function buildSnapshot(inputs: SnapshotInputs): Promise<SnapshotRes
   const interventionRows = (rawInterventions ?? []) as CoachInterventionRow[];
   const athleteIntelligenceBlock = renderAthleteIntelligenceBlock(intelligence, interventionRows, today);
 
+  // ── Planned activities block ──────────────────────────────────────────────
+  // Graceful: failure or no week row → empty array → block omitted.
+  // loadPlannedActivities also reads recurring from profile internally.
+  const plannedActivities = currentWeekRow
+    ? await loadPlannedActivities(
+        supabase,
+        userId,
+        {
+          week_start: currentWeekRow.week_start as string,
+          planned_activities: (currentWeekRow.planned_activities as import("@/lib/coach/activity/types").PlannedActivity[] | null) ?? [],
+        },
+        today,
+      ).catch(() => [])
+    : [];
+
+  const activitiesBlock = renderPlannedActivitiesBlock(plannedActivities, recurringActivitiesRaw);
+
   const fmt = (v: number | null | undefined, unit = "") =>
     v === null || v === undefined ? "—" : `${v}${unit}`;
 
@@ -591,6 +640,11 @@ export async function buildSnapshot(inputs: SnapshotInputs): Promise<SnapshotRes
     // and before DAILY LOGS (which is time-series operational data).
     ``,
     athleteIntelligenceBlock,
+    // Planned activities block — injected only when non-null (i.e. there are
+    // declared, recurring, or detected activities this week). When empty,
+    // activitiesBlock is null and this spread emits nothing — context is
+    // byte-identical to pre-feature.
+    ...(activitiesBlock ? [``, activitiesBlock] : []),
     ``,
     `DAILY LOGS (${since} → ${until ?? today}):`,
     logLines || `  (no logs in window)`,

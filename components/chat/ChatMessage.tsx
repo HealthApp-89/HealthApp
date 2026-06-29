@@ -505,6 +505,7 @@ function renderToolReceiptChip(call: {
     "save_to_library",
     "search_library",
     "pick_library_item",
+    "add_planned_activity",
   ]);
   if (!RECEIPT_TOOLS.has(call.name)) return null;
 
@@ -573,6 +574,33 @@ function renderToolReceiptChip(call: {
       </span>
     );
   }
+
+  if (call.name === "add_planned_activity") {
+    const r = (call.result ?? {}) as {
+      added?: { type?: string; date?: string; intensity?: string };
+    };
+    const added = r.added;
+    if (!added) return null;
+    // Format date as short weekday, e.g. "2026-06-28" → "Sat"
+    const WEEKDAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const weekdayLabel = added.date
+      ? (WEEKDAY_SHORT[new Date(added.date + "T12:00:00Z").getUTCDay()] ?? added.date)
+      : "";
+    const label = [
+      added.type ? added.type.charAt(0).toUpperCase() + added.type.slice(1) : "Activity",
+      weekdayLabel,
+      added.intensity ? `(${added.intensity})` : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+    return (
+      <span style={styleBase}>
+        <span aria-hidden="true">✓</span>
+        <span>Added: {label}</span>
+      </span>
+    );
+  }
+
   return null;
 }
 

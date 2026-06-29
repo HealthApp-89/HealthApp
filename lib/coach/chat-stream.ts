@@ -82,6 +82,7 @@ import {
   executeSetEnduranceDiscipline,
   executeSetThresholdHr,
   executeSetFtp,
+  executeAddPlannedActivity,
   toolsForSpeaker,
   colsForSpeaker,
   type ToolResult,
@@ -125,6 +126,9 @@ const PERSIST_RESULT_TOOLS = new Set([
   // confirmation must survive history reload.
   "propose_endurance_week",
   "commit_endurance_week",
+  // Activity direct-write: receipt chip must survive history reload so the
+  // athlete can see "Added: padel Tue (hard)" on revisit.
+  "add_planned_activity",
 ]);
 function shouldPersistResult(name: string): boolean {
   return PERSIST_RESULT_TOOLS.has(name);
@@ -831,6 +835,12 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
           result = await executeSetFtp({
             userId: opts.userId,
             input: block.input as { watts: number },
+          });
+        } else if (block.name === "add_planned_activity") {
+          result = await executeAddPlannedActivity({
+            supabase: opts.sr,
+            userId: opts.userId,
+            input: block.input,
           });
         } else if (
           block.name === "apply_goal_target" ||

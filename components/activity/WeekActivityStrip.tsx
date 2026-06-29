@@ -13,8 +13,10 @@
 "use client";
 
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Plus, Trash2 } from "lucide-react";
 import { COLOR, RADIUS, SHADOW } from "@/lib/ui/theme";
+import { queryKeys } from "@/lib/query/keys";
 import {
   ACTIVITY_TYPES,
   type ActivityType,
@@ -70,16 +72,19 @@ function isoToWeekdayIdx(iso: string): number {
 }
 
 type Props = {
+  userId: string;
   weekStart: string;
   initialActivities: PlannedActivity[];
   onActivitiesChange?: (updated: PlannedActivity[]) => void;
 };
 
 export function WeekActivityStrip({
+  userId,
   weekStart,
   initialActivities,
   onActivitiesChange,
 }: Props) {
+  const queryClient = useQueryClient();
   const [activities, setActivities] = useState<PlannedActivity[]>(initialActivities);
   const [addOpen, setAddOpen] = useState(false);
   const [newType, setNewType] = useState<ActivityType>("padel");
@@ -107,6 +112,9 @@ export function WeekActivityStrip({
       }
       setActivities(next);
       onActivitiesChange?.(next);
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.trainingWeeks.one(userId, weekStart),
+      });
     } catch (e) {
       setErr((e as Error).message);
     } finally {
