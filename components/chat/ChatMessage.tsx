@@ -506,6 +506,8 @@ function renderToolReceiptChip(call: {
     "search_library",
     "pick_library_item",
     "add_planned_activity",
+    "propose_activity_adjustment",
+    "commit_activity_adjustment",
   ]);
   if (!RECEIPT_TOOLS.has(call.name)) return null;
 
@@ -597,6 +599,40 @@ function renderToolReceiptChip(call: {
       <span style={styleBase}>
         <span aria-hidden="true">✓</span>
         <span>Added: {label}</span>
+      </span>
+    );
+  }
+
+  if (call.name === "propose_activity_adjustment") {
+    const r = (call.result ?? {}) as { preview?: { moves?: unknown[]; lightened?: unknown[]; flags?: unknown[] } };
+    const moves = r.preview?.moves?.length ?? 0;
+    const lightened = r.preview?.lightened?.length ?? 0;
+    const flags = r.preview?.flags?.length ?? 0;
+    const parts = [
+      moves ? `${moves} move${moves === 1 ? "" : "s"}` : "",
+      lightened ? `${lightened} exercise${lightened === 1 ? "" : "s"} lightened` : "",
+      flags ? `${flags} flag${flags === 1 ? "" : "s"}` : "",
+    ].filter(Boolean).join(", ");
+    return (
+      <span style={styleBase}>
+        <span aria-hidden="true">📋</span>
+        <span>Proposed adjustment: {parts || "no change"}</span>
+      </span>
+    );
+  }
+
+  if (call.name === "commit_activity_adjustment") {
+    const r = (call.result ?? {}) as { changed_days?: unknown[]; lightened_count?: number };
+    const moved = r.changed_days?.length ?? 0;
+    const lightened = r.lightened_count ?? 0;
+    const parts = [
+      moved ? `${moved} day${moved === 1 ? "" : "s"} moved` : "",
+      lightened ? `${lightened} exercise${lightened === 1 ? "" : "s"} lightened` : "",
+    ].filter(Boolean).join(", ");
+    return (
+      <span style={styleBase}>
+        <span aria-hidden="true">✓</span>
+        <span>Adjusted session: {parts || "applied"}</span>
       </span>
     );
   }
