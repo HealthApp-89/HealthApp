@@ -53,7 +53,7 @@ export async function generateWorkoutDebrief(opts: {
 
   const { data: allSets, error: setsErr } = await supabase
     .from("exercise_sets")
-    .select("exercise_id, kg, reps, duration_seconds, warmup, failure")
+    .select("exercise_id, kg, reps, duration_seconds, warmup, failure, rir")
     .in(
       "exercise_id",
       exs.map((e) => e.id as string),
@@ -70,6 +70,7 @@ export async function generateWorkoutDebrief(opts: {
         duration_seconds: s.duration_seconds,
         warmup: s.warmup,
         failure: s.failure,
+        rir: s.rir,
       })),
   }));
 

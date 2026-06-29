@@ -25,6 +25,7 @@ type Props = {
   onToggle: () => void;
   weekOverrides: ExerciseOverrides | null;
   weekPrescriptions: SessionPrescriptions | null;
+  weekRirTarget?: number | null;
   sessionPlan: SessionPlan;
 };
 
@@ -58,6 +59,7 @@ export function ScheduleDayRow({
   onToggle,
   weekOverrides,
   weekPrescriptions,
+  weekRirTarget,
   sessionPlan,
 }: Props) {
   const [loggerOpen, setLoggerOpen] = useState(false);
@@ -320,6 +322,7 @@ export function ScheduleDayRow({
           weekdayLong={weekdayLong}
           weekOverrides={weekOverrides}
           weekPrescriptions={weekPrescriptions}
+          weekRirTarget={weekRirTarget ?? null}
           onClose={() => {
             setLoggerOpen(false);
             setDraftEpoch((e) => e + 1);

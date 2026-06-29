@@ -86,6 +86,7 @@ function ExerciseCardInner({
       duration_seconds: null,
       warmup: false,
       failure: false,
+      rir: isTimeBased ? null : (last?.rir ?? null),
       committed_at: null,
     };
     onExerciseChange(exerciseIndex, { ...exercise, sets: [...exercise.sets, next] });
@@ -131,6 +132,9 @@ function ExerciseCardInner({
             <th className="text-left font-normal py-1">
               {exercise.prescribed.duration_seconds != null ? "Seconds" : "Reps"}
             </th>
+            {exercise.prescribed.duration_seconds == null && (
+              <th className="text-left font-normal py-1">RIR</th>
+            )}
             <th></th>
             <th></th>
           </tr>
@@ -156,7 +160,7 @@ function ExerciseCardInner({
                 onUnparsedVoice={setUnparsedBanner}
               />
               {restAfterSetIndex === i && (
-                <tr><td colSpan={6}>
+                <tr><td colSpan={7}>
                   <RestBar
                     duration_seconds={activeRestSeconds}
                     started_at={activeRestStartedAt}

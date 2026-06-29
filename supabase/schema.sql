@@ -70,7 +70,9 @@ create table if not exists public.exercise_sets (
   reps int,
   duration_seconds int,
   warmup boolean not null default false,
-  failure boolean not null default false
+  failure boolean not null default false,
+  rest_seconds_actual int,
+  rir smallint check (rir is null or (rir >= 0 and rir <= 10))
 );
 
 -- ── morning check-in (subjective feel) ────────────────────────────────────────

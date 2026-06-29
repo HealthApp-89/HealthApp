@@ -57,6 +57,7 @@ export function BriefSessionList({
   userId,
   weekOverrides,
   weekPrescriptions,
+  weekRirTarget,
 }: {
   session: MorningBriefCard["session"];
   isSwapped: boolean;
@@ -67,6 +68,7 @@ export function BriefSessionList({
   userId: string;
   weekOverrides: ExerciseOverrides | null;
   weekPrescriptions?: import("@/lib/data/types").SessionPrescriptions | null;
+  weekRirTarget?: number | null;
 }) {
   const { exercises, volume_gaps } = session;
   const [loggerOpen, setLoggerOpen] = useState(false);
@@ -308,6 +310,7 @@ export function BriefSessionList({
           weekdayLong={weekday}
           weekOverrides={weekOverrides}
           weekPrescriptions={weekPrescriptions ?? null}
+          weekRirTarget={weekRirTarget ?? null}
           onClose={() => { setLoggerOpen(false); setDraftEpoch((e) => e + 1); }}
         />
       )}

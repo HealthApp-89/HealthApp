@@ -45,6 +45,7 @@ export function SetRow({
 }: Props) {
   const [draftKg, setDraftKg] = useState<string>(set.kg !== null ? String(set.kg) : "");
   const [draftReps, setDraftReps] = useState<string>(set.reps !== null ? String(set.reps) : "");
+  const [draftRir, setDraftRir] = useState<string>(set.rir !== null && set.rir !== undefined ? String(set.rir) : "");
 
   // Timer mode: local started_at (ms). Ticks every 250ms while running.
   // Resets when the set is uncommitted.
@@ -283,6 +284,25 @@ export function SetRow({
             onChange({ reps: Number.isFinite(n as number) ? (n as number) : null });
           }}
           disabled={committed}
+          className={`bg-zinc-800 border-none rounded-md px-1.5 py-1 w-12 text-center font-medium font-mono tabular-nums ${
+            committed ? "text-green-400 bg-green-500/10" : "text-zinc-100"
+          }`}
+        />
+      </td>
+      <td className="py-1">
+        <input
+          inputMode="numeric"
+          value={draftRir}
+          onChange={(e) => { setDraftRir(e.target.value); }}
+          onFocus={selectOnFocus}
+          onBlur={() => {
+            const n = draftRir === "" ? null : parseInt(draftRir, 10);
+            const clamped = n === null || !Number.isFinite(n) ? null : Math.max(0, Math.min(10, n));
+            onChange({ rir: clamped });
+          }}
+          disabled={committed}
+          aria-label="Reps in reserve"
+          placeholder="RIR"
           className={`bg-zinc-800 border-none rounded-md px-1.5 py-1 w-12 text-center font-medium font-mono tabular-nums ${
             committed ? "text-green-400 bg-green-500/10" : "text-zinc-100"
           }`}

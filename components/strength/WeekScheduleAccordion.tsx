@@ -25,6 +25,7 @@ type Props = {
   days: WeekDayEntry[];
   weekOverrides: ExerciseOverrides | null;
   weekPrescriptions: SessionPrescriptions | null;
+  weekRirTarget?: number | null;
   sessionPlan: SessionPlan;
 };
 
@@ -34,6 +35,7 @@ export function WeekScheduleAccordion({
   days,
   weekOverrides,
   weekPrescriptions,
+  weekRirTarget,
   sessionPlan,
 }: Props) {
   const [expanded, setExpanded] = useState<Set<Weekday>>(new Set());
@@ -70,6 +72,7 @@ export function WeekScheduleAccordion({
           onToggle={() => toggle(d.weekdayShort)}
           weekOverrides={weekOverrides}
           weekPrescriptions={weekPrescriptions}
+          weekRirTarget={weekRirTarget}
           sessionPlan={sessionPlan}
         />
       ))}

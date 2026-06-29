@@ -35,6 +35,7 @@ export function hydrateWorkoutAsDraft(
       duration_seconds: s.duration_seconds,
       warmup: s.warmup,
       failure: s.failure,
+      rir: s.rir ?? null,
       committed_at: committedAt,
       rest_seconds_actual: s.rest_seconds_actual,
     }));
