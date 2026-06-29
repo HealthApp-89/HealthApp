@@ -14,7 +14,7 @@
 // sets fall through to null e1RM and skip tagging.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { epley, topSet, type SetRow } from "@/lib/coach/derived";
+import { topSet, type SetRow } from "@/lib/coach/derived";
 import type { WorkoutDebriefPayload } from "@/lib/coach/session-debrief/payload";
 
 type ExerciseWithSets = {
