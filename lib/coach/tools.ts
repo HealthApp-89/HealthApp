@@ -2745,11 +2745,11 @@ export async function executeProposeActivityAdjustment(opts: {
     const beforeByName = new Map(before.map((e) => [e.name, e]));
     for (const ex of exs as PlannedExercise[]) {
       const b = beforeByName.get(ex.name);
-      if (!b) continue;
-      if (b.sets !== ex.sets || b.baseReps !== ex.baseReps || ex.rir != null) {
+      const changed = b ? (b.sets !== ex.sets || b.baseReps !== ex.baseReps) : false;
+      if (changed || ex.rir != null) {
         lightened.push({
           day, exercise: ex.name,
-          before: { sets: b.sets, baseReps: b.baseReps },
+          before: { sets: b?.sets, baseReps: b?.baseReps },
           after: { sets: ex.sets, baseReps: ex.baseReps, rir: ex.rir },
         });
       }

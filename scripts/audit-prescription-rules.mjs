@@ -688,6 +688,7 @@ const LEGS = ["legs"];
   const out = lightenExercise(lp, "Legs", LEGS);
   assert("accessory holds load", out.baseKg === 85, `got ${out.baseKg}`);
   assert("accessory drops 2 sets to floor 1", out.sets === 1, `accessory drops 2 sets to floor 1, got ${out.sets}`);
+  assert("accessory baseReps 12−2=10", out.baseReps === 10, `accessory baseReps 12−2=10, got ${out.baseReps}`);
   assert("accessory rir default(2)+2=4", out.rir === 4, `accessory rir default(2)+2=4, got ${out.rir}`);
 }
 {

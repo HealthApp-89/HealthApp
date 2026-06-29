@@ -93,7 +93,8 @@ export async function applyActivityLayout(opts: {
     const tz = await getUserTimezone(userId);
     const todayIso = todayInUserTz(new Date(), tz);
     nextPrescriptions = await prescribeWeek({ supabase, userId, block, week: workingRow, todayIso });
-  } catch {
+  } catch (e) {
+    console.error("[applyActivityLayout] prescription recompute failed; clearing stale entries", e);
     // On recompute failure, clear changed days' stale entries (matches route).
     if (currentPrescriptions && changedFull.length > 0) {
       const cleared: SessionPrescriptions = { ...currentPrescriptions };
