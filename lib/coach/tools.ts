@@ -6543,6 +6543,8 @@ export const PETER_TOOLS: readonly ToolSchema[] = [
   REGENERATE_WEEKLY_REVIEW_TOOL,
   PROPOSE_NUTRITION_ADJUSTMENT_TOOL,
   ADD_PLANNED_ACTIVITY_TOOL,
+  PROPOSE_ACTIVITY_ADJUSTMENT_TOOL,
+  COMMIT_ACTIVITY_ADJUSTMENT_TOOL,
 ];
 
 // Carter: strength/training. Reads workouts + recovery-relevant daily_logs
@@ -6575,6 +6577,8 @@ export const CARTER_TOOLS: readonly ToolSchema[] = [
   SET_THRESHOLD_HR_TOOL,
   SET_FTP_TOOL,
   ADD_PLANNED_ACTIVITY_TOOL,
+  PROPOSE_ACTIVITY_ADJUSTMENT_TOOL,
+  COMMIT_ACTIVITY_ADJUSTMENT_TOOL,
 ];
 
 // Nora: nutrition. Reads food log + nutrition/body-comp daily_logs columns;

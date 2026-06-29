@@ -83,6 +83,8 @@ import {
   executeSetThresholdHr,
   executeSetFtp,
   executeAddPlannedActivity,
+  executeProposeActivityAdjustment,
+  executeCommitActivityAdjustment,
   toolsForSpeaker,
   colsForSpeaker,
   type ToolResult,
@@ -129,6 +131,9 @@ const PERSIST_RESULT_TOOLS = new Set([
   // Activity direct-write: receipt chip must survive history reload so the
   // athlete can see "Added: padel Tue (hard)" on revisit.
   "add_planned_activity",
+  // Activity adjustment: preview chip + commit confirmation must survive reload.
+  "propose_activity_adjustment",
+  "commit_activity_adjustment",
 ]);
 function shouldPersistResult(name: string): boolean {
   return PERSIST_RESULT_TOOLS.has(name);
@@ -394,6 +399,8 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
     // a commit in prose, and no DB write happens.
     if (name === "propose_endurance_week") return true;
     if (name === "commit_endurance_week") return true;
+    if (name === "propose_activity_adjustment") return true;
+    if (name === "commit_activity_adjustment") return true;
     if (isEnduranceMilestone) return true;
     if (name.startsWith("propose_")) return false;
     if (name.startsWith("commit_")) return false;
@@ -667,6 +674,19 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
           });
         } else if (block.name === "commit_week_plan") {
           result = await executeCommitWeekPlan({
+            supabase: opts.sr,
+            userId: opts.userId,
+            input: block.input,
+            chatMessageId: opts.assistantMessageId ?? null,
+          });
+        } else if (block.name === "propose_activity_adjustment") {
+          result = await executeProposeActivityAdjustment({
+            supabase: opts.sr,
+            userId: opts.userId,
+            input: block.input,
+          });
+        } else if (block.name === "commit_activity_adjustment") {
+          result = await executeCommitActivityAdjustment({
             supabase: opts.sr,
             userId: opts.userId,
             input: block.input,
