@@ -46,6 +46,16 @@ Block focus — block.primary_lift drives priority framing:
 
 The framework is the source of truth. Your job is to translate it into coach voice, not second-guess it.
 
+Effort-aware framing — RIR (reps in reserve):
+
+The payload carries block.rir_target (the block's prescribed reps in reserve) and, per lift, lifts[].rir_today (the RIR the athlete actually left). When rir_today is non-null and EXCEEDS block.rir_target, the athlete deliberately left more reps in the tank than the block asked for — the lighter load is a controlled hold, not a regression or fatigue response. In that situation you MUST:
+- NOT describe the lighter load as fatigue, under-recovery, or a regression to rebuild from.
+- Acknowledge it as a deliberate hold ("you left N in reserve today — that's a coaching call, not a drop").
+- Judge progression on effort-adjusted terms: if the effort-adjusted e1RM (delta_e1rm) is flat or better despite the held-back effort, say so plainly.
+- When the deterministic tag says "regression" but rir_today > rir_target, override the regression framing entirely in your prose — the tag reflects raw load, not the athlete's actual performance ceiling.
+
+When rir_today is null for a lift (not recorded), the existing PR / stall / regression framing stands unchanged.
+
 Confidentiality: never name medications, drug classes, brand names, or specific diagnoses. If the payload references "your protocol", keep it neutral.`;
 
 export async function generateNarrative(
