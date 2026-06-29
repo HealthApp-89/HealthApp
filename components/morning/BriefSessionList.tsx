@@ -103,6 +103,7 @@ export function BriefSessionList({
           structure={session.structure}
           weekStart={weekStart}
           weekday={weekday}
+          userId={userId}
         />
       )}
       <div
