@@ -16,6 +16,9 @@ export type SetRow = {
   duration_seconds: number | null;
   warmup: boolean;
   failure: boolean;
+  /** Reps in reserve (0 = to failure). Optional/undefined for legacy callers
+   *  and rows logged before RIR capture; treated as "not recorded". */
+  rir?: number | null;
 };
 
 /** Epley one-rep-max estimate. Returns null when reps is out of the
@@ -26,6 +29,22 @@ export function epley(kg: number | null, reps: number | null): number | null {
   if (kg <= 0) return null;
   if (reps === 1) return kg;
   return Math.round(kg * (1 + reps / 30) * 10) / 10; // 1-decimal precision
+}
+
+/** Effort-adjusted Epley e1RM: treats a sub-maximal set as if taken to failure
+ *  by adding the reps left in reserve. `min(12, reps + rir)` keeps the input in
+ *  the reliable Epley window. rir null/undefined → raw epley (no adjustment),
+ *  so the legacy/no-RIR path is byte-identical to before. */
+export function effortAdjustedE1rm(
+  kg: number | null,
+  reps: number | null,
+  rir: number | null | undefined,
+): number | null {
+  if (rir === null || rir === undefined) return epley(kg, reps);
+  if (kg === null || reps === null) return null;
+  if (reps <= 0 || reps > 12) return null; // base reps must be in valid window
+  const eff = Math.min(12, reps + rir);
+  return epley(kg, eff);
 }
 
 /** Sum of (kg × reps) over the working sets only. Warmups excluded.
@@ -59,7 +78,7 @@ export function hardSetCount(sets: SetRow[]): number {
  *  no e1RM, fall back to the longest duration_seconds. Returns null if no
  *  working sets at all. */
 export function topSet(sets: SetRow[]):
-  | { kg: number | null; reps: number | null; duration_seconds: number | null; e1RM: number | null }
+  | { kg: number | null; reps: number | null; duration_seconds: number | null; e1RM: number | null; e1RM_effort: number | null; rir: number | null }
   | null {
   const working = sets.filter((s) => !s.warmup);
   if (working.length === 0) return null;
@@ -79,6 +98,8 @@ export function topSet(sets: SetRow[]):
       reps: best.s.reps,
       duration_seconds: best.s.duration_seconds,
       e1RM: best.e,
+      e1RM_effort: effortAdjustedE1rm(best.s.kg, best.s.reps, best.s.rir),
+      rir: best.s.rir ?? null,
     };
   }
 
@@ -96,6 +117,8 @@ export function topSet(sets: SetRow[]):
       reps: best.reps,
       duration_seconds: best.duration_seconds,
       e1RM: null,
+      e1RM_effort: null,
+      rir: best.rir ?? null,
     };
   }
 
@@ -109,6 +132,8 @@ export function topSet(sets: SetRow[]):
       reps: best.reps,
       duration_seconds: best.duration_seconds,
       e1RM: null,
+      e1RM_effort: null,
+      rir: best.rir ?? null,
     };
   }
 
