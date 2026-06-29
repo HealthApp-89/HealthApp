@@ -79,8 +79,11 @@ function synthChildren(node, allFacts) {
     }
   }
   if (code.migrations === 'all') {
-    for (const f of allFacts.migration) {
-      out.push({ id: `${node.id}--${slug(f)}`, label: f, description: '', badges: [], underHood: [] });
+    const childHoldsMigs = (node.children ?? []).some((ch) => ch.code?.migrations === 'all');
+    if (!childHoldsMigs) {
+      for (const f of allFacts.migration) {
+        out.push({ id: `${node.id}--${slug(f)}`, label: f, description: '', badges: [], underHood: [] });
+      }
     }
   }
   return out;

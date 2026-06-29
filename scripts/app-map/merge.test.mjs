@@ -52,4 +52,55 @@ assert.ok(gone.badges.includes('stale'), 'gone badged stale');
 const p = team.children.find((c) => c.id === 'p');
 assert.ok(p.underHood.some((x) => x.includes('peter')), 'peter underHood resolved');
 
+// ── Regression: parent with migrations:'all' + child with migrations:'all'
+//    Parent must delegate synthesis; total .sql leaves across tree == 2 (not 4).
+{
+  const facts2 = {
+    routes: [],
+    apiRoutes: [],
+    coaches: [],
+    migrations: ['0001_a.sql', '0002_b.sql'],
+  };
+
+  const m2 = {
+    id: 'root2', label: 'root2', description: '',
+    children: [
+      {
+        id: 'parent', label: 'parent', description: '',
+        code: { migrations: 'all' },
+        children: [
+          {
+            id: 'child-migs', label: 'child-migs', description: '',
+            code: { migrations: 'all' },
+          },
+        ],
+      },
+    ],
+  };
+
+  const { tree: tree2 } = buildTree(m2, facts2);
+
+  // Collect all .sql-labeled leaves across the entire tree.
+  function collectSqlLeaves(node) {
+    const acc = [];
+    if (/\.sql$/.test(node.label)) acc.push(node.label);
+    for (const ch of node.children ?? []) acc.push(...collectSqlLeaves(ch));
+    return acc;
+  }
+
+  const allSqlLeaves = collectSqlLeaves(tree2);
+  assert.equal(allSqlLeaves.length, 2, 'total sql leaves == 2 (no duplicates)');
+
+  // Parent synthesizes 0 migration leaves (delegates to child).
+  const parentNode = tree2.children.find((c) => c.id === 'parent');
+  const parentDirectSqlLeaves = (parentNode.children ?? [])
+    .filter((c) => /\.sql$/.test(c.label));
+  assert.equal(parentDirectSqlLeaves.length, 0, 'parent synthesizes 0 migration leaves');
+
+  // Child synthesizes exactly 2 migration leaves.
+  const childNode = (parentNode.children ?? []).find((c) => c.id === 'child-migs');
+  const childSqlLeaves = (childNode.children ?? []).filter((c) => /\.sql$/.test(c.label));
+  assert.equal(childSqlLeaves.length, 2, 'child synthesizes exactly 2 migration leaves');
+}
+
 console.log('merge.test.mjs OK');
