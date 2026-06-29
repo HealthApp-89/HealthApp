@@ -132,6 +132,7 @@ function ExerciseCardInner({
             <th className="text-left font-normal py-1">
               {exercise.prescribed.duration_seconds != null ? "Seconds" : "Reps"}
             </th>
+            <th className="text-left font-normal py-1">RIR</th>
             <th></th>
             <th></th>
           </tr>
@@ -157,7 +158,7 @@ function ExerciseCardInner({
                 onUnparsedVoice={setUnparsedBanner}
               />
               {restAfterSetIndex === i && (
-                <tr><td colSpan={6}>
+                <tr><td colSpan={7}>
                   <RestBar
                     duration_seconds={activeRestSeconds}
                     started_at={activeRestStartedAt}
