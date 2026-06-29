@@ -71,11 +71,18 @@ const EXERCISE_REGION_HINTS: Array<{ pattern: RegExp; regions: MuscleRegion[] }>
 function annotateOne(ex: PlannedExercise): AnnotatedExercise {
   const tier = tierOf(ex);
   const reps = repsForExercise(ex);
+  // Per-exercise rir override (e.g. from the activity-aware lighten) wins over
+  // the tier-derived RPE band. RPE ≈ 10 − RIR; floor at 1 so a large RIR bump
+  // never produces a nonsensical "RPE 0".
+  const rpe_target =
+    ex.rir != null
+      ? `${ex.rir} RIR (RPE ${Math.max(1, 10 - ex.rir)})`
+      : rpePrescription(tier);
   return {
     ...ex,
     fatigue_tier: tier,
     rest_seconds: restPrescription(tier, reps),
-    rpe_target: rpePrescription(tier),
+    rpe_target,
   };
 }
 

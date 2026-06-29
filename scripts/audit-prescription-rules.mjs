@@ -10,6 +10,7 @@ import { maintenanceLoadFor } from "@/lib/coach/prescription/maintenance-baselin
 import { evaluateBlockPhase, prescribePrimaryFromPhase } from "@/lib/coach/prescription/block-phase-rule";
 import { prescribeSecondaryAutoregulated } from "@/lib/coach/prescription/autoregulation-rule";
 import { brzycki, bestComparisonValue, metricLabel } from "@/lib/coach/e1rm";
+import { annotateSession } from "@/lib/coach/session-structure/annotate";
 
 let pass = 0;
 let fail = 0;
@@ -641,6 +642,29 @@ console.log("\n## calibrate-target.ts (pure helpers)\n");
   assert("bounds for deadlift cut current=117.9 are [120, 125]",
     bounds2[0] === 120 && bounds2[1] === 125,
     `got [${bounds2[0]}, ${bounds2[1]}]`);
+}
+
+console.log("\n## annotate.ts — per-exercise rir override\n");
+
+{
+  const [a] = annotateSession([
+    { name: "Squat (Barbell)", baseKg: 100, baseReps: 5, sets: 3, key: "squat", rir: 3 },
+  ]).exercises;
+  assert(
+    "rir override should surface in rpe_target",
+    a.rpe_target.includes("3 RIR"),
+    `got "${a.rpe_target}"`,
+  );
+}
+{
+  const [b] = annotateSession([
+    { name: "Leg Press", baseKg: 100, baseReps: 12, sets: 3, key: "leg_press" },
+  ]).exercises;
+  assert(
+    "no rir → unchanged tier-derived rpe_target",
+    !b.rpe_target.includes("RIR ("),
+    `got "${b.rpe_target}"`,
+  );
 }
 
 console.log(`\n${pass} passed, ${fail} failed.`);
