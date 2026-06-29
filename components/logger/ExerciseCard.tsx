@@ -132,7 +132,9 @@ function ExerciseCardInner({
             <th className="text-left font-normal py-1">
               {exercise.prescribed.duration_seconds != null ? "Seconds" : "Reps"}
             </th>
-            <th className="text-left font-normal py-1">RIR</th>
+            {exercise.prescribed.duration_seconds == null && (
+              <th className="text-left font-normal py-1">RIR</th>
+            )}
             <th></th>
             <th></th>
           </tr>
