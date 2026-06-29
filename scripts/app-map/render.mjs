@@ -27,7 +27,6 @@ li{margin:2px 0}
 .leaf .tw{visibility:hidden}
 .badge{font-size:10px;padding:1px 6px;border-radius:999px;border:1px solid}
 .badge.stale{color:var(--stale);border-color:var(--stale)}
-.badge.undocumented{color:var(--warn);border-color:var(--warn)}
 .hidden{display:none}
 #detail h2{margin:0 0 8px;font-size:18px}
 #detail .uh{margin-top:14px;color:var(--muted);font-size:12px;border-top:1px dashed var(--line);padding-top:10px}

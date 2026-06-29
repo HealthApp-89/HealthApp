@@ -31,12 +31,12 @@ function pageToRoute(appDir, file) {
   for (const seg of segments) {
     if (seg.startsWith('(') && seg.endsWith(')')) continue; // route group
     if (seg.startsWith('[') && seg.endsWith(']')) {
-      kept.push(':' + seg.slice(1, -1).replace(/^\.\.\./, '')); // [..rest] → :rest
+      kept.push(':' + seg.slice(1, -1).replace(/^\.\.\./, '')); // [...rest] → :rest
     } else {
       kept.push(seg);
     }
   }
-  return '/' + kept.join('/') === '/' && kept.length === 0 ? '/' : '/' + kept.join('/');
+  return kept.length ? '/' + kept.join('/') : '/';
 }
 
 function apiPathOf(appDir, file) {
