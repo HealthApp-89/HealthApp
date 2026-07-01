@@ -7,12 +7,10 @@ in the TypeScript app. Run once daily via cron.
 """
 import os
 import sys
-import json
 from datetime import date, timedelta
 
 import requests
 from garminconnect import Garmin
-from garminconnect import GarminConnectAuthenticationError
 
 TOKENSTORE = os.path.expanduser("~/.garminconnect")
 
@@ -25,7 +23,8 @@ def login() -> Garmin:
         g = Garmin()
         g.login(TOKENSTORE)  # reuse saved tokens
         return g
-    except (FileNotFoundError, GarminConnectAuthenticationError, Exception):
+    except Exception:
+        # Any failure (no saved token, expired token, auth error) → full re-login.
         # First run or expired token: full login. prompt_mfa is called if 2FA
         # is enabled — you type the 6-digit code once; the token is then saved.
         g = Garmin(email, password, prompt_mfa=lambda: input("Garmin MFA code: "))
@@ -107,6 +106,7 @@ def collect_day(g: Garmin, d: str) -> dict:
             bal = ts.get("mostRecentTrainingLoadBalance", {})
             metrics = list(bal.get("metricsTrainingLoadBalanceDTOMap", {}).values())
             if metrics:
+                # Best-effort: dict order is undocumented; this may not always be the acute value. Verify against a real response.
                 day["acute_load"] = metrics[0].get("acwrPercent")
         except (KeyError, IndexError, TypeError):
             pass

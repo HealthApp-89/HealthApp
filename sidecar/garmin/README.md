@@ -8,7 +8,7 @@ them to `/api/ingest/garmin`. All derivation happens app-side; this is a dumb pu
 2. `pip install -r requirements.txt`
 3. `cp .env.example .env` and fill in Garmin creds + the ingest token
    (mint it on the app: Profile → rotate ingest token).
-4. First run does an interactive login: `set -a; source .env; set +a; python collector.py`
+4. First run does an interactive login: `set -a; source .env; set +a; ./.venv/bin/python collector.py`
    — if 2FA is on you'll be asked for a 6-digit code once. The token is saved to
    `~/.garminconnect` and reused after that.
 
