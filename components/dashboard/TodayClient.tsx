@@ -10,7 +10,7 @@ import { MetricCard, type MetricDatum } from "@/components/charts/MetricCard";
 import { ImpactDonut } from "@/components/dashboard/ImpactDonut";
 import { InstallHint } from "@/components/layout/InstallHint";
 import { COLOR, METRIC_COLOR } from "@/lib/ui/theme";
-import { calcReadinessScore, fmtNum } from "@/lib/ui/score";
+import { deriveReadiness, fmtNum } from "@/lib/ui/score";
 import { computeImpact } from "@/lib/coach/impact";
 import {
   buildNarrativeSentence,
@@ -119,13 +119,14 @@ export function TodayClient({
     if (prevLog.carbs_g != null) fellBackToPrior.add("carbs");
   }
 
-  const score = calcReadinessScore({
+  const readiness = deriveReadiness({
     log: scoreLog,
     checkin: checkin ?? null,
     hrvBaseline,
     weightKg: effectiveWeightKg,
     calorieTarget,
   });
+  const score = readiness.score;
 
   const rawImpact = hasData
     ? computeImpact(scoreLog, hrvBaseline, effectiveWeightKg, calorieTarget)
