@@ -398,7 +398,7 @@ function buildDataBlock(card: Omit<MorningBriefCard, "advice_md">): string {
   }
   const r = card.readiness;
   lines.push(
-    `- Readiness band: ${r.band} (score ${r.score ?? "n/a"}/10, HRV ${r.hrv ?? "n/a"}, recovery ${r.recovery ?? "n/a"})`,
+    `- Readiness band: ${r.band} (composite ${r.score ?? "n/a"}/100, recovery sub-score ${r.recovery_sub_score ?? "n/a"}, athlete felt ${r.feel ?? "n/a"}/10, HRV ${r.hrv ?? "n/a"}, WHOOP recovery ${r.recovery ?? "n/a"})`,
   );
   const m = card.macros;
   lines.push(

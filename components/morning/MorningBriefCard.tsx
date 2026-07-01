@@ -83,7 +83,7 @@ export function MorningBriefCard({
             borderBottom: `1px solid ${COLOR.divider}`,
           }}
         >
-          WHOOP didn't sync this morning — readiness is feel-only.
+          WHOOP hasn't synced yet — readiness is pending. Tap sync to compute it.
         </div>
       ) : null}
       <div
@@ -301,9 +301,14 @@ function BriefHero({ card }: { card: MorningBriefCardData }) {
             opacity: 0.75,
           }}
         >
-          {card.readiness.score !== null ? "/10" : null}
+          {card.readiness.score !== null ? "/100" : null}
         </span>
       </div>
+      {card.readiness.feel !== null ? (
+        <div style={{ fontSize: 12, fontWeight: 600, opacity: 0.8, marginTop: 4 }}>
+          You felt: {fmtNum(card.readiness.feel)}/10
+        </div>
+      ) : null}
       <div
         style={{
           display: "inline-block",
