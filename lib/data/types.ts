@@ -989,10 +989,12 @@ export type MorningBriefMacros = {
 };
 
 export type MorningBriefReadiness = {
-  score: number | null;                       // 1-10 from checkins.readiness
+  score: number | null;                       // composite 0-100 (deriveReadiness); null = recovery not synced
+  recovery_sub_score: number | null;          // recovery-bucket-only 0-100; drives the red-recovery floor
+  feel: number | null;                        // raw morning self-report 1-10 (checkins.readiness)
   hrv: number | null;                         // from daily_logs[today].hrv
   recovery: number | null;                    // 0-100 from daily_logs[today].recovery
-  band: "low" | "moderate" | "high";          // derived from score + hrv vs baselines
+  band: "low" | "moderate" | "high";          // composite band + red-recovery floor
 };
 
 export type MorningBriefTonight = {

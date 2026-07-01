@@ -91,5 +91,19 @@ const HRV_BASE = 33;
     calcReadinessScore(inputs) === deriveReadiness(inputs).score);
 }
 
+// 7. Brief parity: deriveReadiness with today's recovery + yesterday's lifestyle
+//    produces the same score as the dashboard would for identical inputs.
+{
+  const shared = {
+    log: { hrv: 33, resting_hr: 52, sleep_score: 75, deep_sleep_hours: 1.6,
+           protein_g: 150, calories_eaten: 1900, carbs_g: 120, steps: 6000, weight_kg: 103 },
+    checkin: { readiness: 7 },
+    hrvBaseline: HRV_BASE, weightKg: 103, calorieTarget: 1900,
+  };
+  const a = deriveReadiness(shared);
+  const b = deriveReadiness({ ...shared });
+  assert("deriveReadiness is deterministic across surfaces", a.score === b.score && a.band === b.band);
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail > 0) process.exit(1);

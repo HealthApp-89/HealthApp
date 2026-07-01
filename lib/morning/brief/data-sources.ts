@@ -172,6 +172,9 @@ export async function fetchBriefInputs(
     exercises: Array<{ name: string; sets: Array<{ kg: number | null; reps: number | null; warmup: boolean }> }>;
   }> | null);
 
+  const wb = (profileRes.data as { whoop_baselines?: WhoopBaselineForBand } | null)?.whoop_baselines ?? null;
+  const hrvBaseline = typeof wb?.hrv_6mo_avg === "number" ? wb.hrv_6mo_avg : 33;
+
   return {
     today,
     yesterday,
@@ -184,7 +187,8 @@ export async function fetchBriefInputs(
     yesterdayWorkout,
     todayCheckin: todayCheckinRes.data as CheckinRow | null,
     todayLog: todayLogRes.data as DailyLog | null,
-    whoopBaselines: (profileRes.data as { whoop_baselines?: WhoopBaselineForBand } | null)?.whoop_baselines ?? null,
+    whoopBaselines: wb,
+    hrvBaseline,
     activeProfile: activeAthleteProfileRes.data as AthleteProfileDocument | null,
     hasTrainingWeek: trainingWeek !== null && isWeekStartCoveringToday(trainingWeek.week_start, today),
     // The four sub-project #2 fields are populated by the orchestrator

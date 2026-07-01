@@ -36,6 +36,7 @@ import type { MuscleRegion } from "@/lib/coach/activity/types";
 import type { RecentActivitySignal } from "@/lib/coach/activity/reactive-ladder";
 import { selectReactiveRung } from "@/lib/coach/activity/reactive-ladder";
 import { SESSION_REGION_MAP } from "@/lib/coach/activity/sequence-week";
+import { deriveReadiness } from "@/lib/ui/score";
 
 /** Yesterday's workout summary — pre-aggregated by the data source. */
 export type YesterdayWorkoutSummary = {
@@ -58,6 +59,9 @@ export type WhoopBaselineForBand = {
       status: "establishing" | "partial" | "stable";
     };
   };
+  /** 6-month HRV average — the ratio denominator for the readiness composite,
+   *  matching the dashboard ring. Falls back to 33 when absent. */
+  hrv_6mo_avg?: number | null;
 };
 
 export type BriefInputs = {
@@ -73,6 +77,10 @@ export type BriefInputs = {
   todayCheckin: CheckinRow | null;
   todayLog: DailyLog | null;                   // for HRV / recovery
   whoopBaselines: WhoopBaselineForBand | null;
+  /** HRV ratio denominator for deriveReadiness (profiles.whoop_baselines.hrv_6mo_avg
+   *  ?? 33). Kept as a plain number so the brief and dashboard compute identical
+   *  HRV ratios. */
+  hrvBaseline: number;
   activeProfile: AthleteProfileDocument | null;
   /** True iff a training_weeks row exists for the week containing today.
    *  Gates the coach_suggestion chip — if false, the chip's POST would 404. */
@@ -190,15 +198,36 @@ function shortWeekdayFromDate(
   return (["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const)[d.getUTCDay()];
 }
 
-function composeReadiness(inputs: BriefInputs): MorningBriefReadiness {
-  const score = inputs.todayCheckin?.readiness ?? null;
-  const hrv = inputs.todayLog?.hrv ?? null;
-  const recovery = inputs.todayLog?.recovery ?? null;
+/** Today's recovery signals + YESTERDAY's lifestyle (steps/calories/protein/carbs),
+ *  mirroring the dashboard ring's scoreLog per the readiness-uses-yesterday rule. */
+function readinessLog(inputs: BriefInputs): DailyLog | null {
+  const t = inputs.todayLog;
+  if (!t) return null;
+  const y = inputs.yesterdayLog;
   return {
-    score,
-    hrv,
-    recovery,
-    band: deriveReadinessBand(score, hrv, inputs.whoopBaselines),
+    ...t,
+    steps: y?.steps ?? null,
+    calories_eaten: y?.calories_eaten ?? null,
+    protein_g: y?.protein_g ?? null,
+    carbs_g: y?.carbs_g ?? null,
+  };
+}
+
+function composeReadiness(inputs: BriefInputs): MorningBriefReadiness {
+  const r = deriveReadiness({
+    log: readinessLog(inputs),
+    checkin: inputs.todayCheckin,
+    hrvBaseline: inputs.hrvBaseline,
+    weightKg: inputs.todayLog?.weight_kg ?? inputs.yesterdayLog?.weight_kg ?? null,
+    calorieTarget: inputs.todayTargets?.kcal ?? null,
+  });
+  return {
+    score: r.score,
+    recovery_sub_score: r.recoverySubScore,
+    feel: r.feel,
+    hrv: inputs.todayLog?.hrv ?? null,
+    recovery: inputs.todayLog?.recovery ?? null,
+    band: r.band,
   };
 }
 
@@ -317,38 +346,6 @@ export function pickCoachSuggestion(args: {
   }
 
   return null;
-}
-
-/** Two-signal triangulation. Mirrors the convention in
- *  lib/coach/autoregulation.ts — surface, never auto-apply.
- *
- *  HRV SWC bands (low/high) are derived from rolling_30d.hrv.mean ±0.5×sd
- *  (Hopkins SWC). When the rolling baseline is establishing or unavailable,
- *  falls back to the legacy hrv_swc_low/high seed keys; if both are absent,
- *  the HRV signal is suppressed and band is driven by score alone. */
-function deriveReadinessBand(
-  score: number | null,
-  hrv: number | null,
-  baselines: WhoopBaselineForBand | null,
-): "low" | "moderate" | "high" {
-  if (score === null) return "moderate";
-
-  const r30Hrv = baselines?.rolling_30d?.hrv;
-  const swcFromRolling =
-    r30Hrv && r30Hrv.status !== "establishing" && r30Hrv.mean != null && r30Hrv.sd != null
-      ? { low: r30Hrv.mean - 0.5 * r30Hrv.sd, high: r30Hrv.mean + 0.5 * r30Hrv.sd }
-      : null;
-
-  const hrvLow = swcFromRolling?.low ?? baselines?.hrv_swc_low ?? null;
-  const hrvHigh = swcFromRolling?.high ?? baselines?.hrv_swc_high ?? null;
-
-  if (score <= 5 || (hrv !== null && hrvLow !== null && hrv < hrvLow)) {
-    return "low";
-  }
-  if (score >= 8 && (hrv === null || hrvHigh === null || hrv >= hrvHigh)) {
-    return "high";
-  }
-  return "moderate";
 }
 
 function composeRecap(inputs: BriefInputs): MorningBriefRecap {
