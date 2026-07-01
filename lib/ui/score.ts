@@ -50,11 +50,21 @@ const A_STEPS: Anchors = [[1500, 0], [3000, 25], [5000, 50], [6500, 75], [8000, 
 // Calories are V-shaped around the target — both deficit and surplus penalized.
 const A_CALORIES_DELTA: Anchors = [[0, 100], [0.05, 100], [0.1, 75], [0.2, 50], [0.3, 25], [0.4, 0]];
 
-const W_STRONG = 2;
-const W_SUPPORTING = 1;
-const MIN_WEIGHT_FOR_SCORE = 4;
+// Recovery-dominant readiness weights (spec 2026-07-01). Recovery bucket ~64%,
+// feel ~25%, lifestyle ~11% when all present. Weights re-normalize over whichever
+// signals are present, so unlogged lifestyle never penalizes readiness.
+const W_HRV = 3;
+const W_RHR = 3;
+const W_SLEEP = 2;
+const W_DEEP = 1;
+const W_FEEL = 3.5;
+const W_PROTEIN = 0.5;
+const W_CALORIES = 0.5;
+const W_CARBS = 0.25;
+const W_STEPS = 0.25;
+const MIN_WEIGHT_FOR_SCORE = 3;
 
-type ReadinessInputs = {
+export type ReadinessInputs = {
   log:
     | Pick<
         DailyLog,
@@ -77,50 +87,83 @@ type ReadinessInputs = {
   calorieTarget: number | null;
 };
 
-/** Composite 0-100 readiness score for the dashboard donut. Weighted mean over
- *  whichever of the 9 inputs are present today; recovery signals (HRV, RHR,
- *  sleep score, deep sleep, morning check-in) carry double weight vs the
- *  supporting inputs (protein, calories, carbs, steps).
- *
- *  Returns `null` if total weight of present inputs < 4 — too sparse to mean
- *  anything (the donut renders "—" in that case). */
-export function calcReadinessScore(inputs: ReadinessInputs): number | null {
+export type ReadinessResult = {
+  /** Composite 0-100. Null when no recovery signal is present (recovery-required). */
+  score: number | null;
+  /** Recovery-bucket-only 0-100 (HRV, RHR, sleep score, deep sleep). Null when no
+   *  recovery signal is present. Drives the red-recovery floor. */
+  recoverySubScore: number | null;
+  /** Raw morning self-report (1-10) passed through untouched, for display. */
+  feel: number | null;
+  band: "low" | "moderate" | "high";
+};
+
+/** Maps a composite score to a band, then applies the red-recovery floor:
+ *  a red recovery sub-score caps the band regardless of how good the composite
+ *  (or the athlete's feel) is. Feel can lower a day, never rescue a red body. */
+function bandFromReadiness(score: number, recoverySubScore: number | null): "low" | "moderate" | "high" {
+  let band: "low" | "moderate" | "high" = score >= 67 ? "high" : score >= 45 ? "moderate" : "low";
+  if (recoverySubScore !== null) {
+    if (recoverySubScore < 25) band = "low";
+    else if (recoverySubScore < 40 && band === "high") band = "moderate";
+  }
+  return band;
+}
+
+/** Single source of truth for readiness across the dashboard ring and the morning
+ *  brief. Recovery-dominant weighted mean over whichever inputs are present. */
+export function deriveReadiness(inputs: ReadinessInputs): ReadinessResult {
   const { log, checkin, hrvBaseline, calorieTarget } = inputs;
   const weightKg = inputs.weightKg ?? log?.weight_kg ?? null;
+  const feel = checkin?.readiness ?? null;
 
   let weighted = 0;
   let totalWeight = 0;
+  let recWeighted = 0;
+  let recWeight = 0;
   const add = (score: number, weight: number) => {
     weighted += score * weight;
     totalWeight += weight;
   };
+  const addRecovery = (score: number, weight: number) => {
+    add(score, weight);
+    recWeighted += score * weight;
+    recWeight += weight;
+  };
 
   if (log) {
-    if (log.sleep_score != null) add(scoreFromAnchors(log.sleep_score, A_SLEEP_SCORE), W_STRONG);
-    if (log.deep_sleep_hours != null) add(scoreFromAnchors(log.deep_sleep_hours, A_DEEP_SLEEP), W_STRONG);
+    if (log.sleep_score != null) addRecovery(scoreFromAnchors(log.sleep_score, A_SLEEP_SCORE), W_SLEEP);
+    if (log.deep_sleep_hours != null) addRecovery(scoreFromAnchors(log.deep_sleep_hours, A_DEEP_SLEEP), W_DEEP);
     if (log.hrv != null && hrvBaseline > 0) {
-      add(scoreFromAnchors(log.hrv / hrvBaseline, A_HRV_RATIO), W_STRONG);
+      addRecovery(scoreFromAnchors(log.hrv / hrvBaseline, A_HRV_RATIO), W_HRV);
     }
-    if (log.resting_hr != null) add(scoreFromAnchors(log.resting_hr, A_RHR), W_STRONG);
+    if (log.resting_hr != null) addRecovery(scoreFromAnchors(log.resting_hr, A_RHR), W_RHR);
 
     if (log.protein_g != null && weightKg != null && weightKg > 0) {
-      const target = 1.6 * weightKg;
-      add(scoreFromAnchors(log.protein_g / target, A_PROTEIN_RATIO), W_SUPPORTING);
+      add(scoreFromAnchors(log.protein_g / (1.6 * weightKg), A_PROTEIN_RATIO), W_PROTEIN);
     }
     if (log.calories_eaten != null && calorieTarget != null && calorieTarget > 0) {
-      const delta = Math.abs(log.calories_eaten / calorieTarget - 1);
-      add(scoreFromAnchors(delta, A_CALORIES_DELTA), W_SUPPORTING);
+      add(scoreFromAnchors(Math.abs(log.calories_eaten / calorieTarget - 1), A_CALORIES_DELTA), W_CALORIES);
     }
-    if (log.carbs_g != null) add(scoreFromAnchors(log.carbs_g, A_CARBS_G), W_SUPPORTING);
-    if (log.steps != null) add(scoreFromAnchors(log.steps, A_STEPS), W_SUPPORTING);
+    if (log.carbs_g != null) add(scoreFromAnchors(log.carbs_g, A_CARBS_G), W_CARBS);
+    if (log.steps != null) add(scoreFromAnchors(log.steps, A_STEPS), W_STEPS);
   }
 
-  if (checkin?.readiness != null) {
-    add(scoreFromAnchors(checkin.readiness, A_CHECKIN), W_STRONG);
-  }
+  if (feel != null) add(scoreFromAnchors(feel, A_CHECKIN), W_FEEL);
 
-  if (totalWeight < MIN_WEIGHT_FOR_SCORE) return null;
-  return Math.round(weighted / totalWeight);
+  const recoverySubScore = recWeight > 0 ? Math.round(recWeighted / recWeight) : null;
+
+  // Recovery-required: no recovery signal present → readiness is not meaningful.
+  if (recWeight === 0) return { score: null, recoverySubScore: null, feel, band: "moderate" };
+  if (totalWeight < MIN_WEIGHT_FOR_SCORE) return { score: null, recoverySubScore, feel, band: "moderate" };
+
+  const score = Math.round(weighted / totalWeight);
+  return { score, recoverySubScore, feel, band: bandFromReadiness(score, recoverySubScore) };
+}
+
+/** @deprecated Prefer `deriveReadiness`. Returns just the composite score. */
+export function calcReadinessScore(inputs: ReadinessInputs): number | null {
+  return deriveReadiness(inputs).score;
 }
 
 /** Epley one-rep-max estimate. */
