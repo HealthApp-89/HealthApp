@@ -16,21 +16,18 @@ TOKENSTORE = os.path.expanduser("~/.garminconnect")
 
 
 def login() -> Garmin:
-    """Log in, reusing the persisted token; fall back to full login + MFA."""
+    """Log in, reusing the persisted token; fall back to full login + MFA.
+
+    garminconnect >=0.3 handles the whole flow inside ``login(tokenstore)``:
+    it loads saved tokens from that path when present (and refreshes them),
+    otherwise performs a full credential login — calling ``prompt_mfa`` if 2FA
+    is enabled — and then dumps the fresh tokens back to the path automatically.
+    """
     email = os.environ["GARMIN_EMAIL"]
     password = os.environ["GARMIN_PASSWORD"]
-    try:
-        g = Garmin()
-        g.login(TOKENSTORE)  # reuse saved tokens
-        return g
-    except Exception:
-        # Any failure (no saved token, expired token, auth error) → full re-login.
-        # First run or expired token: full login. prompt_mfa is called if 2FA
-        # is enabled — you type the 6-digit code once; the token is then saved.
-        g = Garmin(email, password, prompt_mfa=lambda: input("Garmin MFA code: "))
-        g.login()
-        g.garth.dump(TOKENSTORE)
-        return g
+    g = Garmin(email, password, prompt_mfa=lambda: input("Garmin MFA code: "))
+    g.login(TOKENSTORE)
+    return g
 
 
 def collect_day(g: Garmin, d: str) -> dict:
@@ -67,8 +64,9 @@ def collect_day(g: Garmin, d: str) -> dict:
     bb = safe(g.get_body_battery, d, d)
     if isinstance(bb, list) and bb:
         vals = [x for x in (bb[0].get("bodyBatteryValuesArray") or []) if len(x) > 1]
-        if vals:
-            levels = [v[1] for v in vals]
+        # Some time-points have no reading (v[1] is None); drop them before min/max.
+        levels = [v[1] for v in vals if v[1] is not None]
+        if levels:
             day["body_battery_low"] = min(levels)
             day["body_battery_peak"] = max(levels)
 
@@ -82,8 +80,9 @@ def collect_day(g: Garmin, d: str) -> dict:
             day["deep_sleep_hours"] = round(dto["deepSleepSeconds"] / 3600, 2)
         if dto.get("remSleepSeconds") is not None:
             day["rem_sleep_hours"] = round(dto["remSleepSeconds"] / 3600, 2)
-        if dto.get("sleepScores", {}).get("overall", {}).get("value") is not None:
-            day["sleep_score"] = dto["sleepScores"]["overall"]["value"]
+        overall = ((dto.get("sleepScores") or {}).get("overall") or {})
+        if overall.get("value") is not None:
+            day["sleep_score"] = overall["value"]
 
     stats = safe(g.get_stats, d)
     if stats:
@@ -103,12 +102,13 @@ def collect_day(g: Garmin, d: str) -> dict:
         # acute/chronic load live under mostRecentTrainingLoadBalance; shape
         # varies by firmware — best-effort extraction.
         try:
-            bal = ts.get("mostRecentTrainingLoadBalance", {})
-            metrics = list(bal.get("metricsTrainingLoadBalanceDTOMap", {}).values())
+            # Nested Garmin fields are frequently null; `... or {}` guards each hop.
+            bal = ts.get("mostRecentTrainingLoadBalance") or {}
+            metrics = list((bal.get("metricsTrainingLoadBalanceDTOMap") or {}).values())
             if metrics:
                 # Best-effort: dict order is undocumented; this may not always be the acute value. Verify against a real response.
                 day["acute_load"] = metrics[0].get("acwrPercent")
-        except (KeyError, IndexError, TypeError):
+        except (KeyError, IndexError, TypeError, AttributeError):
             pass
 
     hr = safe(g.get_heart_rates, d)
