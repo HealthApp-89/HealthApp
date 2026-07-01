@@ -152,6 +152,6 @@ export async function POST(request: Request) {
     source: "garmin",
     garmin_daily_upserted: garminRows.length,
     daily_logs_upserted: daysUpserted,
-    owns_daily: garminOwnsDaily,
+    owns_daily: garminOwnsDaily, // true = full recovery/sleep cutover; movement/energy is written regardless
   });
 }

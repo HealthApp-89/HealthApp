@@ -50,16 +50,20 @@ export type WhoopBuildResult = {
 };
 
 /** Build the per-day rows from WHOOP records. Order matters:
- *  1. Cycles → strain (also feeds the cycle-tz lookup for sleeps/recoveries).
- *  2. Sleeps → sleep_*, builds sleepIdToDate using cycle-tz lookup.
- *  3. Recoveries → hrv/resting_hr/recovery/spo2/skin_temp_c, keyed by linked
+ *  1. Sleeps → sleep_*, builds sleepIdToDate using the cycle-tz lookup
+ *     (`buildCycleTzLookup(cycles)` runs at function entry so each sleep can
+ *     be keyed to its containing cycle's timezone_offset).
+ *  2. Recoveries → hrv/resting_hr/recovery/spo2/skin_temp_c, keyed by linked
  *     sleep's date (or USER_TIMEZONE-keyed `created_at` fallback).
  *
- *  Records whose required date field (cycle.start / sleep.end /
- *  recovery.created_at, when not joinable to a sleep) is missing or
- *  unparseable are skipped with a console.warn — they would otherwise
- *  throw "Invalid time value" inside ymdInZoneOffset/ymdInUserTz and kill
- *  the whole batch. The skipped counts are returned alongside the rows. */
+ *  Strain is Garmin-owned as of the movement-cluster cutover — this builder
+ *  no longer emits it.
+ *
+ *  Records whose required date field (sleep.end / recovery.created_at, when
+ *  not joinable to a sleep) is missing or unparseable are skipped with a
+ *  console.warn — they would otherwise throw "Invalid time value" inside
+ *  ymdInZoneOffset/ymdInUserTz and kill the whole batch. The skipped counts
+ *  are returned alongside the rows. */
 export function buildWhoopDayRows(
   userId: string,
   recovery: WhoopRecovery[],

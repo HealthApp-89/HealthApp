@@ -208,7 +208,7 @@ async function snapshotWindow(): Promise<Snapshot> {
 
 const before = await snapshotWindow();
 const beforeWithData = Object.entries(before).filter(
-  ([, cols]) => cols.hrv !== null || cols.strain !== null || cols.recovery !== null,
+  ([, cols]) => cols.hrv !== null || cols.recovery !== null,
 ).length;
 console.log(`Rows in window with WHOOP data: ${beforeWithData}`);
 
@@ -216,7 +216,7 @@ console.log(`Rows in window with WHOOP data: ${beforeWithData}`);
 if (!skipPrompt) {
   console.log("\nAbout to clear + repopulate the following columns:");
   console.log("  hrv, resting_hr, recovery, sleep_hours, sleep_score,");
-  console.log("  deep_sleep_hours, rem_sleep_hours, strain, spo2, skin_temp_c, respiratory_rate");
+  console.log("  deep_sleep_hours, rem_sleep_hours, spo2, skin_temp_c, respiratory_rate");
   const rl = createInterface({ input: stdin, output: stdout });
   const answer = (await rl.question("Proceed? [y/N] ")).trim().toLowerCase();
   rl.close();
@@ -238,7 +238,6 @@ const { error: clearErr } = await supabase
     sleep_score: null,
     deep_sleep_hours: null,
     rem_sleep_hours: null,
-    strain: null,
     spo2: null,
     skin_temp_c: null,
     respiratory_rate: null,

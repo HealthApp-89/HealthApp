@@ -106,6 +106,6 @@ export function mapMovementEnergy(
     distance_km: numOrNull(input.distance_km),
     calories: intOrNull(input.calories),
     active_calories: intOrNull(input.active_calories),
-    strain: strain === undefined ? null : strain,
+    strain: strain,
   };
 }
