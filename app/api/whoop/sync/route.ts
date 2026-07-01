@@ -68,6 +68,19 @@ async function syncForUser(userId: string) {
   if (rows.length === 0) return { ok: true, ...counts, skipped };
 
   const supabase = createSupabaseServiceRoleClient();
+
+  // Cutover knob: once the athlete flips profiles.metrics_source to 'garmin',
+  // WHOOP stops owning daily_logs. We still fetched WHOOP above (harmless), but
+  // do not write the recovery/strain cluster — Garmin owns it now.
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("metrics_source")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (profile?.metrics_source === "garmin") {
+    return { ok: true, ...counts, skipped, skipped_write: "metrics_source_garmin" };
+  }
+
   const { error } = await supabase
     .from("daily_logs")
     .upsert(rows, { onConflict: "user_id,date" });
