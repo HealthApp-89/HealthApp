@@ -44,10 +44,10 @@ export type YesterdayWorkoutSummary = {
   top_e1rm: { lift: string; kg: number } | null;
 };
 
-/** WHOOP baselines from profiles.whoop_baselines. We read:
- *  - rolling_30d.hrv.{mean,sd,status} — live anchor; SWC = ±0.5×sd
- *  - legacy hrv_swc_low / hrv_swc_high — pre-existing seed keys (typically
- *    null in practice). Kept as a fallback for resilience.
+/** WHOOP baselines from profiles.whoop_baselines, forwarded verbatim from
+ *  data-sources. The assembler itself does NOT read rolling_30d or hrv_swc_*
+ *  SWC fields — those are preserved here solely for BriefInputs consumers
+ *  downstream (e.g. pickCoachSuggestion, which uses the band for chip logic).
  *  See lib/whoop/baselines.ts and the 2026-05-30 baselines spec. */
 export type WhoopBaselineForBand = {
   hrv_swc_low?: number | null;
@@ -200,7 +200,7 @@ function shortWeekdayFromDate(
 
 /** Today's recovery signals + YESTERDAY's lifestyle (steps/calories/protein/carbs),
  *  mirroring the dashboard ring's scoreLog per the readiness-uses-yesterday rule. */
-function readinessLog(inputs: BriefInputs): DailyLog | null {
+export function readinessLog(inputs: BriefInputs): DailyLog | null {
   const t = inputs.todayLog;
   if (!t) return null;
   const y = inputs.yesterdayLog;

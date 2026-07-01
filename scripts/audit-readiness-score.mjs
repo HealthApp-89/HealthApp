@@ -5,6 +5,7 @@
 //   node --import ./scripts/alias-loader.mjs --experimental-strip-types --env-file=.env.local scripts/audit-readiness-score.mjs
 
 import { deriveReadiness, calcReadinessScore } from "@/lib/ui/score";
+import { readinessLog } from "@/lib/morning/brief/assembler";
 
 let pass = 0, fail = 0;
 function assert(name, cond, detail) {
@@ -91,18 +92,43 @@ const HRV_BASE = 33;
     calcReadinessScore(inputs) === deriveReadiness(inputs).score);
 }
 
-// 7. Brief parity: deriveReadiness with today's recovery + yesterday's lifestyle
-//    produces the same score as the dashboard would for identical inputs.
+// 7. Brief blend: readinessLog must keep TODAY's recovery and YESTERDAY's lifestyle.
+//    todayLog has distinct recovery values AND large lifestyle values that must be ignored.
+//    yesterdayLog has the lifestyle values that must win, but its recovery must be ignored.
 {
-  const shared = {
-    log: { hrv: 33, resting_hr: 52, sleep_score: 75, deep_sleep_hours: 1.6,
-           protein_g: 150, calories_eaten: 1900, carbs_g: 120, steps: 6000, weight_kg: 103 },
-    checkin: { readiness: 7 },
-    hrvBaseline: HRV_BASE, weightKg: 103, calorieTarget: 1900,
+  /** @type {any} */
+  const todayLog = {
+    hrv: 33, resting_hr: 52, sleep_score: 75, deep_sleep_hours: 1.6,
+    steps: 99999, calories_eaten: 9999, protein_g: 999, carbs_g: 999, weight_kg: 103,
   };
-  const a = deriveReadiness(shared);
-  const b = deriveReadiness({ ...shared });
-  assert("deriveReadiness is deterministic across surfaces", a.score === b.score && a.band === b.band);
+  /** @type {any} */
+  const yesterdayLog = {
+    hrv: 10, resting_hr: 90, sleep_score: 20, deep_sleep_hours: 0.2,
+    steps: 6000, calories_eaten: 1900, protein_g: 150, carbs_g: 120, weight_kg: 103,
+  };
+  const blended = readinessLog(/** @type {any} */({ todayLog, yesterdayLog }));
+
+  // Recovery comes from today — NOT yesterday's degraded values.
+  assert("blend: today's hrv kept (not yesterday's 10)",
+    blended !== null && blended.hrv === 33, `hrv=${blended?.hrv}`);
+  assert("blend: today's resting_hr kept (not yesterday's 90)",
+    blended !== null && blended.resting_hr === 52, `resting_hr=${blended?.resting_hr}`);
+  assert("blend: today's sleep_score kept (not yesterday's 20)",
+    blended !== null && blended.sleep_score === 75, `sleep_score=${blended?.sleep_score}`);
+
+  // Lifestyle comes from yesterday — NOT today's inflated sentinel values.
+  assert("blend: yesterday's steps win (not today's 99999)",
+    blended !== null && blended.steps === 6000, `steps=${blended?.steps}`);
+  assert("blend: yesterday's calories_eaten win (not today's 9999)",
+    blended !== null && blended.calories_eaten === 1900, `calories_eaten=${blended?.calories_eaten}`);
+  assert("blend: yesterday's protein_g win (not today's 999)",
+    blended !== null && blended.protein_g === 150, `protein_g=${blended?.protein_g}`);
+  assert("blend: yesterday's carbs_g win (not today's 999)",
+    blended !== null && blended.carbs_g === 120, `carbs_g=${blended?.carbs_g}`);
+
+  // Null todayLog → null blend (no recovery anchor).
+  const nullBlend = readinessLog(/** @type {any} */({ todayLog: null, yesterdayLog }));
+  assert("blend: null todayLog → null", nullBlend === null, `nullBlend=${nullBlend}`);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
