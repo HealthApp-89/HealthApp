@@ -45,7 +45,7 @@ const daySchema = z.object({
   hr_samples: z.array(z.tuple([z.number(), z.number()])).nullish(),
 });
 
-const bodySchema = z.object({ days: z.array(daySchema).max(31) });
+const bodySchema = z.object({ days: z.array(daySchema).min(1).max(31) });
 
 export async function POST(request: Request) {
   const raw = extractBearer(request);
@@ -69,6 +69,7 @@ export async function POST(request: Request) {
     .select("metrics_source, age")
     .eq("user_id", userId)
     .maybeSingle();
+  if (!profile) console.warn("[ingest/garmin] no profile row for user", userId, "— defaulting metrics_source=whoop, HRmax=190");
   const garminOwnsDaily = profile?.metrics_source === "garmin";
   const hrMax = profile?.age ? Math.round(208 - 0.7 * profile.age) : DEFAULT_HR_MAX;
 
