@@ -5,10 +5,9 @@
 export type HrSample = { ts: number; bpm: number }; // ts = epoch ms
 export type StrainCalibration = { A: number; k: number };
 
-/** Initial calibration; refined against WHOOP during the parallel month.
- *  Chosen so a ~all-out day (TRIMP ≈ 300) lands near 20 and an easy day
- *  (TRIMP ≈ 30) lands ~7. Update after the audit fit (Task 7). */
-export const DEFAULT_STRAIN_CALIBRATION: StrainCalibration = { A: 4.2, k: 0.05 };
+/** Calibrated against WHOOP strain over the June 2026 parallel-run window
+ *  (scripts/audit-garmin-vs-whoop.mjs grid-search fit). RMSE 1.89 over 27 days. */
+export const DEFAULT_STRAIN_CALIBRATION: StrainCalibration = { A: 5, k: 0.04 };
 
 /** Half-open zone bands on %HRmax: Z1 50-59, Z2 60-69, Z3 70-79, Z4 80-89,
  *  Z5 90+. Below 50% → 0 (no strain contribution). */
