@@ -15,7 +15,7 @@
 - `daily_logs.calories`, `daily_logs.active_calories`, `daily_logs.steps`, `daily_logs.calories_eaten` are **INTEGER** columns — `Math.round()` before upsert.
 - No new "today"/date code may call `new Date().toISOString().slice(0,10)` in app code paths gated by the timezone audit; the ingest route keys by the `date` string the sidecar sends (already local-day-attributed), so it is exempt, but do not compute "today" inside the route.
 - There is **no TS test framework**; pure-function verification is done with fixture **audit scripts** in the style of `scripts/audit-prescription-rules.mjs`, run via `node --import ./scripts/alias-loader.mjs --experimental-strip-types --env-file=.env.local scripts/<name>.mjs`. "Write the failing test" means "add the assertion to the audit script."
-- Migrations apply via `supabase db push` (CLI is linked). Verify the latest applied migration number before naming a new file; this plan assumes **0045** — bump if a higher number already exists.
+- Migration number is **0046** (`0045_per_set_rir.sql` already exists). Apply it via the **Supabase Dashboard SQL editor** by pasting the file contents — NOT `supabase db push`, which is blocked by a pre-existing duplicate `0026` prefix in the migration history (same path every recent arc took). **Applying the migration is a controller/user step, never a subagent action.** Implementers write the `.sql` file and stop there.
 - Verify TypeScript with `npm run typecheck` (strict, `tsc --noEmit`). There is no working linter.
 
 ---
@@ -23,7 +23,7 @@
 ### Task 1: Migration + type plumbing
 
 **Files:**
-- Create: `supabase/migrations/0045_garmin_ingest.sql`
+- Create: `supabase/migrations/0046_garmin_ingest.sql`
 - Modify: `lib/data/types.ts` (add `metrics_source` to `Profile`; add `GarminDailyRow`)
 - Modify: `lib/ingest/auth.ts:22-25` (widen `resolveIngestToken` source union)
 
@@ -32,10 +32,10 @@
 
 - [ ] **Step 1: Write the migration**
 
-Create `supabase/migrations/0045_garmin_ingest.sql`:
+Create `supabase/migrations/0046_garmin_ingest.sql`:
 
 ```sql
--- 0045_garmin_ingest.sql
+-- 0046_garmin_ingest.sql
 -- Garmin Fenix 8 ingest: shadow/audit table + cutover knob.
 
 -- Single source-of-truth knob for who owns the recovery/strain cluster on
@@ -90,10 +90,10 @@ create policy "garmin_daily self modify" on garmin_daily
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 ```
 
-- [ ] **Step 2: Apply the migration**
+- [ ] **Step 2: Apply the migration (CONTROLLER/USER STEP — not the implementer)**
 
-Run: `supabase db push`
-Expected: applies `0045_garmin_ingest.sql` with no error. If it reports the migration already recorded, run `supabase migration repair --status applied 0045` then re-push.
+Do NOT run `supabase db push` (blocked by the duplicate `0026` prefix). The implementer writes the `.sql` file and stops. The controller (or user) applies it by pasting the file contents into the **Supabase Dashboard → SQL Editor** and running it.
+Expected after apply: `garmin_daily` table exists and `profiles.metrics_source` column exists (default `'whoop'`). Live-DB verification steps in later tasks (Task 4 smoke, Task 7 audit) depend on this apply having happened.
 
 - [ ] **Step 3: Widen the ingest-token source union**
 
@@ -114,14 +114,14 @@ In `lib/data/types.ts`, add to the `Profile` type (after `timezone: string;`):
   /** Which integration owns the recovery/strain cluster on daily_logs.
    *  'whoop' (default) or 'garmin'. The single cutover knob: the WHOOP sync
    *  cron and the Garmin ingest route each write daily_logs only when this
-   *  matches their source. Migration 0045. */
+   *  matches their source. Migration 0046. */
   metrics_source: "whoop" | "garmin";
 ```
 
 Then add a new exported type (near the other row types):
 
 ```typescript
-/** Raw + derived per-day Garmin data (migration 0045). Shadow/audit store;
+/** Raw + derived per-day Garmin data (migration 0046). Shadow/audit store;
  *  daily_logs is written separately, gated by profiles.metrics_source. */
 export type GarminDailyRow = {
   user_id: string;
@@ -164,7 +164,7 @@ Expected: PASS (no errors). The widened union and new types compile.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add supabase/migrations/0045_garmin_ingest.sql lib/data/types.ts lib/ingest/auth.ts
+git add supabase/migrations/0046_garmin_ingest.sql lib/data/types.ts lib/ingest/auth.ts
 git commit -m "feat(garmin): migration + type plumbing for Garmin ingest"
 ```
 
