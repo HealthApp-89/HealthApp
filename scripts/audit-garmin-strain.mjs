@@ -1,4 +1,5 @@
-// Fixture-based audit for lib/coach/garmin/derive-strain.ts. No DB access.
+// Fixture-based audit for lib/coach/garmin/derive-strain.ts and
+// lib/coach/garmin/map-metrics.ts. No DB access.
 // Run: node --import ./scripts/alias-loader.mjs --experimental-strip-types --env-file=.env.local scripts/audit-garmin-strain.mjs
 import {
   hrZone,
@@ -7,6 +8,7 @@ import {
   trimpToStrain,
   DEFAULT_STRAIN_CALIBRATION,
 } from "@/lib/coach/garmin/derive-strain";
+import { mapToDailyLogs } from "@/lib/coach/garmin/map-metrics";
 
 let passed = 0;
 let failed = 0;
@@ -60,6 +62,33 @@ assert(
   "strain uses default cal",
   approx(trimpToStrain(100), Math.min(21, DEFAULT_STRAIN_CALIBRATION.A * Math.log(1 + DEFAULT_STRAIN_CALIBRATION.k * 100))),
 );
+
+// ── map-metrics: mapToDailyLogs ───────────────────────────────────────────────
+const mapped = mapToDailyLogs(
+  {
+    date: "2026-07-01",
+    hrv: 68,
+    resting_hr: 52,
+    training_readiness: 74,
+    sleep_hours: 7.4,
+    sleep_score: 81,
+    steps: 8421.6,        // sidecar may send float; column is int
+    distance_km: 6.2,
+    calories: 2480.9,
+    active_calories: 612.4,
+    respiratory_rate: 14.2,
+  },
+  12.5,
+);
+assert("map recovery = readiness", mapped.recovery === 74);
+assert("map strain passthrough", mapped.strain === 12.5);
+assert("map steps rounded int", mapped.steps === 8422);
+assert("map calories rounded int", mapped.calories === 2481);
+assert("map active_calories rounded int", mapped.active_calories === 612);
+assert("map source tag", mapped.source === "garmin");
+assert("map keeps user/date keys", mapped.date === "2026-07-01");
+// Absent fields must not appear as null keys that would clobber other sources.
+assert("map omits absent spo2", !("spo2" in mapped));
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);
