@@ -77,3 +77,35 @@ export function mapToDailyLogs(
 
   return row as Omit<MappedRow, "user_id">;
 }
+
+export type MovementEnergyRow = {
+  date: string;
+  steps: number | null;
+  distance_km: number | null;
+  calories: number | null;
+  active_calories: number | null;
+  strain: number | null;
+};
+
+/** Partial "movement/energy" cluster Garmin owns ahead of the full cutover.
+ *  All five columns are always present (null when absent) so the daily_logs
+ *  upsert payload stays homogeneous; NO `source` key is emitted, so a
+ *  co-owned row keeps whatever source tag WHOOP set. Single-owner columns,
+ *  so writing null is honest ("no Garmin data that day"), not a clobber. */
+export function mapMovementEnergy(
+  input: GarminDayInput,
+  strain: number | null,
+): MovementEnergyRow {
+  const intOrNull = (v: number | undefined | null) =>
+    v === undefined || v === null ? null : Math.round(v);
+  const numOrNull = (v: number | undefined | null) =>
+    v === undefined || v === null ? null : v;
+  return {
+    date: input.date,
+    steps: intOrNull(input.steps),
+    distance_km: numOrNull(input.distance_km),
+    calories: intOrNull(input.calories),
+    active_calories: intOrNull(input.active_calories),
+    strain: strain === undefined ? null : strain,
+  };
+}

@@ -8,7 +8,7 @@ import {
   trimpToStrain,
   DEFAULT_STRAIN_CALIBRATION,
 } from "@/lib/coach/garmin/derive-strain";
-import { mapToDailyLogs } from "@/lib/coach/garmin/map-metrics";
+import { mapToDailyLogs, mapMovementEnergy } from "@/lib/coach/garmin/map-metrics";
 
 let passed = 0;
 let failed = 0;
@@ -89,6 +89,30 @@ assert("map source tag", mapped.source === "garmin");
 assert("map keeps user/date keys", mapped.date === "2026-07-01");
 // Absent fields must not appear as null keys that would clobber other sources.
 assert("map omits absent spo2", !("spo2" in mapped));
+
+// ── map-metrics: mapMovementEnergy (partial movement/energy cluster) ──────────
+const me = mapMovementEnergy(
+  { date: "2026-07-01", steps: 8421.6, distance_km: 6.2, calories: 2480.9, active_calories: 612.4,
+    hrv: 68, recovery: 74, sleep_hours: 7.4 },
+  12.5,
+);
+assert("me strain passthrough", me.strain === 12.5);
+assert("me steps rounded int", me.steps === 8422);
+assert("me calories rounded int", me.calories === 2481);
+assert("me active_calories rounded int", me.active_calories === 612);
+assert("me distance passthrough", me.distance_km === 6.2);
+assert("me keeps date", me.date === "2026-07-01");
+// Single-owner cluster: NO source key (preserve co-owner's tag).
+assert("me omits source", !("source" in me));
+// Must NOT carry recovery/hrv/sleep columns.
+assert("me omits recovery", !("recovery" in me));
+assert("me omits hrv", !("hrv" in me));
+assert("me omits sleep_hours", !("sleep_hours" in me));
+// Absent metric → null (present key, homogeneous payload), not omitted.
+const meEmpty = mapMovementEnergy({ date: "2026-07-02" }, null);
+assert("me absent steps = null", meEmpty.steps === null);
+assert("me absent strain = null", meEmpty.strain === null);
+assert("me absent key present", "calories" in meEmpty);
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);
