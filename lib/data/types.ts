@@ -61,6 +61,40 @@ export type DailyLog = {
   updated_at: string;
 };
 
+/** Raw + derived per-day Garmin data (migration 0046). Shadow/audit store;
+ *  daily_logs is written separately, gated by profiles.metrics_source. */
+export type GarminDailyRow = {
+  user_id: string;
+  date: string; // YYYY-MM-DD (local day, attributed by the sidecar)
+  hrv: number | null;
+  resting_hr: number | null;
+  training_readiness: number | null;
+  body_battery_low: number | null;
+  body_battery_peak: number | null;
+  sleep_hours: number | null;
+  sleep_score: number | null;
+  deep_sleep_hours: number | null;
+  rem_sleep_hours: number | null;
+  sleep_start_at: string | null;
+  sleep_end_at: string | null;
+  respiratory_rate: number | null;
+  steps: number | null;
+  distance_km: number | null;
+  calories: number | null;
+  active_calories: number | null;
+  spo2: number | null;
+  skin_temp_variation: number | null;
+  acute_load: number | null;
+  chronic_load: number | null;
+  vo2max: number | null;
+  strain: number | null;
+  trimp_edwards: number | null;
+  trimp_banister: number | null;
+  raw: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type Profile = {
   user_id: string;
   name: string | null;
@@ -93,6 +127,11 @@ export type Profile = {
   /** IANA timezone (e.g., "Asia/Dubai"). Authoritative for all per-user "today"
    *  / week-boundary / day-attribution computations. NOT NULL DEFAULT in DB. */
   timezone: string;
+  /** Which integration owns the recovery/strain cluster on daily_logs.
+   *  'whoop' (default) or 'garmin'. The single cutover knob: the WHOOP sync
+   *  cron and the Garmin ingest route each write daily_logs only when this
+   *  matches their source. Migration 0046. */
+  metrics_source: "whoop" | "garmin";
   /** Activity-aware planning (migration 0044): user-configured recurring
    *  activities (e.g. padel every Tue/Thu) that the planning engine and
    *  morning brief use to anticipate fatigue on lift days. */

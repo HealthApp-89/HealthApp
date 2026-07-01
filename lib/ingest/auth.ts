@@ -21,7 +21,7 @@ export function tokenPrefix(raw: string): string {
  *  Updates last_used_at + last_used_source on success (best-effort, fire-and-forget). */
 export async function resolveIngestToken(
   rawToken: string,
-  source: "apple_health" | "strong" | "yazio",
+  source: "apple_health" | "strong" | "yazio" | "garmin",
 ): Promise<string | null> {
   if (!rawToken || !rawToken.startsWith(TOKEN_PREFIX)) return null;
   const expectedHash = hashToken(rawToken);
