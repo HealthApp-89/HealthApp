@@ -9,7 +9,7 @@ import {
   trimpToStrain,
   type HrSample,
 } from "@/lib/coach/garmin/derive-strain";
-import { mapToDailyLogs, type GarminDayInput } from "@/lib/coach/garmin/map-metrics";
+import { mapToDailyLogs, mapMovementEnergy, type GarminDayInput } from "@/lib/coach/garmin/map-metrics";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -117,11 +117,14 @@ export async function POST(request: Request) {
       updated_at: now,
     });
 
-    if (garminOwnsDaily) {
-      // Strip hr_samples before mapping (not a daily_logs field).
-      const { hr_samples: _omit, ...dayInput } = d;
-      dailyRows.push({ ...mapToDailyLogs(dayInput as GarminDayInput, strain), user_id: userId, updated_at: now });
-    }
+    // Movement/energy cluster (steps/strain/distance/calories) is Garmin-owned
+    // now, written every ingest. Recovery/HRV/sleep join only at the full
+    // cutover (metrics_source='garmin'). See spec 2026-07-01-garmin-movement-cluster-cutover.
+    const { hr_samples: _omit, ...dayInput } = d;
+    const mapped = garminOwnsDaily
+      ? mapToDailyLogs(dayInput as GarminDayInput, strain)          // full incl source:'garmin'
+      : mapMovementEnergy(dayInput as GarminDayInput, strain);     // movement/energy only, no source
+    dailyRows.push({ ...mapped, user_id: userId, updated_at: now });
   }
 
   if (garminRows.length > 0) {
