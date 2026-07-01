@@ -83,43 +83,6 @@ export function buildWhoopDayRows(
     return row;
   };
 
-  // 1. Cycles → strain
-  //
-  // WHOOP's "Day Strain for date X" is the strain of the cycle the user was
-  // *awake* during on date X — but cycle.start is bedtime, which for any
-  // pre-midnight bedtime falls on the previous calendar day. Naively keying
-  // by cycle.start.localDate shifts every strain row one day too early
-  // (audit 2026-05-12 caught 38/42 days off by one in this direction).
-  //
-  // The fix: noon-shift cycle.start before extracting the local date. Adding
-  // 12 hours to a bedtime (any time between ~19:00 and ~04:00 local) lands
-  // squarely in the waking calendar day for both pre- and post-midnight
-  // bedtimes, with no special-casing:
-  //   bedtime Mon 22:00 + 12h → Tue 10:00 → Tuesday (waking day) ✓
-  //   bedtime Tue 01:30 + 12h → Tue 13:30 → Tuesday (waking day) ✓
-  // Works identically for closed and open (in-progress) cycles, since we
-  // only need cycle.start.
-  const NOON_SHIFT_MS = 12 * 60 * 60 * 1000;
-  for (const c of cycles) {
-    if (!c.score) continue;
-    const startDate = parseValidDate(c.start);
-    if (!startDate) {
-      skipped.cycles++;
-      console.warn(`[whoop] cycle ${c.id} skipped: invalid start=${JSON.stringify(c.start)}`);
-      continue;
-    }
-    if (parseUtcOffsetMs(c.timezone_offset) === null) {
-      skipped.badTzOffset++;
-      console.warn(
-        `[whoop] cycle ${c.id} bad timezone_offset=${JSON.stringify(c.timezone_offset)}; keying via USER_TIMEZONE`,
-      );
-    }
-    const wakingDayAnchor = new Date(startDate.getTime() + NOON_SHIFT_MS);
-    const date = ymdInZoneOffset(wakingDayAnchor, c.timezone_offset);
-    const row = ensure(date);
-    row.strain = c.score.strain;
-  }
-
   // 2. Sleeps → sleep_*, also populate sleepIdToDate
   const sleepIdToDate = new Map<string, string>();
   for (const s of sleep) {
