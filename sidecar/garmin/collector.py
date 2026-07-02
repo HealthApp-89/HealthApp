@@ -83,6 +83,10 @@ def collect_day(g: Garmin, d: str) -> dict:
         overall = ((dto.get("sleepScores") or {}).get("overall") or {})
         if overall.get("value") is not None:
             day["sleep_score"] = overall["value"]
+        # Sleep-average respiration, to match WHOOP's sleep-based respiratory_rate
+        # (NOT stats.avgWakingRespirationValue — that's waking, a different metric).
+        if dto.get("averageRespirationValue") is not None:
+            day["respiratory_rate"] = dto["averageRespirationValue"]
 
     stats = safe(g.get_stats, d)
     if stats:
@@ -94,8 +98,6 @@ def collect_day(g: Garmin, d: str) -> dict:
             day["calories"] = stats["totalKilocalories"]
         if stats.get("activeKilocalories") is not None:
             day["active_calories"] = stats["activeKilocalories"]
-        if stats.get("avgWakingRespirationValue") is not None:
-            day["respiratory_rate"] = stats["avgWakingRespirationValue"]
 
     ts = safe(g.get_training_status, d)
     if isinstance(ts, dict):
