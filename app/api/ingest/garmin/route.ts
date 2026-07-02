@@ -9,7 +9,7 @@ import {
   trimpToStrain,
   type HrSample,
 } from "@/lib/coach/garmin/derive-strain";
-import { mapToDailyLogs, mapMovementEnergy, type GarminDayInput } from "@/lib/coach/garmin/map-metrics";
+import { mapToDailyLogs, mapMovementEnergy, mapGarminWellness, type GarminDayInput } from "@/lib/coach/garmin/map-metrics";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -25,6 +25,9 @@ const daySchema = z.object({
   training_readiness: z.number().nullish(),
   body_battery_low: z.number().nullish(),
   body_battery_peak: z.number().nullish(),
+  stress_avg: z.number().nullish(),
+  stress_max: z.number().nullish(),
+  stress_qualifier: z.string().nullish(),
   sleep_hours: z.number().nullish(),
   sleep_score: z.number().nullish(),
   deep_sleep_hours: z.number().nullish(),
@@ -94,6 +97,9 @@ export async function POST(request: Request) {
       training_readiness: d.training_readiness ?? null,
       body_battery_low: d.body_battery_low ?? null,
       body_battery_peak: d.body_battery_peak ?? null,
+      stress_avg: d.stress_avg ?? null,
+      stress_max: d.stress_max ?? null,
+      stress_qualifier: d.stress_qualifier ?? null,
       sleep_hours: d.sleep_hours ?? null,
       sleep_score: d.sleep_score ?? null,
       deep_sleep_hours: d.deep_sleep_hours ?? null,
@@ -124,7 +130,10 @@ export async function POST(request: Request) {
     const mapped = garminOwnsDaily
       ? mapToDailyLogs(dayInput as GarminDayInput, strain)          // full incl source:'garmin'
       : mapMovementEnergy(dayInput as GarminDayInput, strain);     // movement/energy only, no source
-    dailyRows.push({ ...mapped, user_id: userId, updated_at: now });
+    // Body Battery + Stress are Garmin-owned single-owner columns, written every
+    // ingest regardless of metrics_source (same contract as movement/energy).
+    const wellness = mapGarminWellness(dayInput as GarminDayInput);
+    dailyRows.push({ ...mapped, ...wellness, user_id: userId, updated_at: now });
   }
 
   if (garminRows.length > 0) {
