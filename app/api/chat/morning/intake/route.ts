@@ -27,7 +27,7 @@ import {
   REST_DAY_MESSAGE_HEALTHY_TO_SICK,
   REST_DAY_MESSAGE_STILL_SICK,
   FREE_TEXT_TAIL_PROMPT,
-  SYNC_WHOOP_PROMPT,
+  SYNC_RECOVERY_PROMPT,
   type SlotKey,
 } from "@/lib/morning/script";
 import { nextSlot, nextIntakeState } from "@/lib/morning/state";
@@ -421,10 +421,10 @@ Today's structured answers so far: ${JSON.stringify({
 
         if (!log || log.recovery == null) {
           await insertAssistantTurn(sr, userId, {
-            content: SYNC_WHOOP_PROMPT,
+            content: SYNC_RECOVERY_PROMPT,
             ui: {
               chips: [
-                { label: "Sync WHOOP now", action: "whoop_sync" },
+                { label: "Recheck", action: "recheck" },
                 { label: "Skip — feel-only plan", action: "skip_whoop" },
               ],
             },

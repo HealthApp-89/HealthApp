@@ -341,8 +341,8 @@ export type CheckinRow = {
 export type MorningChip =
   // Slot answer — POST {slot, value} to /api/chat/morning/intake
   | { label: string; value: string | number; slot: string }
-  // Action chip — client dispatches a side-effect (whoop_sync, skip_whoop, retry_recommendation, retry_brief)
-  | { label: string; action: "whoop_sync" | "skip_whoop" | "retry_recommendation" | "retry_brief" };
+  // Action chip — client dispatches a side-effect (recheck, skip_whoop, retry_recommendation, retry_brief)
+  | { label: string; action: "recheck" | "skip_whoop" | "retry_recommendation" | "retry_brief" };
 
 export type MorningUI = {
   chips?: MorningChip[];

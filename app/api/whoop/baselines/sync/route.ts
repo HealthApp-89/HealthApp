@@ -27,11 +27,15 @@ export async function GET(request: Request) {
 
   if (isCron) {
     const supabase = createSupabaseServiceRoleClient();
-    const { data: tokenRows } = await supabase
-      .from("whoop_tokens")
-      .select("user_id");
+    // Post-cutover: recovery baselines recompute from daily_logs (Garmin-owned),
+    // so iterate athletes whose metrics_source is Garmin — NOT whoop_tokens,
+    // which empties when the WHOOP subscription lapses.
+    const { data: profileRows } = await supabase
+      .from("profiles")
+      .select("user_id")
+      .eq("metrics_source", "garmin");
     const results: Record<string, unknown> = {};
-    for (const { user_id } of tokenRows ?? []) {
+    for (const { user_id } of profileRows ?? []) {
       try {
         results[user_id] = await syncForUser(user_id);
       } catch (e) {

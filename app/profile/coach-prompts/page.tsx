@@ -150,7 +150,7 @@ function SharedLayersCard() {
           title="Snapshot prefix"
           subtitle="Cached, refreshed ~hourly · ~3–5k tokens"
         >
-          Your profile + WHOOP baselines + active training plan + last 14 days
+          Your profile + recovery baselines + active training plan + last 14 days
           of daily_logs (HRV, recovery, sleep, strain, steps, weight, macros) +
           5 most recent workout summaries.
         </Layer>

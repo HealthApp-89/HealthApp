@@ -77,7 +77,6 @@ export function renderCard(
     case "sleep_debt_accumulated":     return renderSleepDebt(event, ctx);
     case "low_recovery_streak":        return renderLowRecoveryStreak(event, ctx);
     case "strain_recovery_imbalance":  return renderStrainRecovery(event, ctx);
-    case "skin_temp_elevated":         return renderSkinTemp(event, ctx);
     case "recurring_soreness_area":    return renderRecurringSoreness(event, ctx);
     case "sickness_lingering":         return renderSicknessLingering(event, ctx);
     case "deep_sleep_deficit":         return renderDeepSleepDeficit(event, ctx);
@@ -447,24 +446,6 @@ function renderStrainRecovery(event: ProactiveEvent, ctx?: RenderContext): Proac
     headline: `Strain × recovery imbalance · overreach risk`,
     body_md: variants[idx],
     deep_link: { label: "See balance chart →", href: "/health?tab=trends#strain-recovery" },
-    speaker: "remi",
-  };
-}
-
-function renderSkinTemp(event: ProactiveEvent, ctx?: RenderContext): ProactiveNudgeCard {
-  const delta = (Math.round((event.payload.delta_c_avg as number) * 10) / 10).toFixed(1);
-  const days = event.payload.days_elevated as number;
-  const variants = [
-    `Skin temp +${delta}°C above baseline for ${days} consecutive days. Pre-symptomatic illness signal — your body is fighting something before you feel it. Take a rest day or Z2 substitute today.`,
-    `${days} days of skin temp running +${delta}°C. Could be illness brewing, hot training environment, or cycle phase. If RHR is also up, it's likely the first. Cross-check with the RHR card.`,
-  ];
-  const idx = pickVariant({ userId: ctx?.userId ?? "", triggerKey: event.trigger_key, today: ctx?.today ?? "", count: variants.length });
-  return {
-    schema_version: 1, trigger_type: "skin_temp_elevated", trigger_key: event.trigger_key,
-    severity: "warn",
-    headline: `Skin temp +${delta}°C · ${days} days running`,
-    body_md: variants[idx],
-    deep_link: { label: "See skin temp →", href: "/health?tab=trends#skin-temp" },
     speaker: "remi",
   };
 }

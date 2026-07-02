@@ -1,8 +1,10 @@
 // lib/whoop/baselines.ts
 //
-// Trailing 30-day rolling baselines for the five WHOOP metrics that drive
-// recovery / autoregulation / proactive-trigger decisions. Refreshed daily
-// by /api/whoop/baselines/sync at 10:30 UTC. See spec:
+// Trailing 30-day rolling baselines for the five recovery metrics (HRV, RHR,
+// recovery score, sleep performance, respiratory rate) that drive autoregulation
+// and proactive-trigger decisions. Post-cutover (2026-07-01), these recompute
+// from daily_logs (Garmin-sourced) for users on metrics_source='garmin'.
+// Refreshed daily by /api/whoop/baselines/sync at 10:30 UTC. See spec:
 // docs/superpowers/specs/2026-05-30-whoop-rolling-baselines-design.md
 
 import type { SupabaseClient } from "@supabase/supabase-js";

@@ -98,14 +98,21 @@ export type ReadinessResult = {
   band: "low" | "moderate" | "high";
 };
 
+/** Red-recovery floor thresholds, applied to the recovery sub-score (0-100).
+ *  Below LOW → force band low; below CAP (when band would be high) → cap at
+ *  moderate. Calibrated on WHOOP Recovery-derived sub-scores; re-tune for
+ *  Garmin via scripts/calibrate-recovery-floor.mjs during the cutover overlap. */
+export const RED_FLOOR_BAND_LOW = 25;
+export const RED_FLOOR_CAP_MODERATE = 40;
+
 /** Maps a composite score to a band, then applies the red-recovery floor:
  *  a red recovery sub-score caps the band regardless of how good the composite
  *  (or the athlete's feel) is. Feel can lower a day, never rescue a red body. */
 function bandFromReadiness(score: number, recoverySubScore: number | null): "low" | "moderate" | "high" {
   let band: "low" | "moderate" | "high" = score >= 67 ? "high" : score >= 45 ? "moderate" : "low";
   if (recoverySubScore !== null) {
-    if (recoverySubScore < 25) band = "low";
-    else if (recoverySubScore < 40 && band === "high") band = "moderate";
+    if (recoverySubScore < RED_FLOOR_BAND_LOW) band = "low";
+    else if (recoverySubScore < RED_FLOOR_CAP_MODERATE && band === "high") band = "moderate";
   }
   return band;
 }
