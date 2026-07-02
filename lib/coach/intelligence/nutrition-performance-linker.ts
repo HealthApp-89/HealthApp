@@ -13,21 +13,17 @@
 // (See the 2026-05-27 deficit-alarm reframing.)
 
 import { z } from "zod";
+import type { DailyLog } from "@/lib/data/types";
 import type { WorkoutSession } from "@/lib/data/workouts";
 
 // ---------------------------------------------------------------------------
 // Input type (local mirror — only the fields this composer consumes)
 // ---------------------------------------------------------------------------
 
-/** Daily log row shape consumed by this composer. */
-export type DailyLogRow = {
-  date: string;
-  calories_eaten: number | null;
-  protein_g: number | null;
-  carbs_g: number | null;
-  fat_g: number | null;
-  weight_kg: number | null;
-};
+export type DailyLogRow = Pick<
+  DailyLog,
+  "date" | "calories_eaten" | "protein_g" | "carbs_g" | "fat_g" | "weight_kg"
+>;
 
 // ---------------------------------------------------------------------------
 // Result type + Zod schema
