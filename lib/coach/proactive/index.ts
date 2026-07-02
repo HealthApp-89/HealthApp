@@ -34,7 +34,6 @@ import { checkRhrElevated }         from "./check-rhr-elevated";
 import { checkSleepDebt }           from "./check-sleep-debt";
 import { checkLowRecoveryStreak }   from "./check-low-recovery-streak";
 import { checkStrainRecovery }      from "./check-strain-recovery";
-import { checkSkinTemp }            from "./check-skin-temp";
 import { checkRecurringSoreness }   from "./check-recurring-soreness";
 import { checkSicknessLingering }   from "./check-sickness-lingering";
 import { checkDeepSleepDeficit }    from "./check-deep-sleep-deficit";
@@ -80,7 +79,6 @@ const TRIGGER_OWNER: Record<string, Speaker> = {
   sleep_debt_accumulated:    "remi",
   low_recovery_streak:       "remi",
   strain_recovery_imbalance: "remi",
-  skin_temp_elevated:        "remi",
   recurring_soreness_area:   "remi",  // semantic prefix (keys are per-area)
   sickness_lingering:        "remi",
   deep_sleep_deficit:        "remi",
@@ -139,7 +137,6 @@ export async function runProactiveChecks(args: {
     ...checkSleepDebt(recoveryIntelligence),
     ...checkLowRecoveryStreak(recoveryIntelligence),
     ...checkStrainRecovery(recoveryIntelligence),
-    ...checkSkinTemp(recoveryIntelligence),
     ...checkRecurringSoreness(recoveryIntelligence),
     ...checkSicknessLingering(recoveryIntelligence),
     ...checkDeepSleepDeficit(recoveryIntelligence),

@@ -15,7 +15,6 @@ export type RecoveryDailyPoint = {
   rem_sleep_hours: number | null;
   strain: number | null;
   spo2: number | null;
-  skin_temp_c: number | null;
   respiratory_rate: number | null;
   body_battery_low: number | null;   // Garmin (migration 0047)
   body_battery_peak: number | null;
@@ -77,7 +76,6 @@ export type RecoveryIntelligencePayload = {
     hrv_mean: number | null;
     hrv_sd: number | null;
     resting_hr_mean: number | null;
-    skin_temp_baseline_c: number | null;        // computed personal 28d
     respiratory_rate_baseline_bpm: number | null; // computed personal 28d
   };
   derived: {

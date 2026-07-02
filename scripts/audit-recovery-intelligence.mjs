@@ -40,7 +40,6 @@ console.log("\n── baselines ──");
 console.log(`  hrv_mean: ${payload.baselines.hrv_mean}`);
 console.log(`  hrv_sd: ${payload.baselines.hrv_sd}`);
 console.log(`  resting_hr_mean: ${payload.baselines.resting_hr_mean}`);
-console.log(`  skin_temp_baseline_c: ${payload.baselines.skin_temp_baseline_c}`);
 console.log(`  respiratory_rate_baseline_bpm: ${payload.baselines.respiratory_rate_baseline_bpm}`);
 
 console.log("\n── derived ──");

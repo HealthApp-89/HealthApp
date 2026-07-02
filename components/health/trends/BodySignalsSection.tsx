@@ -4,7 +4,7 @@ import type { RecoveryIntelligencePayload } from "@/lib/coach/recovery-intellige
 import { Card, CardHeader, Legend } from "@/components/health/trends/HrvAutonomicSection";
 import { COLOR, SHADOW } from "@/lib/ui/theme";
 import { fmtNum } from "@/lib/ui/score";
-import { SKIN_TEMP_DELTA_C, RR_DELTA_BPM } from "@/lib/coach/recovery-intelligence/thresholds";
+import { RR_DELTA_BPM } from "@/lib/coach/recovery-intelligence/thresholds";
 import { formatDateLabel } from "@/components/health/trends/format";
 import {
   ResponsiveContainer,
@@ -14,7 +14,6 @@ import {
   YAxis,
   Tooltip,
   ReferenceLine,
-  ReferenceArea,
 } from "recharts";
 
 type Props = { payload: RecoveryIntelligencePayload };
@@ -24,7 +23,6 @@ export function BodySignalsSection({ payload }: Props) {
   return (
     <section style={{ padding: 16, paddingTop: 0 }}>
       <h3 style={sectionTitle}>Body signals · early warning</h3>
-      <SkinTempCard daily={daily} baseline={baselines.skin_temp_baseline_c} />
       <RespRateCard daily={daily} baseline={baselines.respiratory_rate_baseline_bpm} />
     </section>
   );
@@ -48,107 +46,6 @@ function TooltipBox({ children }: { children: React.ReactNode }) {
     }}>
       {children}
     </div>
-  );
-}
-
-// ── A12: Skin temp deviation ──────────────────────────────────────────────
-
-function SkinTempCard({
-  daily, baseline,
-}: { daily: RecoveryIntelligencePayload["daily"]; baseline: number | null }) {
-  const lastDelta = (() => {
-    if (baseline == null) return null;
-    const recent3 = daily.slice(-3).map((d) => d.skin_temp_c).filter((v): v is number => v != null);
-    if (recent3.length === 0) return null;
-    return recent3.reduce((a, b) => a + b, 0) / recent3.length - baseline;
-  })();
-  const tone: "good" | "warn" | "bad" =
-    lastDelta == null ? "warn" : lastDelta >= SKIN_TEMP_DELTA_C ? "bad" : lastDelta >= 0.3 ? "warn" : "good";
-
-  const hasData = daily.some((d) => d.skin_temp_c != null);
-  const data = daily.map((d) => ({ date: d.date, temp: d.skin_temp_c }));
-
-  // Y-domain: centre around baseline with ±1.0°C window.
-  const mid = baseline ?? (hasData ? daily.find((d) => d.skin_temp_c != null)?.skin_temp_c ?? 36 : 36);
-  const yMin = mid - 1.0;
-  const yMax = mid + 1.0;
-
-  return (
-    <Card>
-      <CardHeader title="Skin temp deviation · 28d"
-        sub={lastDelta != null && lastDelta >= SKIN_TEMP_DELTA_C
-          ? `Last 3 days +${fmtNum(lastDelta)}°C · pre-symptomatic?`
-          : "Within personal band"}
-        value={lastDelta != null ? `${lastDelta > 0 ? "+" : ""}${fmtNum(lastDelta)}°C` : "—"}
-        tone={tone} />
-      {hasData ? (
-        <ResponsiveContainer width="100%" height={90}>
-          <LineChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
-            <XAxis dataKey="date" hide />
-            <YAxis hide domain={[yMin, yMax]} />
-            {baseline != null && (
-              <>
-                <ReferenceArea
-                  y1={baseline - 0.3}
-                  y2={baseline + 0.3}
-                  fill={COLOR.accent}
-                  fillOpacity={0.1}
-                />
-                <ReferenceLine
-                  y={baseline}
-                  stroke={COLOR.accent}
-                  strokeDasharray="3,3"
-                  strokeOpacity={0.5}
-                  strokeWidth={1}
-                />
-                <ReferenceLine
-                  y={baseline + SKIN_TEMP_DELTA_C}
-                  stroke={COLOR.danger}
-                  strokeDasharray="2,4"
-                  strokeOpacity={0.4}
-                  strokeWidth={1}
-                />
-              </>
-            )}
-            <Tooltip
-              content={({ active, payload }) => {
-                if (!active || !payload?.length) return null;
-                const p = payload[0].payload as { date: string; temp: number | null };
-                const delta = baseline != null && p.temp != null ? p.temp - baseline : null;
-                return (
-                  <TooltipBox>
-                    <div style={{ fontWeight: 600, color: COLOR.textStrong }}>{formatDateLabel(p.date)}</div>
-                    {p.temp != null && (
-                      <div style={{ color: "#7dd3fc" }}>{`${fmtNum(p.temp)}°C`}</div>
-                    )}
-                    {delta != null && (
-                      <div style={{ color: COLOR.textMuted }}>
-                        {`${delta > 0 ? "+" : ""}${fmtNum(delta)}°C vs baseline`}
-                      </div>
-                    )}
-                  </TooltipBox>
-                );
-              }}
-              cursor={{ stroke: COLOR.accent, strokeDasharray: "3,3", strokeOpacity: 0.4 }}
-            />
-            <Line
-              type="monotone"
-              dataKey="temp"
-              stroke="#7dd3fc"
-              strokeWidth={1.5}
-              dot={false}
-              activeDot={{ r: 4, fill: "#7dd3fc", stroke: COLOR.surface, strokeWidth: 2 }}
-              connectNulls={false}
-              isAnimationActive={false}
-            />
-          </LineChart>
-        </ResponsiveContainer>
-      ) : (
-        <div style={{ height: 90, display: "flex", alignItems: "center", justifyContent: "center", color: COLOR.textMuted, fontSize: 12 }}>
-          Insufficient data
-        </div>
-      )}
-    </Card>
   );
 }
 

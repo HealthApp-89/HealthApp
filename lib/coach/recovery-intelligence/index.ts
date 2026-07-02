@@ -74,9 +74,7 @@ export async function generateRecoveryIntelligence(args: {
     return Math.sqrt(variance);
   })();
 
-  // Personal 28d baselines for skin temp + respiratory rate.
-  const skin_temp_baseline_c =
-    avg(daily.map((d) => d.skin_temp_c));
+  // Personal 28d baseline for respiratory rate.
   const respiratory_rate_baseline_bpm =
     r30?.resp_rate.mean ?? avg(daily.map((d) => d.respiratory_rate));
 
@@ -109,7 +107,6 @@ export async function generateRecoveryIntelligence(args: {
       hrv_mean,
       hrv_sd,
       resting_hr_mean: rhr_mean,
-      skin_temp_baseline_c,
       respiratory_rate_baseline_bpm,
     },
     derived: {
