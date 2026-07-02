@@ -98,6 +98,15 @@ def collect_day(g: Garmin, d: str) -> dict:
             day["calories"] = stats["totalKilocalories"]
         if stats.get("activeKilocalories") is not None:
             day["active_calories"] = stats["activeKilocalories"]
+        # Garmin uses -1/-2 for "no data"; store only real (>=0) stress values.
+        sa = stats.get("averageStressLevel")
+        if sa is not None and sa >= 0:
+            day["stress_avg"] = sa
+        sm = stats.get("maxStressLevel")
+        if sm is not None and sm >= 0:
+            day["stress_max"] = sm
+        if stats.get("stressQualifier"):
+            day["stress_qualifier"] = stats["stressQualifier"]
 
     ts = safe(g.get_training_status, d)
     if isinstance(ts, dict):
