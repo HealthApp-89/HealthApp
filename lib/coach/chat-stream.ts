@@ -257,6 +257,440 @@ export type RunChatStreamOpts = {
   usageSink?: ChatUsageTotals;
 };
 
+/** Everything a tool executor closure may reference. `opts` is passed whole so
+ *  entries can read the same fields the old if/else branches did. `t0` is the
+ *  loop-local start timestamp used by the intake-cluster guard for its early-
+ *  exit error result (the only branch that references a loop-local beyond
+ *  opts/speaker/input). */
+type ToolExecArgs = {
+  opts: RunChatStreamOpts;
+  speaker: Speaker;
+  input: Record<string, unknown>;
+  t0: number;
+};
+
+/** Returns an intake-cluster executor bound to a specific tool name. */
+function makeIntakeTool(
+  blockName: string,
+): (a: ToolExecArgs) => Promise<ToolResult<unknown>> {
+  return async (a: ToolExecArgs): Promise<ToolResult<unknown>> => {
+    const { opts, input, t0 } = a;
+    const draftDocId = opts.draftDocId ?? "";
+    if (draftDocId.length === 0) {
+      return {
+        ok: false,
+        error: { error: "draftDocId required for intake-mode tools" },
+        meta: { ms: Date.now() - t0, range_days: 0 },
+      };
+    }
+    if (blockName === "apply_goal_target") {
+      return executeApplyGoalTarget({
+        supabase: opts.sr,
+        userId: opts.userId,
+        draftDocId,
+        input,
+      });
+    } else if (blockName === "apply_bedtime_correction") {
+      return executeApplyBedtimeCorrection({
+        supabase: opts.sr,
+        userId: opts.userId,
+        draftDocId,
+        input,
+      });
+    } else if (blockName === "apply_macros_correction") {
+      return executeApplyMacrosCorrection({
+        supabase: opts.sr,
+        userId: opts.userId,
+        draftDocId,
+        input,
+      });
+    } else if (blockName === "apply_protein_correction") {
+      return executeApplyProteinCorrection({
+        supabase: opts.sr,
+        userId: opts.userId,
+        draftDocId,
+        input,
+      });
+    } else if (blockName === "set_sanity_override") {
+      return executeSetSanityOverride({
+        supabase: opts.sr,
+        userId: opts.userId,
+        draftDocId,
+        input,
+      });
+    } else if (blockName === "resolve_plan_flag") {
+      return executeResolvePlanFlag({
+        supabase: opts.sr,
+        userId: opts.userId,
+        draftDocId,
+        input,
+      });
+    } else if (blockName === "set_goal_narrative_chat") {
+      return executeSetGoalNarrativeChat({
+        supabase: opts.sr,
+        userId: opts.userId,
+        draftDocId,
+        input,
+      });
+    } else if (blockName === "set_directness") {
+      return executeSetDirectness({
+        supabase: opts.sr,
+        userId: opts.userId,
+        draftDocId,
+        input,
+      });
+    } else if (blockName === "set_cadence") {
+      return executeSetCadence({
+        supabase: opts.sr,
+        userId: opts.userId,
+        draftDocId,
+        input,
+      });
+    } else if (blockName === "set_chronotype") {
+      return executeSetChronotype({
+        supabase: opts.sr,
+        userId: opts.userId,
+        draftDocId,
+        input,
+      });
+    } else if (blockName === "set_unprompted_actions") {
+      return executeSetUnpromptedActions({
+        supabase: opts.sr,
+        userId: opts.userId,
+        draftDocId,
+        input,
+      });
+    } else if (blockName === "set_free_form_constraints") {
+      return executeSetFreeFormConstraints({
+        supabase: opts.sr,
+        userId: opts.userId,
+        draftDocId,
+        input,
+      });
+    } else if (blockName === "set_glp1_status") {
+      return executeSetGlp1Status({
+        supabase: opts.sr,
+        userId: opts.userId,
+        draftDocId,
+        input,
+      });
+    } else if (blockName === "propose_plan") {
+      return executeProposePlan({
+        supabase: opts.sr,
+        userId: opts.userId,
+        draftDocId,
+        input,
+      });
+    } else {
+      // block.name === "commit_plan"
+      return executeCommitPlan({
+        supabase: opts.sr,
+        userId: opts.userId,
+        draftDocId,
+        input,
+      });
+    }
+  };
+}
+
+const TOOL_EXECUTORS: Record<string, (a: ToolExecArgs) => Promise<ToolResult<unknown>>> = {
+  query_daily_logs: (a) =>
+    executeQueryDailyLogs({
+      supabase: a.opts.sr,
+      userId: a.opts.userId,
+      input: a.input,
+      // Per-specialist column cluster gating. Peter sees PETER_COLS (all
+      // ALLOWED_COLUMNS); specialists see their domain subset. Requested
+      // columns outside the cluster surface as a structured error inside
+      // executeQueryDailyLogs.
+      allowedColumns: colsForSpeaker(a.speaker),
+    }),
+  query_workouts: (a) =>
+    executeQueryWorkouts({
+      supabase: a.opts.sr,
+      userId: a.opts.userId,
+      input: a.input,
+    }),
+  query_food_log: (a) =>
+    executeQueryFoodLog({
+      supabase: a.opts.sr,
+      userId: a.opts.userId,
+      input: a.input,
+    }),
+  query_exercise_library: (a) =>
+    executeQueryExerciseLibrary({
+      supabase: a.opts.sr,
+      userId: a.opts.userId,
+      input: a.input,
+    }),
+  get_substitutes: (a) =>
+    executeGetSubstitutes({
+      supabase: a.opts.sr,
+      userId: a.opts.userId,
+      input: a.input,
+    }),
+  query_training_plan: (a) =>
+    executeQueryTrainingPlan({
+      supabase: a.opts.sr,
+      userId: a.opts.userId,
+      input: a.input,
+    }),
+  get_autoregulation_signals: (a) =>
+    executeGetAutoregulationSignals({
+      supabase: a.opts.sr,
+      userId: a.opts.userId,
+      input: a.input,
+    }),
+  compute_adherence: (a) =>
+    executeComputeAdherence({
+      supabase: a.opts.sr,
+      userId: a.opts.userId,
+      input: a.input,
+    }),
+  get_week_prescription: (a) =>
+    executeGetWeekPrescription({
+      supabase: a.opts.sr,
+      userId: a.opts.userId,
+      input: a.input,
+    }),
+  propose_block: (a) =>
+    executeProposeBlock({
+      supabase: a.opts.sr,
+      userId: a.opts.userId,
+      input: a.input,
+    }),
+  commit_block: (a) =>
+    executeCommitBlock({
+      supabase: a.opts.sr,
+      userId: a.opts.userId,
+      input: a.input,
+    }),
+  propose_close_block: (a) =>
+    executeProposeCloseBlock({
+      supabase: a.opts.sr,
+      userId: a.opts.userId,
+      input: a.input,
+    }),
+  commit_close_block: (a) =>
+    executeCommitCloseBlock({
+      supabase: a.opts.sr,
+      userId: a.opts.userId,
+      input: a.input,
+    }),
+  propose_week_plan: (a) =>
+    executeProposeWeekPlan({
+      supabase: a.opts.sr,
+      userId: a.opts.userId,
+      input: a.input,
+    }),
+  commit_week_plan: (a) =>
+    executeCommitWeekPlan({
+      supabase: a.opts.sr,
+      userId: a.opts.userId,
+      input: a.input,
+      chatMessageId: a.opts.assistantMessageId ?? null,
+    }),
+  propose_activity_adjustment: (a) =>
+    executeProposeActivityAdjustment({
+      supabase: a.opts.sr,
+      userId: a.opts.userId,
+      input: a.input,
+    }),
+  commit_activity_adjustment: (a) =>
+    executeCommitActivityAdjustment({
+      supabase: a.opts.sr,
+      userId: a.opts.userId,
+      input: a.input,
+      chatMessageId: a.opts.assistantMessageId ?? null,
+    }),
+  propose_session_today: (a) =>
+    executeProposeSessionToday({
+      supabase: a.opts.sr,
+      userId: a.opts.userId,
+      input: a.input,
+    }),
+  commit_session_today: (a) =>
+    executeCommitSessionToday({
+      supabase: a.opts.sr,
+      userId: a.opts.userId,
+      input: a.input,
+    }),
+  propose_session_template: (a) =>
+    executeProposeSessionTemplate({
+      supabase: a.opts.sr,
+      userId: a.opts.userId,
+      input: a.input,
+    }),
+  commit_session_template: (a) =>
+    executeCommitSessionTemplate({
+      supabase: a.opts.sr,
+      userId: a.opts.userId,
+      input: a.input,
+    }),
+  propose_nutrition_targets: (a) =>
+    executeProposeNutritionTargets({
+      supabase: a.opts.sr,
+      userId: a.opts.userId,
+      input: a.input,
+    }),
+  commit_nutrition_targets: (a) =>
+    executeCommitNutritionTargets({
+      supabase: a.opts.sr,
+      userId: a.opts.userId,
+      input: a.input,
+    }),
+  set_glp1_taper_started: (a) =>
+    executeSetGlp1TaperStarted({
+      supabase: a.opts.sr,
+      userId: a.opts.userId,
+      input: a.input,
+    }),
+  set_rotation_priority_lift: (a) =>
+    executeSetRotationPriorityLift({
+      supabase: a.opts.sr,
+      userId: a.opts.userId,
+      input: a.input,
+    }),
+  apply_rotation_override: (a) =>
+    executeApplyRotationOverride({
+      supabase: a.opts.sr,
+      userId: a.opts.userId,
+      input: a.input,
+    }),
+  mark_glp1_discontinued: (a) =>
+    executeMarkGlp1Discontinued({
+      supabase: a.opts.sr,
+      userId: a.opts.userId,
+      input: a.input,
+    }),
+  mark_mobility_done: (a) =>
+    executeMarkMobilityDone({
+      supabase: a.opts.sr,
+      userId: a.opts.userId,
+      input: a.input,
+    }),
+  unmark_mobility_done: (a) =>
+    executeUnmarkMobilityDone({
+      supabase: a.opts.sr,
+      userId: a.opts.userId,
+      input: a.input,
+    }),
+  regenerate_morning_brief: (a) =>
+    executeRegenerateMorningBrief({
+      supabase: a.opts.sr,
+      userId: a.opts.userId,
+      input: a.input,
+    }),
+  search_library: (a) =>
+    executeSearchLibrary({
+      supabase: a.opts.sr,
+      userId: a.opts.userId,
+      input: a.input,
+    }),
+  pick_library_item: (a) =>
+    executePickLibraryItem({
+      supabase: a.opts.sr,
+      userId: a.opts.userId,
+      input: a.input,
+    }),
+  save_to_library: (a) =>
+    executeSaveToLibrary({
+      supabase: a.opts.sr,
+      userId: a.opts.userId,
+      input: a.input,
+    }),
+  resolve_food_macros: (a) =>
+    executeResolveFoodMacros({
+      supabase: a.opts.sr,
+      userId: a.opts.userId,
+      input: a.input,
+    }),
+  propose_meal_log: (a) =>
+    executeProposeMealLog({
+      supabase: a.opts.sr,
+      userId: a.opts.userId,
+      input: a.input,
+      assistantMessageId: a.opts.assistantMessageId ?? null,
+    }),
+  commit_meal_log: (a) =>
+    executeCommitMealLog({
+      supabase: a.opts.sr,
+      userId: a.opts.userId,
+      input: a.input,
+    }),
+  propose_meal_suggestions: (a) =>
+    executeProposeMealSuggestions({
+      supabase: a.opts.sr,
+      userId: a.opts.userId,
+      input: a.input,
+    }),
+  query_endurance_activities: (a) =>
+    executeQueryEnduranceActivities({
+      userId: a.opts.userId,
+      input: a.input as {
+        start_date: string;
+        end_date: string;
+        sport?: string;
+        min_duration_min?: number;
+      },
+    }),
+  propose_endurance_week: (a) =>
+    executeProposeEnduranceWeek({
+      userId: a.opts.userId,
+      input: a.input as { week_start: string; preferred_day?: 0|1|2|3|4|5|6 },
+    }),
+  commit_endurance_week: (a) =>
+    executeCommitEnduranceWeek({
+      userId: a.opts.userId,
+      input: a.input as { approval_token: string },
+    }),
+  set_endurance_phase: (a) =>
+    executeSetEndurancePhase({
+      userId: a.opts.userId,
+      input: a.input as {
+        phase: "aerobic_base" | "build" | "race_prep" | "taper" | "off_season";
+        weekly_volume_target_hours?: number;
+      },
+    }),
+  set_endurance_discipline: (a) =>
+    executeSetEnduranceDiscipline({
+      userId: a.opts.userId,
+      input: a.input as { discipline: "cycling" | "running" | "triathlon" },
+    }),
+  set_threshold_hr: (a) =>
+    executeSetThresholdHr({
+      userId: a.opts.userId,
+      input: a.input as { bpm: number },
+    }),
+  set_ftp: (a) =>
+    executeSetFtp({
+      userId: a.opts.userId,
+      input: a.input as { watts: number },
+    }),
+  add_planned_activity: (a) =>
+    executeAddPlannedActivity({
+      supabase: a.opts.sr,
+      userId: a.opts.userId,
+      input: a.input,
+    }),
+  // Intake-cluster tools: all require draftDocId; share makeIntakeTool factory.
+  apply_goal_target: makeIntakeTool("apply_goal_target"),
+  apply_bedtime_correction: makeIntakeTool("apply_bedtime_correction"),
+  apply_macros_correction: makeIntakeTool("apply_macros_correction"),
+  apply_protein_correction: makeIntakeTool("apply_protein_correction"),
+  set_sanity_override: makeIntakeTool("set_sanity_override"),
+  resolve_plan_flag: makeIntakeTool("resolve_plan_flag"),
+  set_goal_narrative_chat: makeIntakeTool("set_goal_narrative_chat"),
+  set_directness: makeIntakeTool("set_directness"),
+  set_cadence: makeIntakeTool("set_cadence"),
+  set_chronotype: makeIntakeTool("set_chronotype"),
+  set_unprompted_actions: makeIntakeTool("set_unprompted_actions"),
+  set_free_form_constraints: makeIntakeTool("set_free_form_constraints"),
+  set_glp1_status: makeIntakeTool("set_glp1_status"),
+  propose_plan: makeIntakeTool("propose_plan"),
+  commit_plan: makeIntakeTool("commit_plan"),
+};
+
 export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<ChatStreamYield> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
@@ -583,418 +1017,14 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
       const t0 = Date.now();
       let result: ToolResult<unknown>;
       try {
-        if (block.name === "query_daily_logs") {
-          // Per-specialist column cluster gating. Peter sees PETER_COLS (all
-          // ALLOWED_COLUMNS); specialists see their domain subset. Requested
-          // columns outside the cluster surface as a structured error inside
-          // executeQueryDailyLogs.
-          result = await executeQueryDailyLogs({
-            supabase: opts.sr,
-            userId: opts.userId,
-            input: block.input,
-            allowedColumns: colsForSpeaker(speaker),
+        const exec = TOOL_EXECUTORS[block.name];
+        if (exec) {
+          result = await exec({
+            opts,
+            speaker,
+            input: (block.input ?? {}) as Record<string, unknown>,
+            t0,
           });
-        } else if (block.name === "query_workouts") {
-          result = await executeQueryWorkouts({
-            supabase: opts.sr,
-            userId: opts.userId,
-            input: block.input,
-          });
-        } else if (block.name === "query_food_log") {
-          result = await executeQueryFoodLog({
-            supabase: opts.sr,
-            userId: opts.userId,
-            input: block.input,
-          });
-        } else if (block.name === "query_exercise_library") {
-          result = await executeQueryExerciseLibrary({
-            supabase: opts.sr,
-            userId: opts.userId,
-            input: block.input,
-          });
-        } else if (block.name === "get_substitutes") {
-          result = await executeGetSubstitutes({
-            supabase: opts.sr,
-            userId: opts.userId,
-            input: block.input,
-          });
-        } else if (block.name === "query_training_plan") {
-          result = await executeQueryTrainingPlan({
-            supabase: opts.sr,
-            userId: opts.userId,
-            input: block.input,
-          });
-        } else if (block.name === "get_autoregulation_signals") {
-          result = await executeGetAutoregulationSignals({
-            supabase: opts.sr,
-            userId: opts.userId,
-            input: block.input,
-          });
-        } else if (block.name === "compute_adherence") {
-          result = await executeComputeAdherence({
-            supabase: opts.sr,
-            userId: opts.userId,
-            input: block.input,
-          });
-        } else if (block.name === "get_week_prescription") {
-          result = await executeGetWeekPrescription({
-            supabase: opts.sr,
-            userId: opts.userId,
-            input: block.input,
-          });
-        } else if (block.name === "propose_block") {
-          result = await executeProposeBlock({
-            supabase: opts.sr,
-            userId: opts.userId,
-            input: block.input,
-          });
-        } else if (block.name === "commit_block") {
-          result = await executeCommitBlock({
-            supabase: opts.sr,
-            userId: opts.userId,
-            input: block.input,
-          });
-        } else if (block.name === "propose_close_block") {
-          result = await executeProposeCloseBlock({
-            supabase: opts.sr,
-            userId: opts.userId,
-            input: block.input,
-          });
-        } else if (block.name === "commit_close_block") {
-          result = await executeCommitCloseBlock({
-            supabase: opts.sr,
-            userId: opts.userId,
-            input: block.input,
-          });
-        } else if (block.name === "propose_week_plan") {
-          result = await executeProposeWeekPlan({
-            supabase: opts.sr,
-            userId: opts.userId,
-            input: block.input,
-          });
-        } else if (block.name === "commit_week_plan") {
-          result = await executeCommitWeekPlan({
-            supabase: opts.sr,
-            userId: opts.userId,
-            input: block.input,
-            chatMessageId: opts.assistantMessageId ?? null,
-          });
-        } else if (block.name === "propose_activity_adjustment") {
-          result = await executeProposeActivityAdjustment({
-            supabase: opts.sr,
-            userId: opts.userId,
-            input: block.input,
-          });
-        } else if (block.name === "commit_activity_adjustment") {
-          result = await executeCommitActivityAdjustment({
-            supabase: opts.sr,
-            userId: opts.userId,
-            input: block.input,
-            chatMessageId: opts.assistantMessageId ?? null,
-          });
-        } else if (block.name === "propose_session_today") {
-          result = await executeProposeSessionToday({
-            supabase: opts.sr,
-            userId: opts.userId,
-            input: block.input,
-          });
-        } else if (block.name === "commit_session_today") {
-          result = await executeCommitSessionToday({
-            supabase: opts.sr,
-            userId: opts.userId,
-            input: block.input,
-          });
-        } else if (block.name === "propose_session_template") {
-          result = await executeProposeSessionTemplate({
-            supabase: opts.sr,
-            userId: opts.userId,
-            input: block.input,
-          });
-        } else if (block.name === "commit_session_template") {
-          result = await executeCommitSessionTemplate({
-            supabase: opts.sr,
-            userId: opts.userId,
-            input: block.input,
-          });
-        } else if (block.name === "propose_nutrition_targets") {
-          result = await executeProposeNutritionTargets({
-            supabase: opts.sr,
-            userId: opts.userId,
-            input: block.input,
-          });
-        } else if (block.name === "commit_nutrition_targets") {
-          result = await executeCommitNutritionTargets({
-            supabase: opts.sr,
-            userId: opts.userId,
-            input: block.input,
-          });
-        } else if (block.name === "set_glp1_taper_started") {
-          result = await executeSetGlp1TaperStarted({
-            supabase: opts.sr,
-            userId: opts.userId,
-            input: block.input,
-          });
-        } else if (block.name === "set_rotation_priority_lift") {
-          result = await executeSetRotationPriorityLift({
-            supabase: opts.sr,
-            userId: opts.userId,
-            input: block.input,
-          });
-        } else if (block.name === "apply_rotation_override") {
-          result = await executeApplyRotationOverride({
-            supabase: opts.sr,
-            userId: opts.userId,
-            input: block.input,
-          });
-        } else if (block.name === "mark_glp1_discontinued") {
-          result = await executeMarkGlp1Discontinued({
-            supabase: opts.sr,
-            userId: opts.userId,
-            input: block.input,
-          });
-        } else if (block.name === "mark_mobility_done") {
-          result = await executeMarkMobilityDone({
-            supabase: opts.sr,
-            userId: opts.userId,
-            input: block.input,
-          });
-        } else if (block.name === "unmark_mobility_done") {
-          result = await executeUnmarkMobilityDone({
-            supabase: opts.sr,
-            userId: opts.userId,
-            input: block.input,
-          });
-        } else if (block.name === "regenerate_morning_brief") {
-          result = await executeRegenerateMorningBrief({
-            supabase: opts.sr,
-            userId: opts.userId,
-            input: block.input,
-          });
-        } else if (block.name === "search_library") {
-          result = await executeSearchLibrary({
-            supabase: opts.sr,
-            userId: opts.userId,
-            input: block.input,
-          });
-        } else if (block.name === "pick_library_item") {
-          result = await executePickLibraryItem({
-            supabase: opts.sr,
-            userId: opts.userId,
-            input: block.input,
-          });
-        } else if (block.name === "save_to_library") {
-          result = await executeSaveToLibrary({
-            supabase: opts.sr,
-            userId: opts.userId,
-            input: block.input,
-          });
-        } else if (block.name === "resolve_food_macros") {
-          result = await executeResolveFoodMacros({
-            supabase: opts.sr,
-            userId: opts.userId,
-            input: block.input,
-          });
-        } else if (block.name === "propose_meal_log") {
-          result = await executeProposeMealLog({
-            supabase: opts.sr,
-            userId: opts.userId,
-            input: block.input,
-            assistantMessageId: opts.assistantMessageId ?? null,
-          });
-        } else if (block.name === "commit_meal_log") {
-          result = await executeCommitMealLog({
-            supabase: opts.sr,
-            userId: opts.userId,
-            input: block.input,
-          });
-        } else if (block.name === "propose_meal_suggestions") {
-          result = await executeProposeMealSuggestions({
-            supabase: opts.sr,
-            userId: opts.userId,
-            input: block.input,
-          });
-        } else if (block.name === "query_endurance_activities") {
-          result = await executeQueryEnduranceActivities({
-            userId: opts.userId,
-            input: block.input as {
-              start_date: string;
-              end_date: string;
-              sport?: string;
-              min_duration_min?: number;
-            },
-          });
-        } else if (block.name === "propose_endurance_week") {
-          result = await executeProposeEnduranceWeek({
-            userId: opts.userId,
-            input: block.input as { week_start: string; preferred_day?: 0|1|2|3|4|5|6 },
-          });
-        } else if (block.name === "commit_endurance_week") {
-          result = await executeCommitEnduranceWeek({
-            userId: opts.userId,
-            input: block.input as { approval_token: string },
-          });
-        } else if (block.name === "set_endurance_phase") {
-          result = await executeSetEndurancePhase({
-            userId: opts.userId,
-            input: block.input as {
-              phase: "aerobic_base" | "build" | "race_prep" | "taper" | "off_season";
-              weekly_volume_target_hours?: number;
-            },
-          });
-        } else if (block.name === "set_endurance_discipline") {
-          result = await executeSetEnduranceDiscipline({
-            userId: opts.userId,
-            input: block.input as { discipline: "cycling" | "running" | "triathlon" },
-          });
-        } else if (block.name === "set_threshold_hr") {
-          result = await executeSetThresholdHr({
-            userId: opts.userId,
-            input: block.input as { bpm: number },
-          });
-        } else if (block.name === "set_ftp") {
-          result = await executeSetFtp({
-            userId: opts.userId,
-            input: block.input as { watts: number },
-          });
-        } else if (block.name === "add_planned_activity") {
-          result = await executeAddPlannedActivity({
-            supabase: opts.sr,
-            userId: opts.userId,
-            input: block.input,
-          });
-        } else if (
-          block.name === "apply_goal_target" ||
-          block.name === "apply_bedtime_correction" ||
-          block.name === "apply_macros_correction" ||
-          block.name === "apply_protein_correction" ||
-          block.name === "set_sanity_override" ||
-          block.name === "resolve_plan_flag" ||
-          block.name === "set_goal_narrative_chat" ||
-          block.name === "set_directness" ||
-          block.name === "set_cadence" ||
-          block.name === "set_chronotype" ||
-          block.name === "set_unprompted_actions" ||
-          block.name === "set_free_form_constraints" ||
-          block.name === "set_glp1_status" ||
-          block.name === "propose_plan" ||
-          block.name === "commit_plan"
-        ) {
-          // All Phase 2 intake-mode tools (including set_glp1_status) require
-          // a draft document id.
-          const draftDocId = opts.draftDocId ?? "";
-          if (draftDocId.length === 0) {
-            result = {
-              ok: false,
-              error: { error: "draftDocId required for intake-mode tools" },
-              meta: { ms: Date.now() - t0, range_days: 0 },
-            };
-          } else if (block.name === "apply_goal_target") {
-            result = await executeApplyGoalTarget({
-              supabase: opts.sr,
-              userId: opts.userId,
-              draftDocId,
-              input: block.input,
-            });
-          } else if (block.name === "apply_bedtime_correction") {
-            result = await executeApplyBedtimeCorrection({
-              supabase: opts.sr,
-              userId: opts.userId,
-              draftDocId,
-              input: block.input,
-            });
-          } else if (block.name === "apply_macros_correction") {
-            result = await executeApplyMacrosCorrection({
-              supabase: opts.sr,
-              userId: opts.userId,
-              draftDocId,
-              input: block.input,
-            });
-          } else if (block.name === "apply_protein_correction") {
-            result = await executeApplyProteinCorrection({
-              supabase: opts.sr,
-              userId: opts.userId,
-              draftDocId,
-              input: block.input,
-            });
-          } else if (block.name === "set_sanity_override") {
-            result = await executeSetSanityOverride({
-              supabase: opts.sr,
-              userId: opts.userId,
-              draftDocId,
-              input: block.input,
-            });
-          } else if (block.name === "resolve_plan_flag") {
-            result = await executeResolvePlanFlag({
-              supabase: opts.sr,
-              userId: opts.userId,
-              draftDocId,
-              input: block.input,
-            });
-          } else if (block.name === "set_goal_narrative_chat") {
-            result = await executeSetGoalNarrativeChat({
-              supabase: opts.sr,
-              userId: opts.userId,
-              draftDocId,
-              input: block.input,
-            });
-          } else if (block.name === "set_directness") {
-            result = await executeSetDirectness({
-              supabase: opts.sr,
-              userId: opts.userId,
-              draftDocId,
-              input: block.input,
-            });
-          } else if (block.name === "set_cadence") {
-            result = await executeSetCadence({
-              supabase: opts.sr,
-              userId: opts.userId,
-              draftDocId,
-              input: block.input,
-            });
-          } else if (block.name === "set_chronotype") {
-            result = await executeSetChronotype({
-              supabase: opts.sr,
-              userId: opts.userId,
-              draftDocId,
-              input: block.input,
-            });
-          } else if (block.name === "set_unprompted_actions") {
-            result = await executeSetUnpromptedActions({
-              supabase: opts.sr,
-              userId: opts.userId,
-              draftDocId,
-              input: block.input,
-            });
-          } else if (block.name === "set_free_form_constraints") {
-            result = await executeSetFreeFormConstraints({
-              supabase: opts.sr,
-              userId: opts.userId,
-              draftDocId,
-              input: block.input,
-            });
-          } else if (block.name === "set_glp1_status") {
-            result = await executeSetGlp1Status({
-              supabase: opts.sr,
-              userId: opts.userId,
-              draftDocId,
-              input: block.input,
-            });
-          } else if (block.name === "propose_plan") {
-            result = await executeProposePlan({
-              supabase: opts.sr,
-              userId: opts.userId,
-              draftDocId,
-              input: block.input,
-            });
-          } else {
-            // block.name === "commit_plan"
-            result = await executeCommitPlan({
-              supabase: opts.sr,
-              userId: opts.userId,
-              draftDocId,
-              input: block.input,
-            });
-          }
         } else {
           result = {
             ok: false,
