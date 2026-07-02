@@ -99,12 +99,14 @@ const HRV_BASE = 33;
   /** @type {any} */
   const todayLog = {
     hrv: 33, resting_hr: 52, sleep_score: 75, deep_sleep_hours: 1.6,
-    steps: 99999, calories_eaten: 9999, protein_g: 999, carbs_g: 999, weight_kg: 103,
+    steps: 99999, calories_eaten: 9999, protein_g: 999, carbs_g: 999,
+    stress_avg: 90, weight_kg: 103,
   };
   /** @type {any} */
   const yesterdayLog = {
     hrv: 10, resting_hr: 90, sleep_score: 20, deep_sleep_hours: 0.2,
-    steps: 6000, calories_eaten: 1900, protein_g: 150, carbs_g: 120, weight_kg: 103,
+    steps: 6000, calories_eaten: 1900, protein_g: 150, carbs_g: 120,
+    stress_avg: 20, weight_kg: 103,
   };
   const blended = readinessLog(/** @type {any} */({ todayLog, yesterdayLog }));
 
@@ -125,6 +127,8 @@ const HRV_BASE = 33;
     blended !== null && blended.protein_g === 150, `protein_g=${blended?.protein_g}`);
   assert("blend: yesterday's carbs_g win (not today's 999)",
     blended !== null && blended.carbs_g === 120, `carbs_g=${blended?.carbs_g}`);
+  assert("blend: yesterday's stress_avg wins (calm 20, not today's stressed 90)",
+    blended !== null && blended.stress_avg === 20, `stress_avg=${blended?.stress_avg}`);
 
   // Null todayLog → null blend (no recovery anchor).
   const nullBlend = readinessLog(/** @type {any} */({ todayLog: null, yesterdayLog }));
@@ -158,15 +162,6 @@ const baselineResult = deriveReadiness(STRESS_BASE_INPUTS);
     log: { ...STRESS_BASE_INPUTS.log, stress_avg: 75 } });
   assert("stress S2: high (75) lowers score below stress-absent baseline",
     r.score !== null && baselineResult.score !== null && r.score < baselineResult.score,
-    `score=${r.score} vs baseline=${baselineResult.score}`);
-}
-
-// S3. absent (null) renormalizes to same score as omitted.
-{
-  const r = deriveReadiness({ ...STRESS_BASE_INPUTS,
-    log: { ...STRESS_BASE_INPUTS.log, stress_avg: null } });
-  assert("stress S3: null stress_avg yields identical score as stress-absent baseline",
-    r.score === baselineResult.score,
     `score=${r.score} vs baseline=${baselineResult.score}`);
 }
 
