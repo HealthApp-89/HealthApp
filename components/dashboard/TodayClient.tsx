@@ -107,6 +107,7 @@ export function TodayClient({
         calories_eaten: prevLog?.calories_eaten ?? null,
         protein_g: prevLog?.protein_g ?? null,
         carbs_g: prevLog?.carbs_g ?? null,
+        stress_avg: prevLog?.stress_avg ?? null,
       }
     : null;
 
@@ -117,6 +118,7 @@ export function TodayClient({
     if (prevLog.calories_eaten != null) fellBackToPrior.add("calories");
     if (prevLog.protein_g != null) fellBackToPrior.add("protein");
     if (prevLog.carbs_g != null) fellBackToPrior.add("carbs");
+    if (prevLog.stress_avg != null) fellBackToPrior.add("stress");
   }
 
   const readiness = deriveReadiness({

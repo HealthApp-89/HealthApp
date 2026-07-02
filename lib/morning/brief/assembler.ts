@@ -210,6 +210,7 @@ export function readinessLog(inputs: BriefInputs): DailyLog | null {
     calories_eaten: y?.calories_eaten ?? null,
     protein_g: y?.protein_g ?? null,
     carbs_g: y?.carbs_g ?? null,
+    stress_avg: y?.stress_avg ?? null,
   };
 }
 
