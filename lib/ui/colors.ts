@@ -38,7 +38,9 @@ export type DailyLogKey =
   | "steps"
   | "calories"
   | "weight_kg"
-  | "body_fat_pct";
+  | "body_fat_pct"
+  | "body_battery"
+  | "stress";
 
 /**
  * Per-metric color keys for body_measurements circumference fields used by

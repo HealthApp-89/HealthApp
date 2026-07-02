@@ -71,6 +71,8 @@ export const METRIC_COLOR: Record<DailyLogKey, string> = {
   calories:         "#ca8a04", // mustard
   weight_kg:        "#8b5cf6", // purple
   body_fat_pct:     "#ea580c", // orange-deep
+  body_battery:     "#34d399", // emerald
+  stress:           "#fb923c", // orange
 };
 
 export const MEASUREMENT_COLOR: Record<BodyMeasurementKey, string> = {
