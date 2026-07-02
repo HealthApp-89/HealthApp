@@ -2,7 +2,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
-const COLS = "date, hrv, resting_hr, sleep_hours, strain";
+const COLS = "date, hrv, resting_hr, sleep_hours, strain, body_battery_peak, stress_avg";
 
 export type Last7Row = {
   date: string;
@@ -10,6 +10,8 @@ export type Last7Row = {
   resting_hr: number | null;
   sleep_hours: number | null;
   strain: number | null;
+  body_battery_peak: number | null;
+  stress_avg: number | null;
 };
 
 export async function fetchLast7Server(

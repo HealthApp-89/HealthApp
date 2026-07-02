@@ -157,10 +157,12 @@ export function TodayClient({
     () => [...last7Rows].sort((a, b) => a.date.localeCompare(b.date)),
     [last7Rows],
   );
-  const hrvSeries:    MetricDatum[] = last7Asc.map((r) => ({ date: r.date, value: r.hrv }));
-  const rhrSeries:    MetricDatum[] = last7Asc.map((r) => ({ date: r.date, value: r.resting_hr }));
-  const sleepSeries:  MetricDatum[] = last7Asc.map((r) => ({ date: r.date, value: r.sleep_hours }));
-  const strainSeries: MetricDatum[] = last7Asc.map((r) => ({ date: r.date, value: r.strain }));
+  const hrvSeries:         MetricDatum[] = last7Asc.map((r) => ({ date: r.date, value: r.hrv }));
+  const rhrSeries:         MetricDatum[] = last7Asc.map((r) => ({ date: r.date, value: r.resting_hr }));
+  const sleepSeries:       MetricDatum[] = last7Asc.map((r) => ({ date: r.date, value: r.sleep_hours }));
+  const strainSeries:      MetricDatum[] = last7Asc.map((r) => ({ date: r.date, value: r.strain }));
+  const bodyBatterySeries: MetricDatum[] = last7Asc.map((r) => ({ date: r.date, value: r.body_battery_peak }));
+  const stressSeries:      MetricDatum[] = last7Asc.map((r) => ({ date: r.date, value: r.stress_avg }));
   const weightPoint:  MetricDatum[] =
     selectedLog?.weight_kg != null
       ? [{ date: selectedDate, value: selectedLog.weight_kg }]
@@ -321,6 +323,22 @@ export function TodayClient({
             subtitle={deltaSubtitle(strainDelta, "")}
             data={strainSeries}
             color={METRIC_COLOR.strain}
+            type="area"
+          />
+          <MetricCard
+            title="Body Battery"
+            value={selectedLog?.body_battery_peak ?? null}
+            subtitle={selectedLog?.body_battery_low != null ? `low ${selectedLog.body_battery_low}` : undefined}
+            data={bodyBatterySeries}
+            color={METRIC_COLOR.body_battery}
+            type="area"
+          />
+          <MetricCard
+            title="Stress"
+            value={selectedLog?.stress_avg ?? null}
+            subtitle={selectedLog?.stress_qualifier ?? undefined}
+            data={stressSeries}
+            color={METRIC_COLOR.stress}
             type="area"
           />
         </div>
