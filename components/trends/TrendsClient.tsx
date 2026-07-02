@@ -95,8 +95,10 @@ export function TrendsClient({
   const rhrTrend:    MetricDatum[] = aggregateSeries(sliced, (l) => l.resting_hr,   granularity);
   const sleepTrend:  MetricDatum[] = aggregateSeries(sliced, (l) => l.sleep_hours,  granularity);
   const strainTrend: MetricDatum[] = aggregateSeries(sliced, (l) => l.strain,       granularity);
-  const weightTrend: MetricDatum[] = aggregateSeries(sliced, (l) => l.weight_kg,    granularity);
-  const bfTrend:     MetricDatum[] = aggregateSeries(sliced, (l) => l.body_fat_pct, granularity);
+  const weightTrend:       MetricDatum[] = aggregateSeries(sliced, (l) => l.weight_kg,         granularity);
+  const bfTrend:           MetricDatum[] = aggregateSeries(sliced, (l) => l.body_fat_pct,       granularity);
+  const bodyBatteryTrend:  MetricDatum[] = aggregateSeries(sliced, (l) => l.body_battery_peak,  granularity);
+  const stressTrend:       MetricDatum[] = aggregateSeries(sliced, (l) => l.stress_avg,         granularity);
 
   return (
     <main style={{ background: COLOR.bg, minHeight: "100dvh" }}>
@@ -121,8 +123,10 @@ export function TrendsClient({
           <MetricCard title="Resting HR" value={latest(rhrTrend)}    unit="bpm" subtitle={deltaSubtitle(halfDelta(rhrTrend),    "bpm", rangeLabel)} data={rhrTrend}    color={METRIC_COLOR.resting_hr}   type="area" />
           <MetricCard title="Sleep"      value={latest(sleepTrend)}  unit="h"   subtitle={deltaSubtitle(halfDelta(sleepTrend),  "h",   rangeLabel)} data={sleepTrend}  color={METRIC_COLOR.sleep_hours}  type="area" />
           <MetricCard title="Strain"     value={latest(strainTrend)}            subtitle={deltaSubtitle(halfDelta(strainTrend), "",    rangeLabel)} data={strainTrend} color={METRIC_COLOR.strain}       type="area" />
-          <MetricCard title="Weight"     value={latest(weightTrend)} unit="kg"  subtitle={deltaSubtitle(halfDelta(weightTrend), "kg",  rangeLabel)} data={weightTrend} color={METRIC_COLOR.weight_kg}    type="area" />
-          <MetricCard title="Body Fat"   value={latest(bfTrend)}     unit="%"   subtitle={deltaSubtitle(halfDelta(bfTrend),     "%",   rangeLabel)} data={bfTrend}     color={METRIC_COLOR.body_fat_pct} type="area" />
+          <MetricCard title="Weight"       value={latest(weightTrend)}       unit="kg"  subtitle={deltaSubtitle(halfDelta(weightTrend),       "kg",  rangeLabel)} data={weightTrend}       color={METRIC_COLOR.weight_kg}    type="area" />
+          <MetricCard title="Body Fat"     value={latest(bfTrend)}           unit="%"   subtitle={deltaSubtitle(halfDelta(bfTrend),           "%",   rangeLabel)} data={bfTrend}           color={METRIC_COLOR.body_fat_pct} type="area" />
+          <MetricCard title="Body Battery" value={latest(bodyBatteryTrend)}             subtitle={deltaSubtitle(halfDelta(bodyBatteryTrend), "",    rangeLabel)} data={bodyBatteryTrend}  color={METRIC_COLOR.body_battery} type="area" />
+          <MetricCard title="Stress"       value={latest(stressTrend)}                  subtitle={deltaSubtitle(halfDelta(stressTrend),       "",    rangeLabel)} data={stressTrend}       color={METRIC_COLOR.stress}       type="area" />
         </div>
       </div>
     </main>
