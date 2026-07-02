@@ -25,6 +25,7 @@
 import { z } from "zod";
 import { brzycki } from "@/lib/coach/e1rm";
 import type { WorkoutSession } from "@/lib/data/workouts";
+import { olsSlope } from "@/lib/coach/trends/linear-regression";
 
 // ---------------------------------------------------------------------------
 // Input type
@@ -108,21 +109,6 @@ const MAIN_LIFT_KEYWORDS = [
 function isMainLift(exerciseName: string): boolean {
   const lower = exerciseName.toLowerCase();
   return MAIN_LIFT_KEYWORDS.some((kw) => lower.includes(kw));
-}
-
-/**
- * Simple OLS linear regression on {x, y} pairs.
- * Returns slope (dy/dx). Returns null if fewer than 2 points.
- */
-function olsSlope(points: { x: number; y: number }[]): number | null {
-  const n = points.length;
-  if (n < 2) return null;
-  const xMean = points.reduce((s, p) => s + p.x, 0) / n;
-  const yMean = points.reduce((s, p) => s + p.y, 0) / n;
-  const num = points.reduce((s, p) => s + (p.x - xMean) * (p.y - yMean), 0);
-  const den = points.reduce((s, p) => s + (p.x - xMean) ** 2, 0);
-  if (den === 0) return 0;
-  return num / den;
 }
 
 const MS_PER_DAY = 86_400_000;

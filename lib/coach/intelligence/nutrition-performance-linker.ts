@@ -15,6 +15,7 @@
 import { z } from "zod";
 import type { DailyLog } from "@/lib/data/types";
 import type { WorkoutSession } from "@/lib/data/workouts";
+import { olsSlope } from "@/lib/coach/trends/linear-regression";
 
 // ---------------------------------------------------------------------------
 // Input type (local mirror — only the fields this composer consumes)
@@ -91,21 +92,6 @@ const MIN_DAYS_FOR_CARB_TIMING = 3;
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
-
-/**
- * Simple OLS linear regression on {x, y} pairs.
- * Returns slope (dy/dx). Returns null if fewer than 2 points.
- */
-function olsSlope(points: { x: number; y: number }[]): number | null {
-  const n = points.length;
-  if (n < 2) return null;
-  const xMean = points.reduce((s, p) => s + p.x, 0) / n;
-  const yMean = points.reduce((s, p) => s + p.y, 0) / n;
-  const num = points.reduce((s, p) => s + (p.x - xMean) * (p.y - yMean), 0);
-  const den = points.reduce((s, p) => s + (p.x - xMean) ** 2, 0);
-  if (den === 0) return 0;
-  return num / den;
-}
 
 /**
  * Compute weekly weight loss (kg/week) from non-null weight observations.

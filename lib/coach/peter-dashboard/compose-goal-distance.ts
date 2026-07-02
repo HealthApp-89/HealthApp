@@ -13,6 +13,7 @@ import {
 } from './thresholds';
 import type { CoachTrendsPayload } from '@/lib/data/types';
 import { fmtNum } from '@/lib/ui/score';
+import { daysBetweenIso } from '@/lib/time/dates';
 
 export async function composeGoalDistance(args: {
   supabase: SupabaseClient;
@@ -38,7 +39,7 @@ export async function composeGoalDistance(args: {
   }
 
   const targetDate = doc.goal_target_date as string;
-  const daysToTarget = daysBetween(today, targetDate);
+  const daysToTarget = daysBetweenIso(today, targetDate);
   if (daysToTarget == null || daysToTarget <= 0) {
     return {
       key: 'goal_distance',
@@ -174,13 +175,6 @@ function unitFor(kind: string): string {
   if (kind === 'bodyweight_kg') return 'kg';
   if (kind === 'bodyfat_pct') return '%';
   return '';
-}
-
-function daysBetween(fromIso: string, toIso: string): number | null {
-  const a = new Date(`${fromIso}T00:00:00Z`).getTime();
-  const b = new Date(`${toIso}T00:00:00Z`).getTime();
-  if (Number.isNaN(a) || Number.isNaN(b)) return null;
-  return Math.round((b - a) / (24 * 3600 * 1000));
 }
 
 function round2(n: number): number {

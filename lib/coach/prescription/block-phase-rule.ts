@@ -7,6 +7,7 @@
 import type { TrainingBlock } from "@/lib/data/types";
 import type { PlannedExercise } from "@/lib/coach/sessionPlans";
 import type { BlockPhase } from "@/lib/coach/prescription/types";
+import { roundToStep } from "@/lib/coach/prescription/calibrate-target";
 
 const OFF_PACE_REQUIRED_RATIO = 1.5; // required-rate must exceed observed-rate × 1.5 to be off-pace
 
@@ -133,6 +134,3 @@ function totalBlockWeeks(block: TrainingBlock): number {
   return Math.round(days / 7);
 }
 
-function roundToStep(kg: number, step: number): number {
-  return Math.round(kg / step) * step;
-}

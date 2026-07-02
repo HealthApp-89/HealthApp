@@ -43,3 +43,14 @@ export function linearRegression(points: readonly Point[]): RegressionResult | n
 
   return { slope, intercept, r_squared, n };
 }
+
+/** Slope-only OLS. NOTE the deliberate semantic difference from
+ *  linearRegression: when all x values are identical (zero x-variance),
+ *  this returns 0 — matching the intelligence composers' historical
+ *  behavior — whereas linearRegression returns null. Returns null only
+ *  when fewer than 2 points. */
+export function olsSlope(points: readonly Point[]): number | null {
+  if (points.length < 2) return null;
+  const reg = linearRegression(points);
+  return reg === null ? 0 : reg.slope;
+}

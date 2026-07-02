@@ -48,6 +48,13 @@ export function gridRoundUp(kg: number): number {
   return Math.ceil(kg / GRID_STEP_KG) * GRID_STEP_KG;
 }
 
+/** Round to the NEAREST multiple of `step`. The shared implementation behind
+ *  the per-lift equipment-grid rounding in block-phase-rule, autoregulation-
+ *  rule, and block-outcomes/recalibrate-target. */
+export function roundToStep(kg: number, step: number): number {
+  return Math.round(kg / step) * step;
+}
+
 /** OLS slope of (weekIndex, e1rm) across the supplied per-week max samples.
  *  Returns null when fewer than 3 weeks of data — the slope is statistically
  *  meaningless below that. weekIndices must be 0-indexed and monotonically
