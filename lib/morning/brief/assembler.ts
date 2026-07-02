@@ -44,11 +44,11 @@ export type YesterdayWorkoutSummary = {
   top_e1rm: { lift: string; kg: number } | null;
 };
 
-/** WHOOP baselines from profiles.whoop_baselines, forwarded verbatim from
- *  data-sources. The assembler itself does NOT read rolling_30d or hrv_swc_*
- *  SWC fields — those are preserved here solely for BriefInputs consumers
- *  downstream (e.g. pickCoachSuggestion, which uses the band for chip logic).
- *  See lib/whoop/baselines.ts and the 2026-05-30 baselines spec. */
+/** Recovery baselines (Garmin-sourced post-cutover) from profiles.whoop_baselines,
+ *  forwarded verbatim from data-sources. The assembler itself does NOT read
+ *  rolling_30d or hrv_swc_* SWC fields — those are preserved here solely for
+ *  BriefInputs consumers downstream (e.g. pickCoachSuggestion, which uses the
+ *  band for chip logic). See lib/whoop/baselines.ts and the 2026-05-30 baselines spec. */
 export type WhoopBaselineForBand = {
   hrv_swc_low?: number | null;
   hrv_swc_high?: number | null;

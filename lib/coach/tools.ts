@@ -100,7 +100,7 @@ import { applyActivityLayout } from "@/lib/training-weeks/apply-activity-layout"
 export const ALLOWED_COLUMNS = [
   "hrv", "resting_hr", "recovery",
   "sleep_hours", "sleep_score", "deep_sleep_hours", "rem_sleep_hours",
-  "spo2", "skin_temp_c", "respiratory_rate", "strain",
+  "spo2", "respiratory_rate", "strain",
   "steps", "calories", "active_calories", "distance_km", "exercise_min",
   "weight_kg", "body_fat_pct",
   "fat_mass_kg", "fat_free_mass_kg", "muscle_mass_kg", "bone_mass_kg", "hydration_kg",
@@ -129,7 +129,7 @@ export const NORA_COLS = [
 export const REMI_COLS = [
   "hrv", "resting_hr", "recovery",
   "sleep_hours", "sleep_score", "deep_sleep_hours", "rem_sleep_hours",
-  "spo2", "skin_temp_c", "respiratory_rate",
+  "spo2", "respiratory_rate",
   "strain",
 ] as const satisfies readonly AllowedColumn[];
 

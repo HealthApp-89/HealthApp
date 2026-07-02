@@ -58,8 +58,8 @@ type ProfileRow = {
 } | null;
 
 /** Returns `whoop_baselines` minus the `rolling_30d` key (the live anchor).
- *  What remains is the historical/biographical block (6mo means, peaks, etc.)
- *  that Peter injects for "where you came from" narration only. */
+ *  What remains is the historical/biographical recovery baselines block
+ *  (6mo means, peaks, etc.) that Peter injects for "where you came from" narration only. */
 function stripRolling30d(wb: unknown): Record<string, unknown> {
   if (!wb || typeof wb !== "object") return {};
   const rest: Record<string, unknown> = {};
