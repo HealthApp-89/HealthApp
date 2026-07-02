@@ -131,5 +131,68 @@ const HRV_BASE = 33;
   assert("blend: null todayLog → null", nullBlend === null, `nullBlend=${nullBlend}`);
 }
 
+// ── Stress term fixtures (Task 1) ────────────────────────────────────────────
+// Baseline: good recovery day without stress_avg.
+// Case #3 log reused: hrv=33, resting_hr=52, sleep_score=75, deep=1.6, feel=7.
+const STRESS_BASE_INPUTS = {
+  log: { hrv: 33, resting_hr: 52, sleep_score: 75, deep_sleep_hours: 1.6,
+         protein_g: null, calories_eaten: null, carbs_g: null, steps: null,
+         stress_avg: null, weight_kg: 103 },
+  checkin: { readiness: 7 },
+  hrvBaseline: HRV_BASE, weightKg: 103, calorieTarget: 1900,
+};
+const baselineResult = deriveReadiness(STRESS_BASE_INPUTS);
+
+// S1. calm stress lifts the score.
+{
+  const r = deriveReadiness({ ...STRESS_BASE_INPUTS,
+    log: { ...STRESS_BASE_INPUTS.log, stress_avg: 25 } });
+  assert("stress S1: calm (25) raises score above stress-absent baseline",
+    r.score !== null && baselineResult.score !== null && r.score > baselineResult.score,
+    `score=${r.score} vs baseline=${baselineResult.score}`);
+}
+
+// S2. high stress drags the score.
+{
+  const r = deriveReadiness({ ...STRESS_BASE_INPUTS,
+    log: { ...STRESS_BASE_INPUTS.log, stress_avg: 75 } });
+  assert("stress S2: high (75) lowers score below stress-absent baseline",
+    r.score !== null && baselineResult.score !== null && r.score < baselineResult.score,
+    `score=${r.score} vs baseline=${baselineResult.score}`);
+}
+
+// S3. absent (null) renormalizes to same score as omitted.
+{
+  const r = deriveReadiness({ ...STRESS_BASE_INPUTS,
+    log: { ...STRESS_BASE_INPUTS.log, stress_avg: null } });
+  assert("stress S3: null stress_avg yields identical score as stress-absent baseline",
+    r.score === baselineResult.score,
+    `score=${r.score} vs baseline=${baselineResult.score}`);
+}
+
+// S4. red-recovery floor is untouched by calm stress.
+//    Same log as case #1: hrv=20.46, resting_hr=73, no sleep, feel=7.
+{
+  const withoutStress = deriveReadiness({
+    log: { hrv: 20.46, resting_hr: 73, sleep_score: null, deep_sleep_hours: null,
+           protein_g: null, calories_eaten: null, carbs_g: null, steps: null,
+           stress_avg: null, weight_kg: 103 },
+    checkin: { readiness: 7 },
+    hrvBaseline: HRV_BASE, weightKg: 103, calorieTarget: 1900,
+  });
+  const withCalmStress = deriveReadiness({
+    log: { hrv: 20.46, resting_hr: 73, sleep_score: null, deep_sleep_hours: null,
+           protein_g: null, calories_eaten: null, carbs_g: null, steps: null,
+           stress_avg: 20, weight_kg: 103 },
+    checkin: { readiness: 7 },
+    hrvBaseline: HRV_BASE, weightKg: 103, calorieTarget: 1900,
+  });
+  assert("stress S4a: red-recovery day with calm stress stays band low",
+    withCalmStress.band === "low", `band=${withCalmStress.band}`);
+  assert("stress S4b: recoverySubScore byte-identical with vs without stress_avg",
+    withCalmStress.recoverySubScore === withoutStress.recoverySubScore,
+    `withStress.recoverySubScore=${withCalmStress.recoverySubScore} vs without=${withoutStress.recoverySubScore}`);
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail > 0) process.exit(1);

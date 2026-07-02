@@ -49,6 +49,9 @@ const A_CARBS_G: Anchors = [[20, 0], [60, 25], [100, 50], [140, 75], [180, 100]]
 const A_STEPS: Anchors = [[1500, 0], [3000, 25], [5000, 50], [6500, 75], [8000, 100]];
 // Calories are V-shaped around the target — both deficit and surplus penalized.
 const A_CALORIES_DELTA: Anchors = [[0, 100], [0.05, 100], [0.1, 75], [0.2, 50], [0.3, 25], [0.4, 0]];
+// Stress is descending-by-score: calm (low) rewards, high stress penalizes.
+// Aligned to Garmin's bands (≤25 rest, 26–50 low, 51–75 medium, 76–100 high).
+const A_STRESS: Anchors = [[20, 95], [35, 78], [50, 55], [65, 32], [80, 12]];
 
 // Recovery-dominant readiness weights (spec 2026-07-01). Recovery bucket ~64%,
 // feel ~25%, lifestyle ~11% when all present. Weights re-normalize over whichever
@@ -62,6 +65,7 @@ const W_PROTEIN = 0.5;
 const W_CALORIES = 0.5;
 const W_CARBS = 0.25;
 const W_STEPS = 0.25;
+const W_STRESS = 0.75; // ~5% of the composite; recovery stays dominant (~61%)
 const MIN_WEIGHT_FOR_SCORE = 3;
 
 export type ReadinessInputs = {
@@ -76,6 +80,7 @@ export type ReadinessInputs = {
         | "calories_eaten"
         | "carbs_g"
         | "steps"
+        | "stress_avg"
         | "weight_kg"
       >
     | null;
@@ -154,6 +159,7 @@ export function deriveReadiness(inputs: ReadinessInputs): ReadinessResult {
     }
     if (log.carbs_g != null) add(scoreFromAnchors(log.carbs_g, A_CARBS_G), W_CARBS);
     if (log.steps != null) add(scoreFromAnchors(log.steps, A_STEPS), W_STEPS);
+    if (log.stress_avg != null) add(scoreFromAnchors(log.stress_avg, A_STRESS), W_STRESS);
   }
 
   if (feel != null) add(scoreFromAnchors(feel, A_CHECKIN), W_FEEL);
