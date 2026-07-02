@@ -13,7 +13,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `npm run start` — serve the production build
 - `npm run typecheck` — `tsc --noEmit` (strict)
 
-There is no test suite and no working linter (`npm run lint` invokes `next lint`, which is unconfigured and hangs on first-run interactive setup — treat it as a no-op). Verify changes with `typecheck` and exercise affected pages locally.
+Unit tests run via vitest (`npx vitest run`, config in [vitest.config.ts](vitest.config.ts) — node environment, `lib/**/__tests__/**/*.test.ts` glob only; components are not covered). There is no working linter (`npm run lint` invokes `next lint`, which is unconfigured and hangs on first-run interactive setup — treat it as a no-op). Verify changes with `typecheck` + `npx vitest run`, and exercise affected pages locally.
 
 Path alias: `@/*` → repo root (see [tsconfig.json](tsconfig.json)). Use it instead of relative climbs.
 
@@ -96,7 +96,7 @@ Row shapes mirrored in [lib/data/types.ts](lib/data/types.ts). Schema is snake_c
 
 ## Architecture
 
-**Single-user Next.js 15 (App Router) + Supabase + Vercel.** Originally a localStorage prototype (`_prototype.jsx`, retained for reference only — do not import). Every row is scoped to `auth.users.user_id` and protected by RLS.
+**Single-user Next.js 15 (App Router) + Supabase + Vercel.** Originally a localStorage prototype (`_prototype.jsx`, deleted 2026-07-02 — it was never git-tracked, so no historical copy exists). Every row is scoped to `auth.users.user_id` and protected by RLS.
 
 ### Supabase clients — three flavors, pick the right one
 
