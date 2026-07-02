@@ -14,6 +14,20 @@ from garminconnect import Garmin
 
 TOKENSTORE = os.path.expanduser("~/.garminconnect")
 
+# Overnight-complete metrics: available on wake, so they can be fetched for
+# *today* (Garmin keys last night's sleep to the wake-day). All-day metrics
+# (movement/strain/body battery/stress) are excluded — they stay complete-days-only.
+OVERNIGHT_KEYS = {
+    "hrv", "resting_hr", "sleep_hours", "sleep_score",
+    "deep_sleep_hours", "rem_sleep_hours", "respiratory_rate",
+    "training_readiness",
+}
+
+
+def overnight_only(day: dict) -> dict:
+    """Filter a full day payload down to overnight-complete metrics (+ date)."""
+    return {k: v for k, v in day.items() if k == "date" or k in OVERNIGHT_KEYS}
+
 
 def login() -> Garmin:
     """Log in, reusing the persisted token; fall back to full login + MFA.
@@ -108,6 +122,13 @@ def collect_day(g: Garmin, d: str) -> dict:
         if stats.get("stressQualifier"):
             day["stress_qualifier"] = stats["stressQualifier"]
 
+    spo2 = safe(g.get_spo2_data, d)
+    if isinstance(spo2, dict):
+        # Garmin uses -1/None sentinels for "no reading"; keep only real avg.
+        avg = spo2.get("averageSpo2") if spo2.get("averageSpo2") is not None else spo2.get("averageSpO2")
+        if isinstance(avg, (int, float)) and avg > 0:
+            day["spo2"] = avg
+
     ts = safe(g.get_training_status, d)
     if isinstance(ts, dict):
         # acute/chronic load live under mostRecentTrainingLoadBalance; shape
@@ -138,6 +159,10 @@ def main() -> int:
         d = (date.today() - timedelta(days=i)).isoformat()
         print(f"collecting {d} ...")
         days.append(collect_day(g, d))
+
+    today = date.today().isoformat()
+    print(f"collecting {today} (overnight-only) ...")
+    days.append(overnight_only(collect_day(g, today)))
 
     resp = requests.post(
         os.environ["INGEST_URL"],
