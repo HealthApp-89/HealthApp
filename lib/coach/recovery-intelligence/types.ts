@@ -17,6 +17,10 @@ export type RecoveryDailyPoint = {
   spo2: number | null;
   skin_temp_c: number | null;
   respiratory_rate: number | null;
+  body_battery_low: number | null;   // Garmin (migration 0047)
+  body_battery_peak: number | null;
+  stress_avg: number | null;
+  stress_qualifier: string | null;
   sleep_start_at: string | null;  // ISO from migration 0031
   sleep_end_at:   string | null;
 };

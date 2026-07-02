@@ -10,7 +10,7 @@ import type { RecoveryDailyPoint } from "./types";
 const DAILY_WINDOW_DAYS = 28;
 
 const SELECT_COLS =
-  "date,hrv,resting_hr,recovery,sleep_hours,sleep_score,deep_sleep_hours,rem_sleep_hours,strain,spo2,skin_temp_c,respiratory_rate,sleep_start_at,sleep_end_at";
+  "date,hrv,resting_hr,recovery,sleep_hours,sleep_score,deep_sleep_hours,rem_sleep_hours,strain,spo2,skin_temp_c,respiratory_rate,body_battery_low,body_battery_peak,stress_avg,stress_qualifier,sleep_start_at,sleep_end_at";
 
 export async function composeDaily(args: {
   supabase: SupabaseClient;
@@ -54,6 +54,8 @@ export async function composeDaily(args: {
         deep_sleep_hours: null, rem_sleep_hours: null,
         strain: null, spo2: null, skin_temp_c: null,
         respiratory_rate: null,
+        body_battery_low: null, body_battery_peak: null,
+        stress_avg: null, stress_qualifier: null,
         sleep_start_at: null, sleep_end_at: null,
       },
     );

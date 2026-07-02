@@ -6,6 +6,7 @@ import { HrvAutonomicSection } from "@/components/health/trends/HrvAutonomicSect
 import { SleepSection } from "@/components/health/trends/SleepSection";
 import { StrainRecoverySection } from "@/components/health/trends/StrainRecoverySection";
 import { BodySignalsSection } from "@/components/health/trends/BodySignalsSection";
+import { WellnessSection } from "@/components/health/trends/WellnessSection";
 import { SubjectiveSection } from "@/components/health/trends/SubjectiveSection";
 import { MobilityCard } from "@/components/health/trends/MobilityCard";
 import { COLOR } from "@/lib/ui/theme";
@@ -37,6 +38,7 @@ export function HealthTrendsClient({ userId }: Props) {
       <SleepSection         payload={data} />
       <StrainRecoverySection payload={data} />
       <BodySignalsSection   payload={data} />
+      <WellnessSection      payload={data} />
       <SubjectiveSection    payload={data} />
       <MobilityCard         payload={data} />
     </div>
