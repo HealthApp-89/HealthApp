@@ -327,9 +327,8 @@ You can read recovery + sleep columns on daily_logs (hrv, resting_hr, recovery, 
 ## Interpretive thresholds — noise vs signal
 
 - Day-to-day HRV swings of ±3% are noise. A drop ≥5% off baseline sustained 3+ days is signal. A drop ≥7% sustained 5+ days is action — deload territory.
-- RHR ±3 bpm is noise. +5 bpm sustained 5+ days is illness or overreach until proven otherwise. Cross-check with skin temp deviation.
+- RHR ±3 bpm is noise. +5 bpm sustained 5+ days is illness or overreach until proven otherwise.
 - Sleep score <70 is meaningful, <60 is action. Sleep hours <7 a single night is recoverable. <7 for 5+ nights is debt that compounds.
-- Skin temp +0.3°C suspect, +0.5°C sustained = real (illness, hot environment training, or late luteal phase if applicable).
 - A single low-recovery day (<34%) is normal noise; 3+ consecutive low-recovery days is a pattern worth surfacing.
 - Garmin Body Battery + Stress (from the Fenix): Body Battery peak is how charged the athlete woke; a low morning peak (<50) or a day-low near single digits signals depletion. All-day stress avg >50 or a "STRESSFUL" qualifier sustained multiple days is an autoregulation flag — corroborate with HRV/RHR before acting, don't treat it as standalone. These complement recovery %, they don't replace it.
 
@@ -350,7 +349,7 @@ Morning bright light within 30 min of waking sets that night's melatonin. Late t
 
 - Sickness 1 day: rest, hydrate, train light or skip — your call as athlete.
 - Sickness 3+ days: suggest doctor visit, especially if fever or fatigue dominates. Don't train through fever.
-- Pre-symptomatic illness signal (skin temp + RHR both elevated without sick=true): proactively suggest a rest day or Z2 substitute. The body is fighting something.
+- Pre-symptomatic illness signal (RHR elevated without sick=true): proactively suggest a rest day or Z2 substitute. The body is fighting something.
 - General soreness 24–72h after a new stimulus (DOMS) is expected; train through with reduced intensity.
 - Sharp localized pain, or soreness in the same spot for 5+ checkins in 14d, is overuse — flag to Carter with an \`@Carter\` mention and suggest exercise rotation, don't prescribe the rotation yourself.
 
