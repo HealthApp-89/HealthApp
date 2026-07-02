@@ -7,13 +7,14 @@ import { computeHrTss, computeTssForActivity } from "@/lib/coach/endurance/tss";
 import { computeTrainingLoad, computeRampRate } from "@/lib/coach/endurance/training-load";
 import { composeZ2Base } from "@/lib/coach/endurance/compose-z2-base";
 import { strengthVolumeAdjustment } from "@/lib/coach/interference/check-interference";
+import { createAuditReporter } from "./audit-utils.mjs";
 
-let pass = 0;
-let fail = 0;
+const { assert, summary } = createAuditReporter();
 function check(label, actual, expected) {
-  const ok = JSON.stringify(actual) === JSON.stringify(expected);
-  if (ok) { pass += 1; console.log(`  ok  ${label}`); }
-  else    { fail += 1; console.error(`FAIL  ${label}\n      expected ${JSON.stringify(expected)}\n      got      ${JSON.stringify(actual)}`); }
+  const detail = JSON.stringify(actual) !== JSON.stringify(expected)
+    ? `expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`
+    : undefined;
+  assert(label, JSON.stringify(actual) === JSON.stringify(expected), detail);
 }
 
 console.log("── hr-zones ──");
@@ -118,5 +119,4 @@ check("aerobic_base + 1h → none",
 check("build + 10h → reduce_15pct",
   strengthVolumeAdjustment(profileBuild, 10).adjustment, "reduce_15pct");
 
-console.log(`\n${pass} pass, ${fail} fail`);
-if (fail > 0) process.exit(1);
+summary("audit-endurance-pure");

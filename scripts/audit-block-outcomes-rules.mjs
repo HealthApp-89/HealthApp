@@ -8,12 +8,9 @@ import { evaluateBlockOutcome } from "@/lib/coach/block-outcomes/evaluator";
 import { recommendNextFocus, idealSequence } from "@/lib/coach/block-outcomes/rotation";
 import { recommendNextTargetKg } from "@/lib/coach/block-outcomes/recalibrate-target";
 import { composeLessons } from "@/lib/coach/block-outcomes/lessons";
+import { createAuditReporter } from "./audit-utils.mjs";
 
-let pass = 0, fail = 0;
-function assert(name, cond, detail) {
-  if (cond) { pass++; console.log(`  ✓ ${name}`); }
-  else      { fail++; console.error(`  ✗ ${name}${detail ? ` — ${detail}` : ""}`); }
-}
+const { assert, summary } = createAuditReporter();
 
 console.log("\n## evaluator.ts\n");
 {
@@ -154,5 +151,4 @@ console.log("\n## lessons.ts\n");
   assert("lessons: hit_early note mentions consolidation", hitEarlyLessons.calibration_note.toLowerCase().includes("consolidation"));
 }
 
-console.log(`\n${pass} passed, ${fail} failed.`);
-process.exit(fail === 0 ? 0 : 1);
+summary("audit-block-outcomes-rules");

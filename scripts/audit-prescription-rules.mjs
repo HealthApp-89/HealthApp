@@ -12,14 +12,9 @@ import { prescribeSecondaryAutoregulated } from "@/lib/coach/prescription/autore
 import { brzycki, bestComparisonValue, metricLabel } from "@/lib/coach/e1rm";
 import { annotateSession } from "@/lib/coach/session-structure/annotate";
 import { classifyLightenTier, lightenExercise } from "@/lib/coach/prescription/prescribe-week";
+import { createAuditReporter } from "./audit-utils.mjs";
 
-let pass = 0;
-let fail = 0;
-
-function assert(name, cond, detail) {
-  if (cond) { pass++; console.log(`  ✓ ${name}`); }
-  else      { fail++; console.error(`  ✗ ${name}${detail ? ` — ${detail}` : ""}`); }
-}
+const { assert, summary } = createAuditReporter();
 
 console.log("\n## maintenance-baseline.ts\n");
 
@@ -704,5 +699,4 @@ const LEGS = ["legs"];
   assert("warmup returned unchanged", out === wu, `got different object`);
 }
 
-console.log(`\n${pass} passed, ${fail} failed.`);
-process.exit(fail === 0 ? 0 : 1);
+summary("audit-prescription-rules");
