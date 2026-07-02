@@ -2,14 +2,6 @@
   "regions": ["sin1"],
   "crons": [
     {
-      "path": "/api/whoop/sync",
-      "schedule": "0 5 * * *"
-    },
-    {
-      "path": "/api/whoop/sync",
-      "schedule": "0 10 * * *"
-    },
-    {
       "path": "/api/whoop/baselines/sync",
       "schedule": "30 10 * * *"
     },
