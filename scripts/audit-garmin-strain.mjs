@@ -8,7 +8,7 @@ import {
   trimpToStrain,
   DEFAULT_STRAIN_CALIBRATION,
 } from "@/lib/coach/garmin/derive-strain";
-import { mapToDailyLogs, mapMovementEnergy } from "@/lib/coach/garmin/map-metrics";
+import { mapToDailyLogs, mapMovementEnergy, mapGarminWellness } from "@/lib/coach/garmin/map-metrics";
 
 let passed = 0;
 let failed = 0;
@@ -113,6 +113,26 @@ const meEmpty = mapMovementEnergy({ date: "2026-07-02" }, null);
 assert("me absent steps = null", meEmpty.steps === null);
 assert("me absent strain = null", meEmpty.strain === null);
 assert("me absent key present", "calories" in meEmpty);
+
+// ── map-metrics: mapGarminWellness (Body Battery + Stress cluster) ────────────
+const gw = mapGarminWellness({
+  date: "2026-07-01", body_battery_low: 24.4, body_battery_peak: 82,
+  stress_avg: 24, stress_max: 98, stress_qualifier: "BALANCED",
+  hrv: 68, steps: 8000,
+});
+assert("gw bb_low int", gw.body_battery_low === 24);
+assert("gw bb_peak", gw.body_battery_peak === 82);
+assert("gw stress_avg", gw.stress_avg === 24);
+assert("gw stress_max", gw.stress_max === 98);
+assert("gw qualifier passthrough", gw.stress_qualifier === "BALANCED");
+assert("gw keeps date", gw.date === "2026-07-01");
+assert("gw omits source", !("source" in gw));
+assert("gw omits non-wellness (hrv)", !("hrv" in gw));
+const gwEmpty = mapGarminWellness({ date: "2026-07-02" });
+assert("gw absent bb = null", gwEmpty.body_battery_peak === null);
+assert("gw absent stress = null", gwEmpty.stress_avg === null);
+assert("gw absent qualifier = null", gwEmpty.stress_qualifier === null);
+assert("gw absent key present", "stress_max" in gwEmpty);
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);

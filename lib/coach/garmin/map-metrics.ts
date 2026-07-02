@@ -25,6 +25,11 @@ export type GarminDayInput = {
   active_calories?: number;
   spo2?: number;
   skin_temp_variation?: number;
+  body_battery_low?: number;
+  body_battery_peak?: number;
+  stress_avg?: number;
+  stress_max?: number;
+  stress_qualifier?: string;
 };
 
 type MappedRow = Partial<DailyLog> & {
@@ -107,5 +112,32 @@ export function mapMovementEnergy(
     calories: intOrNull(input.calories),
     active_calories: intOrNull(input.active_calories),
     strain: strain,
+  };
+}
+
+export type GarminWellnessRow = {
+  date: string;
+  body_battery_low: number | null;
+  body_battery_peak: number | null;
+  stress_avg: number | null;
+  stress_max: number | null;
+  stress_qualifier: string | null;
+};
+
+/** Garmin-only Body Battery + Stress cluster. Same contract as mapMovementEnergy:
+ *  all columns always present (null when absent), NO `source` key — single-owner,
+ *  co-owned rows keep WHOOP's source tag. */
+export function mapGarminWellness(input: GarminDayInput): GarminWellnessRow {
+  const intOrNull = (v: number | undefined | null) =>
+    v === undefined || v === null ? null : Math.round(v);
+  const strOrNull = (v: string | undefined | null) =>
+    v === undefined || v === null ? null : v;
+  return {
+    date: input.date,
+    body_battery_low: intOrNull(input.body_battery_low),
+    body_battery_peak: intOrNull(input.body_battery_peak),
+    stress_avg: intOrNull(input.stress_avg),
+    stress_max: intOrNull(input.stress_max),
+    stress_qualifier: strOrNull(input.stress_qualifier),
   };
 }
