@@ -703,7 +703,7 @@ export default function ChatPanel({
           const reason = (json as { reason?: string }).reason ?? "unknown";
 
           if (res.status === 425) {
-            // awaiting_whoop — refetch to surface the SYNC_WHOOP_PROMPT turn.
+            // awaiting_whoop — refetch to surface the SYNC_RECOVERY_PROMPT turn.
             parkedSilently = true;
           } else if (reason === "already_delivered" && (json as { message?: unknown }).message) {
             dispatch({ type: "add_message", message: (json as { message: ChatMessage }).message });
@@ -1027,7 +1027,7 @@ export default function ChatPanel({
   );
 
   const onAction = useCallback(
-    async (action: "whoop_sync" | "skip_whoop" | "retry_recommendation" | "retry_brief") => {
+    async (action: "recheck" | "skip_whoop" | "retry_recommendation" | "retry_brief") => {
       if (action === "retry_brief") {
         const tempId = `stub-${crypto.randomUUID()}`;
         dispatch({ type: "append_assistant_stub", id: tempId });
@@ -1051,28 +1051,14 @@ export default function ChatPanel({
         queryClient.invalidateQueries({ queryKey: queryKeys.checkin.one(userId, today) });
         return;
       }
-      if (action === "whoop_sync") {
-        try {
-          const res = await fetch("/api/whoop/sync", { method: "GET" });
-          if (!res.ok) throw new Error(`http_${res.status}`);
-          await queryClient.invalidateQueries({
-            queryKey: queryKeys.dailyLogs.range(userId, today, today),
-          });
-          // Fix 1: use tryRunRecommendation to guard against double-fire.
-          await tryRunRecommendation({ skip_whoop: false });
-        } catch (e) {
-          // Fix 3: dispatch a client-only error message instead of POSTing
-          // free_text, which would corrupt feel_notes and re-transition the
-          // state machine, compounding the awaiting_whoop loop.
-          const errorId = `err-${crypto.randomUUID()}`;
-          dispatch({ type: "append_assistant_stub", id: errorId });
-          dispatch({
-            type: "finalize_assistant",
-            id: errorId,
-            status: "error",
-            error: `WHOOP sync failed: ${String(e)}. Tap "Try again" or "Skip" below.`,
-          });
-        }
+      if (action === "recheck") {
+        // No server sync: the Mac collector is unreachable from the phone.
+        // Just re-read today's recovery (the collector may have landed it) and
+        // re-run the recommendation. Falls through to the same notice if still null.
+        await queryClient.invalidateQueries({
+          queryKey: queryKeys.dailyLogs.range(userId, today, today),
+        });
+        await tryRunRecommendation({ skip_whoop: false });
         return;
       }
       if (action === "skip_whoop") {

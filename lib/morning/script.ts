@@ -120,8 +120,8 @@ export const REST_DAY_MESSAGE_STILL_SICK =
 export const FREE_TEXT_TAIL_PROMPT =
   "Anything else worth flagging? (or just hit send if you're good)";
 
-export const SYNC_WHOOP_PROMPT =
-  "WHOOP hasn't synced yet — usually arrives within 30 min of waking. Tap below to pull it now, or I'll deliver the plan when it lands.";
+export const SYNC_RECOVERY_PROMPT =
+  "Garmin hasn't synced last night's recovery yet. Sync your watch in Garmin Connect and run the collector, then tap Recheck — or skip and I'll build a feel-only plan from the last 7 days.";
 
-export const SYNC_WHOOP_FAILED_PROMPT =
-  "WHOOP sync still pending. Try again, or skip and I'll give you a feel-only plan from the last 7 days.";
+export const SYNC_RECOVERY_FAILED_PROMPT =
+  "Still no recovery data. Recheck again, or skip and I'll give you a feel-only plan.";

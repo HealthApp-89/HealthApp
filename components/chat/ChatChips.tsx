@@ -12,7 +12,7 @@ export function ChatChips({
 }: {
   ui: MorningUI;
   onSlotAnswer: (slot: string, value: string | number | string[]) => void;
-  onAction: (action: "whoop_sync" | "skip_whoop" | "retry_recommendation" | "retry_brief") => void;
+  onAction: (action: "recheck" | "skip_whoop" | "retry_recommendation" | "retry_brief") => void;
 }) {
   const chips = ui.chips ?? [];
   const [selected, setSelected] = useState<Set<string | number>>(new Set());
