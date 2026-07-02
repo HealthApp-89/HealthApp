@@ -26,7 +26,7 @@ So flipping is one `UPDATE`. The work is everything that makes the flip *clean*.
 1. **Backfill + overwrite** ~35 days of Garmin recovery into `daily_logs` so baselines are Garmin-only from day one. **Archive the overwritten WHOOP rows to JSON first** — nothing silently destroyed.
 2. **Map Training Readiness → recovery** (already wired) **and recalibrate the red-recovery floor** thresholds in `deriveReadiness` against Garmin's TR distribution.
 3. **Add SpO2** (Garmin pulse ox) to the collector; **retire absolute `skin_temp_c`** (defer Garmin skin-temp-*variation* as a future signal).
-4. **Morning readiness stays previous-day based** — day D's brief computes from day D-1's complete Garmin row, which the collector's normal trailing fetch already writes. **No today-pass, no collector freshness change.** Operational dependency (accepted): the watch synced and the collector ran before check-in; otherwise the brief uses the latest available row and refreshes when the 09:30 Dubai run lands.
+4. **Recovery = last night (today-pass); load = yesterday (unchanged).** Garmin keys each night's sleep to the wake-day, so last night lands on *today's* date — exactly where WHOOP posted it and where the ring/brief already read recovery from. The collector gains an **overnight-only today-pass** (HRV, RHR, sleep, resp rate, Training Readiness — all complete by morning) that omits movement/strain/wellness (those stay complete-days-only to avoid partial-day writes). Because the route writes only present fields, the today-pass populates `daily_logs[today]`'s recovery columns without touching today's movement/strain. **Consequence:** readiness sourcing is unchanged — recovery from today's row (now Garmin-populated), load/strain/steps from yesterday's complete day. Operational dependency (accepted): the watch synced and the collector ran before check-in; otherwise the "Garmin not synced" notice + Recheck (item F) covers the early-check-in case.
 
 ## Non-goals (out of scope)
 
@@ -51,9 +51,9 @@ So flipping is one `UPDATE`. The work is everything that makes the flip *clean*.
 
 ## Work breakdown
 
-### A. Collector — add SpO2, no freshness change
-- Fetch pulse-ox: `g.get_spo2_data(d)` → emit `spo2` (e.g. `averageSpo2`; guard Garmin `-1`/`None` sentinels like the stress fields already do).
-- **No today-pass.** Trailing complete-days fetch is unchanged.
+### A. Collector — add SpO2 + overnight today-pass
+- Fetch pulse-ox: `g.get_spo2_data(d)` → emit `spo2` (e.g. `averageSpo2`; guard Garmin `-1`/`None` sentinels like the stress fields already do). Fetched on the trailing complete-days.
+- **Overnight today-pass:** additionally collect **today** (i=0) but emit **only overnight-complete metrics** — `hrv`, `resting_hr`, `sleep_hours`, `sleep_score`, `deep_sleep_hours`, `rem_sleep_hours`, `respiratory_rate`, `training_readiness`. **Omit** `steps`/`distance_km`/`calories`/`active_calories`/`hr_samples` (→ no strain) and `body_battery_*`/`stress_*` — these are all-day metrics and stay complete-days-only. Because `mapToDailyLogs` writes only present fields, this populates today's recovery columns without a partial-day movement/strain write.
 - Skin temp: leave unfetched (retired).
 
 ### B. Route / mapper — confirm only
@@ -85,9 +85,10 @@ Garmin. There is **no on-demand Garmin sync from the phone** (the Mac collector
 is the only path), so the button is **informational + a client-side recheck**,
 not a server sync call.
 
-- [app/api/chat/morning/intake/route.ts](../../../app/api/chat/morning/intake/route.ts) currently emits `{ label: "Sync WHOOP now", action: "whoop_sync" }` when `log.recovery == null`. **Replace** with a Garmin-worded notice: copy along the lines of "Garmin hasn't synced today's data yet — sync your watch in Garmin Connect and run the collector, then Recheck." Chips: `{ label: "Recheck", action: "recheck_garmin" }` and the existing `{ label: "Skip — feel-only plan", action: "skip_whoop" }` (rename the action key away from `whoop`).
-- The **`recheck_garmin`** action re-queries `daily_logs` for the previous-day recovery row (client re-hits the gate) — no server sync is triggered. If recovery is now present (athlete ran the collector), the flow proceeds to assemble the brief; if still absent, the same notice re-shows.
-- [app/api/chat/morning/recommendation/route.ts](../../../app/api/chat/morning/recommendation/route.ts) gates with `awaiting_whoop` when recovery is null. Rework so it reads the **previous-day** recovery row and returns an `awaiting_garmin`-style state (renamed off `whoop`) that the notice above renders; "Skip" still always bypasses to the feel-only path (never a permanent hard-block).
+- The gate keeps checking **today's** recovery row (`date == today`) — correct, because the overnight today-pass (item A) now populates it. No date/sourcing change; the readiness split (recovery=today, load=yesterday) is unchanged.
+- [app/api/chat/morning/intake/route.ts](../../../app/api/chat/morning/intake/route.ts) currently emits `{ label: "Sync WHOOP now", action: "whoop_sync" }` when `log.recovery == null`. **Replace** the `SYNC_WHOOP_PROMPT` copy + chips with Garmin wording: "Garmin hasn't synced last night's data yet — sync your watch in Garmin Connect and run the collector, then Recheck." Chips: `{ label: "Recheck", action: "recheck_garmin" }` and `{ label: "Skip — feel-only plan", action: "skip_whoop" }` (keep the `skip_whoop` **action key** as-is to avoid touching the client handler + relabel only the display text).
+- The **`recheck_garmin`** action re-queries `daily_logs` for today's recovery (client re-hits the gate / re-fires the recommendation POST) — **no server sync** (the Mac collector is unreachable from the phone). If recovery is now present (athlete ran the collector), the flow proceeds; if still absent, the notice re-shows.
+- **Keep the internal `awaiting_whoop` `intake_state` value** (it is CHECK-constrained per migrations 0007/0011 — renaming needs a migration for no user benefit). Change only user-facing copy/chips. [app/api/chat/morning/recommendation/route.ts](../../../app/api/chat/morning/recommendation/route.ts): keep the 425 gate reading today's recovery; "Skip" still always bypasses to feel-only (never a permanent hard-block). The `reason: "awaiting_whoop"` string may stay (internal) or be surfaced as generic "awaiting_recovery" in the response — implementer's call, but do not touch the DB enum.
 
 ### G. Retire skin temp (all consumers)
 - Remove `SkinTempCard` from [components/health/trends/BodySignalsSection.tsx](../../../components/health/trends/BodySignalsSection.tsx).
