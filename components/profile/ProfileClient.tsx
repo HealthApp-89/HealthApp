@@ -13,7 +13,6 @@ import { COLOR, RADIUS } from "@/lib/ui/theme";
 import type { DailyLog, PrimaryLift } from "@/lib/data/types";
 import { useProfile } from "@/lib/query/hooks/useProfile";
 import { queryKeys } from "@/lib/query/keys";
-import { useWhoopTokens } from "@/lib/query/hooks/useWhoopTokens";
 import { useWithingsTokens } from "@/lib/query/hooks/useWithingsTokens";
 import { useIngestToken } from "@/lib/query/hooks/useIngestToken";
 import { useDailyLogs } from "@/lib/query/hooks/useDailyLogs";
@@ -51,7 +50,6 @@ export function ProfileClient({
   stravaConnected: boolean;
 }) {
   const { data: profile } = useProfile(userId);
-  const { data: whoopTokens = null } = useWhoopTokens(userId);
   const { data: withingsTokens = null } = useWithingsTokens(userId);
   const { data: ingestToken = null } = useIngestToken(userId);
   const { data: logs = [] } = useDailyLogs(userId, baselineFrom, baselineTo);
@@ -197,8 +195,6 @@ export function ProfileClient({
       <SectionLabel>Connected sources</SectionLabel>
       <div style={{ padding: "0 8px", display: "flex", flexDirection: "column", gap: "6px" }}>
         <ConnectionsPanel
-          whoopConnected={!!whoopTokens}
-          whoopUpdatedAt={whoopTokens?.updated_at ?? null}
           withingsConnected={!!withingsTokens}
           withingsUpdatedAt={withingsTokens?.updated_at ?? null}
         />

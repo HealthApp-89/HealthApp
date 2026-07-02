@@ -7,15 +7,11 @@ import { IntegrationRow } from "./IntegrationRow";
 import { COLOR } from "@/lib/ui/theme";
 
 type Props = {
-  whoopConnected: boolean;
-  whoopUpdatedAt: string | null;
   withingsConnected: boolean;
   withingsUpdatedAt: string | null;
 };
 
 export function ConnectionsPanel({
-  whoopConnected,
-  whoopUpdatedAt,
   withingsConnected,
   withingsUpdatedAt,
 }: Props) {
@@ -30,10 +26,6 @@ export function ConnectionsPanel({
     return `Synced ${new Date(updatedAt).toLocaleDateString()}`;
   }
 
-  const whoopStatus = whoopConnected
-    ? `Connected · ${syncedText(whoopUpdatedAt)}`
-    : "Not connected";
-
   const withingsStatus = withingsConnected
     ? `Connected · ${syncedText(withingsUpdatedAt)}`
     : "Not connected";
@@ -42,24 +34,6 @@ export function ConnectionsPanel({
     <Card>
       <SectionLabel>CONNECTIONS</SectionLabel>
       <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-        <IntegrationRow
-          brandColor="#1a1a1a"
-          brandFg="#16ff7a"
-          chip="W"
-          name="WHOOP"
-          status={whoopStatus}
-          statusTone={whoopConnected ? "success" : "muted"}
-          ctaLabel={whoopConnected ? "Manage" : "Connect"}
-          ctaHref="/api/whoop/auth"
-        />
-        {whoopConnected && (
-          <ProviderActions
-            syncUrl="/api/whoop/sync"
-            backfillUrl="/api/whoop/backfill"
-            color={COLOR.accent}
-          />
-        )}
-
         <IntegrationRow
           brandColor="#00aef0"
           brandFg="#fff"
