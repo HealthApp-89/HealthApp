@@ -87,6 +87,10 @@ type DailyLogRow = {
   protein_g: number | null;
   carbs_g: number | null;
   fat_g: number | null;
+  body_battery_low: number | null;
+  body_battery_peak: number | null;
+  stress_avg: number | null;
+  stress_qualifier: string | null;
 };
 
 export type SnapshotInputs = {
@@ -446,7 +450,7 @@ export async function buildSnapshot(inputs: SnapshotInputs): Promise<SnapshotRes
   let logsQ = supabase
     .from("daily_logs")
     .select(
-      "date, hrv, resting_hr, recovery, sleep_hours, sleep_score, deep_sleep_hours, strain, steps, calories_eaten, weight_kg, protein_g, carbs_g, fat_g",
+      "date, hrv, resting_hr, recovery, sleep_hours, sleep_score, deep_sleep_hours, strain, steps, calories_eaten, weight_kg, protein_g, carbs_g, fat_g, body_battery_low, body_battery_peak, stress_avg, stress_qualifier",
     )
     .eq("user_id", userId)
     .gte("date", since)
@@ -601,7 +605,7 @@ export async function buildSnapshot(inputs: SnapshotInputs): Promise<SnapshotRes
   const logLines = ((logs ?? []) as DailyLogRow[])
     .map((l) => {
       const rel = relativeDateLabel(l.date, today);
-      return `  ${l.date} (${rel}) | hrv ${fmt(l.hrv)} | rhr ${fmt(l.resting_hr)} | recov ${fmt(l.recovery)} | sleep ${fmt(l.sleep_hours, "h")} (deep ${fmt(l.deep_sleep_hours)}) | strain ${fmt(l.strain)} | steps ${fmt(l.steps)} | kcal ${fmt(l.calories_eaten)} | prot ${fmt(l.protein_g, "g")} | weight ${fmt(l.weight_kg, "kg")}`;
+      return `  ${l.date} (${rel}) | hrv ${fmt(l.hrv)} | rhr ${fmt(l.resting_hr)} | recov ${fmt(l.recovery)} | sleep ${fmt(l.sleep_hours, "h")} (deep ${fmt(l.deep_sleep_hours)}) | strain ${fmt(l.strain)} | steps ${fmt(l.steps)} | kcal ${fmt(l.calories_eaten)} | prot ${fmt(l.protein_g, "g")} | weight ${fmt(l.weight_kg, "kg")} | bb ${fmt(l.body_battery_peak)}/${fmt(l.body_battery_low)} | stress ${fmt(l.stress_avg)}${l.stress_qualifier ? ` (${l.stress_qualifier})` : ""}`;
     })
     .join("\n");
 
@@ -785,7 +789,7 @@ export async function buildEphemeralHeader(opts: {
     supabase
       .from("daily_logs")
       .select(
-        "date, hrv, resting_hr, recovery, sleep_hours, sleep_score, deep_sleep_hours, strain, steps, calories_eaten, weight_kg, protein_g, carbs_g, fat_g",
+        "date, hrv, resting_hr, recovery, sleep_hours, sleep_score, deep_sleep_hours, strain, steps, calories_eaten, weight_kg, protein_g, carbs_g, fat_g, body_battery_low, body_battery_peak, stress_avg, stress_qualifier",
       )
       .eq("user_id", userId)
       .in("date", [today, yesterday]),
@@ -813,6 +817,7 @@ export async function buildEphemeralHeader(opts: {
       `  recovery=${fmt(r?.recovery)}  hrv=${fmt(r?.hrv)}  resting_hr=${fmt(r?.resting_hr)}  sleep_hours=${fmt(r?.sleep_hours)}  sleep_score=${fmt(r?.sleep_score)}`,
       `  strain=${fmt(r?.strain)}  steps=${fmt(r?.steps)}  weight_kg=${fmt(r?.weight_kg)}`,
       `  protein_g=${fmt(r?.protein_g)}  carbs_g=${fmt(r?.carbs_g)}  fat_g=${fmt(r?.fat_g)}`,
+      `  body_battery=${fmt(r?.body_battery_peak)}/${fmt(r?.body_battery_low)}  stress=${fmt(r?.stress_avg)}${r?.stress_qualifier ? ` (${r.stress_qualifier})` : ""}`,
     ].join("\n");
   };
 
