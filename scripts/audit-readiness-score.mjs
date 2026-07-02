@@ -99,12 +99,14 @@ const HRV_BASE = 33;
   /** @type {any} */
   const todayLog = {
     hrv: 33, resting_hr: 52, sleep_score: 75, deep_sleep_hours: 1.6,
-    steps: 99999, calories_eaten: 9999, protein_g: 999, carbs_g: 999, weight_kg: 103,
+    steps: 99999, calories_eaten: 9999, protein_g: 999, carbs_g: 999,
+    stress_avg: 90, weight_kg: 103,
   };
   /** @type {any} */
   const yesterdayLog = {
     hrv: 10, resting_hr: 90, sleep_score: 20, deep_sleep_hours: 0.2,
-    steps: 6000, calories_eaten: 1900, protein_g: 150, carbs_g: 120, weight_kg: 103,
+    steps: 6000, calories_eaten: 1900, protein_g: 150, carbs_g: 120,
+    stress_avg: 20, weight_kg: 103,
   };
   const blended = readinessLog(/** @type {any} */({ todayLog, yesterdayLog }));
 
@@ -125,10 +127,66 @@ const HRV_BASE = 33;
     blended !== null && blended.protein_g === 150, `protein_g=${blended?.protein_g}`);
   assert("blend: yesterday's carbs_g win (not today's 999)",
     blended !== null && blended.carbs_g === 120, `carbs_g=${blended?.carbs_g}`);
+  assert("blend: yesterday's stress_avg wins (calm 20, not today's stressed 90)",
+    blended !== null && blended.stress_avg === 20, `stress_avg=${blended?.stress_avg}`);
 
   // Null todayLog → null blend (no recovery anchor).
   const nullBlend = readinessLog(/** @type {any} */({ todayLog: null, yesterdayLog }));
   assert("blend: null todayLog → null", nullBlend === null, `nullBlend=${nullBlend}`);
+}
+
+// ── Stress term fixtures (Task 1) ────────────────────────────────────────────
+// Baseline: good recovery day without stress_avg.
+// Case #3 log reused: hrv=33, resting_hr=52, sleep_score=75, deep=1.6, feel=7.
+const STRESS_BASE_INPUTS = {
+  log: { hrv: 33, resting_hr: 52, sleep_score: 75, deep_sleep_hours: 1.6,
+         protein_g: null, calories_eaten: null, carbs_g: null, steps: null,
+         stress_avg: null, weight_kg: 103 },
+  checkin: { readiness: 7 },
+  hrvBaseline: HRV_BASE, weightKg: 103, calorieTarget: 1900,
+};
+const baselineResult = deriveReadiness(STRESS_BASE_INPUTS);
+
+// S1. calm stress lifts the score.
+{
+  const r = deriveReadiness({ ...STRESS_BASE_INPUTS,
+    log: { ...STRESS_BASE_INPUTS.log, stress_avg: 25 } });
+  assert("stress S1: calm (25) raises score above stress-absent baseline",
+    r.score !== null && baselineResult.score !== null && r.score > baselineResult.score,
+    `score=${r.score} vs baseline=${baselineResult.score}`);
+}
+
+// S2. high stress drags the score.
+{
+  const r = deriveReadiness({ ...STRESS_BASE_INPUTS,
+    log: { ...STRESS_BASE_INPUTS.log, stress_avg: 75 } });
+  assert("stress S2: high (75) lowers score below stress-absent baseline",
+    r.score !== null && baselineResult.score !== null && r.score < baselineResult.score,
+    `score=${r.score} vs baseline=${baselineResult.score}`);
+}
+
+// S4. red-recovery floor is untouched by calm stress.
+//    Same log as case #1: hrv=20.46, resting_hr=73, no sleep, feel=7.
+{
+  const withoutStress = deriveReadiness({
+    log: { hrv: 20.46, resting_hr: 73, sleep_score: null, deep_sleep_hours: null,
+           protein_g: null, calories_eaten: null, carbs_g: null, steps: null,
+           stress_avg: null, weight_kg: 103 },
+    checkin: { readiness: 7 },
+    hrvBaseline: HRV_BASE, weightKg: 103, calorieTarget: 1900,
+  });
+  const withCalmStress = deriveReadiness({
+    log: { hrv: 20.46, resting_hr: 73, sleep_score: null, deep_sleep_hours: null,
+           protein_g: null, calories_eaten: null, carbs_g: null, steps: null,
+           stress_avg: 20, weight_kg: 103 },
+    checkin: { readiness: 7 },
+    hrvBaseline: HRV_BASE, weightKg: 103, calorieTarget: 1900,
+  });
+  assert("stress S4a: red-recovery day with calm stress stays band low",
+    withCalmStress.band === "low", `band=${withCalmStress.band}`);
+  assert("stress S4b: recoverySubScore byte-identical with vs without stress_avg",
+    withCalmStress.recoverySubScore === withoutStress.recoverySubScore,
+    `withStress.recoverySubScore=${withCalmStress.recoverySubScore} vs without=${withoutStress.recoverySubScore}`);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
