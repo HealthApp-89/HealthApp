@@ -58,6 +58,12 @@ export type DailyLog = {
   endurance_load: number | null;
   endurance_minutes: number | null;
   endurance_z2_minutes: number | null;
+  // ── Garmin wellness (migration 0047) ───────────────────────────────────────
+  body_battery_low: number | null;
+  body_battery_peak: number | null;
+  stress_avg: number | null;
+  stress_max: number | null;
+  stress_qualifier: string | null;
   updated_at: string;
 };
 
@@ -71,6 +77,9 @@ export type GarminDailyRow = {
   training_readiness: number | null;
   body_battery_low: number | null;
   body_battery_peak: number | null;
+  stress_avg: number | null;
+  stress_max: number | null;
+  stress_qualifier: string | null;
   sleep_hours: number | null;
   sleep_score: number | null;
   deep_sleep_hours: number | null;
