@@ -2,14 +2,19 @@
 // Read-only: dumps the current daily_logs recovery columns (WHOOP-written) for
 // the last N days to a timestamped JSON, so the Task-10 Garmin backfill can
 // overwrite them without silent data loss. Run BEFORE flipping metrics_source.
-import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
+// NOTE: use @supabase/supabase-js createClient directly, NOT @/lib/supabase/server
+// (that module imports next/headers, which is unresolvable in a plain node run).
+import { createClient } from "@supabase/supabase-js";
 import { writeFileSync } from "node:fs";
 
 const userId = process.env.AUDIT_USER_ID;
 if (!userId) { console.error("set AUDIT_USER_ID"); process.exit(1); }
 const days = Number(process.env.ARCHIVE_DAYS ?? "35");
 
-const sr = createSupabaseServiceRoleClient();
+const sr = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+);
 const since = new Date(Date.now() - days * 86400_000).toISOString().slice(0, 10);
 const { data, error } = await sr
   .from("daily_logs")
