@@ -9,6 +9,7 @@ export type ImpactKey =
   | "sleep"
   | "steps"
   | "strain"
+  | "stress"
   | "protein"
   | "calories";
 
@@ -44,6 +45,7 @@ const COLOR_POSITIVE: Record<ImpactKey, string> = {
   sleep: "#5e5ce6",
   steps: "#0a84ff",
   strain: "#ff9f0a",
+  stress: "#30d158",
   protein: "#ff375f",
   calories: "#ffd60a",
 };
@@ -58,6 +60,7 @@ const LABELS: Record<ImpactKey, string> = {
   sleep: "Sleep",
   steps: "Steps",
   strain: "Strain",
+  stress: "Stress",
   protein: "Protein",
   calories: "Calories",
 };
@@ -277,6 +280,22 @@ function classifyStrain(strain: number | null, recovery: number | null): ImpactS
   };
 }
 
+function classifyStress(v: number | null): ImpactSegment {
+  if (v === null) return neutralSegment("stress", "no data");
+  if (v <= 33) {
+    return { key: "stress", label: LABELS.stress, sign: "positive",
+      magnitude: clamp((33 - v) / 33, 0.3, 1), color: COLOR_POSITIVE.stress,
+      value: v, reason: "calm yesterday" };
+  }
+  if (v > 60) {
+    return { key: "stress", label: LABELS.stress, sign: "negative",
+      magnitude: clamp((v - 60) / 40, 0.3, 1), color: COLOR_NEGATIVE,
+      value: v, reason: "elevated yesterday" };
+  }
+  return { key: "stress", label: LABELS.stress, sign: "neutral",
+    magnitude: 0, color: COLOR_NEUTRAL, value: v, reason: "moderate" };
+}
+
 function classifyProtein(g: number | null, weightKg: number | null): ImpactSegment {
   if (g === null) return neutralSegment("protein", "no data");
   if (weightKg === null) {
@@ -383,6 +402,7 @@ export function computeImpact(
         classifySleep(log.sleep_score, log.sleep_hours),
         classifySteps(log.steps),
         classifyStrain(log.strain, log.recovery),
+        classifyStress(log.stress_avg ?? null),
         classifyProtein(log.protein_g, weightKg ?? log.weight_kg),
         classifyCalories(log.calories_eaten, calorieTarget),
       ]
@@ -393,6 +413,7 @@ export function computeImpact(
         neutralSegment("sleep", "no data"),
         neutralSegment("steps", "no data"),
         neutralSegment("strain", "no data"),
+        neutralSegment("stress", "no data"),
         neutralSegment("protein", "no data"),
         neutralSegment("calories", "no data"),
       ];
