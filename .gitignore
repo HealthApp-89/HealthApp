@@ -59,3 +59,6 @@ scripts/presentation/shots-real/
 # one-off dev fixup scripts (committed scripts/ utilities follow the audit-*/import-* pattern)
 scripts/insert-measurement-*.mjs
 scripts/reset-today-intake.mjs
+
+# Local-only WHOOP data archive from the Garmin cutover (never publish health data)
+docs/superpowers/whoop-daily-archive-*.json
