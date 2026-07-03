@@ -1,6 +1,6 @@
 // lib/query/fetchers/last7.ts
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { createFetcher } from "@/lib/query/fetchers/create-fetcher";
 
 const COLS = "date, hrv, resting_hr, sleep_hours, strain, body_battery_peak, stress_avg";
 
@@ -14,36 +14,19 @@ export type Last7Row = {
   stress_avg: number | null;
 };
 
-export async function fetchLast7Server(
-  supabase: SupabaseClient,
-  userId: string,
-  beforeDate: string,
-  sevenDaysBefore: string,
-): Promise<Last7Row[]> {
-  const { data, error } = await supabase
-    .from("daily_logs")
-    .select(COLS)
-    .eq("user_id", userId)
-    .gte("date", sevenDaysBefore)
-    .lt("date", beforeDate)
-    .order("date", { ascending: false });
-  if (error) throw error;
-  return (data ?? []) as Last7Row[];
-}
+const last7 = createFetcher(
+  async (supabase: SupabaseClient, userId: string, beforeDate: string, sevenDaysBefore: string): Promise<Last7Row[]> => {
+    const { data, error } = await supabase
+      .from("daily_logs")
+      .select(COLS)
+      .eq("user_id", userId)
+      .gte("date", sevenDaysBefore)
+      .lt("date", beforeDate)
+      .order("date", { ascending: false });
+    if (error) throw error;
+    return (data ?? []) as Last7Row[];
+  },
+);
 
-export async function fetchLast7Browser(
-  userId: string,
-  beforeDate: string,
-  sevenDaysBefore: string,
-): Promise<Last7Row[]> {
-  const supabase = createSupabaseBrowserClient();
-  const { data, error } = await supabase
-    .from("daily_logs")
-    .select(COLS)
-    .eq("user_id", userId)
-    .gte("date", sevenDaysBefore)
-    .lt("date", beforeDate)
-    .order("date", { ascending: false });
-  if (error) throw error;
-  return (data ?? []) as Last7Row[];
-}
+export const fetchLast7Server = last7.server;
+export const fetchLast7Browser = last7.browser;

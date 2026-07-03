@@ -9,8 +9,8 @@
 // divergence between SESSION_PLANS and the user's saved default.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import type { UserSessionTemplate } from "@/lib/data/types";
+import { createFetcher } from "@/lib/query/fetchers/create-fetcher";
 
 const SELECT = "user_id, session_type, exercises, updated_at";
 
@@ -19,28 +19,21 @@ const SELECT = "user_id, session_type, exercises, updated_at";
  * doesn't pull `next/headers` into client bundles. Matches the canonical
  * pattern from `dailyLogs.ts`.
  */
-export async function fetchUserSessionTemplateServer(
-  supabase: SupabaseClient,
-  userId: string,
-  sessionType: string,
-): Promise<UserSessionTemplate | null> {
-  const { data, error } = await supabase
-    .from("user_session_templates")
-    .select(SELECT)
-    .eq("user_id", userId)
-    .eq("session_type", sessionType)
-    .maybeSingle();
-  if (error) throw error;
-  return (data as UserSessionTemplate | null) ?? null;
-}
+const userSessionTemplate = createFetcher(
+  async (supabase: SupabaseClient, userId: string, sessionType: string): Promise<UserSessionTemplate | null> => {
+    const { data, error } = await supabase
+      .from("user_session_templates")
+      .select(SELECT)
+      .eq("user_id", userId)
+      .eq("session_type", sessionType)
+      .maybeSingle();
+    if (error) throw error;
+    return (data as UserSessionTemplate | null) ?? null;
+  },
+);
 
-export async function fetchUserSessionTemplateBrowser(
-  userId: string,
-  sessionType: string,
-): Promise<UserSessionTemplate | null> {
-  const supabase = createSupabaseBrowserClient();
-  return fetchUserSessionTemplateServer(supabase, userId, sessionType);
-}
+export const fetchUserSessionTemplateServer = userSessionTemplate.server;
+export const fetchUserSessionTemplateBrowser = userSessionTemplate.browser;
 
 /**
  * Plural variant — fetches every user_session_templates row for the user
@@ -48,24 +41,19 @@ export async function fetchUserSessionTemplateBrowser(
  * which renders up to five distinct session types per week and would
  * otherwise fan out one query per (weekday, session_type) pair.
  */
-export async function fetchAllUserSessionTemplatesServer(
-  supabase: SupabaseClient,
-  userId: string,
-): Promise<Record<string, UserSessionTemplate>> {
-  const { data, error } = await supabase
-    .from("user_session_templates")
-    .select(SELECT)
-    .eq("user_id", userId);
-  if (error) throw error;
-  const rows = (data ?? []) as UserSessionTemplate[];
-  const map: Record<string, UserSessionTemplate> = {};
-  for (const row of rows) map[row.session_type] = row;
-  return map;
-}
+const allUserSessionTemplates = createFetcher(
+  async (supabase: SupabaseClient, userId: string): Promise<Record<string, UserSessionTemplate>> => {
+    const { data, error } = await supabase
+      .from("user_session_templates")
+      .select(SELECT)
+      .eq("user_id", userId);
+    if (error) throw error;
+    const rows = (data ?? []) as UserSessionTemplate[];
+    const map: Record<string, UserSessionTemplate> = {};
+    for (const row of rows) map[row.session_type] = row;
+    return map;
+  },
+);
 
-export async function fetchAllUserSessionTemplatesBrowser(
-  userId: string,
-): Promise<Record<string, UserSessionTemplate>> {
-  const supabase = createSupabaseBrowserClient();
-  return fetchAllUserSessionTemplatesServer(supabase, userId);
-}
+export const fetchAllUserSessionTemplatesServer = allUserSessionTemplates.server;
+export const fetchAllUserSessionTemplatesBrowser = allUserSessionTemplates.browser;

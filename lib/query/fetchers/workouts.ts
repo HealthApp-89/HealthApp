@@ -1,6 +1,6 @@
 // lib/query/fetchers/workouts.ts
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { createFetcher } from "@/lib/query/fetchers/create-fetcher";
 
 const COLS = `id, date, type, exercises(name, position, exercise_sets(kg, reps, warmup, set_index))`;
 
@@ -17,40 +17,26 @@ export type RawWorkout = {
     | null;
 };
 
-export async function fetchWorkoutsRangeServer(
-  supabase: SupabaseClient,
-  userId: string,
-  fromDate: string,
-  toDate: string,
-  limit = 5,
-): Promise<RawWorkout[]> {
-  const { data, error } = await supabase
-    .from("workouts")
-    .select(COLS)
-    .eq("user_id", userId)
-    .gte("date", fromDate)
-    .lte("date", toDate)
-    .order("date", { ascending: false })
-    .limit(limit);
-  if (error) throw error;
-  return (data ?? []) as RawWorkout[];
-}
+const workoutsRange = createFetcher(
+  async (
+    supabase: SupabaseClient,
+    userId: string,
+    fromDate: string,
+    toDate: string,
+    limit: number,
+  ): Promise<RawWorkout[]> => {
+    const { data, error } = await supabase
+      .from("workouts")
+      .select(COLS)
+      .eq("user_id", userId)
+      .gte("date", fromDate)
+      .lte("date", toDate)
+      .order("date", { ascending: false })
+      .limit(limit);
+    if (error) throw error;
+    return (data ?? []) as RawWorkout[];
+  },
+);
 
-export async function fetchWorkoutsRangeBrowser(
-  userId: string,
-  fromDate: string,
-  toDate: string,
-  limit = 5,
-): Promise<RawWorkout[]> {
-  const supabase = createSupabaseBrowserClient();
-  const { data, error } = await supabase
-    .from("workouts")
-    .select(COLS)
-    .eq("user_id", userId)
-    .gte("date", fromDate)
-    .lte("date", toDate)
-    .order("date", { ascending: false })
-    .limit(limit);
-  if (error) throw error;
-  return (data ?? []) as RawWorkout[];
-}
+export const fetchWorkoutsRangeServer = workoutsRange.server;
+export const fetchWorkoutsRangeBrowser = workoutsRange.browser;

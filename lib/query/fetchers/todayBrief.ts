@@ -1,7 +1,7 @@
 // lib/query/fetchers/todayBrief.ts
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import type { MorningBriefCard } from "@/lib/data/types";
+import { createFetcher } from "@/lib/query/fetchers/create-fetcher";
 
 const COLS = "ui, created_at";
 
@@ -47,39 +47,22 @@ function pickTodayBrief(
   return null;
 }
 
+const todayBrief = createFetcher(
+  async (supabase: SupabaseClient, userId: string, today: string): Promise<MorningBriefCard | null> => {
+    const { data, error } = await supabase
+      .from("chat_messages")
+      .select(COLS)
+      .eq("user_id", userId)
+      .eq("kind", "morning_brief")
+      .order("created_at", { ascending: false })
+      .limit(3);
+
+    if (error) throw error;
+    return pickTodayBrief(data ?? null, today);
+  },
+);
+
 /** Server-side variant — uses the SSR Supabase client (cookie-bound, RLS). */
-export async function fetchTodayBriefServer(
-  supabase: SupabaseClient,
-  userId: string,
-  today: string,
-): Promise<MorningBriefCard | null> {
-  const { data, error } = await supabase
-    .from("chat_messages")
-    .select(COLS)
-    .eq("user_id", userId)
-    .eq("kind", "morning_brief")
-    .order("created_at", { ascending: false })
-    .limit(3);
-
-  if (error) throw error;
-  return pickTodayBrief(data ?? null, today);
-}
-
+export const fetchTodayBriefServer = todayBrief.server;
 /** Browser-side variant — uses the browser Supabase client (cookie-bound, RLS). */
-export async function fetchTodayBriefBrowser(
-  userId: string,
-  today: string,
-): Promise<MorningBriefCard | null> {
-  const supabase = createSupabaseBrowserClient();
-
-  const { data, error } = await supabase
-    .from("chat_messages")
-    .select(COLS)
-    .eq("user_id", userId)
-    .eq("kind", "morning_brief")
-    .order("created_at", { ascending: false })
-    .limit(3);
-
-  if (error) throw error;
-  return pickTodayBrief(data ?? null, today);
-}
+export const fetchTodayBriefBrowser = todayBrief.browser;

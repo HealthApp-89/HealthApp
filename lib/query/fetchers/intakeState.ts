@@ -1,7 +1,7 @@
 // lib/query/fetchers/intakeState.ts
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import type { IntakeState as CheckinIntakeState } from "@/lib/data/types";
+import { createFetcher } from "@/lib/query/fetchers/create-fetcher";
 
 /**
  * Reads `checkins.intake_state` for a (user, day). Returns the typed
@@ -18,32 +18,18 @@ import type { IntakeState as CheckinIntakeState } from "@/lib/data/types";
 
 export type IntakeState = CheckinIntakeState | null;
 
-export async function fetchIntakeStateServer(
-  supabase: SupabaseClient,
-  userId: string,
-  day: string,
-): Promise<IntakeState> {
-  const { data, error } = await supabase
-    .from("checkins")
-    .select("intake_state")
-    .eq("user_id", userId)
-    .eq("date", day)
-    .maybeSingle<{ intake_state: CheckinIntakeState | null }>();
-  if (error) throw error;
-  return data?.intake_state ?? null;
-}
+const intakeState = createFetcher(
+  async (supabase: SupabaseClient, userId: string, day: string): Promise<IntakeState> => {
+    const { data, error } = await supabase
+      .from("checkins")
+      .select("intake_state")
+      .eq("user_id", userId)
+      .eq("date", day)
+      .maybeSingle<{ intake_state: CheckinIntakeState | null }>();
+    if (error) throw error;
+    return data?.intake_state ?? null;
+  },
+);
 
-export async function fetchIntakeStateBrowser(
-  userId: string,
-  day: string,
-): Promise<IntakeState> {
-  const supabase = createSupabaseBrowserClient();
-  const { data, error } = await supabase
-    .from("checkins")
-    .select("intake_state")
-    .eq("user_id", userId)
-    .eq("date", day)
-    .maybeSingle<{ intake_state: CheckinIntakeState | null }>();
-  if (error) throw error;
-  return data?.intake_state ?? null;
-}
+export const fetchIntakeStateServer = intakeState.server;
+export const fetchIntakeStateBrowser = intakeState.browser;
