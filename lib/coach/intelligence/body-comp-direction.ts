@@ -15,8 +15,9 @@
 // Trend method: OLS (ordinary least squares) linear regression on (day_index,
 // value) pairs, slope × 7 to express per-week rate. Preferred over first/last
 // because it is noise-resistant and handles gaps (missing days are excluded
-// from the regression, not interpolated). Same olsSlope() as
-// nutrition-performance-linker.ts — local copy for module isolation.
+// from the regression, not interpolated). Uses the shared olsSlope() from
+// lib/coach/trends/linear-regression.ts (same authoritative implementation
+// as nutrition-performance-linker.ts).
 //
 // Lift trend: replicates interference-checker.ts's exact thresholds and logic
 // (progressing >1.01, declining <0.98) using brzycki() from lib/coach/e1rm.ts
