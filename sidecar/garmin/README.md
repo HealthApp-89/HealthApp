@@ -12,7 +12,25 @@ them to `/api/ingest/garmin`. All derivation happens app-side; this is a dumb pu
    — if 2FA is on you'll be asked for a 6-digit code once. The token is saved to
    `~/.garminconnect` and reused after that.
 
-## Daily schedule (Mac/Linux cron, 08:30 local)
+## Daily schedule (macOS launchd — runs once on first internet of the day)
+
+[run-when-online.sh](run-when-online.sh) is invoked by launchd every 5 minutes
+and exits instantly unless: it's past 07:00 local (`GARMIN_EARLIEST`
+override), the Mac is online, and today hasn't run yet. The first
+connectivity after 07:00 triggers one collector run, stamped in
+`~/.garmin-collector-success`. A hard failure (rc=1, network/login error)
+does NOT stamp and retries on the next tick; a clean run stamps even when
+today's overnight block was empty (rc=2, watch not synced) — that gap is
+covered by tomorrow's `BACKFILL_DAYS` pull.
+
+- Install: plist at `~/Library/LaunchAgents/com.apex.garmin-collector.plist`
+  (ProgramArguments `/bin/zsh <abs path>/run-when-online.sh`, `StartInterval`
+  300, `RunAtLoad` true), then
+  `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.apex.garmin-collector.plist`.
+- Force a test run: delete the stamp file, then
+  `launchctl kickstart gui/$(id -u)/com.apex.garmin-collector`.
+
+Linux fallback (plain cron, fixed time):
 ```
 30 8 * * * cd /path/to/sidecar/garmin && set -a && source .env && set +a && ./.venv/bin/python collector.py >> ~/garmin-collector.log 2>&1
 ```

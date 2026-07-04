@@ -162,7 +162,8 @@ def main() -> int:
 
     today = date.today().isoformat()
     print(f"collecting {today} (overnight-only) ...")
-    days.append(overnight_only(collect_day(g, today)))
+    today_overnight = overnight_only(collect_day(g, today))
+    days.append(today_overnight)
 
     resp = requests.post(
         os.environ["INGEST_URL"],
@@ -171,7 +172,15 @@ def main() -> int:
         timeout=30,
     )
     print(f"ingest → {resp.status_code}: {resp.text}")
-    return 0 if resp.ok else 1
+    if not resp.ok:
+        return 1
+    # Exit 2 = posted, but today's overnight block carried no metrics — the
+    # Fenix likely hasn't synced to the phone yet. The launchd wrapper treats
+    # this as retryable so the pull re-fires later in the morning window.
+    if len(today_overnight) <= 1:  # only the "date" key
+        print(f"today ({today}) overnight block empty — watch not synced yet?")
+        return 2
+    return 0
 
 
 if __name__ == "__main__":
