@@ -56,12 +56,12 @@ Replace the 8-turn sequential chat with **one assistant turn carrying a check-in
 ```
 
 - **"Same as usual"** → POST `{kind:'all_good'}` → user reply "Same as usual" inserted → straight to `awaiting_whoop` → existing recovery-gate/brief flow.
-- **Adjust → Submit** → POST `{kind:'batch', values, notes?}`. If `notes` non-empty, the existing `handleFeelTail` streaming path runs (Remi ack + `update_intake_slots` extraction); else straight to `awaiting_whoop`.
+- **Adjust → Submit** → POST `{kind:'batch', values, notes?}`. If `notes` non-empty, a non-streaming best-effort Remi ack runs (`runNotesAck`: ack + `update_intake_slots` extraction); else straight to `awaiting_whoop`.
 - **Sick=yes in the form** → same short-circuit semantics as today's `declare_sick`: with the notes field empty, state goes to `awaiting_sickness_notes` and the existing "what's going on?" prompt follows; with notes filled, they are written to `sickness_notes` (not `feel_notes`) and state goes straight to `delivered`.
 - **Still-sick morning** (yesterday `sick=true`): the existing chip turn runs first; answering "No" now leads to the card instead of question 1.
 - **Resume** (`awaiting_feel` mid-flow): the card is the latest assistant message in the thread; re-render is free. `awaiting_feel` now just means "card outstanding".
 
-The card renders via a new `MorningCheckinCard` client component, dispatched from `ChatThread` the same way `ProactiveNudgeCard` is (keyed on the `ui.morning_form` shape). Defaults are embedded in the card's `ui` jsonb at creation time so what the athlete sees is exactly what gets written.
+The card renders via a new `MorningCheckinCard` client component in ChatPanel's bottom slot (where `ChatChips` renders today), keyed on the `ui.morning_form` shape and interactive only while it is the latest assistant message. Defaults are embedded in the card's `ui` jsonb at creation time so what the athlete sees is exactly what gets written.
 
 ## Defaults engine
 
@@ -92,7 +92,7 @@ Removed/retired:
 - `SLOTS`, `SLOT_BY_KEY`, `chipsForSlot`, `mapSlotToColumn`, and `nextSlot()`'s question-walking role are retired. Slot validation lives in the batch Zod schema. `FREE_TEXT_TAIL_PROMPT` is retired (notes are a form field).
 - `nextIntakeState` simplifies accordingly. `IntakeState` values themselves do not change — no migration to the state machine's vocabulary, and `decideIntakeAction` is untouched.
 
-Kept verbatim: `handleDeclareSick`, `handleSicknessNotes`, still-sick chip handling (with its "No" branch now inserting the card), `handleFeelTail`, `UPDATE_INTAKE_SLOTS_TOOL`, recovery-gate + recommendation auto-fire.
+Kept verbatim: `handleDeclareSick`, `handleSicknessNotes`, still-sick chip handling (with its "No" branch now inserting the card), `UPDATE_INTAKE_SLOTS_TOOL`, recovery-gate + recommendation auto-fire. (`handleFeelTail` is replaced by the non-streaming `runNotesAck` — see amendment above.)
 
 ## Data model
 
