@@ -11,7 +11,7 @@ import { evaluateBlockPhase, prescribePrimaryFromPhase } from "@/lib/coach/presc
 import { prescribeSecondaryAutoregulated } from "@/lib/coach/prescription/autoregulation-rule";
 import { brzycki, bestComparisonValue, metricLabel } from "@/lib/coach/e1rm";
 import { annotateSession } from "@/lib/coach/session-structure/annotate";
-import { classifyLightenTier, lightenExercise } from "@/lib/coach/prescription/prescribe-week";
+import { classifyLightenTier, lightenExercise, lastWeekClean, consecutiveMisses } from "@/lib/coach/prescription/prescribe-week";
 import { createAuditReporter } from "./audit-utils.mjs";
 
 const { assert, summary } = createAuditReporter();
@@ -697,6 +697,43 @@ const LEGS = ["legs"];
   const wu = { name: "Squat (Barbell)", warmup: true, baseKg: 60, baseReps: 5, sets: 1 };
   const out = lightenExercise(wu, "Legs", LEGS);
   assert("warmup returned unchanged", out === wu, `got different object`);
+}
+
+console.log("\n## prescribe-week.ts — RIR-aware clean predicates\n");
+
+{
+  const ex = { name: "Squat (Barbell)", baseReps: 6, sets: 3, rir: 2 };
+  const base = { exercise_name: "Squat (Barbell)", exercise_key: null, kg: 100, reps: 6, warmup: false, failure: false, performed_on: "2026-07-06" };
+
+  assert("clean when recorded RIR meets prescription", lastWeekClean([{ ...base, rir: 2 }], ex, 2) === true);
+  assert("dirty when recorded RIR below prescription (grind)", lastWeekClean([{ ...base, rir: 0 }], ex, 2) === false);
+  assert("legacy: missing RIR keeps old verdict (clean)", lastWeekClean([base], ex, 2) === true);
+  assert("legacy: missing RIR keeps old verdict (reps short = dirty)", lastWeekClean([{ ...base, reps: 4 }], ex, 2) === false);
+  assert("per-exercise ex.rir overrides week rirTarget", lastWeekClean([{ ...base, rir: 2 }], { ...ex, rir: 3 }, 2) === false);
+  assert("week rirTarget used when ex.rir absent", lastWeekClean([{ ...base, rir: 1 }], { name: ex.name, baseReps: 6, sets: 3 }, 2) === false);
+  assert("failure dirty regardless of RIR", lastWeekClean([{ ...base, rir: 3, failure: true }], ex, 2) === false);
+  assert("over-target RIR is still just clean (no double-step signal)", lastWeekClean([{ ...base, rir: 4 }], ex, 2) === true);
+
+  assert(
+    "consecutiveMisses counts RIR grinds",
+    consecutiveMisses(
+      [{ ...base, rir: 0 }, { ...base, rir: 1, performed_on: "2026-06-29" }],
+      ex,
+      2,
+    ) === 2,
+  );
+  assert(
+    "consecutiveMisses stops at first RIR-clean set",
+    consecutiveMisses(
+      [{ ...base, rir: 0 }, { ...base, rir: 2, performed_on: "2026-06-29" }],
+      ex,
+      2,
+    ) === 1,
+  );
+  assert(
+    "consecutiveMisses legacy path unchanged when RIR absent",
+    consecutiveMisses([{ ...base, reps: 4 }, base], ex, 2) === 1,
+  );
 }
 
 summary("audit-prescription-rules");
