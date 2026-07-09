@@ -4,7 +4,7 @@ import type { TrainingWeek } from "@/lib/data/types";
 import { createFetcher } from "@/lib/query/fetchers/create-fetcher";
 
 const COLS =
-  "id, user_id, block_id, week_start, session_plan, exercise_overrides, session_prescriptions, planned_activities, weekly_focus, intensity_modifier, rir_target, research_phase, proposed_by, chat_message_id, committed_at, created_at, updated_at";
+  "id, user_id, block_id, week_start, session_plan, exercise_overrides, session_prescriptions, repatch_log, planned_activities, weekly_focus, intensity_modifier, rir_target, research_phase, proposed_by, chat_message_id, committed_at, created_at, updated_at";
 
 const trainingWeek = createFetcher(
   async (supabase: SupabaseClient, userId: string, weekStart: string): Promise<TrainingWeek | null> => {

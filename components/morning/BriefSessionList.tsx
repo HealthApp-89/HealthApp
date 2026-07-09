@@ -8,6 +8,7 @@ import type { MorningBriefCard, MorningBriefExercise, ExerciseOverrides } from "
 import type { SessionStructure } from "@/lib/coach/session-structure";
 import { SessionStructureBanner } from "@/components/strength/SessionStructureBanner";
 import { LoggerSheet } from "@/components/logger/LoggerSheet";
+import { MorningPatchChip } from "@/components/morning/MorningPatchChip";
 import { useExistingLoggerDraft } from "@/lib/logger/use-existing-draft";
 import { useUserToday } from "@/lib/query/hooks/useUserToday";
 import { SESSION_PLANS, type PlannedExercise } from "@/lib/coach/sessionPlans";
@@ -108,6 +109,7 @@ export function BriefSessionList({
           userId={userId}
         />
       )}
+      <MorningPatchChip userId={userId} />
       <div
         style={{
           background: COLOR.surfaceAlt,
