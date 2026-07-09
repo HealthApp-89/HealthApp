@@ -84,7 +84,7 @@ Server computes this in the `start` handler and embeds it in `ui.morning_form.de
 New body kinds:
 
 - `{kind: 'all_good'}` — upserts `{readiness: defaults.readiness, fatigue: defaults.fatigue, soreness_areas: [], soreness_severity: null, bloating: false, sick: false, intake_source: 'all_good', intake_state: 'awaiting_whoop'}`; inserts user reply; runs the existing recovery-gate check (parked `SYNC_RECOVERY_PROMPT` turn when recovery is null). No LLM call. Re-reads the card's embedded defaults from the latest `morning_form` assistant turn — the write must match what was displayed, not a recomputation.
-- `{kind: 'batch', values, notes?}` — Zod-validated (`readiness` 1–10 int, `fatigue` enum, `soreness_areas` ⊆ `SORENESS_AREAS`, `soreness_severity` enum required iff areas non-empty, `bloating`/`sick` boolean, `notes` string ≤ 2000 chars). Writes the row with `intake_source='form'`. Dispatch: `sick=true` → sick short-circuit; `notes` non-empty → `handleFeelTail` path (which already writes `feel_notes`, streams the Remi ack, applies tool extraction, and advances to `awaiting_whoop`); else JSON response + `awaiting_whoop`.
+- `{kind: 'batch', values, notes?}` — Zod-validated (`readiness` 1–10 int, `fatigue` enum, `soreness_areas` ⊆ `SORENESS_AREAS`, `soreness_severity` enum required iff areas non-empty, `bloating`/`sick` boolean, `notes` string ≤ 2000 chars). Writes the row with `intake_source='form'`. Dispatch: `sick=true` → sick short-circuit; `notes` non-empty → a **non-streaming** Anthropic call (`runNotesAck`) inserts the Remi ack turn and applies `update_intake_slots` extraction, best-effort after the row is already committed; the response is JSON in all cases. (Amended 2026-07-10 during planning: with the forced tail gone, the morning SSE path had exactly one remaining consumer — a 1–2 sentence ack doesn't justify keeping a streaming protocol.)
 
 Removed/retired:
 
@@ -113,8 +113,8 @@ Nullable; no backfill. Historical rows stay null and qualify as explicit for the
 
 ## Client changes
 
-- `MorningCheckinCard` (new, `components/morning/`): collapsed two-button state; inline expansion with prefilled chip rows; conditional severity row; optional notes input; posts `all_good`/`batch`; hands off to the existing SSE consumer when the response is a stream (notes path). Reuses existing chat chip styling.
-- `ChatThread` dispatch branch for `ui.morning_form`.
+- `MorningCheckinCard` (new, `components/morning/`): collapsed two-button state; inline expansion with prefilled chip rows; conditional severity row; optional notes input; posts `all_good`/`batch`; all submits are plain JSON posts. rendered from ChatPanel's bottom slot (both layout variants) where `ChatChips` renders today, interactive only while the card is the latest assistant message. (Amended 2026-07-10: the morning intake UI lives in the panel's bottom slot, not the thread.)
+- `ChatPanel` bottom-slot dispatch for `ui.morning_form`.
 - The old sequential chip flow's client pieces stay only insofar as `still_sick` and action chips (`recheck`/`skip_whoop`) need them.
 
 ## Testing & verification
