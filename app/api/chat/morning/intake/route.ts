@@ -328,8 +328,12 @@ async function fetchMorningDefaults(
   return computeMorningDefaults((data ?? []) as DefaultsInputRow[]);
 }
 
-/** Defaults embedded in the most recent displayed card, if any. */
+/** Defaults embedded in the most recent displayed card, if any.
+ *  A check-in card is a same-morning artifact — anything older than 12 h is
+ *  stale and falls through to the fetchMorningDefaults recomputation at the
+ *  call site via the ?? null fallback. */
 async function readCardDefaults(sr: SR, userId: string): Promise<MorningDefaults | null> {
+  const since = new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString();
   const { data } = await sr
     .from("chat_messages")
     .select("ui")
@@ -337,6 +341,7 @@ async function readCardDefaults(sr: SR, userId: string): Promise<MorningDefaults
     .eq("kind", "morning_intake")
     .eq("role", "assistant")
     .not("ui->morning_form", "is", null)
+    .gte("created_at", since)
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle<{ ui: MorningUI }>();

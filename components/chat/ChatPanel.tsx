@@ -843,39 +843,14 @@ export default function ChatPanel({
         },
       });
 
-      // Optimistic local assistant stub for streaming
-      const tempAssistantId = `stub-${crypto.randomUUID()}`;
-      dispatch({ type: "append_assistant_stub", id: tempAssistantId });
-
-      let serverAssistantId: string | null = null;
-      try {
-        for await (const ev of postSse("/api/chat/morning/intake", {
-          kind: "free_text",
-          value: trimmed,
-        })) {
-          if (ev.type === "delta") {
-            dispatch({ type: "append_delta", id: tempAssistantId, text: ev.text });
-          } else if (ev.type === "done") {
-            serverAssistantId = ev.message_id;
-            dispatch({ type: "replace_id", tempId: tempAssistantId, serverId: ev.message_id });
-            dispatch({ type: "finalize_assistant", id: ev.message_id, status: "done" });
-          } else if (ev.type === "error") {
-            dispatch({
-              type: "finalize_assistant",
-              id: serverAssistantId ?? tempAssistantId,
-              status: "error",
-              error: ev.message,
-            });
-          }
-        }
-      } catch (e) {
-        dispatch({
-          type: "finalize_assistant",
-          id: serverAssistantId ?? tempAssistantId,
-          status: "error",
-          error: String(e),
-        });
-      }
+      // The intake route now returns plain JSON — no SSE stream. POST and let
+      // the tail refetch below replace the optimistic user message with the
+      // server-persisted version (and surface any server-inserted assistant turns).
+      await fetch("/api/chat/morning/intake", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind: "free_text", value: trimmed }),
+      });
 
       // Invalidate so the auto-fire effect picks up intake_state='awaiting_whoop'
       queryClient.invalidateQueries({ queryKey: queryKeys.checkin.one(userId, today) });
@@ -891,7 +866,7 @@ export default function ChatPanel({
         });
       }
     },
-    [queryClient, userId, today, currentMode],
+    [queryClient, userId, today, currentMode, thread, tz],
   );
 
   // Fix 1: In-flight guard — prevents duplicate recommendation streams while
