@@ -15,6 +15,7 @@ import { classifyLightenTier, lightenExercise, lastWeekClean, consecutiveMisses 
 import { mergePreservedDays } from "@/lib/coach/prescription/upsert-week-prescription";
 import { mondayOfIso, diffFutureDays, diffDay, formatRepatchNotes } from "@/lib/coach/prescription/repatch-week";
 import { patchExercisesForRung, revertDayExercises, hasMorningPatchEntry, hasMorningRevertEntry } from "@/lib/coach/prescription/patch-today";
+import fs from "node:fs";
 import { createAuditReporter } from "./audit-utils.mjs";
 
 const { assert, summary } = createAuditReporter();
@@ -1238,6 +1239,181 @@ console.log("\n## double-progression-rule.ts — Item 3 unmapped loadability def
     recentSets: [SU(20, 13, 2, "2026-07-07"), SU(20, 13, 3, "2026-07-07")],
   }));
   assert("Item3 unmapped/moderate: step-up triggers at top (bottom+3=13)", stepUpMod.baseKg === 22.5 && stepUpMod.baseReps === 10);
+}
+
+console.log("\n## strength-per-lbm-trend.ts — cut-context trend core\n");
+
+import { computeStrengthPerLbmTrend } from "@/lib/coach/strength-per-lbm-trend";
+
+{
+  // Helper: one clean top set + one LBM reading per listed Monday week.
+  const set = (kg, reps, date) => ({ kg, reps, warmup: false, performed_on: date });
+  const body = (date, ffm, weight = null, bf = null) =>
+    ({ date, fat_free_mass_kg: ffm, weight_kg: weight, body_fat_pct: bf });
+
+  // 4 paired weeks, ratio perfectly flat (e1RM and LBM both constant).
+  const flat = computeStrengthPerLbmTrend({
+    lift: "squat",
+    weeksRequested: 8,
+    sets: [
+      set(100, 5, "2026-06-15"), set(100, 5, "2026-06-22"),
+      set(100, 5, "2026-06-29"), set(100, 5, "2026-07-06"),
+    ],
+    bodyRows: [
+      body("2026-06-16", 70), body("2026-06-23", 70),
+      body("2026-06-30", 70), body("2026-07-07", 70),
+    ],
+  });
+  assert("flat: 4 paired weeks", flat.weeks_with_data === 4);
+  assert("flat: verdict holding", flat.verdict === "holding");
+  assert("flat: ratio = brzycki(100,5)/70", Math.abs(flat.series[0].ratio - (100 * 36 / (37 - 5)) / 70) < 1e-9);
+  assert("flat: series Monday-keyed", flat.series[0].week_start === "2026-06-15");
+
+  // Missing-week omission: 3 weeks of sets, only 2 have body data → 2 paired.
+  const gaps = computeStrengthPerLbmTrend({
+    lift: "squat", weeksRequested: 8,
+    sets: [set(100, 5, "2026-06-22"), set(100, 5, "2026-06-29"), set(100, 5, "2026-07-06")],
+    bodyRows: [body("2026-06-23", 70), body("2026-07-07", 70)],
+  });
+  assert("gaps: unpaired week omitted", gaps.weeks_with_data === 2);
+  assert("gaps: <3 weeks → insufficient_data", gaps.verdict === "insufficient_data");
+  assert("gaps: slopes null on insufficient", gaps.slope_per_week === null && gaps.relative_slope_pct_per_week === null);
+  assert("gaps: series still returned", gaps.series.length === 2);
+
+  // LBM fallback derivation: no ffm, weight 100 @ 30% bf → LBM 70.
+  const derived = computeStrengthPerLbmTrend({
+    lift: "squat", weeksRequested: 8,
+    sets: [set(100, 5, "2026-06-22"), set(100, 5, "2026-06-29"), set(100, 5, "2026-07-06")],
+    bodyRows: [
+      body("2026-06-23", null, 100, 30), body("2026-06-30", null, 100, 30), body("2026-07-07", null, 100, 30),
+    ],
+  });
+  assert("fallback: LBM derived from weight × (1−bf%)", Math.abs(derived.series[0].avg_lbm_kg - 70) < 1e-9);
+  assert("fallback: 3 paired weeks → verdict computed", derived.verdict === "holding");
+
+  // Rising: LBM constant, e1RM +2%/wk → relative slope ≈ +2 > +0.5.
+  const rising = computeStrengthPerLbmTrend({
+    lift: "squat", weeksRequested: 8,
+    sets: [set(100, 5, "2026-06-15"), set(102, 5, "2026-06-22"), set(104, 5, "2026-06-29"), set(106, 5, "2026-07-06")],
+    bodyRows: [body("2026-06-16", 70), body("2026-06-23", 70), body("2026-06-30", 70), body("2026-07-07", 70)],
+  });
+  assert("rising verdict", rising.verdict === "rising");
+
+  // Falling: e1RM constant, LBM rising 2%/wk → ratio falls ≈ −2%/wk.
+  const falling = computeStrengthPerLbmTrend({
+    lift: "squat", weeksRequested: 8,
+    sets: [set(100, 5, "2026-06-15"), set(100, 5, "2026-06-22"), set(100, 5, "2026-06-29"), set(100, 5, "2026-07-06")],
+    bodyRows: [body("2026-06-16", 70), body("2026-06-23", 71.4), body("2026-06-30", 72.8), body("2026-07-07", 74.2)],
+  });
+  assert("falling verdict", falling.verdict === "falling");
+
+  // Warmups and >12-rep sets excluded from e1RM.
+  const filtered = computeStrengthPerLbmTrend({
+    lift: "squat", weeksRequested: 8,
+    sets: [
+      { kg: 140, reps: 5, warmup: true, performed_on: "2026-07-06" },
+      set(60, 20, "2026-07-06"),
+      set(100, 5, "2026-07-06"),
+      set(100, 5, "2026-06-29"), set(100, 5, "2026-06-22"),
+    ],
+    bodyRows: [body("2026-07-07", 70), body("2026-06-30", 70), body("2026-06-23", 70)],
+  });
+  assert("filter: warmup + >12-rep sets excluded", Math.abs(filtered.series[filtered.series.length - 1].best_e1rm - (100 * 36 / 32)) < 1e-9);
+
+  // Multiple LBM readings in one week average.
+  const avg = computeStrengthPerLbmTrend({
+    lift: "squat", weeksRequested: 8,
+    sets: [set(100, 5, "2026-06-22"), set(100, 5, "2026-06-29"), set(100, 5, "2026-07-06")],
+    bodyRows: [body("2026-07-06", 69), body("2026-07-08", 71), body("2026-06-30", 70), body("2026-06-23", 70)],
+  });
+  assert("avg: multiple readings averaged", Math.abs(avg.series[avg.series.length - 1].avg_lbm_kg - 70) < 1e-9);
+
+  // ── Deload exclusion fixtures ────────────────────────────────────────────────
+  // PRE-FIX note (recorded for report): without exclusion, the trailing 0.80× week
+  // (set(80,5) → e1RM = 90.0 vs. normal 112.5) drags relPct to −6.32%/wk →
+  // verdict "falling". The fix: passing deloadWeekStarts:["2026-07-06"] drops it.
+
+  // Deload exclusion: a trailing 0.80× week no longer drags the verdict.
+  const deloadTrail = computeStrengthPerLbmTrend({
+    lift: "squat", weeksRequested: 8,
+    sets: [
+      set(100, 5, "2026-06-15"), set(100, 5, "2026-06-22"),
+      set(100, 5, "2026-06-29"), set(80, 5, "2026-07-06"), // deload week: 0.80× load
+    ],
+    bodyRows: [
+      body("2026-06-16", 70), body("2026-06-23", 70),
+      body("2026-06-30", 70), body("2026-07-07", 70),
+    ],
+    deloadWeekStarts: ["2026-07-06"],
+  });
+  assert("deload excluded: verdict holding (was falling)", deloadTrail.verdict === "holding");
+  assert("deload excluded: 3 paired weeks remain", deloadTrail.weeks_with_data === 3);
+  assert("deload excluded: surfaced in output", deloadTrail.excluded_deload_weeks.length === 1 && deloadTrail.excluded_deload_weeks[0] === "2026-07-06");
+
+  // Deload week with no strength data is not reported as excluded.
+  const deloadEmpty = computeStrengthPerLbmTrend({
+    lift: "squat", weeksRequested: 8,
+    sets: [set(100, 5, "2026-06-22"), set(100, 5, "2026-06-29"), set(100, 5, "2026-07-06")],
+    bodyRows: [body("2026-06-23", 70), body("2026-06-30", 70), body("2026-07-07", 70)],
+    deloadWeekStarts: ["2026-06-15"],
+  });
+  assert("empty deload week not reported", deloadEmpty.excluded_deload_weeks.length === 0);
+
+  // ── Boundary fixtures: ±0.5%/wk threshold semantics ─────────────────────────
+  // e1RM = brzycki(100,5) = 100*36/(37-5) = 112.5; LBM constant = 70 gives
+  // relative_slope = 0 exactly (flat ratios).
+  // To get relative_slope ≈ +0.45%/wk (holding), LBM decreases at ~0.45%/wk:
+  //   lbm[i] = 70 * (1 − 0.0045 * i) → [70.0, 69.685, 69.370, 69.055]
+  //   verified relPct = 0.4531%/wk  (< 0.5 → holding)
+  // To get relative_slope ≈ +0.60%/wk (rising), LBM decreases at ~0.60%/wk:
+  //   lbm[i] = 70 * (1 − 0.0060 * i) → [70.0, 69.580, 69.160, 68.740]
+  //   verified relPct = 0.6055%/wk  (> 0.5 → rising)
+  // These are the only fixtures needed — the holding/falling/rising split is
+  // already tested by the flat/rising/falling cases above; these pin the exact
+  // boundary. The executor-side weeks clamp (4–12) is DB-coupled and has no pure
+  // fixture; it is pinned by the executor code path and verified by typecheck.
+
+  const boundaryHolding = computeStrengthPerLbmTrend({
+    lift: "squat", weeksRequested: 8,
+    sets: [set(100, 5, "2026-06-15"), set(100, 5, "2026-06-22"), set(100, 5, "2026-06-29"), set(100, 5, "2026-07-06")],
+    // lbm[i] = 70 * (1 − 0.0045*i): LBM declining at 0.45%/wk → ratio slope ≈ +0.4531%/wk (< 0.5)
+    bodyRows: [
+      body("2026-06-16", 70.000), body("2026-06-23", 69.685),
+      body("2026-06-30", 69.370), body("2026-07-07", 69.055),
+    ],
+  });
+  assert("boundary +0.45%/wk: verdict holding (strict > 0.5 threshold)", boundaryHolding.verdict === "holding");
+  assert("boundary +0.45%/wk: relPct < 0.5", boundaryHolding.relative_slope_pct_per_week != null && boundaryHolding.relative_slope_pct_per_week < 0.5);
+
+  const boundaryRising = computeStrengthPerLbmTrend({
+    lift: "squat", weeksRequested: 8,
+    sets: [set(100, 5, "2026-06-15"), set(100, 5, "2026-06-22"), set(100, 5, "2026-06-29"), set(100, 5, "2026-07-06")],
+    // lbm[i] = 70 * (1 − 0.0060*i): LBM declining at 0.60%/wk → ratio slope ≈ +0.6055%/wk (> 0.5)
+    bodyRows: [
+      body("2026-06-16", 70.000), body("2026-06-23", 69.580),
+      body("2026-06-30", 69.160), body("2026-07-07", 68.740),
+    ],
+  });
+  assert("boundary +0.60%/wk: verdict rising (strict > 0.5 threshold)", boundaryRising.verdict === "rising");
+  assert("boundary +0.60%/wk: relPct > 0.5", boundaryRising.relative_slope_pct_per_week != null && boundaryRising.relative_slope_pct_per_week > 0.5);
+
+  // Flat series: boundary sanity — constant e1RM + constant LBM → relSlope = 0.
+  const boundary = computeStrengthPerLbmTrend({
+    lift: "squat", weeksRequested: 8,
+    sets: [set(100, 5, "2026-06-15"), set(100, 5, "2026-06-22"), set(100, 5, "2026-06-29"), set(100, 5, "2026-07-06")],
+    bodyRows: [body("2026-06-16", 70), body("2026-06-23", 70), body("2026-06-30", 70), body("2026-07-07", 70)],
+  });
+  assert("boundary sanity: flat series relative slope ≈ 0", Math.abs(boundary.relative_slope_pct_per_week) < 1e-9);
+}
+
+console.log("\n## CARTER_COLS — read-access allowlist pin\n");
+{
+  const src = fs.readFileSync(new URL("../lib/coach/tools.ts", import.meta.url), "utf8");
+  const block = src.slice(src.indexOf("export const CARTER_COLS"), src.indexOf("export const NORA_COLS"));
+  for (const col of ["recovery", "strain", "sleep_hours", "sleep_score", "weight_kg", "body_fat_pct", "fat_free_mass_kg", "muscle_mass_kg", "calories_eaten", "protein_g"]) {
+    assert(`CARTER_COLS contains ${col}`, block.includes(`"${col}"`));
+  }
+  assert("CARTER_COLS has exactly 10 columns", (block.match(/"/g) ?? []).length === 20);
 }
 
 summary("audit-prescription-rules");

@@ -71,6 +71,9 @@ import { categorize, type ExerciseCategory } from "@/lib/coach/exercise-categori
 import type { PrimaryLift } from "@/lib/data/types";
 import { todayInUserTz, weekdayInUserTz } from "@/lib/time";
 import { getUserTimezone } from "@/lib/time/get-user-tz";
+import { isoDaysAgo, mondayOfIso } from "@/lib/time/dates";
+import { computeStrengthPerLbmTrend, type StrengthPerLbmTrend, type StrengthLbmSetSample, type BodyCompRow } from "@/lib/coach/strength-per-lbm-trend";
+import { PRIMARY_LIFT_NAME_PATTERNS } from "@/lib/coach/prescription/target-hit-evaluator";
 import { computeAdherence } from "@/lib/coach/adherence";
 import { getAutoregulationSignals } from "@/lib/coach/autoregulation";
 import {
@@ -119,6 +122,11 @@ export const PETER_COLS = ALLOWED_COLUMNS;
 export const CARTER_COLS = [
   "recovery", "strain",
   "sleep_hours", "sleep_score",
+  // Read-only cut context (2026-07-09): body comp + day-level intake totals.
+  // Carter READS these to answer strength-on-a-cut questions; prescribing
+  // changes to them stays with Nora/Peter (see CARTER_BASE scope boundaries).
+  "weight_kg", "body_fat_pct", "fat_free_mass_kg", "muscle_mass_kg",
+  "calories_eaten", "protein_g",
 ] as const satisfies readonly AllowedColumn[];
 
 export const NORA_COLS = [
@@ -361,6 +369,20 @@ export const GET_WEEK_PRESCRIPTION_TOOL = {
         type: "boolean",
         description: "If true, upsert the computed prescription into training_weeks.session_prescriptions. Defaults to false (read-only). Use when committing a proposed plan; otherwise leave false.",
       },
+    },
+  },
+};
+
+export const STRENGTH_PER_LBM_TREND_TOOL = {
+  name: "get_strength_per_lbm_trend",
+  description:
+    "Deterministic 'is my strength holding on the cut?' answer for one big-four lift: weekly best e1RM (Brzycki) divided by weekly average lean body mass, with OLS slope and a categorical verdict (rising / holding / falling; insufficient_data below 3 paired weeks). Weeks missing strength or body-comp data are OMITTED, never interpolated — if weeks_with_data is low, say what's missing instead of extrapolating. Quote the verdict and 2-3 series points verbatim; never recompute or extend the trend yourself. Engine-prescribed deload weeks are excluded from the trend and listed in excluded_deload_weeks — mention the exclusion when narrating.",
+  input_schema: {
+    type: "object" as const,
+    required: ["lift"],
+    properties: {
+      lift: { type: "string", enum: ["squat", "bench", "deadlift", "ohp"] },
+      weeks: { type: "number", description: "Trend window in weeks, clamped 4-12. Default 8." },
     },
   },
 };
@@ -1556,6 +1578,96 @@ export async function executeGetAutoregulationSignals(opts: {
       meta: { ms: Date.now() - t0, range_days: 7 },
     };
   }
+}
+
+// ── get_strength_per_lbm_trend executor ──────────────────────────────────────
+
+export async function executeGetStrengthPerLbmTrend(opts: {
+  supabase: SupabaseClient;
+  userId: string;
+  input: unknown;
+}): Promise<ToolResult<StrengthPerLbmTrend>> {
+  const t0 = Date.now();
+  const i = (opts.input ?? {}) as Record<string, unknown>;
+
+  const lift = i.lift as PrimaryLift | undefined;
+  if (lift !== "squat" && lift !== "bench" && lift !== "deadlift" && lift !== "ohp") {
+    return { ok: false, error: { error: "lift must be one of squat|bench|deadlift|ohp" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+  const weeksRaw = typeof i.weeks === "number" && Number.isFinite(i.weeks) ? Math.round(i.weeks) : 8;
+  const weeks = Math.min(12, Math.max(4, weeksRaw));
+
+  const todayIso = todayInUserTz(new Date(), await getUserTimezone(opts.userId));
+  const fromIso = isoDaysAgo(todayIso, weeks * 7);
+
+  const patterns = (PRIMARY_LIFT_NAME_PATTERNS[lift] ?? []).map((p) => p.toLowerCase());
+
+  const [workoutsRes, bodyRes, blocksRes] = await Promise.all([
+    opts.supabase
+      .from("workouts")
+      .select("date, exercises(name, exercise_sets(kg, reps, warmup))")
+      .eq("user_id", opts.userId)
+      .gte("date", fromIso)
+      .order("date", { ascending: false }),
+    opts.supabase
+      .from("daily_logs")
+      .select("date, fat_free_mass_kg, weight_kg, body_fat_pct")
+      .eq("user_id", opts.userId)
+      .gte("date", fromIso)
+      .order("date", { ascending: true }),
+    // Fetch blocks overlapping the window to derive deload-week Mondays (non-fatal).
+    opts.supabase
+      .from("training_blocks")
+      .select("start_date, end_date")
+      .eq("user_id", opts.userId)
+      .lte("start_date", todayIso)
+      .gte("end_date", fromIso),
+  ]);
+  if (workoutsRes.error) {
+    return { ok: false, error: { error: workoutsRes.error.message }, meta: { ms: Date.now() - t0, range_days: weeks * 7 } };
+  }
+  if (bodyRes.error) {
+    return { ok: false, error: { error: bodyRes.error.message }, meta: { ms: Date.now() - t0, range_days: weeks * 7 } };
+  }
+
+  // Derive deload-week Mondays from training blocks (final week of each block).
+  // Non-fatal: if the fetch errored, proceed with an empty list — trend still works.
+  const deloadWeekStarts: string[] = [];
+  if (!blocksRes.error) {
+    for (const b of (blocksRes.data ?? []) as { start_date: string; end_date: string }[]) {
+      const start = new Date(b.start_date + "T00:00:00Z");
+      const end = new Date(b.end_date + "T00:00:00Z");
+      const totalWeeks = Math.round((end.getTime() - start.getTime()) / (7 * 24 * 60 * 60 * 1000));
+      if (totalWeeks < 1) continue;
+      const d = new Date(start);
+      d.setUTCDate(d.getUTCDate() + (totalWeeks - 1) * 7);
+      deloadWeekStarts.push(mondayOfIso(d.toISOString().slice(0, 10)));
+    }
+  }
+
+  type RawSet = { kg: number | null; reps: number | null; warmup: boolean | null };
+  type RawExercise = { name: string; exercise_sets: RawSet[] | null };
+  type RawWorkout = { date: string; exercises: RawExercise[] | null };
+
+  const sets: StrengthLbmSetSample[] = [];
+  for (const w of (workoutsRes.data as unknown as RawWorkout[]) ?? []) {
+    for (const ex of w.exercises ?? []) {
+      if (!patterns.includes(ex.name.trim().toLowerCase())) continue;
+      for (const s of ex.exercise_sets ?? []) {
+        if (s.kg == null || s.reps == null) continue;
+        sets.push({ kg: s.kg, reps: s.reps, warmup: !!s.warmup, performed_on: w.date });
+      }
+    }
+  }
+
+  const result = computeStrengthPerLbmTrend({
+    lift,
+    weeksRequested: weeks,
+    sets,
+    bodyRows: (bodyRes.data ?? []) as BodyCompRow[],
+    deloadWeekStarts,
+  });
+  return { ok: true, data: result, meta: { ms: Date.now() - t0, result_rows: result.series.length, range_days: weeks * 7, truncated: false } };
 }
 
 // ── compute_adherence executor ───────────────────────────────────────────────
@@ -6513,6 +6625,7 @@ export const PETER_TOOLS: readonly ToolSchema[] = [
   AUTOREGULATION_TOOL,
   ADHERENCE_TOOL,
   GET_WEEK_PRESCRIPTION_TOOL,
+  STRENGTH_PER_LBM_TREND_TOOL,
   PROPOSE_BLOCK_TOOL,
   COMMIT_BLOCK_TOOL,
   PROPOSE_CLOSE_BLOCK_TOOL,
@@ -6563,6 +6676,7 @@ export const CARTER_TOOLS: readonly ToolSchema[] = [
   AUTOREGULATION_TOOL,
   ADHERENCE_TOOL,
   GET_WEEK_PRESCRIPTION_TOOL,
+  STRENGTH_PER_LBM_TREND_TOOL,
   PROPOSE_WEEK_PLAN_TOOL,
   COMMIT_WEEK_PLAN_TOOL,
   PROPOSE_SESSION_TODAY_TOOL,

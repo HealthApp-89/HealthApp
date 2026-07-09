@@ -17,7 +17,7 @@ import { bestComparisonValue } from "@/lib/coach/e1rm";
 
 /** Exercise-name patterns that identify a primary-lift instance.
  *  Mirrors prescribe-week.ts. */
-const PRIMARY_LIFT_NAME_PATTERNS: Record<string, string[]> = {
+export const PRIMARY_LIFT_NAME_PATTERNS: Record<string, string[]> = {
   squat:    ["Squat (Barbell)"],
   bench:    ["Decline Bench Press (Barbell)", "Incline Bench Press (Dumbbell)", "Bench Press (Barbell)"],
   deadlift: ["Deadlift (Barbell)"],
