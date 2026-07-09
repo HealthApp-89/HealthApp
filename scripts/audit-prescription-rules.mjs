@@ -905,4 +905,118 @@ console.log("\n## patch-today.ts — rung transforms + revert\n");
     "2026-07-07") === true);
 }
 
+import { prescribeAccessoryDoubleProgression, REP_RANGE_WIDTH } from "@/lib/coach/prescription/double-progression-rule";
+
+console.log("\n## double-progression-rule.ts — accessory double progression\n");
+
+{
+  // Lateral Raise (DB, coarse): step 2, bottom 10, width 4 → range 10..14.
+  const ex = { name: "Lateral Raise (Dumbbell)", baseReps: 10, sets: 3, rir: 2, increment: { step: 2 } };
+  const S = (kg, reps, rir, date, extra = {}) => ({
+    exercise_name: "Lateral Raise (Dumbbell)", exercise_key: null,
+    kg, reps, warmup: false, failure: false, rir, performed_on: date, ...extra,
+  });
+  const input = (over = {}) => ({
+    baseExercise: ex, currentWorkingKg: 12, recentSets: [], rirTarget: 2,
+    blockPhase: "pre_target", loadability: "coarse", focusClampCeilingKg: null,
+    bottomReps: 10, ...over,
+  });
+
+  assert("width table", REP_RANGE_WIDTH.fine === 2 && REP_RANGE_WIDTH.moderate === 3 && REP_RANGE_WIDTH.coarse === 4);
+
+  // 1) STEP UP: two sets at L, both clean at top (14 reps, rir ≥ 2) → 14 kg, reps reset to 10.
+  const up = prescribeAccessoryDoubleProgression(input({
+    recentSets: [S(12, 14, 2, "2026-07-07"), S(12, 14, 3, "2026-07-07")],
+  }));
+  assert("step up: load +step on grid", up.baseKg === 14);
+  assert("step up: reps reset to bottom", up.baseReps === 10);
+
+  // 2) Clamp parks at top instead of exceeding ceiling.
+  const parked = prescribeAccessoryDoubleProgression(input({
+    recentSets: [S(12, 14, 2, "2026-07-07"), S(12, 14, 2, "2026-07-07")],
+    focusClampCeilingKg: 12,
+  }));
+  assert("clamp: load parked at L", parked.baseKg === 12);
+  assert("clamp: reps parked at top", parked.baseReps === 14);
+
+  // 3) Single set at L is NOT enough for a step up → rep-up path instead.
+  const single = prescribeAccessoryDoubleProgression(input({
+    recentSets: [S(12, 14, 2, "2026-07-07")],
+  }));
+  assert("single set: no load jump", single.baseKg === 12);
+  assert("single set: rep-up capped at top", single.baseReps === 14);
+
+  // 4) REP UP: top set clean at 11 reps → prescribe 12.
+  const repUp = prescribeAccessoryDoubleProgression(input({
+    recentSets: [S(12, 11, 2, "2026-07-07"), S(12, 10, 1, "2026-07-07")],
+  }));
+  assert("rep up: load held", repUp.baseKg === 12);
+  assert("rep up: reps +1 from achieved top set", repUp.baseReps === 12);
+
+  // 5) Null RIR history → reps-only criterion still progresses.
+  const legacy = prescribeAccessoryDoubleProgression(input({
+    recentSets: [S(12, 11, null, "2026-07-07")],
+  }));
+  assert("null rir: rep up works", legacy.baseReps === 12 && legacy.baseKg === 12);
+
+  // 6) Grinding below prescribed RIR is dirty: reps hit but rir 0 < 2 → not a rep-up.
+  const grind = prescribeAccessoryDoubleProgression(input({
+    recentSets: [S(12, 11, 0, "2026-07-07")],
+  }));
+  assert("grind: no rep up (hold)", grind.baseKg === 12 && grind.baseReps === 11);
+
+  // 7) STEP DOWN: two consecutive sessions dirty at bottom (reps < 10) → 10 kg, reps 10.
+  const down = prescribeAccessoryDoubleProgression(input({
+    recentSets: [S(12, 8, 0, "2026-07-07"), S(12, 9, 1, "2026-06-30")],
+  }));
+  assert("step down: load -step", down.baseKg === 10);
+  assert("step down: reps at bottom", down.baseReps === 10);
+
+  // 8) ONE dirty session → hold (reps clamped into range).
+  const hold = prescribeAccessoryDoubleProgression(input({
+    recentSets: [S(12, 8, 0, "2026-07-07"), S(12, 12, 2, "2026-06-30")],
+  }));
+  assert("one dirty session: load held", hold.baseKg === 12);
+  assert("one dirty session: reps clamped to bottom", hold.baseReps === 10);
+
+  // 9) Descent floor: L = one step → never below step.
+  const floor = prescribeAccessoryDoubleProgression(input({
+    currentWorkingKg: 2,
+    recentSets: [S(2, 8, 0, "2026-07-07"), S(2, 8, 0, "2026-06-30")],
+  }));
+  assert("descent floor: never below one step", floor.baseKg === 2);
+
+  // 10) No history → hold at bottom.
+  const fresh = prescribeAccessoryDoubleProgression(input({}));
+  assert("no history: L + bottom", fresh.baseKg === 12 && fresh.baseReps === 10);
+
+  // 11) DELOAD: load held, sets halved (3 → 2), volume-balance is skipped by the caller.
+  const deload = prescribeAccessoryDoubleProgression(input({ blockPhase: "deload_week" }));
+  assert("deload: load HELD", deload.baseKg === 12);
+  assert("deload: sets halved", deload.sets === 2);
+  assert("deload: reps at bottom", deload.baseReps === 10);
+
+  // 12) CONSOLIDATION: all-top-clean does NOT step load; parks via rep-up at top.
+  const consol = prescribeAccessoryDoubleProgression(input({
+    blockPhase: "consolidation",
+    recentSets: [S(12, 14, 2, "2026-07-07"), S(12, 14, 2, "2026-07-07")],
+  }));
+  assert("consolidation: load frozen", consol.baseKg === 12);
+  assert("consolidation: reps park at top", consol.baseReps === 14);
+
+  // 13) OFF_PACE: hold both even on a clean session.
+  const off = prescribeAccessoryDoubleProgression(input({
+    blockPhase: "off_pace",
+    recentSets: [S(12, 11, 2, "2026-07-07")],
+  }));
+  assert("off_pace: load held", off.baseKg === 12);
+  assert("off_pace: reps held (clamped achieved)", off.baseReps === 11);
+
+  // 14) Warmup rows ignored in rung derivation.
+  const warm = prescribeAccessoryDoubleProgression(input({
+    recentSets: [S(6, 20, 4, "2026-07-07", { warmup: true }), S(12, 11, 2, "2026-07-07")],
+  }));
+  assert("warmups ignored", warm.baseReps === 12 && warm.baseKg === 12);
+}
+
 summary("audit-prescription-rules");
