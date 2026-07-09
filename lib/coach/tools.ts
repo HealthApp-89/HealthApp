@@ -2264,6 +2264,10 @@ export async function executeGetWeekPrescription(opts: {
         userId: opts.userId,
         weekStart,
         todayIso,
+        // Days ≤ today keep stored state (incl. morning patches + mid-week
+        // repatches). For week:'next' the boundary predates the week and the
+        // merge no-ops — safe unconditionally.
+        preserveDaysThrough: todayIso,
       });
       return {
         ok: true,

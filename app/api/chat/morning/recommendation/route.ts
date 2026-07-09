@@ -27,6 +27,7 @@ import {
   composeBriefContentFallback,
 } from "@/lib/morning/brief";
 import { formatSseEvent } from "@/lib/chat/sse";
+import { applyMorningPatch } from "@/lib/coach/prescription/patch-today";
 
 export const dynamic = "force-dynamic";
 
@@ -94,6 +95,16 @@ export async function POST(req: Request) {
     { user_id: user.id, date: today, intake_state: "assembling_brief" },
     { onConflict: "user_id,date" },
   );
+
+  // Morning-ladder patch: graded soreness/fatigue rungs write real changes to
+  // today's session_prescriptions BEFORE the brief assembles, so the brief,
+  // Carter, and the logger all read the same adjusted numbers. Non-fatal —
+  // on failure the brief degrades to cue-only (previous behavior).
+  try {
+    await applyMorningPatch({ supabase: sr, userId: user.id, todayIso: today });
+  } catch (err) {
+    console.error("[morning/recommendation] applyMorningPatch failed:", err);
+  }
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({

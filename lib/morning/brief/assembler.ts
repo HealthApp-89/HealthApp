@@ -25,6 +25,7 @@ import type {
   WeeklyReviewRow,
   ThisWeekPlanBlock,
 } from "@/lib/data/types";
+import { hasMorningPatchEntry } from "@/lib/coach/prescription/patch-log";
 import type { EnduranceSessionPlan } from "@/lib/coach/endurance/types";
 import { SESSION_PLANS, type PlannedExercise, getEffectiveSessionPlan } from "@/lib/coach/sessionPlans";
 import { annotateSession } from "@/lib/coach/session-structure";
@@ -88,10 +89,14 @@ export type BriefInputs = {
   /** Top-2 muscle-volume flags evaluated by evaluateMuscleVolumeGapsForBrief.
    *  Empty when the active plan has no muscle_volume or no flags fire. */
   muscleVolumeFlags?: MuscleVolumeFlag[];
-  /** The committed training_weeks row + committed weekly_review for the
-   *  current week. Populated by getThisWeekPrescription in data-sources.
-   *  Null when either is missing — triggers the legacy 'training' fallback. */
-  thisWeekPrescription: { trainingWeek: TrainingWeek; review: WeeklyReviewRow } | null;
+  /** The training_weeks row for the current week, paired with its committed
+   *  weekly_review when one exists. Populated by getThisWeekPrescription in
+   *  data-sources. Null only when no training_weeks row exists — triggers the
+   *  legacy 'training' fallback. review is null when the week has a
+   *  training_weeks row but no committed weekly_review (uncommitted week):
+   *  session prescriptions still apply, but ritual blocks (kickoff / analytical)
+   *  are suppressed to preserve byte-identical output for all prior states. */
+  thisWeekPrescription: { trainingWeek: TrainingWeek; review: WeeklyReviewRow | null } | null;
   /** This week's endurance plan, read directly from training_weeks for the
    *  current Monday — independent of weekly_reviews state. Populated by
    *  getThisWeekEndurancePlan in data-sources. Null when no training_weeks
@@ -119,24 +124,36 @@ export type BriefInputs = {
 export function assembleBriefExceptAdvice(
   inputs: BriefInputs,
 ): Omit<MorningBriefCard, "advice_md"> {
+  // Variant selection stays review-gated for byte-identical output on all
+  // existing (row+review) combinations. The new (row, no-review) combination
+  // falls through to "training" just as (null) does — correct behaviour.
+  // Narrow to a type where review is non-null so consumers (composeThisWeekPlan,
+  // composeYesterdayVsPlan) don't need ! casts.
+  type CommittedPair = { trainingWeek: TrainingWeek; review: WeeklyReviewRow };
+  const reviewGatedPair: CommittedPair | null =
+    inputs.thisWeekPrescription?.review
+      ? (inputs.thisWeekPrescription as CommittedPair)
+      : null;
   const variant: MorningBriefVariant = pickVariant(
     inputs.sessionType,
     inputs.today,
-    inputs.thisWeekPrescription,
+    reviewGatedPair,
   );
   const readiness = composeReadiness(inputs);
 
+  // Kickoff block: requires committed review for per-lift narrative.
   const thisWeekPlan =
-    variant === "kickoff" && inputs.thisWeekPrescription
-      ? composeThisWeekPlan(inputs.thisWeekPrescription, inputs.phaseTransitionThisWeek)
+    variant === "kickoff" && reviewGatedPair
+      ? composeThisWeekPlan(reviewGatedPair, inputs.phaseTransitionThisWeek)
       : null;
 
+  // Analytical block: yesterday-vs-plan comparison requires committed review.
   const yesterdayVsPlan =
-    variant === "analytical" && inputs.thisWeekPrescription
+    variant === "analytical" && reviewGatedPair
       ? composeYesterdayVsPlan({
           yesterdayWeekday: shortWeekdayFromDate(inputs.yesterday),
-          trainingWeek: inputs.thisWeekPrescription.trainingWeek,
-          review: inputs.thisWeekPrescription.review,
+          trainingWeek: reviewGatedPair.trainingWeek,
+          review: reviewGatedPair.review,
           yesterdayWorkout: inputs.yesterdayWorkoutForBlock,
           swapApplied: inputs.swapAppliedYesterday,
         })
@@ -171,10 +188,10 @@ export function assembleBriefExceptAdvice(
 function pickVariant(
   sessionType: string,
   today: string,
-  thisWeekPrescription: BriefInputs["thisWeekPrescription"],
+  thisWeekPrescription: { trainingWeek: TrainingWeek; review: WeeklyReviewRow } | null,
 ): MorningBriefVariant {
   if (/^rest$/i.test(sessionType)) return "rest";
-  if (!thisWeekPrescription) return "training"; // legacy fallback
+  if (!thisWeekPrescription) return "training"; // legacy fallback (no row, or row without committed review)
 
   const weekday = weekdayFromDate(today);
   if (weekday === "Monday") return "kickoff";
@@ -235,7 +252,7 @@ function composeReadiness(inputs: BriefInputs): MorningBriefReadiness {
 /** Maps soreness_areas strings (intake vocabulary) to MuscleRegion[].
  *  The intake vocabulary is a subset of MuscleRegion; direct cast is safe
  *  for the common values. Unrecognised strings are silently dropped. */
-function sorenessAreasToRegions(areas: string[] | null): MuscleRegion[] {
+export function sorenessAreasToRegions(areas: string[] | null): MuscleRegion[] {
   if (!areas) return [];
   const VALID: ReadonlySet<MuscleRegion> = new Set([
     "legs", "lower_back", "shoulders", "chest", "back", "arms", "core",
@@ -497,8 +514,19 @@ function composeSession(
         })
       : null;
 
+  // Gate factual cue strings ("Effort eased… today") on whether the
+  // morning patch was actually applied. load_down / volume_down assert
+  // completed actions — they must only fire when the DB write succeeded.
+  // swap_exercise / swap_day are advice for the chip flow (not factual
+  // claims), so they remain ungated.
+  const patchApplied = hasMorningPatchEntry(
+    inputs.thisWeekPrescription?.trainingWeek?.repatch_log ?? null,
+    inputs.today,
+  );
+  const rungIsFactual =
+    ladderForAnnotation?.rung === "load_down" || ladderForAnnotation?.rung === "volume_down";
   const annotateCtx =
-    ladderForAnnotation && ladderForAnnotation.rung !== "none"
+    ladderForAnnotation && ladderForAnnotation.rung !== "none" && (!rungIsFactual || patchApplied)
       ? { soreRegions: ladderForAnnotation.regions, rung: ladderForAnnotation.rung }
       : undefined;
 
@@ -602,9 +630,12 @@ function inferLiftFromKey(key: string | undefined): PrimaryLift | null {
 /** Builds the kickoff-variant THIS WEEK PLAN block from the committed
  *  weekly_review's prescription + volume payload. phase_changed_this_week
  *  is authoritative from upstream flag computation (flags.ts) — the assembler
- *  threads it via BriefInputs rather than re-deriving it here. */
+ *  threads it via BriefInputs rather than re-deriving it here.
+ *
+ *  review is narrowed to non-null at the call-site (kickoff block only fires
+ *  when reviewGatedPair is truthy). */
 function composeThisWeekPlan(
-  prescription: NonNullable<BriefInputs["thisWeekPrescription"]>,
+  prescription: { trainingWeek: TrainingWeek; review: WeeklyReviewRow },
   phaseTransitionThisWeek: boolean,
 ): ThisWeekPlanBlock {
   const { review } = prescription;

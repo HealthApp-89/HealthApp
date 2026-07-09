@@ -251,22 +251,25 @@ function aggregateYesterdayWorkout(
 
 /**
  * Read this week's prescription. Returns the current `training_weeks` row
- * for the week containing today + the latest `committed` `weekly_reviews`
- * row for that same `week_start`. Used by the brief assembler to populate
- * the kickoff block on Monday and to anchor today's prescribed loads on
- * Tue-Sat.
+ * for the week containing today, paired with the latest `committed`
+ * `weekly_reviews` row for that same `week_start` when one exists.
+ * Used by the brief assembler to:
+ *   - populate session numbers unconditionally (trainingWeek always present)
+ *   - populate the kickoff / analytical ritual blocks only when review is
+ *     non-null (those are review-gated to stay byte-identical to before)
  *
- * Returns null when either:
- *   - no `training_weeks` row exists for today's week, OR
- *   - no `committed` `weekly_reviews` row exists for that week.
+ * Returns null ONLY when no `training_weeks` row exists for today's week.
+ * When the training_weeks row exists but the committed review is missing
+ * (or row-mismatch defensive case below), returns { trainingWeek, review: null }.
  *
- * Caller should gracefully fall back to legacy 'training' variant.
+ * Caller should fall back to legacy 'training' variant ONLY when the whole
+ * pair is null.
  */
 export async function getThisWeekPrescription(
   supabase: SupabaseClient,
   userId: string,
   today: string,           // "YYYY-MM-DD"
-): Promise<{ trainingWeek: TrainingWeek; review: WeeklyReviewRow } | null> {
+): Promise<{ trainingWeek: TrainingWeek; review: WeeklyReviewRow | null } | null> {
   const weekStart = mondayOf(today);
 
   const [twResult, revResult] = await Promise.all([
@@ -297,14 +300,17 @@ export async function getThisWeekPrescription(
 
   const trainingWeek = twResult.data as TrainingWeek | null;
   const review = revResult.data as WeeklyReviewRow | null;
-  if (!trainingWeek || !review) return null;
+
+  // No training_weeks row → still no session data; full null is the right signal.
+  if (!trainingWeek) return null;
 
   // Defensive: if the review was committed against a different (likely deleted
-  // and recreated) training_weeks row, treat the prescription as unavailable
-  // rather than pairing a fresh blank row with an old committed review.
-  if (review.committed_training_week_id && review.committed_training_week_id !== trainingWeek.id) {
-    return null;
+  // and recreated) training_weeks row, treat the ritual blocks as unavailable
+  // by returning review: null — the session numbers still come from the row.
+  if (review && review.committed_training_week_id && review.committed_training_week_id !== trainingWeek.id) {
+    return { trainingWeek, review: null };
   }
+
   return { trainingWeek, review };
 }
 

@@ -18,6 +18,13 @@
 //   * Other training_weeks columns (session_plan, rir_target, etc.) are
 //     preserved when the row already exists, or seeded from the prior week
 //     when creating a new row.
+//   * applyMorningPatch (lib/coach/prescription/patch-today.ts) is the third
+//     sanctioned writer of session_prescriptions — it patches TODAY's entry
+//     directly (single-day read-modify-write logged to repatch_log), not
+//     through this seam.
+//   * executeCommitWeekPlan (lib/coach/tools.ts) deliberately performs a
+//     FULL-week rewrite with no preservation — re-committing a plan supersedes
+//     any same-week patches/repatches by design.
 //   * Idempotent on (user_id, week_start) via upsert.
 
 import type { SupabaseClient } from "@supabase/supabase-js";

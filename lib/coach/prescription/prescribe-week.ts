@@ -76,7 +76,7 @@ const TARGETED_GROUP_TO_REGION: Partial<Record<TargetedMuscleGroup, MuscleRegion
  * Uses getExerciseMuscles → TARGET_GROUP_FOR_MUSCLE → TARGETED_GROUP_TO_REGION.
  * Returns null when the exercise is unmapped or targets non-regional muscles.
  */
-function exerciseRegion(name: string): MuscleRegion | null {
+export function exerciseRegion(name: string): MuscleRegion | null {
   const mapping = getExerciseMuscles(name);
   if (!mapping) return null;
   for (const mid of mapping.primary) {
