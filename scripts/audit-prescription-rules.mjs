@@ -12,6 +12,7 @@ import { prescribeSecondaryAutoregulated } from "@/lib/coach/prescription/autore
 import { brzycki, bestComparisonValue, metricLabel } from "@/lib/coach/e1rm";
 import { annotateSession } from "@/lib/coach/session-structure/annotate";
 import { classifyLightenTier, lightenExercise, lastWeekClean, consecutiveMisses } from "@/lib/coach/prescription/prescribe-week";
+import { mergePreservedDays } from "@/lib/coach/prescription/upsert-week-prescription";
 import { createAuditReporter } from "./audit-utils.mjs";
 
 const { assert, summary } = createAuditReporter();
@@ -734,6 +735,32 @@ console.log("\n## prescribe-week.ts — RIR-aware clean predicates\n");
     "consecutiveMisses legacy path unchanged when RIR absent",
     consecutiveMisses([{ ...base, reps: 4 }, base], ex, 2) === 1,
   );
+}
+
+console.log("\n## upsert-week-prescription.ts — mergePreservedDays\n");
+
+{
+  const stored = {
+    Monday: [{ name: "Squat (Barbell)", baseKg: 130, baseReps: 6, sets: 3 }],
+    Thursday: [{ name: "Deadlift (Barbell)", baseKg: 132.5, baseReps: 6, sets: 3 }],
+  };
+  const computed = {
+    Monday: [{ name: "Squat (Barbell)", baseKg: 135, baseReps: 6, sets: 3 }],
+    Tuesday: [{ name: "Decline Bench Press (Barbell)", baseKg: 80, baseReps: 8, sets: 3 }],
+    Thursday: [{ name: "Deadlift (Barbell)", baseKg: 130, baseReps: 6, sets: 3 }],
+  };
+  // week 2026-07-06 (Mon) … today is Tuesday 2026-07-07
+  const merged = mergePreservedDays({ computed, stored, weekStart: "2026-07-06", preserveDaysThrough: "2026-07-07" });
+
+  assert("past day keeps stored load verbatim", merged.Monday[0].baseKg === 130);
+  assert("today keeps stored state — absence preserved (Tuesday deleted)", !("Tuesday" in merged));
+  assert("future day takes computed load", merged.Thursday[0].baseKg === 130);
+  assert("boundary before week start returns computed untouched",
+    mergePreservedDays({ computed, stored, weekStart: "2026-07-06", preserveDaysThrough: "2026-07-05" }).Monday[0].baseKg === 135);
+  assert("full-week boundary preserves everything stored",
+    mergePreservedDays({ computed, stored, weekStart: "2026-07-06", preserveDaysThrough: "2026-07-12" }).Thursday[0].baseKg === 132.5);
+  assert("null stored + preserve → computed days ≤ boundary removed",
+    !("Monday" in mergePreservedDays({ computed, stored: null, weekStart: "2026-07-06", preserveDaysThrough: "2026-07-07" })));
 }
 
 summary("audit-prescription-rules");
