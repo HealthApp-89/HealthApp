@@ -83,6 +83,11 @@ export type LibraryExercise = {
    *          single-arm row, goblet squat). Total system load = per-DB. Smallest
    *          achievable total-load jump = increment.step (2 kg). */
   pairedDb?: boolean;
+  /** Alternative display names used in SESSION_PLANS or by the user. Matched
+   *  case-insensitively by resolveExercise so the double-progression rule can
+   *  find the correct loadability for exercises whose plan name differs from
+   *  the canonical library name (e.g. "Chest Fly" → "Chest Fly (Cable)"). */
+  aliases?: readonly string[];
   notes?: string;
 };
 
@@ -212,6 +217,7 @@ export const EXERCISE_LIBRARY: readonly LibraryExercise[] = [
     loadability: "fine",
     role: "accessory",
     increment: { step: 5, intermediate: 2.3 },
+    aliases: ["Chest Fly"],
     notes: "Athlete's current Chest day isolation (cable stack with 2.3kg micro-pin).",
   },
   {
@@ -367,6 +373,22 @@ export const EXERCISE_LIBRARY: readonly LibraryExercise[] = [
     role: "accessory",
     increment: { step: 2.5 },
   },
+  {
+    id: "front_raise",
+    name: "Front Raise (Dumbbell)",
+    pattern: "push",
+    primaryMuscle: "Traps",
+    equipment: ["dumbbell"],
+    stability: "low",
+    romBias: "shortened",
+    skill: "low",
+    jointStress: ["shoulder"],
+    loadability: "coarse",
+    role: "accessory",
+    increment: { step: 2 },
+    pairedDb: true,
+    notes: "Athlete's current Arms day anterior-delt isolation.",
+  },
 
   // ── PUSH — Triceps ─────────────────────────────────────────────────────────
   {
@@ -382,6 +404,7 @@ export const EXERCISE_LIBRARY: readonly LibraryExercise[] = [
     loadability: "fine",
     role: "accessory",
     increment: { step: 2.5 },
+    aliases: ["Triceps Pushdown (Cable - Straight Bar)"],
     notes: "Athlete's current Chest day triceps isolation.",
   },
   {
@@ -597,6 +620,7 @@ export const EXERCISE_LIBRARY: readonly LibraryExercise[] = [
     role: "accessory",
     increment: { step: 2 },
     pairedDb: true,
+    aliases: ["Rear Delt Fly"],
   },
   {
     id: "reverse_pec_deck",
@@ -611,6 +635,38 @@ export const EXERCISE_LIBRARY: readonly LibraryExercise[] = [
     loadability: "fine",
     role: "accessory",
     increment: { step: 5 },
+  },
+  {
+    id: "cable_external_rotation",
+    name: "Cable External Rotation",
+    pattern: "pull",
+    primaryMuscle: "RearDelts",
+    equipment: ["cable"],
+    stability: "low",
+    romBias: "shortened",
+    skill: "low",
+    jointStress: ["shoulder", "elbow"],
+    loadability: "fine",
+    role: "accessory",
+    increment: { step: 4.5 },
+    pairedDb: false,
+    notes: "Athlete's current Arms day rotator-cuff external-rotation. Unilateral; step matches the cable stack used (SESSION_PLANS key: cable_ext_rot).",
+  },
+  {
+    id: "cable_internal_rotation",
+    name: "Cable Internal Rotation",
+    pattern: "pull",
+    primaryMuscle: "RearDelts",
+    equipment: ["cable"],
+    stability: "low",
+    romBias: "shortened",
+    skill: "low",
+    jointStress: ["shoulder", "elbow"],
+    loadability: "fine",
+    role: "accessory",
+    increment: { step: 4.5 },
+    pairedDb: false,
+    notes: "Athlete's current Arms day rotator-cuff internal-rotation. Unilateral; step matches the cable stack used (SESSION_PLANS key: cable_int_rot).",
   },
 
   // ── PULL — Traps ───────────────────────────────────────────────────────────
@@ -688,6 +744,7 @@ export const EXERCISE_LIBRARY: readonly LibraryExercise[] = [
     role: "accessory",
     increment: { step: 2 },
     pairedDb: true,
+    aliases: ["Bicep Curl (Dumbbell)"],
   },
   {
     id: "hammer_curl",
@@ -1062,15 +1119,18 @@ export const EXERCISE_LIBRARY: readonly LibraryExercise[] = [
 
 // ── Lookup helpers ───────────────────────────────────────────────────────────
 
-/** Resolve a library entry by id OR display name (case-insensitive). Returns
- *  null when no match. Used by get_substitutes so the chat tool accepts either
- *  the slug ("decline_bench") or the display name ("Decline Bench Press (Barbell)"). */
+/** Resolve a library entry by id, display name, or alias (all case-insensitive).
+ *  Returns null when no match. Used by get_substitutes so the chat tool accepts
+ *  either the slug ("decline_bench") or the display name ("Decline Bench Press
+ *  (Barbell)"); aliases cover session-plan names that differ from the canonical
+ *  library name (e.g. "Chest Fly" → chest_fly_cable). */
 export function resolveExercise(idOrName: string): LibraryExercise | null {
   const needle = idOrName.trim().toLowerCase();
   for (const ex of EXERCISE_LIBRARY) {
     // ids are slugs (lowercase + underscores by contract); no lowercase here.
     if (ex.id === needle) return ex;
     if (ex.name.toLowerCase() === needle) return ex;
+    if (ex.aliases?.some((a) => a.trim().toLowerCase() === needle)) return ex;
   }
   return null;
 }
