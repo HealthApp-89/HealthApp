@@ -13,7 +13,7 @@ import { brzycki, bestComparisonValue, metricLabel } from "@/lib/coach/e1rm";
 import { annotateSession } from "@/lib/coach/session-structure/annotate";
 import { classifyLightenTier, lightenExercise, lastWeekClean, consecutiveMisses } from "@/lib/coach/prescription/prescribe-week";
 import { mergePreservedDays } from "@/lib/coach/prescription/upsert-week-prescription";
-import { mondayOfIso, diffFutureDays, formatRepatchNotes } from "@/lib/coach/prescription/repatch-week";
+import { mondayOfIso, diffFutureDays, diffDay, formatRepatchNotes } from "@/lib/coach/prescription/repatch-week";
 import { createAuditReporter } from "./audit-utils.mjs";
 
 const { assert, summary } = createAuditReporter();
@@ -822,6 +822,25 @@ console.log("\n## repatch-week.ts — pure helpers\n");
   });
   assert("one note per changed weekday", notes.length === 1 && notes[0].startsWith("Plan updated for Thursday:"));
   assert("note formats load with fmtNum (no trailing zeros)", notes[0].includes("Deadlift (Barbell) 132.5 → 130 kg"));
+}
+
+console.log("\n## repatch-week.ts — diffDay (single-day diff)\n");
+
+{
+  const stored = [
+    { name: "Squat (Barbell)", baseKg: 60, baseReps: 8, sets: 2, warmup: true },
+    { name: "Squat (Barbell)", baseKg: 130, baseReps: 6, sets: 3, rir: 2 },
+  ];
+  const next = [
+    { name: "Squat (Barbell)", baseKg: 60, baseReps: 8, sets: 2, warmup: true },
+    { name: "Squat (Barbell)", baseKg: 130, baseReps: 6, sets: 2, rir: 3 },
+  ];
+  const changes = diffDay(stored, next, "Monday");
+  assert("diffDay: two field changes detected", changes.length === 2);
+  assert("diffDay: sets change recorded", changes.some((c) => c.field === "sets" && c.from === 3 && c.to === 2));
+  assert("diffDay: rir change recorded", changes.some((c) => c.field === "rir" && c.from === 2 && c.to === 3));
+  assert("diffDay: weekday stamped", changes.every((c) => c.weekday === "Monday"));
+  assert("diffDay: identical inputs → empty", diffDay(next, next, "Monday").length === 0);
 }
 
 summary("audit-prescription-rules");

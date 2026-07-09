@@ -18,21 +18,14 @@ import type {
   WeekdayLong,
 } from "@/lib/data/types";
 import type { PlannedExercise } from "@/lib/coach/sessionPlans";
-import { daysBetweenIso } from "@/lib/time/dates";
+import { daysBetweenIso, mondayOfIso } from "@/lib/time/dates";
 import {
   upsertWeekPrescription,
   WEEKDAY_LONG_ORDER,
 } from "@/lib/coach/prescription/upsert-week-prescription";
 import { fmtNum } from "@/lib/ui/score";
 
-/** Monday (ISO date) of the week containing `iso`. Pure date arithmetic on a
- *  caller-supplied date — the caller owns the timezone question. */
-export function mondayOfIso(iso: string): string {
-  const d = new Date(iso + "T00:00:00Z");
-  const dow = (d.getUTCDay() + 6) % 7; // Mon=0 … Sun=6
-  d.setUTCDate(d.getUTCDate() - dow);
-  return d.toISOString().slice(0, 10);
-}
+export { mondayOfIso } from "@/lib/time/dates";
 
 const NUMERIC_FIELDS = ["baseKg", "baseReps", "sets", "rir"] as const;
 
@@ -45,6 +38,38 @@ function workingByName(day: PlannedExercise[]): Map<string, PlannedExercise> {
     if (!out.has(ex.name)) out.set(ex.name, ex);
   }
   return out;
+}
+
+/** Field-level diff between two versions of ONE day's exercise list.
+ *  Warmup rows excluded; exercises matched by name (first non-warmup row).
+ *  Pure; exported for the audit script and the morning-patch module. */
+export function diffDay(
+  stored: PlannedExercise[],
+  next: PlannedExercise[],
+  weekday: WeekdayLong,
+): RepatchChange[] {
+  const storedDay = workingByName(stored);
+  const nextDay = workingByName(next);
+  const changes: RepatchChange[] = [];
+
+  for (const [name, s] of storedDay) {
+    const n = nextDay.get(name);
+    if (!n) {
+      changes.push({ weekday, exercise: name, field: "removed", from: name, to: null });
+      continue;
+    }
+    for (const field of NUMERIC_FIELDS) {
+      const from = s[field] ?? null;
+      const to = n[field] ?? null;
+      if (from !== to) changes.push({ weekday, exercise: name, field, from, to });
+    }
+  }
+  for (const name of nextDay.keys()) {
+    if (!storedDay.has(name)) {
+      changes.push({ weekday, exercise: name, field: "added", from: null, to: name });
+    }
+  }
+  return changes;
 }
 
 /** Field-level diff between stored and next prescriptions, restricted to
@@ -64,26 +89,7 @@ export function diffFutureDays(opts: {
 
   for (let i = todayIdx + 1; i < WEEKDAY_LONG_ORDER.length; i++) {
     const weekday: WeekdayLong = WEEKDAY_LONG_ORDER[i];
-    const storedDay = workingByName(opts.stored[weekday] ?? []);
-    const nextDay = workingByName(opts.next[weekday] ?? []);
-
-    for (const [name, s] of storedDay) {
-      const n = nextDay.get(name);
-      if (!n) {
-        changes.push({ weekday, exercise: name, field: "removed", from: name, to: null });
-        continue;
-      }
-      for (const field of NUMERIC_FIELDS) {
-        const from = s[field] ?? null;
-        const to = n[field] ?? null;
-        if (from !== to) changes.push({ weekday, exercise: name, field, from, to });
-      }
-    }
-    for (const name of nextDay.keys()) {
-      if (!storedDay.has(name)) {
-        changes.push({ weekday, exercise: name, field: "added", from: null, to: name });
-      }
-    }
+    changes.push(...diffDay(opts.stored[weekday] ?? [], opts.next[weekday] ?? [], weekday));
   }
   return changes;
 }
