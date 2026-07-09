@@ -235,7 +235,7 @@ function composeReadiness(inputs: BriefInputs): MorningBriefReadiness {
 /** Maps soreness_areas strings (intake vocabulary) to MuscleRegion[].
  *  The intake vocabulary is a subset of MuscleRegion; direct cast is safe
  *  for the common values. Unrecognised strings are silently dropped. */
-function sorenessAreasToRegions(areas: string[] | null): MuscleRegion[] {
+export function sorenessAreasToRegions(areas: string[] | null): MuscleRegion[] {
   if (!areas) return [];
   const VALID: ReadonlySet<MuscleRegion> = new Set([
     "legs", "lower_back", "shoulders", "chest", "back", "arms", "core",

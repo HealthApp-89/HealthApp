@@ -14,6 +14,7 @@ import { annotateSession } from "@/lib/coach/session-structure/annotate";
 import { classifyLightenTier, lightenExercise, lastWeekClean, consecutiveMisses } from "@/lib/coach/prescription/prescribe-week";
 import { mergePreservedDays } from "@/lib/coach/prescription/upsert-week-prescription";
 import { mondayOfIso, diffFutureDays, diffDay, formatRepatchNotes } from "@/lib/coach/prescription/repatch-week";
+import { patchExercisesForRung, revertDayExercises, hasMorningPatchEntry, hasMorningRevertEntry } from "@/lib/coach/prescription/patch-today";
 import { createAuditReporter } from "./audit-utils.mjs";
 
 const { assert, summary } = createAuditReporter();
@@ -841,6 +842,66 @@ console.log("\n## repatch-week.ts — diffDay (single-day diff)\n");
   assert("diffDay: rir change recorded", changes.some((c) => c.field === "rir" && c.from === 2 && c.to === 3));
   assert("diffDay: weekday stamped", changes.every((c) => c.weekday === "Monday"));
   assert("diffDay: identical inputs → empty", diffDay(next, next, "Monday").length === 0);
+}
+
+console.log("\n## patch-today.ts — rung transforms + revert\n");
+
+{
+  const legs = [
+    { name: "Squat (Barbell)", baseKg: 60, baseReps: 8, sets: 2, warmup: true },
+    { name: "Squat (Barbell)", baseKg: 130, baseReps: 6, sets: 3, rir: 2 },
+    { name: "Leg Extension (Machine)", baseKg: 50, baseReps: 12, sets: 3, rir: 2 },
+  ];
+
+  // load_down: RIR +1 on affected, weight/sets/reps held, warmup untouched
+  const eased = patchExercisesForRung(legs, "load_down", "Legs", ["legs"]);
+  assert("load_down: working squat rir 2→3", eased[1].rir === 3);
+  assert("load_down: kg held", eased[1].baseKg === 130 && eased[2].baseKg === 50);
+  assert("load_down: sets/reps held", eased[1].sets === 3 && eased[2].baseReps === 12);
+  assert("load_down: warmup untouched", eased[0].rir === undefined && eased[0].sets === 2);
+  assert("load_down: rir caps at 5", patchExercisesForRung(
+    [{ name: "Squat (Barbell)", baseKg: 100, baseReps: 6, sets: 3, rir: 5 }],
+    "load_down", "Legs", ["legs"])[0].rir === 5);
+
+  // region gating: chest exercise on Legs day with sore legs → untouched
+  const mixed = patchExercisesForRung(
+    [{ name: "Chest Fly (Machine)", baseKg: 90, baseReps: 12, sets: 3, rir: 2 }],
+    "load_down", "Legs", ["legs"]);
+  assert("load_down: non-affected region untouched", mixed[0].rir === 2);
+
+  // volume_down delegates to lightenExercise tiering (primary compound: sets−1 floor 2, reps−1, rir+1)
+  const trimmed = patchExercisesForRung(legs, "volume_down", "Legs", ["legs"]);
+  assert("volume_down: compound sets 3→2", trimmed[1].sets === 2);
+  assert("volume_down: compound rir 2→3", trimmed[1].rir === 3);
+  assert("volume_down: kg held", trimmed[1].baseKg === 130);
+  // high-rep accessory (baseReps ≥ 10): eccentric tier → sets−2 floor 1, rir+2
+  assert("volume_down: accessory sets 3→1", trimmed[2].sets === 1);
+  assert("volume_down: accessory rir 2→4", trimmed[2].rir === 4);
+
+  // escalation + none rungs are identity
+  assert("swap_day: identity", patchExercisesForRung(legs, "swap_day", "Legs", ["legs"]) === legs);
+  assert("none: identity", patchExercisesForRung(legs, "none", "Legs", ["legs"]) === legs);
+
+  // apply → revert identity via diffDay changes
+  const changes = diffDay(legs, trimmed, "Monday");
+  const restored = revertDayExercises(trimmed, changes);
+  assert("revert: squat sets restored", restored[1].sets === 3);
+  assert("revert: squat rir restored", restored[1].rir === 2);
+  assert("revert: accessory restored", restored[2].sets === 3 && restored[2].rir === 2);
+  assert("revert: full identity vs diff", diffDay(legs, restored, "Monday").length === 0);
+
+  // repatch_log entry guards
+  const log = [
+    { at: "2026-07-07T05:00:00Z", reason: "workout_commit", workout_date: "2026-07-06", changes: [] },
+    { at: "2026-07-07T06:00:00Z", reason: "morning_checkin", workout_date: "2026-07-07", changes },
+  ];
+  assert("hasMorningPatchEntry: true for today", hasMorningPatchEntry(log, "2026-07-07") === true);
+  assert("hasMorningPatchEntry: false other day", hasMorningPatchEntry(log, "2026-07-08") === false);
+  assert("hasMorningPatchEntry: null log", hasMorningPatchEntry(null, "2026-07-07") === false);
+  assert("hasMorningRevertEntry: false before revert", hasMorningRevertEntry(log, "2026-07-07") === false);
+  assert("hasMorningRevertEntry: true after revert", hasMorningRevertEntry(
+    [...log, { at: "2026-07-07T07:00:00Z", reason: "morning_checkin_revert", workout_date: "2026-07-07", changes: [] }],
+    "2026-07-07") === true);
 }
 
 summary("audit-prescription-rules");
