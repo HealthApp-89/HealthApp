@@ -48,7 +48,10 @@ function workingByName(day: PlannedExercise[]): Map<string, PlannedExercise> {
 }
 
 /** Field-level diff between stored and next prescriptions, restricted to
- *  weekdays STRICTLY AFTER todayIso. Pure; exported for the audit script. */
+ *  weekdays STRICTLY AFTER todayIso. Pure; exported for the audit script.
+ *  Edge case: when todayIso precedes weekStart, all weekdays count as future
+ *  and the diff includes the entire week. Inside repatchRemainingWeek this
+ *  cannot happen because weekStart is always mondayOfIso(todayIso). */
 export function diffFutureDays(opts: {
   stored: SessionPrescriptions;
   next: SessionPrescriptions;
@@ -90,6 +93,12 @@ export function diffFutureDays(opts: {
 export function formatRepatchNotes(entry: RepatchLogEntry): string[] {
   const byDay = new Map<string, string[]>();
   for (const c of entry.changes) {
+    // Guard numeric fields against null: diff engine never emits them with
+    // null sides, so nulls signal malformed data and should be skipped.
+    if ((c.field === "baseKg" || c.field === "sets" || c.field === "baseReps" || c.field === "rir") &&
+        (c.from == null || c.to == null)) {
+      continue;
+    }
     let frag: string | null = null;
     if (c.field === "baseKg") frag = `${c.exercise} ${fmtNum(Number(c.from))} → ${fmtNum(Number(c.to))} kg`;
     else if (c.field === "sets") frag = `${c.exercise} ${fmtNum(Number(c.from))} → ${fmtNum(Number(c.to))} sets`;
@@ -159,6 +168,9 @@ export async function repatchRemainingWeek(opts: {
     changes,
   };
   const log = Array.isArray(row.repatch_log) ? (row.repatch_log as RepatchLogEntry[]) : [];
+  // NOTE: Read-modify-write on repatch_log is unguarded against concurrent
+  // commits for the same user+week. Accepted at single-user scale; last-write-wins
+  // on the log entry only.
   const { error: logErr } = await supabase
     .from("training_weeks")
     .update({ repatch_log: [...log, entry] })
