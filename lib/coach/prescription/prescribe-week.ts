@@ -22,8 +22,10 @@ import { SESSION_PLANS } from "@/lib/coach/sessionPlans";
 import { evaluateBlockPhase, prescribePrimaryFromPhase } from "@/lib/coach/prescription/block-phase-rule";
 import { currentComparisonValueForLift } from "@/lib/coach/prescription/current-comparison-value";
 import { prescribeSecondaryAutoregulated } from "@/lib/coach/prescription/autoregulation-rule";
+import { prescribeAccessoryDoubleProgression } from "@/lib/coach/prescription/double-progression-rule";
 import { prescribeAccessoryFromVolumeBand, classifyVolumeBand, type VolumeBandPosition } from "@/lib/coach/prescription/volume-balance-rule";
 import { maintenanceLoadFor } from "@/lib/coach/prescription/maintenance-baseline";
+import { roundToStep } from "@/lib/coach/prescription/calibrate-target";
 import { bestComparisonValue } from "@/lib/coach/e1rm";
 import { discoverEffectiveExercises } from "@/lib/coach/prescription/recent-workouts-discovery";
 import type { BlockPhase, WorkoutSetSample } from "@/lib/coach/prescription/types";
@@ -34,6 +36,7 @@ import {
 } from "@/lib/coach/exercise-muscles";
 import { literatureBand } from "@/lib/coach/volume-landmarks";
 import type { TargetedMuscleGroup, MuscleVolumeSnapshot } from "@/lib/data/types";
+import { resolveExercise } from "@/lib/coach/exercise-library";
 import { loadPlannedActivities } from "@/lib/coach/activity/read-planned";
 import { proposeActivityAwareLayout, SESSION_REGION_MAP } from "@/lib/coach/activity/sequence-week";
 import type { MuscleRegion } from "@/lib/coach/activity/types";
@@ -297,37 +300,43 @@ export async function prescribeWeek(opts: {
           })
         );
       } else {
-        // Accessory — volume-balance owns SETS, autoregulation owns LOAD. The
-        // focus-block clamp applies to load (0.92 × maintenance) and the
-        // consolidation/off_pace/deload phase gates pass through to load via
-        // prescribeSecondaryAutoregulated. Volume-balance starts from the
-        // library's baseline sets; the secondary -1 set rule was removed
-        // 2026-06-06 (see autoregulation-rule.ts).
+        // Accessory — double progression owns LOAD + REPS (rep range derived
+        // from library loadability; rung re-derived from 28d history), while
+        // volume-balance owns SETS — except deload_week, where the rule's
+        // hold-load/half-sets output is final (see double-progression-rule.ts).
         const accessoryWorkingKg =
           maintenanceLoadFor(baseEx.name, rirTarget, recentSets, todayIso) ??
           baseEx.baseKg ?? 0;
-        const autoreg = prescribeSecondaryAutoregulated({
+        const lib = resolveExercise(baseEx.name);
+        const staticEx = (SESSION_PLANS[sessionType] ?? []).find(
+          (e) => !e.warmup && e.name === baseEx.name,
+        );
+        const step = baseEx.increment?.step ?? 2.5;
+        const focusClampCeilingKg = isFocusBlock
+          ? roundToStep(accessoryWorkingKg * FOCUS_BLOCK_CLAMP, step)
+          : null;
+        const dp = prescribeAccessoryDoubleProgression({
           baseExercise: baseEx,
           currentWorkingKg: accessoryWorkingKg,
-          lastWeekHitRirTargetCleanly: lastWeekClean(recentSets, baseEx, rirTarget),
-          consecutiveRirMisses: 0,
-          maintenanceBaselineKg: isFocusBlock ? accessoryWorkingKg : null,
-          focusBlockClampMultiplier: isFocusBlock ? FOCUS_BLOCK_CLAMP : null,
-          baselineSets: baseEx.sets ?? 3,
-          baselineReps: baseEx.baseReps ?? 8,
-          isFocusBlock,
+          recentSets,
+          rirTarget,
           blockPhase,
+          loadability: lib?.loadability ?? "moderate",
+          focusClampCeilingKg,
+          bottomReps: staticEx?.baseReps ?? baseEx.baseReps ?? 8,
         });
-        const band: VolumeBandPosition = classifyVolumeBandForMuscle(baseEx, volumeContext);
-        exercises.push(
-          prescribeAccessoryFromVolumeBand({
-            baseExercise: autoreg,
-            // Start from the LIBRARY baseline, not autoreg's possibly-reduced
-            // count. Volume-balance is the sole owner of accessory set counts.
-            currentSets: baseEx.sets ?? 3,
-            bandPosition: band,
-          })
-        );
+        if (blockPhase === "deload_week") {
+          exercises.push(dp);
+        } else {
+          const band: VolumeBandPosition = classifyVolumeBandForMuscle(baseEx, volumeContext);
+          exercises.push(
+            prescribeAccessoryFromVolumeBand({
+              baseExercise: dp,
+              currentSets: baseEx.sets ?? 3,
+              bandPosition: band,
+            }),
+          );
+        }
       }
     }
 
