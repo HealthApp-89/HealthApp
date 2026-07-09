@@ -20,6 +20,8 @@ import { useUserToday } from "@/lib/query/hooks/useUserToday";
 import { ymdInUserTz } from "@/lib/time";
 import { currentWeekMonday } from "@/lib/coach/week";
 import { COLOR } from "@/lib/ui/theme";
+import { MorningCheckinCard } from "@/components/morning/MorningCheckinCard";
+import type { MorningIntakeBody } from "@/components/morning/MorningCheckinCard";
 
 /** Coach / Morning kind toggle. URL-driven (`?kind=morning_intake`) so refresh
  *  preserves the user's choice and MorningTrigger can deep-link in. */
@@ -1005,14 +1007,21 @@ export default function ChatPanel({
     void send(opener, []);
   }, [currentMode, mode, state.loaded, state.messages, initialModeContext, send]);
 
-  const onSlotAnswer = useCallback(
-    async (slot: string, value: string | number | string[]) => {
+  const postMorningAndRefresh = useCallback(
+    async (body: unknown) => {
       const res = await fetch("/api/chat/morning/intake", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ slot, value }),
+        body: JSON.stringify(body),
       });
-      void res; // Refetch the thread regardless of status — server may have inserted assistant turns
+      if (!res.ok) {
+        let reason = `http_${res.status}`;
+        try {
+          const json = (await res.json()) as { reason?: string };
+          if (json.reason) reason = json.reason;
+        } catch { /* ignore */ }
+        throw new Error(reason);
+      }
       const refresh = await fetch(`/api/chat/messages?limit=50&kind=${currentMode}`);
       const histJson = (await refresh.json()) as { ok: boolean; messages?: ChatMessage[] };
       if (histJson.ok && histJson.messages) {
@@ -1023,7 +1032,25 @@ export default function ChatPanel({
       }
       queryClient.invalidateQueries({ queryKey: queryKeys.checkin.one(userId, today) });
     },
-    [currentMode, queryClient, today, userId],
+    [currentMode, queryClient, today, userId, tz],
+  );
+
+  const onSlotAnswer = useCallback(
+    async (slot: string, value: string | number | string[]) => {
+      try {
+        await postMorningAndRefresh({ slot, value });
+      } catch {
+        // Server may still have inserted turns; the refetch above already ran
+        // on the happy path, and chips have no error surface — swallow, matching
+        // the pre-card behavior.
+      }
+    },
+    [postMorningAndRefresh],
+  );
+
+  const onMorningForm = useCallback(
+    (body: MorningIntakeBody) => postMorningAndRefresh(body),
+    [postMorningAndRefresh],
   );
 
   const onAction = useCallback(
@@ -1215,6 +1242,15 @@ export default function ChatPanel({
             const last = state.messages[state.messages.length - 1];
             if (!last || last.role !== "assistant" || last.status !== "done") return null;
             const morningUi = morningUiOf(last);
+            if (morningUi?.morning_form) {
+              return (
+                <MorningCheckinCard
+                  key={last.id}
+                  defaults={morningUi.morning_form.defaults}
+                  onSubmit={onMorningForm}
+                />
+              );
+            }
             if (!morningUi || !morningUi.chips || morningUi.chips.length === 0) return null;
             return (
               <ChatChips
@@ -1231,9 +1267,8 @@ export default function ChatPanel({
           const morningUi = morningUiOf(last);
           const hideComposer =
             currentMode === "morning_intake" &&
-            !!morningUi?.chips &&
-            morningUi.chips.length > 0 &&
-            !morningUi.allow_text;
+            ((!!morningUi?.chips && morningUi.chips.length > 0 && !morningUi.allow_text) ||
+              !!morningUi?.morning_form);
           if (hideComposer) return null;
 
           const isMorningTextTurn =
@@ -1416,6 +1451,15 @@ export default function ChatPanel({
         const last = state.messages[state.messages.length - 1];
         if (!last || last.role !== "assistant" || last.status !== "done") return null;
         const morningUi = morningUiOf(last);
+        if (morningUi?.morning_form) {
+          return (
+            <MorningCheckinCard
+              key={last.id}
+              defaults={morningUi.morning_form.defaults}
+              onSubmit={onMorningForm}
+            />
+          );
+        }
         if (!morningUi || !morningUi.chips || morningUi.chips.length === 0) return null;
         // Fix 4: key by last.id so the multi-select Set state remounts fresh on
         // each prompt transition, preventing stale selections carrying over.
@@ -1434,9 +1478,8 @@ export default function ChatPanel({
         const morningUi = morningUiOf(last);
         const hideComposer =
           currentMode === "morning_intake" &&
-          !!morningUi?.chips &&
-          morningUi.chips.length > 0 &&
-          !morningUi.allow_text;
+          ((!!morningUi?.chips && morningUi.chips.length > 0 && !morningUi.allow_text) ||
+            !!morningUi?.morning_form);
         if (hideComposer) return null;
 
         // Morning intake: text submissions during allow_text turns route to the
