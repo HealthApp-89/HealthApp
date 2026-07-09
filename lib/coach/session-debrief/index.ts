@@ -7,8 +7,9 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { SetRow } from "@/lib/coach/derived";
-import type { TrainingBlock } from "@/lib/data/types";
+import type { TrainingBlock, RepatchLogEntry } from "@/lib/data/types";
 import { computeBlockProgress } from "@/lib/query/fetchers/blockProgress";
+import { mondayOfIso, formatRepatchNotes } from "@/lib/coach/prescription/repatch-week";
 import { todayInUserTz } from "@/lib/time";
 import { getUserTimezone } from "@/lib/time/get-user-tz";
 import { composeLifts } from "@/lib/coach/session-debrief/compose-lifts";
@@ -129,6 +130,11 @@ export async function generateWorkoutDebrief(opts: {
     todayIso: workout.date as string,
   });
 
+  // Mid-week repatch visibility: when THIS workout changed the remaining
+  // week's numbers, say so — deterministic lines, no AI.
+  const repatchNotes = await loadRepatchNotes(supabase, userId, workout.date as string);
+  if (repatchNotes.length > 0) prescription.notes.push(...repatchNotes);
+
   // 4. Body comp (best-effort; null if unavailable).
   const body_comp = await loadBodyComp(supabase, userId);
 
@@ -154,6 +160,33 @@ export async function generateWorkoutDebrief(opts: {
   full.tldr = tldrFromPayload(full);
 
   return { ok: true, payload: full };
+}
+
+/** "Plan updated" notes from the mid-week repatch triggered by THIS workout.
+ *  Reads training_weeks.repatch_log for the workout's week and formats the
+ *  most recent entry matching the workout date. Best-effort: any failure or
+ *  absence → empty array (debrief renders without the line). */
+async function loadRepatchNotes(
+  supabase: SupabaseClient,
+  userId: string,
+  workoutDate: string,
+): Promise<string[]> {
+  try {
+    const { data } = await supabase
+      .from("training_weeks")
+      .select("repatch_log")
+      .eq("user_id", userId)
+      .eq("week_start", mondayOfIso(workoutDate))
+      .maybeSingle();
+    const log = data?.repatch_log;
+    if (!Array.isArray(log)) return [];
+    const entries = (log as RepatchLogEntry[]).filter((e) => e.workout_date === workoutDate);
+    const latest = entries[entries.length - 1];
+    if (!latest || !Array.isArray(latest.changes) || latest.changes.length === 0) return [];
+    return formatRepatchNotes(latest);
+  } catch {
+    return [];
+  }
 }
 
 async function loadActiveBlock(
