@@ -880,6 +880,7 @@ console.log("\n## patch-today.ts — rung transforms + revert\n");
 
   // escalation + none rungs are identity
   assert("swap_day: identity", patchExercisesForRung(legs, "swap_day", "Legs", ["legs"]) === legs);
+  assert("swap_exercise: identity", patchExercisesForRung(legs, "swap_exercise", "Legs", ["legs"]) === legs);
   assert("none: identity", patchExercisesForRung(legs, "none", "Legs", ["legs"]) === legs);
 
   // apply → revert identity via diffDay changes
