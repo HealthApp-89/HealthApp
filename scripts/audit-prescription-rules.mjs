@@ -905,7 +905,7 @@ console.log("\n## patch-today.ts — rung transforms + revert\n");
     "2026-07-07") === true);
 }
 
-import { prescribeAccessoryDoubleProgression, REP_RANGE_WIDTH } from "@/lib/coach/prescription/double-progression-rule";
+import { prescribeAccessoryDoubleProgression, REP_RANGE_WIDTH, nextUpKg, nextDownKg } from "@/lib/coach/prescription/double-progression-rule";
 
 console.log("\n## double-progression-rule.ts — accessory double progression\n");
 
@@ -1017,6 +1017,149 @@ console.log("\n## double-progression-rule.ts — accessory double progression\n"
     recentSets: [S(6, 20, 4, "2026-07-07", { warmup: true }), S(12, 11, 2, "2026-07-07")],
   }));
   assert("warmups ignored", warm.baseReps === 12 && warm.baseKg === 12);
+}
+
+// ─── New fixtures: descent stickiness, strain-evidence gating, micro-pin grid ─────
+console.log("\n## double-progression-rule.ts — fix fixtures (descent stickiness / strain / grid)\n");
+
+{
+  // Helpers reuse the same coarse DB setup (step 2, bottom 10, L=12)
+  const ex = { name: "Lateral Raise (Dumbbell)", baseReps: 10, sets: 3, rir: 2, increment: { step: 2 } };
+  const S = (kg, reps, rir, date, extra = {}) => ({
+    exercise_name: "Lateral Raise (Dumbbell)", exercise_key: null,
+    kg, reps, warmup: false, failure: false, rir, performed_on: date, ...extra,
+  });
+  const input = (over = {}) => ({
+    baseExercise: ex, currentWorkingKg: 12, recentSets: [], rirTarget: 2,
+    blockPhase: "pre_target", loadability: "coarse", focusClampCeilingKg: null,
+    bottomReps: 10, ...over,
+  });
+
+  // --- Fix 1: Descent stickiness ---
+  // After a step-down (L=12, last session was clean at 10), effL adopts 10.
+  // The rep-up rung should climb from 10, NOT snap back to 12.
+  // Fixture 1: clean at 10 (one grid-step below L=12) → prescription anchors at 10.
+  const stickyRepUp = prescribeAccessoryDoubleProgression(input({
+    currentWorkingKg: 12,
+    recentSets: [S(10, 11, 2, "2026-07-07")], // clean at 10 (≥bottom, rir ok)
+  }));
+  assert("fix1 descent stickiness: baseKg adopted to 10 (not snapped back to 12)", stickyRepUp.baseKg === 10);
+  assert("fix1 descent stickiness: rep-up from 10 (reps=12, not held at L=12 baseline)", stickyRepUp.baseReps === 12);
+
+  // Fixture 2: Anomalous light session — top at 6 kg (TWO steps below L=12, clean).
+  // Should NOT adopt the anomaly as effL; should HOLD at {12, bottom}.
+  const anomaly = prescribeAccessoryDoubleProgression(input({
+    currentWorkingKg: 12,
+    recentSets: [S(6, 11, 2, "2026-07-07")], // clean but 6 is 3 steps below L=12
+  }));
+  assert("fix2 anomalous light session: load held at 12", anomaly.baseKg === 12);
+  assert("fix2 anomalous light session: hold at bottom", anomaly.baseReps === 10);
+
+  // --- Fix 2: Strain-evidence gating ---
+  // Fixture 3: Compliant lighten — reps-short but HIGH rir (athlete chose to stop early).
+  // Two sessions short of bottom but rir=3 (≥ prescribedRir=2) → HOLD, not descent.
+  const compliantLighten = prescribeAccessoryDoubleProgression(input({
+    currentWorkingKg: 12,
+    recentSets: [S(12, 8, 3, "2026-07-07"), S(12, 9, 3, "2026-06-30")],
+  }));
+  assert("fix3 compliant lighten: HOLD not descent (load stays at 12)", compliantLighten.baseKg === 12);
+
+  // Fixture 4: Strained descent still fires — rir=0 on both short sessions → step down.
+  const strainedDown = prescribeAccessoryDoubleProgression(input({
+    currentWorkingKg: 12,
+    recentSets: [S(12, 8, 0, "2026-07-07"), S(12, 9, 0, "2026-06-30")],
+  }));
+  assert("fix4 strained descent: load steps down", strainedDown.baseKg === 10);
+  assert("fix4 strained descent: reps at bottom", strainedDown.baseReps === 10);
+
+  // Fixture 5a: Null-RIR reps-short without failure twice → HOLD (no strain evidence).
+  const nullRirShort = prescribeAccessoryDoubleProgression(input({
+    currentWorkingKg: 12,
+    recentSets: [S(12, 8, null, "2026-07-07"), S(12, 8, null, "2026-06-30")],
+  }));
+  assert("fix5a null-RIR short no failure: HOLD at 12", nullRirShort.baseKg === 12);
+
+  // Fixture 5b: Null-RIR with failure=true twice → descends.
+  const nullRirFail = prescribeAccessoryDoubleProgression(input({
+    currentWorkingKg: 12,
+    recentSets: [
+      S(12, 8, null, "2026-07-07", { failure: true }),
+      S(12, 8, null, "2026-06-30", { failure: true }),
+    ],
+  }));
+  assert("fix5b null-RIR with failure twice: descends", nullRirFail.baseKg === 10);
+
+  // --- Fix 3: Micro-pin machines (nextUpKg / nextDownKg) ---
+  // Leg Extension style: step=5, intermediate=2.3
+  const exFine = { name: "Leg Extension (Machine)", baseReps: 10, sets: 3, rir: 2, increment: { step: 5, intermediate: 2.3 } };
+  const SF = (kg, reps, rir, date, extra = {}) => ({
+    exercise_name: "Leg Extension (Machine)", exercise_key: null,
+    kg, reps, warmup: false, failure: false, rir, performed_on: date, ...extra,
+  });
+  const inputFine = (over = {}) => ({
+    baseExercise: exFine, currentWorkingKg: 30, recentSets: [], rirTarget: 2,
+    blockPhase: "pre_target", loadability: "fine", focusClampCeilingKg: null,
+    bottomReps: 10, ...over,
+  });
+
+  // Fixture 6: Micro-pin step-up from L=30 → should jump to 32.3 (not 35).
+  const microUp30 = prescribeAccessoryDoubleProgression(inputFine({
+    currentWorkingKg: 30,
+    recentSets: [SF(30, 12, 2, "2026-07-07"), SF(30, 12, 2, "2026-07-07")],
+  }));
+  assert("fix6a micro-pin step-up from 30: baseKg === 32.3", Math.abs(microUp30.baseKg - 32.3) < 0.01);
+
+  // From 32.3 → next step up should be 35.
+  const microUp32 = prescribeAccessoryDoubleProgression(inputFine({
+    currentWorkingKg: 32.3,
+    recentSets: [SF(32.3, 12, 2, "2026-07-07"), SF(32.3, 12, 2, "2026-07-07")],
+  }));
+  assert("fix6b micro-pin step-up from 32.3: baseKg === 35", Math.abs(microUp32.baseKg - 35) < 0.01);
+
+  // Fixture 7: Micro-pin descent from 32.3 (strained twice) → should go to 30.
+  const microDown = prescribeAccessoryDoubleProgression(inputFine({
+    currentWorkingKg: 32.3,
+    recentSets: [SF(32.3, 8, 0, "2026-07-07"), SF(32.3, 8, 0, "2026-06-30")],
+  }));
+  assert("fix7 micro-pin descent from 32.3: baseKg === 30", Math.abs(microDown.baseKg - 30) < 0.01);
+
+  // Fixture 8 (regression guard): coarse DB grid unchanged — step=2, L=12.
+  assert("fix8 nextUpKg coarse: 12+2=14", nextUpKg(12, { step: 2 }) === 14);
+  assert("fix8 nextDownKg coarse: 12-2=10", nextDownKg(12, { step: 2 }) === 10);
+  assert("fix8 nextDownKg floor: max(2,0)=2", nextDownKg(2, { step: 2 }) === 2);
+
+  // Fixture 9: Width behavioral cases for fine (+2) and moderate (+3).
+  // fine loadability: top = bottom+2 = 12; rep-up from 11 should cap at 12.
+  const exFineRep = { name: "Leg Extension (Machine)", baseReps: 10, sets: 3, rir: 2, increment: { step: 5, intermediate: 2.3 } };
+  const inputFineRep = (over = {}) => ({
+    baseExercise: exFineRep, currentWorkingKg: 30, recentSets: [], rirTarget: 2,
+    blockPhase: "pre_target", loadability: "fine", focusClampCeilingKg: null,
+    bottomReps: 10, ...over,
+  });
+  const SFine = (kg, reps, rir, date, extra = {}) => ({
+    exercise_name: "Leg Extension (Machine)", exercise_key: null,
+    kg, reps, warmup: false, failure: false, rir, performed_on: date, ...extra,
+  });
+  const fineRepUp = prescribeAccessoryDoubleProgression(inputFineRep({
+    recentSets: [SFine(30, 11, 2, "2026-07-07")],
+  }));
+  assert("fix9a fine width: rep-up caps at bottom+2=12", fineRepUp.baseReps === 12);
+
+  // moderate loadability: top = bottom+3 = 13; rep-up from 12 should cap at 13.
+  const exMod = { name: "Curl (Dumbbell)", baseReps: 10, sets: 3, rir: 2, increment: { step: 2.5 } };
+  const SM = (kg, reps, rir, date, extra = {}) => ({
+    exercise_name: "Curl (Dumbbell)", exercise_key: null,
+    kg, reps, warmup: false, failure: false, rir, performed_on: date, ...extra,
+  });
+  const inputMod = (over = {}) => ({
+    baseExercise: exMod, currentWorkingKg: 12, recentSets: [], rirTarget: 2,
+    blockPhase: "pre_target", loadability: "moderate", focusClampCeilingKg: null,
+    bottomReps: 10, ...over,
+  });
+  const modRepUp = prescribeAccessoryDoubleProgression(inputMod({
+    recentSets: [SM(12, 12, 2, "2026-07-07")],
+  }));
+  assert("fix9b moderate width: rep-up caps at bottom+3=13", modRepUp.baseReps === 13);
 }
 
 summary("audit-prescription-rules");
