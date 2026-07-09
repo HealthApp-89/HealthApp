@@ -95,7 +95,7 @@ export function nextDownKg(L: number, inc: Increment): number {
   // Micro-pin: find the largest candidate < L (next down).
   const base = Math.floor(L / step + 1e-6) * step;
   const candidates = [base + step, base + im, base];
-  for (const c of candidates) if (c < L - 1e-6) return c;
+  for (const c of candidates) if (c < L - 1e-6 && c > 0) return c;
   // No candidate found in current octave; move to previous octave.
   const down = base - step + im;
   return down > 0 ? down : Math.min(im, step);
