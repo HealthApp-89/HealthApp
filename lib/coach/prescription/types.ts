@@ -17,6 +17,10 @@ export type WorkoutSetSample = {
   warmup: boolean;
   failure: boolean;
   performed_on: string; // ISO date
+  /** Reps in reserve recorded for this set. Optional: only the prescription
+   *  engine's own fetch populates it; other sample constructors omit it and
+   *  every consumer treats null/undefined as "not recorded" (legacy path). */
+  rir?: number | null;
 };
 
 export type PrescriptionRuleInput = {

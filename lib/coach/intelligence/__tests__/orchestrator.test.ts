@@ -12,18 +12,11 @@
 import { describe, it, expect } from "vitest";
 import { assembleIntelligence, type IntelligenceData } from "../index";
 import { AthleteIntelligencePayloadSchema } from "../types";
-import { SAMPLE_WORKOUTS_90D, SAMPLE_FOOD_LOG_90D } from "./fixtures";
+import { SAMPLE_WORKOUTS_90D, SAMPLE_FOOD_LOG_90D, daysAgo } from "./fixtures";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Daily log fixtures for Layer 2 composers
 // ─────────────────────────────────────────────────────────────────────────────
-
-/** Build 56 daily log rows starting from daysAgo(n) */
-function daysAgo(n: number, base = "2026-06-26"): string {
-  const d = new Date(base);
-  d.setUTCDate(d.getUTCDate() - n);
-  return d.toISOString().slice(0, 10);
-}
 
 /** Build a minimal daily log row */
 function makeDailyLog(

@@ -13,6 +13,7 @@ import {
 } from './thresholds';
 import { generateRecoveryIntelligence } from '@/lib/coach/recovery-intelligence';
 import { fmtNum } from '@/lib/ui/score';
+import { isoDaysAgo } from '@/lib/time/dates';
 
 const DEDUP_WINDOW_DAYS = 14;
 
@@ -109,12 +110,6 @@ export async function composeFatigue(args: {
 function avg(xs: number[]): number | null {
   if (xs.length === 0) return null;
   return xs.reduce((a, b) => a + b, 0) / xs.length;
-}
-
-function isoDaysAgo(today: string, days: number): string {
-  const d = new Date(`${today}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() - days);
-  return d.toISOString().slice(0, 10);
 }
 
 function oneLineFor(x: {

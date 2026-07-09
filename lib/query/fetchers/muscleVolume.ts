@@ -7,7 +7,6 @@
 // a route handler).
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import {
   computeWeeklyMuscleVolume,
   type Workout,
@@ -22,45 +21,32 @@ import type {
   MuscleVolumeSnapshot,
   TargetedMuscleGroup,
 } from "@/lib/data/types";
+import { createFetcher } from "@/lib/query/fetchers/create-fetcher";
 
 const SELECT = "date, exercises (name, sets:exercise_sets (kg, reps, warmup))";
 
+const muscleVolume = createFetcher(
+  async (supabase: SupabaseClient, userId: string, today: string): Promise<MuscleVolumeSnapshot> => {
+    const since = isoMinusDays(today, 56);
+    const { data, error } = await supabase
+      .from("workouts")
+      .select(SELECT)
+      .eq("user_id", userId)
+      .gte("date", since)
+      .order("date", { ascending: true });
+    if (error) throw error;
+    return buildSnapshot(data ?? [], today);
+  },
+);
+
 /** Server-side fetcher used by Server Components via makeServerQueryClient,
  *  and by the morning-brief route handler (PR 5). */
-export async function fetchMuscleVolumeServer(
-  supabase: SupabaseClient,
-  userId: string,
-  today: string,
-): Promise<MuscleVolumeSnapshot> {
-  const since = isoMinusDays(today, 56);
-  const { data, error } = await supabase
-    .from("workouts")
-    .select(SELECT)
-    .eq("user_id", userId)
-    .gte("date", since)
-    .order("date", { ascending: true });
-  if (error) throw error;
-  return buildSnapshot(data ?? [], today);
-}
+export const fetchMuscleVolumeServer = muscleVolume.server;
 
 /** Browser fetcher used by useMuscleVolume hook.
  *  Per project pattern in lib/query/fetchers/workouts.ts: browser fetcher
  *  constructs its own SupabaseClient and does NOT take one as an argument. */
-export async function fetchMuscleVolumeBrowser(
-  userId: string,
-  today: string,
-): Promise<MuscleVolumeSnapshot> {
-  const supabase = createSupabaseBrowserClient();
-  const since = isoMinusDays(today, 56);
-  const { data, error } = await supabase
-    .from("workouts")
-    .select(SELECT)
-    .eq("user_id", userId)
-    .gte("date", since)
-    .order("date", { ascending: true });
-  if (error) throw error;
-  return buildSnapshot(data ?? [], today);
-}
+export const fetchMuscleVolumeBrowser = muscleVolume.browser;
 
 /** Pure assembly: convert raw rows → snapshot. Exported for tests / scripts. */
 export function buildSnapshot(

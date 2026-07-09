@@ -14,27 +14,17 @@
 // from interventionRows.
 
 import type { WorkoutSession } from "@/lib/data/workouts";
-import type { CoachInterventionRow } from "@/lib/data/types";
+import type { CoachInterventionRow, DailyLog } from "@/lib/data/types";
 import { mapToHistory } from "@/lib/coach/interventions/map-to-history";
 import type { HistoryPayload } from "./types";
 
 /** Daily log row shape (kept for future inference work) */
-type DailyLogRow = {
-  date: string;
-  hrv: number | null;
-  resting_hr: number | null;
-  recovery: number | null;
-  sleep_hours: number | null;
-  sleep_score: number | null;
-  deep_sleep_hours: number | null;
-  strain: number | null;
-  steps: number | null;
-  calories_eaten: number | null;
-  weight_kg: number | null;
-  protein_g: number | null;
-  carbs_g: number | null;
-  fat_g: number | null;
-};
+type DailyLogRow = Pick<
+  DailyLog,
+  | "date" | "hrv" | "resting_hr" | "recovery" | "sleep_hours" | "sleep_score"
+  | "deep_sleep_hours" | "strain" | "steps" | "calories_eaten" | "weight_kg"
+  | "protein_g" | "carbs_g" | "fat_g"
+>;
 
 /**
  * Compose the history layer payload from evaluated intervention rows.

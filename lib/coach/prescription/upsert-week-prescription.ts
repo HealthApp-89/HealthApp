@@ -7,10 +7,14 @@
 //   - the get_week_prescription chat tool, on demand for {current|next}
 //   - executeCommitWeekPlan, as the last write step (so the row stored is
 //     the engine's verdict, not Carter's narration)
+//   - repatchRemainingWeek (lib/coach/prescription/repatch-week.ts), mid-week
+//     after each workout commit, with preserveDaysThrough=today
 //
 // Single seam = single set of invariants:
 //   * session_prescriptions is ALWAYS the freshly-computed prescribeWeek
-//     output. Never accepts a Carter-supplied payload.
+//     output, except when preserveDaysThrough is set: weekdays ≤ that date
+//     keep the stored row verbatim (see mergePreservedDays). Never accepts a
+//     Carter-supplied payload.
 //   * Other training_weeks columns (session_plan, rir_target, etc.) are
 //     preserved when the row already exists, or seeded from the prior week
 //     when creating a new row.
@@ -27,6 +31,7 @@ import type {
 import { prescribeWeek, computeActivityLayoutProposal } from "@/lib/coach/prescription/prescribe-week";
 import type { ActivityConflictFlag } from "@/lib/coach/activity/sequence-week";
 import type { MuscleRegion } from "@/lib/coach/activity/types";
+import { daysBetweenIso } from "@/lib/time/dates";
 
 /** Summary of the activity-aware layout proposal for a week.
  *  When `hasMoves` is true, the athlete should be prompted to review
@@ -55,6 +60,42 @@ export type UpsertWeekPrescriptionResult = {
   activityLayoutProposal: ActivityLayoutProposal;
 };
 
+/** Helper: weekday names for callers that need to walk a SessionPrescriptions
+ *  result in display order (Monday-first). */
+export const WEEKDAY_LONG_ORDER: ReadonlyArray<WeekdayLong> = [
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+  "Sunday",
+];
+
+/** Merge freshly-computed prescriptions with the stored row so that weekdays
+ *  ≤ `preserveDaysThrough` keep their stored state VERBATIM — including
+ *  absence (a stored week with no Tuesday entry stays without one). Weekdays
+ *  strictly after the boundary take the fresh computation. Pure; exported for
+ *  scripts/audit-prescription-rules.mjs. Used by the mid-week repatch so past
+ *  days remain the historical record of what was actually prescribed. */
+export function mergePreservedDays(opts: {
+  computed: SessionPrescriptions;
+  stored: SessionPrescriptions | null;
+  weekStart: string;
+  preserveDaysThrough: string;
+}): SessionPrescriptions {
+  const idx = daysBetweenIso(opts.weekStart, opts.preserveDaysThrough);
+  if (idx == null || idx < 0) return opts.computed;
+  const out: SessionPrescriptions = { ...opts.computed };
+  for (let i = 0; i <= Math.min(idx, 6); i++) {
+    const day = WEEKDAY_LONG_ORDER[i];
+    const storedDay = opts.stored?.[day];
+    if (storedDay != null) out[day] = storedDay;
+    else delete out[day];
+  }
+  return out;
+}
+
 export async function upsertWeekPrescription(opts: {
   supabase: SupabaseClient;
   userId: string;
@@ -64,6 +105,11 @@ export async function upsertWeekPrescription(opts: {
    *  math. Passed in rather than computed so the function stays pure-ish
    *  and easily testable. */
   todayIso: string;
+  /** When set (ISO date), weekdays ≤ this date keep the STORED row's
+   *  prescriptions verbatim (including absence); only strictly-later weekdays
+   *  take the fresh computation. Used by the mid-week repatch. Omitted →
+   *  full-week write (Sunday cron / commit_week_plan behavior, unchanged). */
+  preserveDaysThrough?: string;
 }): Promise<UpsertWeekPrescriptionResult> {
   const { supabase, userId, weekStart, todayIso } = opts;
 
@@ -136,6 +182,15 @@ export async function upsertWeekPrescription(opts: {
     todayIso,
   });
 
+  const finalPrescription = opts.preserveDaysThrough
+    ? mergePreservedDays({
+        computed: prescription,
+        stored: existing?.session_prescriptions ?? null,
+        weekStart,
+        preserveDaysThrough: opts.preserveDaysThrough,
+      })
+    : prescription;
+
   // Compute the activity layout proposal in parallel with the DB write.
   // Graceful: any failure → empty proposal (hasMoves=false, hasFlags=false).
   const layoutProposalPromise = computeActivityLayoutProposal({
@@ -155,7 +210,7 @@ export async function upsertWeekPrescription(opts: {
     const { error } = await supabase
       .from("training_weeks")
       .update({
-        session_prescriptions: prescription,
+        session_prescriptions: finalPrescription,
         updated_at: new Date().toISOString(),
       })
       .eq("user_id", userId)
@@ -175,7 +230,7 @@ export async function upsertWeekPrescription(opts: {
         research_phase: workingRow.research_phase,
         proposed_by: "coach",
         endurance_session_plan: workingRow.endurance_session_plan,
-        session_prescriptions: prescription,
+        session_prescriptions: finalPrescription,
         committed_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       });
@@ -188,20 +243,8 @@ export async function upsertWeekPrescription(opts: {
   return {
     week_start: weekStart,
     block_id: block?.id ?? null,
-    session_prescriptions: prescription,
+    session_prescriptions: finalPrescription,
     inserted: !existing,
     activityLayoutProposal,
   };
 }
-
-/** Helper: weekday names for callers that need to walk a SessionPrescriptions
- *  result in display order (Monday-first). */
-export const WEEKDAY_LONG_ORDER: ReadonlyArray<WeekdayLong> = [
-  "Monday",
-  "Tuesday",
-  "Wednesday",
-  "Thursday",
-  "Friday",
-  "Saturday",
-  "Sunday",
-];

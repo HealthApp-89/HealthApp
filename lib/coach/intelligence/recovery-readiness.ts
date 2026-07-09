@@ -10,23 +10,17 @@
 
 import { z } from "zod";
 import { isMeaningfulDeviation } from "@/lib/whoop/baselines";
-import type { Rolling30dBaselines } from "@/lib/data/types";
+import type { DailyLog, Rolling30dBaselines } from "@/lib/data/types";
 
 // ---------------------------------------------------------------------------
 // Input type (mirrors coach-history.ts DailyLogRow — recovery-relevant fields)
 // ---------------------------------------------------------------------------
 
-/** Daily log row shape consumed by this composer. */
-export type DailyLogRow = {
-  date: string;
-  hrv: number | null;
-  resting_hr: number | null;
-  recovery: number | null;
-  sleep_hours: number | null;
-  sleep_score: number | null;
-  deep_sleep_hours: number | null;
-  strain: number | null;
-};
+export type DailyLogRow = Pick<
+  DailyLog,
+  | "date" | "hrv" | "resting_hr" | "recovery" | "sleep_hours" | "sleep_score"
+  | "deep_sleep_hours" | "strain"
+>;
 
 // ---------------------------------------------------------------------------
 // Result type + Zod schema

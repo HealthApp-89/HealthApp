@@ -11,17 +11,11 @@ import {
   type NutritionPerformanceInput,
 } from "../nutrition-performance-linker";
 import type { WorkoutSession } from "@/lib/data/workouts";
+import { daysAgo } from "./fixtures";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-/** ISO date N days before 2026-06-26 (matches codebase anchor date). */
-function daysAgo(n: number): string {
-  const d = new Date("2026-06-26");
-  d.setUTCDate(d.getUTCDate() - n);
-  return d.toISOString().slice(0, 10);
-}
 
 /** Build a daily log row with sensible defaults. */
 function makeLog(

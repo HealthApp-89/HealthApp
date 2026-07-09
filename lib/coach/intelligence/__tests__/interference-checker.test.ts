@@ -12,17 +12,11 @@ import {
   type InterferenceInput,
 } from "../interference-checker";
 import type { WorkoutSession } from "@/lib/data/workouts";
+import { daysAgo } from "./fixtures";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-/** ISO date N days before 2026-06-26 (matches codebase anchor date). */
-function daysAgo(n: number): string {
-  const d = new Date("2026-06-26");
-  d.setUTCDate(d.getUTCDate() - n);
-  return d.toISOString().slice(0, 10);
-}
 
 /** Build a daily log row with optional endurance_load. */
 function makeLog(date: string, endurance_load: number | null): { date: string; endurance_load: number | null } {

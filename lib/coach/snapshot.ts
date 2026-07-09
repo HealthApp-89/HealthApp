@@ -13,11 +13,12 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { loadWorkouts } from "@/lib/data/workouts-server";
 import type { WorkoutSession } from "@/lib/data/workouts";
 import { nowInUserTz, relativeDateLabel, todayInUserTz, weekdayInUserTz } from "@/lib/time";
+import { daysBetweenIso } from "@/lib/time/dates";
 import { renderProfileSummary } from "@/lib/coach/profile-renderer";
 import { mondayOf } from "@/lib/coach/weekly-review/date-utils";
 import { readSessionForDay } from "@/lib/coach/session-plan-reader";
 import { topSet } from "@/lib/coach/derived";
-import type { EnduranceActivity, IntakePayload, PlanPayload } from "@/lib/data/types";
+import type { DailyLog, EnduranceActivity, IntakePayload, PlanPayload } from "@/lib/data/types";
 import { getTodayTargets } from "@/lib/morning/brief/get-today-targets";
 import { defaultZ2Cap } from "@/lib/coach/endurance/hr-zones";
 import type { EnduranceProfile } from "@/lib/coach/endurance/types";
@@ -69,29 +70,16 @@ function stripRolling30d(wb: unknown): Record<string, unknown> {
   return rest;
 }
 
-type DailyLogRow = {
-  date: string;
-  hrv: number | null;
-  resting_hr: number | null;
-  recovery: number | null;
-  sleep_hours: number | null;
-  sleep_score: number | null;
-  deep_sleep_hours: number | null;
-  strain: number | null;
-  steps: number | null;
-  /** Nutrition intake (Yazio) — what shows up as "kcal" in the coach summary.
-   *  This deliberately excludes the `calories` (energy burned) column, which
-   *  is from Apple Health and surfaces elsewhere via strain/active metrics. */
-  calories_eaten: number | null;
-  weight_kg: number | null;
-  protein_g: number | null;
-  carbs_g: number | null;
-  fat_g: number | null;
-  body_battery_low: number | null;
-  body_battery_peak: number | null;
-  stress_avg: number | null;
-  stress_qualifier: string | null;
-};
+/** Narrow daily_logs projection used by the snapshot. `calories_eaten` is
+ *  nutrition intake (Yazio) — deliberately excludes the `calories` (energy
+ *  burned) column, which surfaces elsewhere via strain/active metrics. */
+type DailyLogRow = Pick<
+  DailyLog,
+  | "date" | "hrv" | "resting_hr" | "recovery" | "sleep_hours" | "sleep_score"
+  | "deep_sleep_hours" | "strain" | "steps" | "calories_eaten" | "weight_kg"
+  | "protein_g" | "carbs_g" | "fat_g" | "body_battery_low" | "body_battery_peak"
+  | "stress_avg" | "stress_qualifier"
+>;
 
 export type SnapshotInputs = {
   supabase: SupabaseClient;
@@ -128,20 +116,6 @@ export function withDayReferenceInstruction(systemPrompt: string): string {
  *  meaningful and would just bloat the cached prefix. */
 const CURRENT_LIFT_WINDOW_DAYS = 120;
 
-/** Number of days between two YYYY-MM-DD strings (negative if `b` is before `a`). */
-function daysBetween(a: string, b: string): number {
-  const ms = Date.UTC(
-    Number(a.slice(0, 4)),
-    Number(a.slice(5, 7)) - 1,
-    Number(a.slice(8, 10)),
-  ) - Date.UTC(
-    Number(b.slice(0, 4)),
-    Number(b.slice(5, 7)) - 1,
-    Number(b.slice(8, 10)),
-  );
-  return Math.round(ms / 86_400_000);
-}
-
 /** For every distinct lift the athlete has performed within
  *  CURRENT_LIFT_WINDOW_DAYS of `asOf`, emit the top working set of its
  *  most-recent session (with e1RM when reps ≤ 12). This gives the coach AI
@@ -168,7 +142,7 @@ function buildCurrentTopSetsBlock(
   const seen = new Set<string>();
   for (const w of workouts) {
     if (w.date > asOf) continue;
-    if (daysBetween(asOf, w.date) > CURRENT_LIFT_WINDOW_DAYS) break; // workouts is desc — older lifts won't requalify
+    if ((daysBetweenIso(w.date, asOf) ?? 0) > CURRENT_LIFT_WINDOW_DAYS) break; // workouts is desc — older lifts won't requalify
     for (const ex of w.exercises) {
       if (seen.has(ex.name)) continue;
       const ts = topSet(ex.sets);

@@ -1,7 +1,7 @@
 // lib/query/fetchers/dailyLogs.ts
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import type { DailyLog } from "@/lib/data/types";
+import { createFetcher } from "@/lib/query/fetchers/create-fetcher";
 
 // Wide projection — every column on `DailyLog` (lib/data/types.ts). When you
 // add a column to the type, add it here too: a missing column makes the field
@@ -24,41 +24,24 @@ const COLS =
  * the UI can show a real error state.
  */
 
-/** Server-side variant — uses the SSR Supabase client (cookie-bound, RLS). */
-export async function fetchDailyLogsServer(
-  supabase: SupabaseClient,
-  userId: string,
-  from: string,
-  to: string,
-): Promise<DailyLog[]> {
-  const { data, error } = await supabase
-    .from("daily_logs")
-    .select(COLS)
-    .eq("user_id", userId)
-    .gte("date", from)
-    .lte("date", to)
-    .order("date", { ascending: true });
-  if (error) throw error;
-  return (data ?? []) as DailyLog[];
-}
+const dailyLogs = createFetcher(
+  async (supabase: SupabaseClient, userId: string, from: string, to: string): Promise<DailyLog[]> => {
+    const { data, error } = await supabase
+      .from("daily_logs")
+      .select(COLS)
+      .eq("user_id", userId)
+      .gte("date", from)
+      .lte("date", to)
+      .order("date", { ascending: true });
+    if (error) throw error;
+    return (data ?? []) as DailyLog[];
+  },
+);
 
+/** Server-side variant — uses the SSR Supabase client (cookie-bound, RLS). */
+export const fetchDailyLogsServer = dailyLogs.server;
 /** Browser-side variant — uses the browser Supabase client (cookie-bound, RLS). */
-export async function fetchDailyLogsBrowser(
-  userId: string,
-  from: string,
-  to: string,
-): Promise<DailyLog[]> {
-  const supabase = createSupabaseBrowserClient();
-  const { data, error } = await supabase
-    .from("daily_logs")
-    .select(COLS)
-    .eq("user_id", userId)
-    .gte("date", from)
-    .lte("date", to)
-    .order("date", { ascending: true });
-  if (error) throw error;
-  return (data ?? []) as DailyLog[];
-}
+export const fetchDailyLogsBrowser = dailyLogs.browser;
 
 /**
  * Narrow projection for /trends — only the 6 charted metrics + date. About
@@ -74,36 +57,19 @@ export type TrendLog = Pick<
   "date" | "hrv" | "resting_hr" | "sleep_hours" | "strain" | "weight_kg" | "body_fat_pct" | "body_battery_peak" | "stress_avg"
 >;
 
-export async function fetchDailyLogsTrendServer(
-  supabase: SupabaseClient,
-  userId: string,
-  from: string,
-  to: string,
-): Promise<TrendLog[]> {
-  const { data, error } = await supabase
-    .from("daily_logs")
-    .select(TREND_COLS)
-    .eq("user_id", userId)
-    .gte("date", from)
-    .lte("date", to)
-    .order("date", { ascending: true });
-  if (error) throw error;
-  return (data ?? []) as TrendLog[];
-}
+const dailyLogsTrend = createFetcher(
+  async (supabase: SupabaseClient, userId: string, from: string, to: string): Promise<TrendLog[]> => {
+    const { data, error } = await supabase
+      .from("daily_logs")
+      .select(TREND_COLS)
+      .eq("user_id", userId)
+      .gte("date", from)
+      .lte("date", to)
+      .order("date", { ascending: true });
+    if (error) throw error;
+    return (data ?? []) as TrendLog[];
+  },
+);
 
-export async function fetchDailyLogsTrendBrowser(
-  userId: string,
-  from: string,
-  to: string,
-): Promise<TrendLog[]> {
-  const supabase = createSupabaseBrowserClient();
-  const { data, error } = await supabase
-    .from("daily_logs")
-    .select(TREND_COLS)
-    .eq("user_id", userId)
-    .gte("date", from)
-    .lte("date", to)
-    .order("date", { ascending: true });
-  if (error) throw error;
-  return (data ?? []) as TrendLog[];
-}
+export const fetchDailyLogsTrendServer = dailyLogsTrend.server;
+export const fetchDailyLogsTrendBrowser = dailyLogsTrend.browser;

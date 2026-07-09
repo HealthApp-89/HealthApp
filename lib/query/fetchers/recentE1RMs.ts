@@ -8,7 +8,7 @@
 // duration-based sets. Matches the convention used by lib/coach/tools.ts
 // query_workouts.
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { createFetcher } from "@/lib/query/fetchers/create-fetcher";
 
 export type RecentE1RMs = {
   squat: number | null;
@@ -94,34 +94,19 @@ function computeFrom(rows: WorkoutRow[], today: string): RecentE1RMs {
   return out;
 }
 
-export async function fetchRecentE1RMsServer(
-  supabase: SupabaseClient,
-  userId: string,
-  todayYYYYMMDD: string,
-): Promise<RecentE1RMs> {
-  const since = eightWeeksAgo(todayYYYYMMDD);
-  const { data, error } = await supabase
-    .from("workouts")
-    .select(WORKOUTS_COLS)
-    .eq("user_id", userId)
-    .gte("date", since)
-    .order("date", { ascending: false });
-  if (error) throw error;
-  return computeFrom((data ?? []) as WorkoutRow[], todayYYYYMMDD);
-}
+const recentE1RMs = createFetcher(
+  async (supabase: SupabaseClient, userId: string, todayYYYYMMDD: string): Promise<RecentE1RMs> => {
+    const since = eightWeeksAgo(todayYYYYMMDD);
+    const { data, error } = await supabase
+      .from("workouts")
+      .select(WORKOUTS_COLS)
+      .eq("user_id", userId)
+      .gte("date", since)
+      .order("date", { ascending: false });
+    if (error) throw error;
+    return computeFrom((data ?? []) as WorkoutRow[], todayYYYYMMDD);
+  },
+);
 
-export async function fetchRecentE1RMsBrowser(
-  userId: string,
-  todayYYYYMMDD: string,
-): Promise<RecentE1RMs> {
-  const supabase = createSupabaseBrowserClient();
-  const since = eightWeeksAgo(todayYYYYMMDD);
-  const { data, error } = await supabase
-    .from("workouts")
-    .select(WORKOUTS_COLS)
-    .eq("user_id", userId)
-    .gte("date", since)
-    .order("date", { ascending: false });
-  if (error) throw error;
-  return computeFrom((data ?? []) as WorkoutRow[], todayYYYYMMDD);
-}
+export const fetchRecentE1RMsServer = recentE1RMs.server;
+export const fetchRecentE1RMsBrowser = recentE1RMs.browser;

@@ -14,9 +14,9 @@ function makeId(prefix: string, i: number): string {
   return `${prefix}-${String(i).padStart(3, "0")}`;
 }
 
-/** ISO date N days before 2026-06-26 (today in the codebase). */
-function daysAgo(n: number): string {
-  const d = new Date("2026-06-26");
+/** ISO date N days before `base` (defaults to 2026-06-26, "today" in these fixtures). */
+export function daysAgo(n: number, base = "2026-06-26"): string {
+  const d = new Date(base);
   d.setUTCDate(d.getUTCDate() - n);
   return d.toISOString().slice(0, 10);
 }

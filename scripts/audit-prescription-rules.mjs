@@ -11,15 +11,12 @@ import { evaluateBlockPhase, prescribePrimaryFromPhase } from "@/lib/coach/presc
 import { prescribeSecondaryAutoregulated } from "@/lib/coach/prescription/autoregulation-rule";
 import { brzycki, bestComparisonValue, metricLabel } from "@/lib/coach/e1rm";
 import { annotateSession } from "@/lib/coach/session-structure/annotate";
-import { classifyLightenTier, lightenExercise } from "@/lib/coach/prescription/prescribe-week";
+import { classifyLightenTier, lightenExercise, lastWeekClean, consecutiveMisses } from "@/lib/coach/prescription/prescribe-week";
+import { mergePreservedDays } from "@/lib/coach/prescription/upsert-week-prescription";
+import { mondayOfIso, diffFutureDays, formatRepatchNotes } from "@/lib/coach/prescription/repatch-week";
+import { createAuditReporter } from "./audit-utils.mjs";
 
-let pass = 0;
-let fail = 0;
-
-function assert(name, cond, detail) {
-  if (cond) { pass++; console.log(`  ✓ ${name}`); }
-  else      { fail++; console.error(`  ✗ ${name}${detail ? ` — ${detail}` : ""}`); }
-}
+const { assert, summary } = createAuditReporter();
 
 console.log("\n## maintenance-baseline.ts\n");
 
@@ -704,5 +701,110 @@ const LEGS = ["legs"];
   assert("warmup returned unchanged", out === wu, `got different object`);
 }
 
-console.log(`\n${pass} passed, ${fail} failed.`);
-process.exit(fail === 0 ? 0 : 1);
+console.log("\n## prescribe-week.ts — RIR-aware clean predicates\n");
+
+{
+  const ex = { name: "Squat (Barbell)", baseReps: 6, sets: 3, rir: 2 };
+  const base = { exercise_name: "Squat (Barbell)", exercise_key: null, kg: 100, reps: 6, warmup: false, failure: false, performed_on: "2026-07-06" };
+
+  assert("clean when recorded RIR meets prescription", lastWeekClean([{ ...base, rir: 2 }], ex, 2) === true);
+  assert("dirty when recorded RIR below prescription (grind)", lastWeekClean([{ ...base, rir: 0 }], ex, 2) === false);
+  assert("legacy: missing RIR keeps old verdict (clean)", lastWeekClean([base], ex, 2) === true);
+  assert("legacy: missing RIR keeps old verdict (reps short = dirty)", lastWeekClean([{ ...base, reps: 4 }], ex, 2) === false);
+  assert("per-exercise ex.rir overrides week rirTarget", lastWeekClean([{ ...base, rir: 2 }], { ...ex, rir: 3 }, 2) === false);
+  assert("week rirTarget used when ex.rir absent", lastWeekClean([{ ...base, rir: 1 }], { name: ex.name, baseReps: 6, sets: 3 }, 2) === false);
+  assert("failure dirty regardless of RIR", lastWeekClean([{ ...base, rir: 3, failure: true }], ex, 2) === false);
+  assert("over-target RIR is still just clean (no double-step signal)", lastWeekClean([{ ...base, rir: 4 }], ex, 2) === true);
+
+  assert(
+    "consecutiveMisses counts RIR grinds",
+    consecutiveMisses(
+      [{ ...base, rir: 0 }, { ...base, rir: 1, performed_on: "2026-06-29" }],
+      ex,
+      2,
+    ) === 2,
+  );
+  assert(
+    "consecutiveMisses stops at first RIR-clean set",
+    consecutiveMisses(
+      [{ ...base, rir: 0 }, { ...base, rir: 2, performed_on: "2026-06-29" }],
+      ex,
+      2,
+    ) === 1,
+  );
+  assert(
+    "consecutiveMisses legacy path unchanged when RIR absent",
+    consecutiveMisses([{ ...base, reps: 4 }, base], ex, 2) === 1,
+  );
+}
+
+console.log("\n## upsert-week-prescription.ts — mergePreservedDays\n");
+
+{
+  const stored = {
+    Monday: [{ name: "Squat (Barbell)", baseKg: 130, baseReps: 6, sets: 3 }],
+    Thursday: [{ name: "Deadlift (Barbell)", baseKg: 132.5, baseReps: 6, sets: 3 }],
+  };
+  const computed = {
+    Monday: [{ name: "Squat (Barbell)", baseKg: 135, baseReps: 6, sets: 3 }],
+    Tuesday: [{ name: "Decline Bench Press (Barbell)", baseKg: 80, baseReps: 8, sets: 3 }],
+    Thursday: [{ name: "Deadlift (Barbell)", baseKg: 130, baseReps: 6, sets: 3 }],
+  };
+  // week 2026-07-06 (Mon) … today is Tuesday 2026-07-07
+  const merged = mergePreservedDays({ computed, stored, weekStart: "2026-07-06", preserveDaysThrough: "2026-07-07" });
+
+  assert("past day keeps stored load verbatim", merged.Monday[0].baseKg === 130);
+  assert("today keeps stored state — absence preserved (Tuesday deleted)", !("Tuesday" in merged));
+  assert("future day takes computed load", merged.Thursday[0].baseKg === 130);
+  assert("boundary before week start returns computed untouched",
+    mergePreservedDays({ computed, stored, weekStart: "2026-07-06", preserveDaysThrough: "2026-07-05" }).Monday[0].baseKg === 135);
+  assert("full-week boundary preserves everything stored",
+    mergePreservedDays({ computed, stored, weekStart: "2026-07-06", preserveDaysThrough: "2026-07-12" }).Thursday[0].baseKg === 132.5);
+  assert("null stored + preserve → computed days ≤ boundary removed",
+    !("Monday" in mergePreservedDays({ computed, stored: null, weekStart: "2026-07-06", preserveDaysThrough: "2026-07-07" })));
+}
+
+console.log("\n## repatch-week.ts — pure helpers\n");
+
+{
+  assert("mondayOfIso: Thursday → Monday", mondayOfIso("2026-07-09") === "2026-07-06");
+  assert("mondayOfIso: Monday is identity", mondayOfIso("2026-07-06") === "2026-07-06");
+  assert("mondayOfIso: Sunday belongs to preceding Monday", mondayOfIso("2026-07-12") === "2026-07-06");
+
+  const stored = {
+    Monday: [{ name: "Squat (Barbell)", baseKg: 130, baseReps: 6, sets: 3, rir: 2 }],
+    Thursday: [
+      { name: "Deadlift (Barbell)", baseKg: 60, baseReps: 8, sets: 2, warmup: true },
+      { name: "Deadlift (Barbell)", baseKg: 132.5, baseReps: 6, sets: 3, rir: 2 },
+      { name: "Lat Pulldown (Cable)", baseKg: 70, baseReps: 10, sets: 3, rir: 2 },
+    ],
+  };
+  const next = {
+    Monday: [{ name: "Squat (Barbell)", baseKg: 999, baseReps: 6, sets: 3, rir: 2 }], // past-day change must be IGNORED
+    Thursday: [
+      { name: "Deadlift (Barbell)", baseKg: 60, baseReps: 8, sets: 2, warmup: true },
+      { name: "Deadlift (Barbell)", baseKg: 130, baseReps: 6, sets: 3, rir: 2 },
+      { name: "Seated Row (Cable)", baseKg: 60, baseReps: 10, sets: 3, rir: 2 },
+    ],
+  };
+  const changes = diffFutureDays({ stored, next, weekStart: "2026-07-06", todayIso: "2026-07-07" });
+
+  assert("past days never diffed", changes.every((c) => c.weekday !== "Monday"));
+  const kgChange = changes.find((c) => c.field === "baseKg");
+  assert("load change detected on future day", kgChange && kgChange.exercise === "Deadlift (Barbell)" && kgChange.from === 132.5 && kgChange.to === 130);
+  assert("warmup rows excluded from diff", changes.filter((c) => c.exercise === "Deadlift (Barbell)").length === 1);
+  assert("removed exercise detected", changes.some((c) => c.field === "removed" && c.exercise === "Lat Pulldown (Cable)"));
+  assert("added exercise detected", changes.some((c) => c.field === "added" && c.exercise === "Seated Row (Cable)"));
+  assert("identical inputs → empty diff (idempotence)", diffFutureDays({ stored: next, next, weekStart: "2026-07-06", todayIso: "2026-07-07" }).length === 0);
+
+  const notes = formatRepatchNotes({
+    at: "2026-07-07T10:00:00Z",
+    reason: "workout_commit",
+    workout_date: "2026-07-07",
+    changes,
+  });
+  assert("one note per changed weekday", notes.length === 1 && notes[0].startsWith("Plan updated for Thursday:"));
+  assert("note formats load with fmtNum (no trailing zeros)", notes[0].includes("Deadlift (Barbell) 132.5 → 130 kg"));
+}
+
+summary("audit-prescription-rules");

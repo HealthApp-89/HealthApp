@@ -52,5 +52,13 @@ export function tldrFromPayload(p: WorkoutDebriefPayload): string {
   }
   if (arBits.length > 0) lines.push(arBits.join(" · "));
 
+  // Line 3: mid-week repatch signal (deterministic — mirrors the
+  // "Plan updated for <weekday>: …" notes written by loadRepatchNotes).
+  const repatched = p.prescription.notes.filter((n) => n.startsWith("Plan updated for "));
+  if (repatched.length > 0) {
+    const days = repatched.map((n) => n.slice("Plan updated for ".length).split(":")[0]);
+    lines.push(`↻ Plan updated: ${days.join(", ")}`);
+  }
+
   return lines.join("\n");
 }

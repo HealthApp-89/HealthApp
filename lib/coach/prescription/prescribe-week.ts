@@ -272,7 +272,7 @@ export async function prescribeWeek(opts: {
             baseExercise: baseEx,
             phase: blockPhase,
             currentWorkingKg,
-            lastWeekHitRirTargetCleanly: lastWeekClean(recentSets, baseEx),
+            lastWeekHitRirTargetCleanly: lastWeekClean(recentSets, baseEx, rirTarget),
             rirTarget,
             baselineSets: baseEx.sets ?? 3,
             baselineReps: baseEx.baseReps ?? 6,
@@ -286,8 +286,8 @@ export async function prescribeWeek(opts: {
           prescribeSecondaryAutoregulated({
             baseExercise: baseEx,
             currentWorkingKg,
-            lastWeekHitRirTargetCleanly: lastWeekClean(recentSets, baseEx),
-            consecutiveRirMisses: consecutiveMisses(recentSets, baseEx),
+            lastWeekHitRirTargetCleanly: lastWeekClean(recentSets, baseEx, rirTarget),
+            consecutiveRirMisses: consecutiveMisses(recentSets, baseEx, rirTarget),
             maintenanceBaselineKg: isFocusBlock ? currentWorkingKg : null,
             focusBlockClampMultiplier: isFocusBlock ? FOCUS_BLOCK_CLAMP : null,
             baselineSets: baseEx.sets ?? 3,
@@ -309,7 +309,7 @@ export async function prescribeWeek(opts: {
         const autoreg = prescribeSecondaryAutoregulated({
           baseExercise: baseEx,
           currentWorkingKg: accessoryWorkingKg,
-          lastWeekHitRirTargetCleanly: lastWeekClean(recentSets, baseEx),
+          lastWeekHitRirTargetCleanly: lastWeekClean(recentSets, baseEx, rirTarget),
           consecutiveRirMisses: 0,
           maintenanceBaselineKg: isFocusBlock ? accessoryWorkingKg : null,
           focusBlockClampMultiplier: isFocusBlock ? FOCUS_BLOCK_CLAMP : null,
@@ -565,13 +565,13 @@ async function fetchRecentSets(
   const cutoff = subtractDaysIso(todayIso, 28);
   const { data, error } = await supabase
     .from("workouts")
-    .select("date, exercises(name, exercise_sets(kg, reps, warmup, failure))")
+    .select("date, exercises(name, exercise_sets(kg, reps, warmup, failure, rir))")
     .eq("user_id", userId)
     .gte("date", cutoff)
     .order("date", { ascending: false });
   if (error || !data) return [];
 
-  type RawSet = { kg: number | null; reps: number | null; warmup: boolean | null; failure: boolean | null };
+  type RawSet = { kg: number | null; reps: number | null; warmup: boolean | null; failure: boolean | null; rir: number | null };
   type RawExercise = { name: string; exercise_sets: RawSet[] | null };
   type RawWorkout = { date: string; exercises: RawExercise[] | null };
 
@@ -589,6 +589,7 @@ async function fetchRecentSets(
           warmup: !!s.warmup,
           failure: !!s.failure,
           performed_on: w.date,
+          rir: s.rir ?? null,
         });
       }
     }
@@ -613,23 +614,44 @@ async function fetchVolumeContext(
 // ── pure inference helpers ─────────────────────────────────────────────────
 
 /** Returns true if the most-recent non-warmup set for this exercise was a
- *  clean working set (not failure, hit or exceeded prescribed reps). */
-function lastWeekClean(sets: WorkoutSetSample[], ex: PlannedExercise): boolean {
+ *  clean working set: not failure, hit or exceeded prescribed reps, AND —
+ *  when the set carries a recorded RIR — met the prescribed RIR
+ *  (`ex.rir ?? rirTarget`). A set ground out below the prescribed RIR is
+ *  dirty: the load was too heavy relative to plan, so the engine holds
+ *  instead of stepping. `rir == null` collapses to the legacy verdict.
+ *  Exported for scripts/audit-prescription-rules.mjs. */
+export function lastWeekClean(
+  sets: WorkoutSetSample[],
+  ex: PlannedExercise,
+  rirTarget: number,
+): boolean {
   const matching = setsForExercise(sets, ex);
   const top = matching[0]; // recent-first
   if (top == null) return false;
   if (top.failure) return false;
   if (ex.baseReps != null && top.reps < ex.baseReps) return false;
+  const prescribedRir = ex.rir ?? rirTarget;
+  if (top.rir != null && top.rir < prescribedRir) return false;
   return true;
 }
 
-/** Count consecutive recent non-warmup sets that were dirty (failure or
- *  fell short of prescribed reps). Walks newest-first; stops at first clean. */
-function consecutiveMisses(sets: WorkoutSetSample[], ex: PlannedExercise): number {
+/** Count consecutive recent non-warmup sets that were dirty (failure, fell
+ *  short of prescribed reps, or ground below the prescribed RIR when RIR was
+ *  recorded). Walks newest-first; stops at first clean.
+ *  Exported for scripts/audit-prescription-rules.mjs. */
+export function consecutiveMisses(
+  sets: WorkoutSetSample[],
+  ex: PlannedExercise,
+  rirTarget: number,
+): number {
   const matching = setsForExercise(sets, ex);
+  const prescribedRir = ex.rir ?? rirTarget;
   let misses = 0;
   for (const s of matching) {
-    const clean = !s.failure && (ex.baseReps == null || s.reps >= ex.baseReps);
+    const clean =
+      !s.failure &&
+      (ex.baseReps == null || s.reps >= ex.baseReps) &&
+      (s.rir == null || s.rir >= prescribedRir);
     if (clean) break;
     misses++;
   }

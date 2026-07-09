@@ -25,6 +25,7 @@ import {
 } from './thresholds';
 import { computeAdherence } from '@/lib/coach/adherence';
 import { fmtNum } from '@/lib/ui/score';
+import { isoDaysAgo } from '@/lib/time/dates';
 
 const NUTRITION_WINDOW_DAYS = 14;
 
@@ -116,12 +117,6 @@ export async function composePlanAdherence(args: {
       'daily_logs.calories_eaten (14d)',
     ],
   };
-}
-
-function isoDaysAgo(today: string, days: number): string {
-  const d = new Date(`${today}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() - days);
-  return d.toISOString().slice(0, 10);
 }
 
 function round2(n: number): number {

@@ -6,6 +6,7 @@
 import { todayInUserTz, ymdInUserTz } from "../lib/time.ts";
 import { currentWeekMonday, recommendationWeekStart, reviewWindow } from "../lib/coach/week.ts";
 import { deriveMealSlot } from "../lib/food/meal-slot.ts";
+import { createAuditReporter } from "./audit-utils.mjs";
 
 const TZ = {
   utc: "UTC",
@@ -17,13 +18,7 @@ const TZ = {
   akl: "Pacific/Auckland",
 };
 
-let pass = 0;
-let fail = 0;
-
-function assert(label, cond, detail) {
-  if (cond) { pass++; console.log(`  ok  ${label}`); }
-  else { fail++; console.error(`  FAIL ${label} — ${detail}`); }
-}
+const { assert, summary } = createAuditReporter();
 
 // 1. todayInUserTz differs around UTC midnight for Dubai
 const utcMidnight = new Date("2026-06-10T00:00:00Z");
@@ -107,5 +102,4 @@ assert(
   `got ${deriveMealSlot(breakfastDxb, TZ.tyo)}`,
 );
 
-console.log(`\naudit-time-helpers: ${pass} pass, ${fail} fail`);
-process.exit(fail > 0 ? 1 : 0);
+summary("audit-time-helpers");

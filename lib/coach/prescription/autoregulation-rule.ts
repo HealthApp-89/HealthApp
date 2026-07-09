@@ -7,6 +7,7 @@
 
 import type { PlannedExercise } from "@/lib/coach/sessionPlans";
 import type { BlockPhase } from "@/lib/coach/prescription/types";
+import { roundToStep } from "@/lib/coach/prescription/calibrate-target";
 
 export type AutoregInput = {
   baseExercise: PlannedExercise;
@@ -82,6 +83,3 @@ export function prescribeSecondaryAutoregulated(input: AutoregInput): PlannedExe
   };
 }
 
-function roundToStep(kg: number, step: number): number {
-  return Math.round(kg / step) * step;
-}

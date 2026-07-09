@@ -5,6 +5,7 @@
 // lift + (observed_step_kg_per_wk × 4 accumulation weeks). Round to step.
 
 import type { PrimaryLift, BlockOutcome } from "@/lib/data/types";
+import { roundToStep } from "@/lib/coach/prescription/calibrate-target";
 
 const ACCUMULATION_WEEKS = 4;
 const FALLBACK_STEP_KG = 2.5;
@@ -30,17 +31,14 @@ export function recommendNextTargetKg(opts: {
     const observedStep = lastForLift.lessons?.observed_step_kg_per_wk;
     const step = observedStep != null && observedStep > 0 ? observedStep : FALLBACK_STEP_KG;
     const raw = lastForLift.end_working_kg + step * ACCUMULATION_WEEKS;
-    return roundToGrid(raw, STEP_FOR_LIFT[lift]);
+    return roundToStep(raw, STEP_FOR_LIFT[lift]);
   }
 
   if (fallbackWorkingKg != null) {
     const raw = fallbackWorkingKg + FALLBACK_STEP_KG * FALLBACK_PROGRESSION_WEEKS;
-    return roundToGrid(raw, STEP_FOR_LIFT[lift]);
+    return roundToStep(raw, STEP_FOR_LIFT[lift]);
   }
 
   return null;
 }
 
-function roundToGrid(kg: number, step: number): number {
-  return Math.round(kg / step) * step;
-}
