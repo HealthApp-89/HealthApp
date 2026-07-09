@@ -7,10 +7,14 @@
 //   - the get_week_prescription chat tool, on demand for {current|next}
 //   - executeCommitWeekPlan, as the last write step (so the row stored is
 //     the engine's verdict, not Carter's narration)
+//   - repatchRemainingWeek (lib/coach/prescription/repatch-week.ts), mid-week
+//     after each workout commit, with preserveDaysThrough=today
 //
 // Single seam = single set of invariants:
 //   * session_prescriptions is ALWAYS the freshly-computed prescribeWeek
-//     output. Never accepts a Carter-supplied payload.
+//     output, except when preserveDaysThrough is set: weekdays ≤ that date
+//     keep the stored row verbatim (see mergePreservedDays). Never accepts a
+//     Carter-supplied payload.
 //   * Other training_weeks columns (session_plan, rir_target, etc.) are
 //     preserved when the row already exists, or seeded from the prior week
 //     when creating a new row.
