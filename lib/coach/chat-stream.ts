@@ -75,6 +75,7 @@ import {
   executeProposeMealLog,
   executeCommitMealLog,
   executeProposeMealSuggestions,
+  executeGetStrengthPerLbmTrend,
   executeQueryEnduranceActivities,
   executeProposeEnduranceWeek,
   executeCommitEnduranceWeek,
@@ -449,6 +450,12 @@ const TOOL_EXECUTORS: Record<string, (a: ToolExecArgs) => Promise<ToolResult<unk
     }),
   get_week_prescription: (a) =>
     executeGetWeekPrescription({
+      supabase: a.opts.sr,
+      userId: a.opts.userId,
+      input: a.input,
+    }),
+  get_strength_per_lbm_trend: (a) =>
+    executeGetStrengthPerLbmTrend({
       supabase: a.opts.sr,
       userId: a.opts.userId,
       input: a.input,

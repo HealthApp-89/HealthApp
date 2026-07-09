@@ -15,6 +15,7 @@ import { classifyLightenTier, lightenExercise, lastWeekClean, consecutiveMisses 
 import { mergePreservedDays } from "@/lib/coach/prescription/upsert-week-prescription";
 import { mondayOfIso, diffFutureDays, diffDay, formatRepatchNotes } from "@/lib/coach/prescription/repatch-week";
 import { patchExercisesForRung, revertDayExercises, hasMorningPatchEntry, hasMorningRevertEntry } from "@/lib/coach/prescription/patch-today";
+import fs from "node:fs";
 import { createAuditReporter } from "./audit-utils.mjs";
 
 const { assert, summary } = createAuditReporter();
@@ -1326,6 +1327,16 @@ import { computeStrengthPerLbmTrend } from "@/lib/coach/strength-per-lbm-trend";
     bodyRows: [body("2026-07-06", 69), body("2026-07-08", 71), body("2026-06-30", 70), body("2026-06-23", 70)],
   });
   assert("avg: multiple readings averaged", Math.abs(avg.series[avg.series.length - 1].avg_lbm_kg - 70) < 1e-9);
+}
+
+console.log("\n## CARTER_COLS — read-access allowlist pin\n");
+{
+  const src = fs.readFileSync(new URL("../lib/coach/tools.ts", import.meta.url), "utf8");
+  const block = src.slice(src.indexOf("export const CARTER_COLS"), src.indexOf("export const NORA_COLS"));
+  for (const col of ["recovery", "strain", "sleep_hours", "sleep_score", "weight_kg", "body_fat_pct", "fat_free_mass_kg", "muscle_mass_kg", "calories_eaten", "protein_g"]) {
+    assert(`CARTER_COLS contains ${col}`, block.includes(`"${col}"`));
+  }
+  assert("CARTER_COLS has exactly 10 columns", (block.match(/"/g) ?? []).length === 20);
 }
 
 summary("audit-prescription-rules");
