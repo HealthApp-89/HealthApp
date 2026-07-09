@@ -313,6 +313,8 @@ export type IntakeState =
 export type FatigueLevel = "none" | "some" | "heavy";
 export type SorenessSeverity = "mild" | "sharp";
 
+export type IntakeSource = "legacy_chips" | "all_good" | "form";
+
 export type CheckinRow = {
   user_id: string;
   date: string; // YYYY-MM-DD
@@ -331,6 +333,9 @@ export type CheckinRow = {
   soreness_areas: string[] | null; // ['chest','back','legs','shoulders','arms','core']
   soreness_severity: SorenessSeverity | null;
   intake_state: IntakeState;
+  /** 0050: how the row was reported. NULL = historical / manual Log form
+   *  (counts as explicit for the defaults engine). */
+  intake_source: IntakeSource | null;
   created_at: string;
 };
 
@@ -352,6 +357,10 @@ export type MorningUI = {
   /** When true, the composer text input remains visible (e.g. for the LLM tail
    *  step). Default: false (composer hidden when chips are present). */
   allow_text?: boolean;
+  /** One-tap morning check-in card (spec 2026-07-10). Present on the single
+   *  assistant turn that carries the form; defaults are embedded at card
+   *  creation so what the athlete sees is exactly what all_good writes. */
+  morning_form?: { defaults: { readiness: number; fatigue: FatigueLevel } };
 };
 
 // ── training_blocks ──────────────────────────────────────────────────────────
