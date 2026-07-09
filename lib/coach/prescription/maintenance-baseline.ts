@@ -2,9 +2,10 @@
 //
 // Computes the "current working weight" for a lift — the highest kg across
 // recent clean working sets. A "clean" set is one the lifter completed
-// without grinding to failure or treating it as warmup. RPE/RIR signals are
-// NOT tracked in this codebase's schema (exercise_sets has no rpe/rir
-// columns); we derive working capacity from reps + warmup + failure flags.
+// without grinding to failure or treating it as warmup. Per-set RIR exists in
+// the schema (migration 0045) and is consumed by the clean/dirty predicates in
+// prescribe-week.ts and double-progression-rule.ts; this baseline deliberately
+// stays reps+flags-only — it estimates working CAPACITY, not effort quality.
 
 import type { WorkoutSetSample } from "@/lib/coach/prescription/types";
 
@@ -20,8 +21,9 @@ const MIN_REPS_FOR_BASELINE = 5; // hypertrophy-range floor; rejects singles/dou
  *  Returns null when no clean sets found in the window.
  *
  *  The rirTarget parameter is accepted for API symmetry with other rule
- *  modules but is not used in the filter (rpe/rir columns don't exist in
- *  the schema). Future migrations could enable rpe-based filtering. */
+ *  modules but is not used in the filter — the baseline estimates working
+ *  capacity from completed sets; effort-quality gating (per-set RIR) lives
+ *  in the progression rules that consume this value. */
 export function maintenanceLoadFor(
   exerciseNameOrKey: string,
   rirTarget: number,
