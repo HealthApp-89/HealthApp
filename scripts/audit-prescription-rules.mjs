@@ -1168,4 +1168,76 @@ assert("off-grid down on pin grid: 31 → 30", nextDownKg(31, { step: 5, interme
 assert("descent floor on pin grid: lowest pin holds, never 0", nextDownKg(2.3, { step: 5, intermediate: 2.3 }) === 2.3);
 assert("off-grid plain grid unaffected: 11.3 → 14 up", nextUpKg(11.3, { step: 2 }) === 14);
 
+// ── M1: strained sub-L anchor adoption (no bounce) ─────────────────────────
+console.log("\n## double-progression-rule.ts — M1 strained anchor adoption\n");
+
+{
+  // Coarse DB setup reused from prior block (step 2, bottom 10, L=12, coarse → width 4).
+  const ex = { name: "Lateral Raise (Dumbbell)", baseReps: 10, sets: 3, rir: 2, increment: { step: 2 } };
+  const S = (kg, reps, rir, date, extra = {}) => ({
+    exercise_name: "Lateral Raise (Dumbbell)", exercise_key: null,
+    kg, reps, warmup: false, failure: false, rir, performed_on: date, ...extra,
+  });
+  const input = (over = {}) => ({
+    baseExercise: ex, currentWorkingKg: 12, recentSets: [], rirTarget: 2,
+    blockPhase: "pre_target", loadability: "coarse", focusClampCeilingKg: null,
+    bottomReps: 10, ...over,
+  });
+
+  // M1: strained session at the stepped-down load adopts the anchor (no bounce)…
+  const bounce1 = prescribeAccessoryDoubleProgression(input({
+    recentSets: [S(10, 8, 0, "2026-07-07")],  // strained at 10 while 28d max L=12
+  }));
+  assert("M1: strained sub-L session adopts anchor (no 12 bounce)", bounce1.baseKg === 10);
+  // …and a SECOND strained session at the adopted anchor descends further.
+  const bounce2 = prescribeAccessoryDoubleProgression(input({
+    recentSets: [S(10, 8, 0, "2026-07-07"), S(10, 8, 0, "2026-06-30")],
+  }));
+  assert("M1: two strained sessions at adopted anchor descend to 8", bounce2.baseKg === 8);
+
+  // Regression guard: anomalous clean light session (6 kg, two steps below L=12)
+  // must still NOT adopt — the one-step gate nextUpKg(6) = 8 < L=12 blocks it.
+  // (This mirrors fix2 from the prior block; kept here as an explicit M1 guard.)
+  const anomalyGuard = prescribeAccessoryDoubleProgression(input({
+    recentSets: [S(6, 11, 2, "2026-07-07")], // clean at 6, but 3 grid steps below L=12
+  }));
+  assert("M1 regression: anomalous multi-step-below session NOT adopted (hold at L=12)", anomalyGuard.baseKg === 12);
+}
+
+// ── Item 3: unmapped-loadability default (moderate → width 3) ──────────────
+console.log("\n## double-progression-rule.ts — Item 3 unmapped loadability default\n");
+
+{
+  // An exercise not in the library arrives with loadability: "moderate" (the
+  // ?? "moderate" fallback in prescribe-week.ts's lib?.loadability ?? "moderate").
+  // Verify the resulting rep-range width is 3 (bottom..bottom+3).
+  // This pin guards the orchestrator's default seam without DB access.
+  const exUnmapped = { name: "Unknown Exercise", baseReps: 10, sets: 3, rir: 2, increment: { step: 2.5 } };
+  const SU = (kg, reps, rir, date) => ({
+    exercise_name: "Unknown Exercise", exercise_key: null,
+    kg, reps, warmup: false, failure: false, rir, performed_on: date,
+  });
+  const inputUnmapped = (over = {}) => ({
+    baseExercise: exUnmapped, currentWorkingKg: 20, recentSets: [], rirTarget: 2,
+    blockPhase: "pre_target",
+    // "moderate" is what prescribe-week.ts passes when lib?.loadability is null
+    // (lib?.loadability ?? "moderate" at line ~324 of prescribe-week.ts).
+    loadability: "moderate",
+    focusClampCeilingKg: null,
+    bottomReps: 10, ...over,
+  });
+
+  // Rep-up from bottom (10 reps, clean) should prescribe 11 and cap at bottom+3=13.
+  const repUpMod = prescribeAccessoryDoubleProgression(inputUnmapped({
+    recentSets: [SU(20, 10, 2, "2026-07-07")],
+  }));
+  assert("Item3 unmapped/moderate: rep-up from bottom (width 3, bottom+3=13 cap)", repUpMod.baseReps === 11 && repUpMod.baseKg === 20);
+
+  // Step-up: two sets at top (bottom+3=13) → load advances.
+  const stepUpMod = prescribeAccessoryDoubleProgression(inputUnmapped({
+    recentSets: [SU(20, 13, 2, "2026-07-07"), SU(20, 13, 3, "2026-07-07")],
+  }));
+  assert("Item3 unmapped/moderate: step-up triggers at top (bottom+3=13)", stepUpMod.baseKg === 22.5 && stepUpMod.baseReps === 10);
+}
+
 summary("audit-prescription-rules");
