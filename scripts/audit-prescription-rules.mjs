@@ -1240,4 +1240,92 @@ console.log("\n## double-progression-rule.ts — Item 3 unmapped loadability def
   assert("Item3 unmapped/moderate: step-up triggers at top (bottom+3=13)", stepUpMod.baseKg === 22.5 && stepUpMod.baseReps === 10);
 }
 
+console.log("\n## strength-per-lbm-trend.ts — cut-context trend core\n");
+
+import { computeStrengthPerLbmTrend } from "@/lib/coach/strength-per-lbm-trend";
+
+{
+  // Helper: one clean top set + one LBM reading per listed Monday week.
+  const set = (kg, reps, date) => ({ kg, reps, warmup: false, performed_on: date });
+  const body = (date, ffm, weight = null, bf = null) =>
+    ({ date, fat_free_mass_kg: ffm, weight_kg: weight, body_fat_pct: bf });
+
+  // 4 paired weeks, ratio perfectly flat (e1RM and LBM both constant).
+  const flat = computeStrengthPerLbmTrend({
+    lift: "squat",
+    weeksRequested: 8,
+    sets: [
+      set(100, 5, "2026-06-15"), set(100, 5, "2026-06-22"),
+      set(100, 5, "2026-06-29"), set(100, 5, "2026-07-06"),
+    ],
+    bodyRows: [
+      body("2026-06-16", 70), body("2026-06-23", 70),
+      body("2026-06-30", 70), body("2026-07-07", 70),
+    ],
+  });
+  assert("flat: 4 paired weeks", flat.weeks_with_data === 4);
+  assert("flat: verdict holding", flat.verdict === "holding");
+  assert("flat: ratio = brzycki(100,5)/70", Math.abs(flat.series[0].ratio - (100 * 36 / (37 - 5)) / 70) < 1e-9);
+  assert("flat: series Monday-keyed", flat.series[0].week_start === "2026-06-15");
+
+  // Missing-week omission: 3 weeks of sets, only 2 have body data → 2 paired.
+  const gaps = computeStrengthPerLbmTrend({
+    lift: "squat", weeksRequested: 8,
+    sets: [set(100, 5, "2026-06-22"), set(100, 5, "2026-06-29"), set(100, 5, "2026-07-06")],
+    bodyRows: [body("2026-06-23", 70), body("2026-07-07", 70)],
+  });
+  assert("gaps: unpaired week omitted", gaps.weeks_with_data === 2);
+  assert("gaps: <3 weeks → insufficient_data", gaps.verdict === "insufficient_data");
+  assert("gaps: slopes null on insufficient", gaps.slope_per_week === null && gaps.relative_slope_pct_per_week === null);
+  assert("gaps: series still returned", gaps.series.length === 2);
+
+  // LBM fallback derivation: no ffm, weight 100 @ 30% bf → LBM 70.
+  const derived = computeStrengthPerLbmTrend({
+    lift: "squat", weeksRequested: 8,
+    sets: [set(100, 5, "2026-06-22"), set(100, 5, "2026-06-29"), set(100, 5, "2026-07-06")],
+    bodyRows: [
+      body("2026-06-23", null, 100, 30), body("2026-06-30", null, 100, 30), body("2026-07-07", null, 100, 30),
+    ],
+  });
+  assert("fallback: LBM derived from weight × (1−bf%)", Math.abs(derived.series[0].avg_lbm_kg - 70) < 1e-9);
+  assert("fallback: 3 paired weeks → verdict computed", derived.verdict === "holding");
+
+  // Rising: LBM constant, e1RM +2%/wk → relative slope ≈ +2 > +0.5.
+  const rising = computeStrengthPerLbmTrend({
+    lift: "squat", weeksRequested: 8,
+    sets: [set(100, 5, "2026-06-15"), set(102, 5, "2026-06-22"), set(104, 5, "2026-06-29"), set(106, 5, "2026-07-06")],
+    bodyRows: [body("2026-06-16", 70), body("2026-06-23", 70), body("2026-06-30", 70), body("2026-07-07", 70)],
+  });
+  assert("rising verdict", rising.verdict === "rising");
+
+  // Falling: e1RM constant, LBM rising 2%/wk → ratio falls ≈ −2%/wk.
+  const falling = computeStrengthPerLbmTrend({
+    lift: "squat", weeksRequested: 8,
+    sets: [set(100, 5, "2026-06-15"), set(100, 5, "2026-06-22"), set(100, 5, "2026-06-29"), set(100, 5, "2026-07-06")],
+    bodyRows: [body("2026-06-16", 70), body("2026-06-23", 71.4), body("2026-06-30", 72.8), body("2026-07-07", 74.2)],
+  });
+  assert("falling verdict", falling.verdict === "falling");
+
+  // Warmups and >12-rep sets excluded from e1RM.
+  const filtered = computeStrengthPerLbmTrend({
+    lift: "squat", weeksRequested: 8,
+    sets: [
+      { kg: 140, reps: 5, warmup: true, performed_on: "2026-07-06" },
+      set(60, 20, "2026-07-06"),
+      set(100, 5, "2026-07-06"),
+      set(100, 5, "2026-06-29"), set(100, 5, "2026-06-22"),
+    ],
+    bodyRows: [body("2026-07-07", 70), body("2026-06-30", 70), body("2026-06-23", 70)],
+  });
+  assert("filter: warmup + >12-rep sets excluded", Math.abs(filtered.series[filtered.series.length - 1].best_e1rm - (100 * 36 / 32)) < 1e-9);
+
+  // Multiple LBM readings in one week average.
+  const avg = computeStrengthPerLbmTrend({
+    lift: "squat", weeksRequested: 8,
+    sets: [set(100, 5, "2026-06-22"), set(100, 5, "2026-06-29"), set(100, 5, "2026-07-06")],
+    bodyRows: [body("2026-07-06", 69), body("2026-07-08", 71), body("2026-06-30", 70), body("2026-06-23", 70)],
+  });
+  assert("avg: multiple readings averaged", Math.abs(avg.series[avg.series.length - 1].avg_lbm_kg - 70) < 1e-9);
+}
+
 summary("audit-prescription-rules");
