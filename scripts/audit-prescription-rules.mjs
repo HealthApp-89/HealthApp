@@ -1162,4 +1162,9 @@ console.log("\n## double-progression-rule.ts — fix fixtures (descent stickines
   assert("fix9b moderate width: rep-up caps at bottom+3=13", modRepUp.baseReps === 13);
 }
 
+// M2 hardening: off-grid loads snap to the grid before neighbor math.
+assert("off-grid up on pin grid: 33 → 35", nextUpKg(33, { step: 5, intermediate: 2.3 }) === 35);
+assert("off-grid down on pin grid: 31 → 30", nextDownKg(31, { step: 5, intermediate: 2.3 }) === 30);
+assert("off-grid plain grid unaffected: 11.3 → 14 up", nextUpKg(11.3, { step: 2 }) === 14);
+
 summary("audit-prescription-rules");

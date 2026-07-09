@@ -69,25 +69,35 @@ type Increment = PlannedExercise["increment"];
 
 /** Next valid load UP on the equipment grid. Plain grids step by `step`;
  *  micro-pin grids (step + intermediate offset) alternate offset/plain, so the
- *  effective jump is `intermediate` or `step - intermediate`. */
+ *  effective jump is `intermediate` or `step - intermediate`. Off-grid loads
+ *  are snapped to the nearest grid value first; the neighbor is then computed
+ *  from the grid context, ensuring monotonicity. */
 export function nextUpKg(L: number, inc: Increment): number {
   const step = inc?.step ?? 2.5;
   const im = inc?.intermediate;
   if (im == null) return roundToStep(L + step, step);
+  // Micro-pin: snap first to ensure we're on the grid, then move to the next up.
   const base = Math.floor(L / step + 1e-6) * step;
-  const onOffset = Math.abs(L - (base + im)) < 0.01;
-  return onOffset ? base + step : base + im;
+  const candidates = [base, base + im, base + step];
+  // Find the smallest candidate > L (next up). If none exist in this octave,
+  // move to the next octave.
+  for (const c of candidates) if (c > L + 1e-6) return c;
+  // All candidates <= L; move to next octave.
+  return base + step + im;
 }
 
 /** Next valid load DOWN on the grid (mirror of nextUpKg); floors at the
- *  smallest positive grid value. */
+ *  smallest positive grid value. Off-grid loads snap first. */
 export function nextDownKg(L: number, inc: Increment): number {
   const step = inc?.step ?? 2.5;
   const im = inc?.intermediate;
   if (im == null) return Math.max(step, roundToStep(L - step, step));
+  // Micro-pin: find the largest candidate < L (next down).
   const base = Math.floor(L / step + 1e-6) * step;
-  const onOffset = Math.abs(L - (base + im)) < 0.01;
-  const down = onOffset ? base : base - step + im;
+  const candidates = [base + step, base + im, base];
+  for (const c of candidates) if (c < L - 1e-6) return c;
+  // No candidate found in current octave; move to previous octave.
+  const down = base - step + im;
   return down > 0 ? down : Math.min(im, step);
 }
 
