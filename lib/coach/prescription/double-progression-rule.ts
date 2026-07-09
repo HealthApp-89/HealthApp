@@ -103,7 +103,16 @@ export function nextDownKg(L: number, inc: Increment): number {
 
 type SessionSets = { date: string; sets: WorkoutSetSample[] };
 
-/** Non-warmup samples for the exercise, grouped per session date, newest first. */
+/** Non-warmup samples for the exercise, grouped per session date, newest first.
+ *
+ *  NOTE — dual-slot exercises (e.g. Lateral Raise appears on both Chest and
+ *  Arms days): history is name-keyed, so sets from both days merge into the
+ *  same session window. This is an ACCEPTED limitation: the worst-case outcome
+ *  is a spurious hold (two slots with different rep anchors may dilute the
+ *  "all-clean-at-top" gate), not a phantom step-up or step-down. Hold-biased
+ *  behaviour is safe after the strain gate, so no per-slot partitioning is
+ *  needed in v1. If rep anchors diverge significantly between slots in the
+ *  future, partition by session_type key instead. */
 function sessionsFor(recentSets: WorkoutSetSample[], name: string): SessionSets[] {
   const needle = name.trim().toLowerCase();
   const byDate = new Map<string, WorkoutSetSample[]>();
@@ -166,16 +175,21 @@ export function prescribeAccessoryDoubleProgression(
   const lastTop = topSet(last.sets);
   const loadFrozen = blockPhase === "consolidation" || blockPhase === "off_pace";
 
-  // Descent stickiness: when the athlete trained CLEAN one grid step below L
-  // (the post-step-down case), adopt the performed load as the ladder anchor —
+  // Descent stickiness: when the athlete trained one grid step below L (the
+  // post-step-down case), adopt the performed load as the ladder anchor —
   // otherwise the 28d-max baseline snaps back to the load they just failed.
-  // Sessions more than one step below L are anomalies (variation day): keep L,
-  // but the rep-up rung below requires lastTop.kg ≥ effL so the anomalous
-  // session can't set the rung either.
+  // The session may be CLEAN (normal case) OR STRAINED (rir < prescribed or
+  // failure): a strained session at the stepped-down load is still confirmation
+  // that the athlete is training at that rung, so adopt it; without this the
+  // rung bounces back to L → strained-10 → snap to 12 → strained-10 again
+  // (ping-pong). Sessions more than one step below L are anomalies (variation
+  // day): the one-step gate nextUpKg(lastTop.kg) >= L keeps L, and the rep-up
+  // rung below requires lastTop.kg ≥ effL so the anomalous session can't set
+  // the rung either.
   let effL = L;
   if (
     lastTop.kg < L &&
-    isClean(lastTop, bottom, prescribedRir) &&
+    (isClean(lastTop, bottom, prescribedRir) || isStrained(lastTop, prescribedRir)) &&
     nextUpKg(lastTop.kg, ex.increment) >= L
   ) {
     effL = lastTop.kg;
