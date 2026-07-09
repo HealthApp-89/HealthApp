@@ -8,6 +8,9 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { prescribeWeek } from "@/lib/coach/prescription/prescribe-week";
+import { mergePreservedDays, WEEKDAY_LONG_ORDER } from "@/lib/coach/prescription/upsert-week-prescription";
+import { mondayOfIso } from "@/lib/coach/prescription/repatch-week";
+import { daysBetweenIso, isoDaysAgo } from "@/lib/time/dates";
 import { getUserTimezone } from "@/lib/time/get-user-tz";
 import { todayInUserTz } from "@/lib/time";
 import { plansEqual } from "@/lib/training-weeks/apply-swap";
@@ -92,7 +95,18 @@ export async function applyActivityLayout(opts: {
   try {
     const tz = await getUserTimezone(userId);
     const todayIso = todayInUserTz(new Date(), tz);
-    nextPrescriptions = await prescribeWeek({ supabase, userId, block, week: workingRow, todayIso });
+    const computed = await prescribeWeek({ supabase, userId, block, week: workingRow, todayIso });
+    // Same preservation rule as the swap route: protect days ≤ today unless
+    // the layout change moved today's session type.
+    const todayIdx = daysBetweenIso(mondayOfIso(todayIso), todayIso);
+    const todayWeekday = todayIdx != null ? WEEKDAY_LONG_ORDER[todayIdx] : null;
+    const todayChanged = todayWeekday != null && changedFull.includes(todayWeekday);
+    nextPrescriptions = mergePreservedDays({
+      computed,
+      stored: currentPrescriptions,
+      weekStart: row.week_start,
+      preserveDaysThrough: todayChanged ? isoDaysAgo(todayIso, 1) : todayIso,
+    });
   } catch (e) {
     console.error("[applyActivityLayout] prescription recompute failed; clearing stale entries", e);
     // On recompute failure, clear changed days' stale entries (matches route).

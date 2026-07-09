@@ -764,6 +764,23 @@ console.log("\n## upsert-week-prescription.ts — mergePreservedDays\n");
     !("Monday" in mergePreservedDays({ computed, stored: null, weekStart: "2026-07-06", preserveDaysThrough: "2026-07-07" })));
 }
 
+console.log("\n## mergePreservedDays — yesterday boundary (morning-patch protection)\n");
+
+{
+  const stored = {
+    Monday: [{ name: "Squat (Barbell)", baseKg: 130, baseReps: 6, sets: 3 }],
+    Tuesday: [{ name: "Decline Bench Press (Barbell)", baseKg: 80, baseReps: 8, sets: 2 }],
+  };
+  const computed = {
+    Monday: [{ name: "Squat (Barbell)", baseKg: 135, baseReps: 6, sets: 3 }],
+    Tuesday: [{ name: "Decline Bench Press (Barbell)", baseKg: 80, baseReps: 8, sets: 3 }],
+  };
+  // today = Tuesday 2026-07-07; boundary = yesterday (Monday 2026-07-06)
+  const merged = mergePreservedDays({ computed, stored, weekStart: "2026-07-06", preserveDaysThrough: "2026-07-06" });
+  assert("yesterday boundary: past day (Monday) preserved", merged.Monday[0].baseKg === 130);
+  assert("yesterday boundary: today (Tuesday) takes computed", merged.Tuesday[0].sets === 3);
+}
+
 console.log("\n## repatch-week.ts — pure helpers\n");
 
 {

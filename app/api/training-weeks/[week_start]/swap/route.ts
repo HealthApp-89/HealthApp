@@ -32,6 +32,9 @@ import { applySwap, detectConflicts, plansEqual } from "@/lib/training-weeks/app
 import { readSessionForDay, SHORT_TO_FULL } from "@/lib/coach/session-plan-reader";
 import { SESSION_PLANS } from "@/lib/coach/sessionPlans";
 import { prescribeWeek } from "@/lib/coach/prescription/prescribe-week";
+import { mergePreservedDays, WEEKDAY_LONG_ORDER } from "@/lib/coach/prescription/upsert-week-prescription";
+import { mondayOfIso } from "@/lib/coach/prescription/repatch-week";
+import { daysBetweenIso, isoDaysAgo } from "@/lib/time/dates";
 import { getUserTimezone } from "@/lib/time/get-user-tz";
 import { todayInUserTz } from "@/lib/time";
 import { buildExplicitIntervention, recordIntervention } from "@/lib/coach/interventions/record";
@@ -261,12 +264,27 @@ export async function POST(
     try {
       const tz = await getUserTimezone(user.id);
       const todayIso = todayInUserTz(new Date(), tz);
-      nextPrescriptions = await prescribeWeek({
+      const computed = await prescribeWeek({
         supabase,
         userId: user.id,
         block,
         week: workingRow,
         todayIso,
+      });
+      // Preserve days ≤ today verbatim (they may carry a morning patch or a
+      // mid-week repatch) — UNLESS this swap changed today's session type, in
+      // which case today must be recomputed for the new type (boundary =
+      // yesterday). Only applies when editing the current week; for other
+      // weeks the boundary math in mergePreservedDays no-ops or preserves
+      // everything, matching "past days are the historical record".
+      const todayIdx = daysBetweenIso(mondayOfIso(todayIso), todayIso);
+      const todayWeekday = todayIdx != null ? WEEKDAY_LONG_ORDER[todayIdx] : null;
+      const todayChanged = todayWeekday != null && changedFull.includes(todayWeekday);
+      nextPrescriptions = mergePreservedDays({
+        computed,
+        stored: currentPrescriptions,
+        weekStart: row.week_start,
+        preserveDaysThrough: todayChanged ? isoDaysAgo(todayIso, 1) : todayIso,
       });
     } catch (e) {
       console.error("[swap] prescription recompute failed; clearing stale entries", e);
