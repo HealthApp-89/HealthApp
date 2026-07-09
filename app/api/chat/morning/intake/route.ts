@@ -1,16 +1,16 @@
 // app/api/chat/morning/intake/route.ts
 //
-// Morning intake state-machine endpoint. POST one of:
-//   {kind: 'start'}                               — begin or resume the day
-//   {kind: 'declare_sick'}                        — flip sick=true, ask for notes
-//   {kind: 'free_text', value: string}            — LLM tail OR sickness_notes (dispatch on intake_state)
-//   {slot: SlotKey, value: string|number|string[]} — chip answer
+// Morning intake endpoint — one-tap check-in card (spec 2026-07-10). POST:
+//   {kind: 'start'}                    — begin or resume the day; inserts the card turn
+//   {kind: 'all_good'}                 — write personal-baseline defaults, advance to awaiting_whoop
+//   {kind: 'batch', values, notes?}    — one-shot form write (zod-validated)
+//   {kind: 'declare_sick'}             — flip sick=true, ask for notes
+//   {kind: 'free_text', value}         — sickness notes ONLY (409 otherwise)
+//   {slot: 'still_sick', value}        — yesterday-was-sick morning gate
 //
-// Server is the single source of truth for "what's the next question".
-// Each call upserts the matching checkin column, advances intake_state via
-// nextIntakeState(), inserts the next assistant chat_messages row (with
-// ui.chips when scripted, streamed with Claude when free-text tail), and
-// returns SSE for the streaming case or JSON for the scripted case.
+// The card's defaults are computed server-side at card creation and embedded
+// in ui.morning_form; all_good re-reads them from the displayed card so the
+// write matches exactly what the athlete saw.
 
 import { NextResponse } from "next/server";
 import {
@@ -20,20 +20,28 @@ import {
 import { todayInUserTz } from "@/lib/time";
 import { getUserTimezone } from "@/lib/time/get-user-tz";
 import {
-  SLOT_BY_KEY,
+  MORNING_FORM_PROMPT,
+  STILL_SICK_RECOVERED_PREFIX,
   STILL_SICK_PROMPT,
   STILL_SICK_CHIPS,
   SICKNESS_NOTES_PROMPT,
   REST_DAY_MESSAGE_HEALTHY_TO_SICK,
   REST_DAY_MESSAGE_STILL_SICK,
-  FREE_TEXT_TAIL_PROMPT,
   SYNC_RECOVERY_PROMPT,
-  type SlotKey,
 } from "@/lib/morning/script";
-import { nextSlot, nextIntakeState } from "@/lib/morning/state";
+import {
+  computeMorningDefaults,
+  type DefaultsInputRow,
+  type MorningDefaults,
+} from "@/lib/morning/defaults";
+import {
+  BatchBodySchema,
+  columnsFromBatch,
+  formatBatchReply,
+  type BatchValues,
+} from "@/lib/morning/batch";
 import { UPDATE_INTAKE_SLOTS_TOOL } from "@/lib/morning/tools";
 import type { CheckinRow, MorningUI } from "@/lib/data/types";
-import { formatSseEvent } from "@/lib/chat/sse";
 import Anthropic from "@anthropic-ai/sdk";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -43,9 +51,11 @@ export const dynamic = "force-dynamic";
 
 type Body =
   | { kind: "start" }
+  | { kind: "all_good" }
+  | { kind: "batch"; values: unknown; notes?: unknown }
   | { kind: "declare_sick" }
   | { kind: "free_text"; value: string }
-  | { slot: SlotKey | "soreness_gate" | "still_sick"; value: string | number | string[] };
+  | { slot: string; value: string | number | string[] };
 
 type SR = SupabaseClient;
 
@@ -59,7 +69,6 @@ export async function POST(req: Request) {
   const today = todayInUserTz(new Date(), tz);
   const sr = createSupabaseServiceRoleClient();
 
-  // Always read today's row first; many handlers need it.
   const { data: todayRow } = await sr
     .from("checkins")
     .select("*")
@@ -67,17 +76,18 @@ export async function POST(req: Request) {
     .eq("date", today)
     .maybeSingle<CheckinRow>();
 
-  // ── start: bootstrap the day ────────────────────────────────────────────────
   if ("kind" in body && body.kind === "start") {
     return handleStart({ sr, userId: user.id, today, todayRow });
   }
-
-  // ── declare_sick: user tapped "I'm coming down with something" ──────────────
+  if ("kind" in body && body.kind === "all_good") {
+    return handleAllGood({ sr, userId: user.id, today, todayRow });
+  }
+  if ("kind" in body && body.kind === "batch") {
+    return handleBatch({ sr, userId: user.id, today, todayRow, body });
+  }
   if ("kind" in body && body.kind === "declare_sick") {
     return handleDeclareSick({ sr, userId: user.id, today, todayRow });
   }
-
-  // ── free_text: dispatch on current state ────────────────────────────────────
   if ("kind" in body && body.kind === "free_text") {
     if (!todayRow) {
       return NextResponse.json({ ok: false, reason: "no_today_row" }, { status: 409 });
@@ -85,15 +95,16 @@ export async function POST(req: Request) {
     if (todayRow.intake_state === "awaiting_sickness_notes") {
       return handleSicknessNotes({ sr, userId: user.id, today, value: body.value });
     }
-    return handleFeelTail({ sr, userId: user.id, today, todayRow, value: body.value });
+    return NextResponse.json({ ok: false, reason: "unexpected_free_text" }, { status: 409 });
   }
-
-  // ── slot answer ─────────────────────────────────────────────────────────────
   if ("slot" in body) {
     if (!todayRow) {
       return NextResponse.json({ ok: false, reason: "no_today_row" }, { status: 409 });
     }
-    return handleSlotAnswer({ sr, userId: user.id, today, body });
+    if (body.slot !== "still_sick") {
+      return NextResponse.json({ ok: false, reason: "bad_slot" }, { status: 400 });
+    }
+    return handleStillSick({ sr, userId: user.id, today, value: body.value });
   }
 
   return NextResponse.json({ ok: false, reason: "bad_body" }, { status: 400 });
@@ -106,20 +117,16 @@ async function handleStart(args: {
 }) {
   const { sr, userId, today, todayRow } = args;
 
-  // Already delivered → return 409 so client closes panel.
   if (todayRow?.intake_state === "delivered") {
     return NextResponse.json({ ok: false, reason: "already_delivered" }, { status: 409 });
   }
 
-  // Mid-flow resume: today's row already exists in awaiting_feel /
-  // awaiting_sickness_notes / awaiting_whoop. The latest assistant message
-  // is already in chat_messages and the client re-renders the existing
-  // thread on its own — no new turn to insert.
+  // Mid-flow resume: the card (or a later turn) is already the latest
+  // assistant message in the thread; the client re-renders it on its own.
   if (todayRow && todayRow.intake_state !== "pending") {
     return NextResponse.json({ ok: true, resumed: true });
   }
 
-  // Fresh: was yesterday sick?
   const yesterday = isoMinusDays(today, 1);
   const { data: yRow } = await sr
     .from("checkins")
@@ -129,11 +136,10 @@ async function handleStart(args: {
     .maybeSingle<Pick<CheckinRow, "sick" | "sickness_notes">>();
 
   if (yRow?.sick) {
-    // Still-sick check-in path.
     await upsertCheckin(sr, userId, today, {
       intake_state: "awaiting_feel",
-      sick: false, // will be flipped back to true if user answers Yes
-      sickness_notes: yRow.sickness_notes ?? null, // carry forward as default
+      sick: false, // flipped back to true if the user answers Yes
+      sickness_notes: yRow.sickness_notes ?? null,
     });
     await insertAssistantTurn(sr, userId, {
       content: STILL_SICK_PROMPT,
@@ -142,21 +148,140 @@ async function handleStart(args: {
     return NextResponse.json({ ok: true, resumed: false, mode: "still_sick_check" });
   }
 
-  // Healthy fresh start — first slot is readiness.
   await upsertCheckin(sr, userId, today, { intake_state: "awaiting_feel" });
-  const firstSlot = SLOT_BY_KEY.readiness;
-  await insertAssistantTurn(sr, userId, {
-    content: firstSlot.prompt,
-    ui: chipsForSlot(firstSlot.key),
-  });
+  const defaults = await fetchMorningDefaults(sr, userId, today);
+  await insertMorningFormTurn(sr, userId, MORNING_FORM_PROMPT, defaults);
   return NextResponse.json({ ok: true, resumed: false, mode: "fresh" });
+}
+
+async function handleAllGood(args: {
+  sr: SR; userId: string; today: string; todayRow: CheckinRow | null;
+}) {
+  const { sr, userId, today, todayRow } = args;
+  if (!todayRow || (todayRow.intake_state !== "pending" && todayRow.intake_state !== "awaiting_feel")) {
+    return NextResponse.json({ ok: false, reason: "not_awaiting" }, { status: 409 });
+  }
+
+  // Prefer the defaults embedded in the displayed card — the write must match
+  // what the athlete saw, not a recomputation on possibly-newer data.
+  const defaults =
+    (await readCardDefaults(sr, userId)) ??
+    (await fetchMorningDefaults(sr, userId, today));
+
+  await insertUserReply(sr, userId, "Same as usual");
+  await upsertCheckin(sr, userId, today, {
+    readiness: defaults.readiness,
+    fatigue: defaults.fatigue,
+    soreness_areas: [],
+    soreness_severity: null,
+    bloating: false,
+    sick: false,
+    intake_source: "all_good",
+    intake_state: "awaiting_whoop",
+  });
+  await parkWhoopSyncIfNeeded(sr, userId, today);
+  return NextResponse.json({ ok: true });
+}
+
+async function handleBatch(args: {
+  sr: SR; userId: string; today: string; todayRow: CheckinRow | null; body: unknown;
+}) {
+  const { sr, userId, today, todayRow, body } = args;
+  const parsed = BatchBodySchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json(
+      { ok: false, reason: "bad_batch", issues: parsed.error.issues },
+      { status: 400 },
+    );
+  }
+  if (!todayRow || (todayRow.intake_state !== "pending" && todayRow.intake_state !== "awaiting_feel")) {
+    return NextResponse.json({ ok: false, reason: "not_awaiting" }, { status: 409 });
+  }
+
+  const { values } = parsed.data;
+  const notes = (parsed.data.notes ?? "").trim();
+
+  await insertUserReply(sr, userId, formatBatchReply(values, notes || null));
+
+  if (values.sick) {
+    // Sick short-circuit — mirrors declare_sick semantics. Form notes are
+    // sickness notes here (spec: not feel_notes).
+    if (notes) {
+      await upsertCheckin(sr, userId, today, {
+        ...columnsFromBatch(values),
+        intake_source: "form",
+        sick: true,
+        sickness_notes: notes,
+        intake_state: "delivered",
+      });
+      await insertAssistantTurn(sr, userId, {
+        content: REST_DAY_MESSAGE_HEALTHY_TO_SICK,
+        ui: null,
+      });
+      return NextResponse.json({ ok: true, delivered: true });
+    }
+    await upsertCheckin(sr, userId, today, {
+      ...columnsFromBatch(values),
+      intake_source: "form",
+      sick: true,
+      intake_state: "awaiting_sickness_notes",
+    });
+    await insertAssistantTurn(sr, userId, {
+      content: SICKNESS_NOTES_PROMPT,
+      ui: { allow_text: true },
+    });
+    return NextResponse.json({ ok: true });
+  }
+
+  await upsertCheckin(sr, userId, today, {
+    ...columnsFromBatch(values),
+    intake_source: "form",
+    sick: false,
+    feel_notes: notes || null,
+    intake_state: "awaiting_whoop",
+  });
+  if (notes) {
+    await runNotesAck(sr, userId, today, values, notes);
+  }
+  await parkWhoopSyncIfNeeded(sr, userId, today);
+  return NextResponse.json({ ok: true });
+}
+
+async function handleStillSick(args: {
+  sr: SR; userId: string; today: string; value: string | number | string[];
+}) {
+  const { sr, userId, today, value } = args;
+  await insertUserReply(sr, userId, String(value));
+
+  if (value === "yes") {
+    await upsertCheckin(sr, userId, today, {
+      sick: true,
+      intake_state: "delivered",
+    });
+    await insertAssistantTurn(sr, userId, {
+      content: REST_DAY_MESSAGE_STILL_SICK,
+      ui: null,
+    });
+    return NextResponse.json({ ok: true, delivered: true });
+  }
+
+  // Recovered — proceed to the check-in card.
+  await upsertCheckin(sr, userId, today, {
+    sick: false,
+    sickness_notes: null,
+    intake_state: "awaiting_feel",
+  });
+  const defaults = await fetchMorningDefaults(sr, userId, today);
+  await insertMorningFormTurn(
+    sr, userId, STILL_SICK_RECOVERED_PREFIX + MORNING_FORM_PROMPT, defaults,
+  );
+  return NextResponse.json({ ok: true });
 }
 
 async function handleDeclareSick(args: {
   sr: SR; userId: string; today: string; todayRow: CheckinRow | null;
 }) {
   const { sr, userId, today } = args;
-  // Insert user reply so the thread shows what the user just did.
   await insertUserReply(sr, userId, "I'm coming down with something");
   await upsertCheckin(sr, userId, today, {
     sick: true,
@@ -174,7 +299,6 @@ async function handleSicknessNotes(args: {
 }) {
   const { sr, userId, today, value } = args;
   const trimmed = value.trim();
-  // Insert user reply so the thread shows what the user typed.
   if (trimmed) {
     await insertUserReply(sr, userId, trimmed);
   }
@@ -190,283 +314,118 @@ async function handleSicknessNotes(args: {
   return NextResponse.json({ ok: true, delivered: true });
 }
 
-async function handleSlotAnswer(args: {
-  sr: SR; userId: string; today: string; body: Extract<Body, { slot: string }>;
-}) {
-  const { sr, userId, today, body } = args;
-  const slot = body.slot;
-  const value = body.value;
+// ── card + defaults helpers ──────────────────────────────────────────────────
 
-  // Insert a user reply for the chip tap so the thread renders what the user
-  // just answered. Without this the chat shows back-to-back assistant prompts
-  // with no visible feedback that the chip even registered.
-  await insertUserReply(sr, userId, formatChipReply(value));
-
-  // Special: still_sick chip (yes/no). Only valid when the latest assistant
-  // turn was the still-sick prompt. We detect by checking sickness_notes
-  // existence and intake_state.
-  if (slot === "still_sick") {
-    if (value === "yes") {
-      await upsertCheckin(sr, userId, today, {
-        sick: true,
-        intake_state: "delivered",
-      });
-      await insertAssistantTurn(sr, userId, {
-        content: REST_DAY_MESSAGE_STILL_SICK,
-        ui: null,
-      });
-      return NextResponse.json({ ok: true, delivered: true });
-    }
-    // No — flip sick=false (already done in handleStart) and proceed with
-    // first scripted slot.
-    await upsertCheckin(sr, userId, today, {
-      sick: false,
-      sickness_notes: null,
-      intake_state: "awaiting_feel",
-    });
-    const firstSlot = SLOT_BY_KEY.readiness;
-    await insertAssistantTurn(sr, userId, {
-      content: "Good to hear. Let's run through your morning. " + firstSlot.prompt,
-      ui: chipsForSlot(firstSlot.key),
-    });
-    return NextResponse.json({ ok: true });
-  }
-
-  // Soreness gate (virtual slot — no DB column for it).
-  if (slot === "soreness_gate") {
-    if (value === "no") {
-      // Mark "no soreness" by writing an empty array. nextSlot below will
-      // skip soreness_areas + severity and advance to fatigue.
-      await upsertCheckin(sr, userId, today, {
-        soreness_areas: [],
-        soreness_severity: null,
-      });
-    } else {
-      // 'yes' — directly insert the soreness_areas multi-select prompt
-      // and return. We can't fall through to nextSlot() here because
-      // soreness_areas is still null (the user hasn't picked areas yet),
-      // and nextSlot would loop back to the gate.
-      const areasSlot = SLOT_BY_KEY.soreness_areas;
-      await insertAssistantTurn(sr, userId, {
-        content: areasSlot.prompt,
-        ui: chipsForSlot(areasSlot.key),
-      });
-      return NextResponse.json({ ok: true, next: "soreness_areas" });
-    }
-  } else {
-    // Map chip slot → DB column
-    const update = mapSlotToColumn(slot as SlotKey, value);
-    if (!update) {
-      return NextResponse.json({ ok: false, reason: "bad_slot" }, { status: 400 });
-    }
-    await upsertCheckin(sr, userId, today, update);
-  }
-
-  // Re-read row, decide next.
-  const { data: row } = await sr
+async function fetchMorningDefaults(
+  sr: SR, userId: string, today: string,
+): Promise<MorningDefaults> {
+  const { data } = await sr
     .from("checkins")
-    .select("*")
+    .select("readiness, fatigue, intake_source")
+    .eq("user_id", userId)
+    .gte("date", isoMinusDays(today, 28))
+    .lt("date", today);
+  return computeMorningDefaults((data ?? []) as DefaultsInputRow[]);
+}
+
+/** Defaults embedded in the most recent displayed card, if any.
+ *  A check-in card is a same-morning artifact — anything older than 12 h is
+ *  stale and falls through to the fetchMorningDefaults recomputation at the
+ *  call site via the ?? null fallback. */
+async function readCardDefaults(sr: SR, userId: string): Promise<MorningDefaults | null> {
+  const since = new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString();
+  const { data } = await sr
+    .from("chat_messages")
+    .select("ui")
+    .eq("user_id", userId)
+    .eq("kind", "morning_intake")
+    .eq("role", "assistant")
+    .not("ui->morning_form", "is", null)
+    .gte("created_at", since)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle<{ ui: MorningUI }>();
+  return data?.ui?.morning_form?.defaults ?? null;
+}
+
+async function insertMorningFormTurn(
+  sr: SR, userId: string, content: string, defaults: MorningDefaults,
+): Promise<void> {
+  await insertAssistantTurn(sr, userId, {
+    content,
+    ui: { morning_form: { defaults } },
+  });
+}
+
+/** If last night's recovery hasn't landed, insert the parked sync turn with
+ *  Recheck / Skip chips (same copy + chips as the pre-card flow). */
+async function parkWhoopSyncIfNeeded(sr: SR, userId: string, today: string): Promise<void> {
+  const { data: log } = await sr
+    .from("daily_logs")
+    .select("recovery")
     .eq("user_id", userId)
     .eq("date", today)
-    .single<CheckinRow>();
-  if (!row) {
-    return NextResponse.json({ ok: false, reason: "row_lost" }, { status: 500 });
-  }
+    .maybeSingle<{ recovery: number | null }>();
 
-  const next = nextSlot(row);
-  const nextState = nextIntakeState(row.intake_state, row);
-
-  if (nextState !== row.intake_state) {
-    await upsertCheckin(sr, userId, today, { intake_state: nextState });
-  }
-
-  if (next.kind === "slot") {
-    const def = SLOT_BY_KEY[next.key];
+  if (!log || log.recovery == null) {
     await insertAssistantTurn(sr, userId, {
-      content: def.prompt,
-      ui: chipsForSlot(next.key),
+      content: SYNC_RECOVERY_PROMPT,
+      ui: {
+        chips: [
+          { label: "Recheck", action: "recheck" },
+          { label: "Skip — feel-only plan", action: "skip_whoop" },
+        ],
+      },
     });
-    return NextResponse.json({ ok: true, next: next.key });
   }
-
-  if (next.kind === "tail") {
-    await insertAssistantTurn(sr, userId, {
-      content: FREE_TEXT_TAIL_PROMPT,
-      ui: { allow_text: true },
-    });
-    return NextResponse.json({ ok: true, next: "tail" });
-  }
-
-  // Already 'done' (shouldn't happen mid-slot-answer; defensive).
-  return NextResponse.json({ ok: true, next: "done" });
 }
 
-async function handleFeelTail(args: {
-  sr: SR; userId: string; today: string; todayRow: CheckinRow; value: string;
-}) {
-  const { sr, userId, today, todayRow, value } = args;
-  const trimmed = value.trim();
-
-  // Save the user text first.
-  await upsertCheckin(sr, userId, today, {
-    feel_notes: trimmed || null,
-  });
-
-  // Insert user message into chat_messages so the thread shows it.
-  await sr.from("chat_messages").insert({
-    user_id: userId,
-    role: "user",
-    thread: "remi",
-    content: trimmed || "(no extra notes)",
-    status: "done",
-    kind: "morning_intake",
-    ui: null,
-  });
-
-  // Stream Claude reply with the update_intake_slots tool available.
+/** Non-streaming Remi ack for form notes. Best-effort: the check-in row is
+ *  already committed before this runs; an API failure must never block the
+ *  morning flow, so errors are swallowed and the thread simply has no ack. */
+async function runNotesAck(
+  sr: SR, userId: string, today: string, values: BatchValues, notes: string,
+): Promise<void> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    return NextResponse.json({ ok: false, reason: "no_api_key" }, { status: 500 });
-  }
-
-  const client = new Anthropic({ apiKey });
-  const encoder = new TextEncoder();
-
-  // Pre-create assistant stub so we have an id to stream into.
-  const { data: stub, error: stubErr } = await sr
-    .from("chat_messages")
-    .insert({
-      user_id: userId,
-      role: "assistant",
-      speaker: "remi",
-      thread: "remi",
-      content: "",
-      status: "streaming",
-      kind: "morning_intake",
-      ui: null,
-      model: MODEL,
-    })
-    .select("id")
-    .single();
-  if (stubErr || !stub) {
-    return NextResponse.json({ ok: false, reason: "stub_failed" }, { status: 500 });
-  }
-
-  const stream = new ReadableStream<Uint8Array>({
-    async start(controller) {
-      try {
-        const sys = `You are Remi — the user's recovery and morning-health coach. The user has just finished the chip portion of their morning check-in and answered a free-text "anything else?" prompt. Their structured slot answers are already saved.
+  if (!apiKey) return;
+  try {
+    const client = new Anthropic({ apiKey });
+    const sys = `You are Remi — the user's recovery and morning-health coach. The user has just submitted their morning check-in form, including a free-text note. Their structured answers are already saved.
 
 Your job:
-1. If the free-text mentions a symptom that maps to {sick, soreness_areas, fatigue, bloating} and is clearly stated, call update_intake_slots ONCE to record it. Do not guess. Do not call the tool if nothing maps cleanly.
-2. Reply briefly (1-2 short sentences) acknowledging what they shared. Voice: warm, focused on body signals and recovery — not training tactics, not nutrition. Examples of your tone: "Got it — I'll note the shoulder tightness." / "Thanks for the heads-up on the gut feel." Do not ask follow-up questions. Do not moralize.
+1. If the note mentions a symptom that maps to {sick, soreness_areas, fatigue, bloating} and is clearly stated, call update_intake_slots ONCE to record it. Do not guess. Do not call the tool if nothing maps cleanly.
+2. Reply briefly (1-2 short sentences) acknowledging what they shared. Voice: warm, focused on body signals and recovery — not training tactics, not nutrition. Do not ask follow-up questions. Do not moralize.
 
-Today's structured answers so far: ${JSON.stringify({
-          readiness: todayRow.readiness,
-          energy_label: todayRow.energy_label,
-          mood: todayRow.mood,
-          fatigue: todayRow.fatigue,
-          bloating: todayRow.bloating,
-          soreness_areas: todayRow.soreness_areas,
-          soreness_severity: todayRow.soreness_severity,
-        })}`;
+Today's structured answers: ${JSON.stringify(values)}`;
 
-        const apiStream = client.messages.stream({
-          model: MODEL,
-          max_tokens: 400,
-          system: sys,
-          tools: [UPDATE_INTAKE_SLOTS_TOOL],
-          tool_choice: { type: "auto", disable_parallel_tool_use: true },
-          messages: [{ role: "user", content: trimmed || "(no notes)" }],
-        });
+    const final = await client.messages.create({
+      model: MODEL,
+      max_tokens: 400,
+      system: sys,
+      tools: [UPDATE_INTAKE_SLOTS_TOOL],
+      tool_choice: { type: "auto", disable_parallel_tool_use: true },
+      messages: [{ role: "user", content: notes }],
+    });
 
-        let assembled = "";
-        for await (const ev of apiStream) {
-          if (ev.type === "content_block_delta" && ev.delta.type === "text_delta") {
-            assembled += ev.delta.text;
-            controller.enqueue(encoder.encode(formatSseEvent({
-              event: "delta",
-              data: { text: ev.delta.text },
-            })));
-          }
-        }
-
-        // Tool call?
-        const final = await apiStream.finalMessage();
-        for (const block of final.content) {
-          if (block.type === "tool_use" && block.name === "update_intake_slots") {
-            await applyToolUpdate(sr, userId, today, block.input as Record<string, unknown>);
-          }
-        }
-
-        // Finalize stub
-        await sr.from("chat_messages").update({
-          content: assembled,
-          status: "done",
-        }).eq("id", stub.id);
-
-        // Auto-advance to recommendation phase
-        await upsertCheckin(sr, userId, today, { intake_state: "awaiting_whoop" });
-
-        // Check if WHOOP is ready. If recovery is non-null, the client's auto-fire
-        // effect will pick this up via useDailyLogs and POST to /api/chat/morning/recommendation.
-        // If recovery is null, insert a parked assistant turn with action chips so the
-        // user has a path forward (manual sync or skip).
-        const { data: log } = await sr
-          .from("daily_logs")
-          .select("recovery")
-          .eq("user_id", userId)
-          .eq("date", today)
-          .maybeSingle<{ recovery: number | null }>();
-
-        if (!log || log.recovery == null) {
-          await insertAssistantTurn(sr, userId, {
-            content: SYNC_RECOVERY_PROMPT,
-            ui: {
-              chips: [
-                { label: "Recheck", action: "recheck" },
-                { label: "Skip — feel-only plan", action: "skip_whoop" },
-              ],
-            },
-          });
-        }
-
-        controller.enqueue(encoder.encode(formatSseEvent({
-          event: "done",
-          data: { message_id: stub.id },
-        })));
-        controller.close();
-      } catch (e) {
-        await sr.from("chat_messages").update({
-          status: "error",
-          error: String(e),
-        }).eq("id", stub.id);
-        controller.enqueue(encoder.encode(formatSseEvent({
-          event: "error",
-          data: { message: String(e) },
-        })));
-        controller.close();
+    let text = "";
+    for (const block of final.content) {
+      if (block.type === "text") text += block.text;
+      if (block.type === "tool_use" && block.name === "update_intake_slots") {
+        await applyToolUpdate(sr, userId, today, block.input as Record<string, unknown>);
       }
-    },
-  });
-
-  return new Response(stream, {
-    status: 200,
-    headers: {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache, no-transform",
-      Connection: "keep-alive",
-    },
-  });
+    }
+    if (text.trim()) {
+      await insertAssistantTurn(sr, userId, { content: text.trim(), ui: null });
+    }
+  } catch {
+    // Best-effort ack — never block the morning flow.
+  }
 }
 
-// ── helpers ──────────────────────────────────────────────────────────────────
+// ── low-level helpers (unchanged from the pre-card route) ────────────────────
 
 async function upsertCheckin(
-  sr: SR,
-  userId: string,
-  date: string,
-  patch: Partial<CheckinRow>,
+  sr: SR, userId: string, date: string, patch: Partial<CheckinRow>,
 ): Promise<void> {
   const { error } = await sr
     .from("checkins")
@@ -474,15 +433,7 @@ async function upsertCheckin(
   if (error) throw error;
 }
 
-/** Insert the user's reply into chat_messages so the thread renders what
- *  was just answered. Used for chip taps (slot answers) and for the sickness
- *  declare/notes flow — without these inserts the user sees back-to-back
- *  assistant prompts with no feedback that their action registered. */
-async function insertUserReply(
-  sr: SR,
-  userId: string,
-  content: string,
-): Promise<void> {
+async function insertUserReply(sr: SR, userId: string, content: string): Promise<void> {
   const { error } = await sr.from("chat_messages").insert({
     user_id: userId,
     role: "user",
@@ -495,19 +446,8 @@ async function insertUserReply(
   if (error) throw error;
 }
 
-/** Render a chip's value as user-visible text. Chip values are intentionally
- *  lowercase / programmatic (e.g. "low", "yes", body-part keys); keep them
- *  unmodified — the labels in the rendered chip buttons matched these closely
- *  enough that the user can tell what they tapped. */
-function formatChipReply(value: string | number | string[]): string {
-  if (Array.isArray(value)) return value.join(", ");
-  return String(value);
-}
-
 async function insertAssistantTurn(
-  sr: SR,
-  userId: string,
-  args: { content: string; ui: MorningUI | null },
+  sr: SR, userId: string, args: { content: string; ui: MorningUI | null },
 ): Promise<void> {
   const { error } = await sr.from("chat_messages").insert({
     user_id: userId,
@@ -522,47 +462,8 @@ async function insertAssistantTurn(
   if (error) throw error;
 }
 
-function chipsForSlot(key: SlotKey): MorningUI {
-  const def = SLOT_BY_KEY[key];
-  return {
-    chips: def.chips.map((c) => ({ ...c, slot: key })),
-    multi_select: def.multi_select ?? false,
-  };
-}
-
-function mapSlotToColumn(
-  slot: SlotKey,
-  value: string | number | string[],
-): Partial<CheckinRow> | null {
-  switch (slot) {
-    case "readiness":
-      return typeof value === "number" ? { readiness: value } : null;
-    case "energy_label":
-      return typeof value === "string" ? { energy_label: value } : null;
-    case "mood":
-      return typeof value === "string" ? { mood: value } : null;
-    case "soreness_areas":
-      return Array.isArray(value) ? { soreness_areas: value } : null;
-    case "soreness_severity":
-      return typeof value === "string" && (value === "mild" || value === "sharp")
-        ? { soreness_severity: value }
-        : null;
-    case "fatigue":
-      return typeof value === "string" && (value === "none" || value === "some" || value === "heavy")
-        ? { fatigue: value }
-        : null;
-    case "bloating":
-      return typeof value === "string"
-        ? { bloating: value === "yes" }
-        : null;
-    default:
-      return null;
-  }
-}
-
 async function applyToolUpdate(
-  sr: SR, userId: string, today: string,
-  input: Record<string, unknown>,
+  sr: SR, userId: string, today: string, input: Record<string, unknown>,
 ): Promise<void> {
   const update: Partial<CheckinRow> = {};
   if (typeof input.sick === "boolean") update.sick = input.sick;
@@ -583,10 +484,6 @@ async function applyToolUpdate(
   await upsertCheckin(sr, userId, today, update);
 }
 
-/** Subtract `days` from an ISO date string (YYYY-MM-DD), returning the new
- *  date string. Date-string arithmetic — both endpoints are anchored at UTC
- *  midnight, so the math is always exactly N×86400000 ms regardless of DST.
- *  Use this for "what was the date N days before <today-in-user-tz>" lookups. */
 function isoMinusDays(iso: string, days: number): string {
   const t = new Date(iso + "T00:00:00Z").getTime();
   return new Date(t - days * 86_400_000).toISOString().slice(0, 10);
