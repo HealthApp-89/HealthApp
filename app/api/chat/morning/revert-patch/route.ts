@@ -52,14 +52,18 @@ export async function POST() {
   const weekdayLong: WeekdayLong = WEEKDAY_LONG_ORDER[todayIdx];
   const prescriptions = week.session_prescriptions as SessionPrescriptions;
   const current = prescriptions[weekdayLong] ?? [];
+  // No exercises stored for today means externally-inconsistent data; reverting would write empty day, refuse.
+  if (current.length === 0) return NextResponse.json({ error: "no_week" }, { status: 404 });
 
   const restored = revertDayExercises(current, patchEntry.changes);
   const revertEntry: RepatchLogEntry = {
     at: new Date().toISOString(),
     reason: "morning_checkin_revert",
     workout_date: todayIso,
-    // Inverse diff for the audit trail.
-    changes: patchEntry.changes.map((c) => ({ ...c, from: c.to, to: c.from })),
+    // Inverse diff for the audit trail, restricted to fields revertDayExercises actually restores.
+    changes: patchEntry.changes
+      .filter((c) => c.field === "baseKg" || c.field === "baseReps" || c.field === "sets" || c.field === "rir")
+      .map((c) => ({ ...c, from: c.to, to: c.from })),
   };
 
   const { error: writeErr } = await supabase
