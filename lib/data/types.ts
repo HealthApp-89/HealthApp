@@ -513,6 +513,25 @@ export type UserSessionTemplate = {
   updated_at: string;
 };
 
+/** One field-level change produced by a mid-week repatch (see
+ *  lib/coach/prescription/repatch-week.ts). `added`/`removed` carry the
+ *  exercise name in `to`/`from` respectively; numeric fields carry numbers. */
+export type RepatchChange = {
+  weekday: WeekdayLong;
+  exercise: string;
+  field: "baseKg" | "baseReps" | "sets" | "rir" | "added" | "removed";
+  from: number | string | null;
+  to: number | string | null;
+};
+
+/** Append-only entry in training_weeks.repatch_log. */
+export type RepatchLogEntry = {
+  at: string; // ISO timestamp
+  reason: string; // e.g. "workout_commit"
+  workout_date: string | null; // YYYY-MM-DD of the triggering workout
+  changes: RepatchChange[];
+};
+
 export type TrainingWeek = {
   id: string;
   user_id: string;
@@ -534,6 +553,7 @@ export type TrainingWeek = {
    *  prescription written; resolver falls back to exercise_overrides →
    *  SESSION_PLANS. */
   session_prescriptions: SessionPrescriptions | null;
+  repatch_log: RepatchLogEntry[] | null;
   weekly_focus: string | null;
   intensity_modifier: IntensityModifier;
   rir_target: number | null;
