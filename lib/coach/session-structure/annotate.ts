@@ -126,9 +126,9 @@ function sorenessAwareCue(rung: ReactiveRung, soreRegions: MuscleRegion[]): stri
   const regionStr = soreRegions.join(", ");
   switch (rung) {
     case "load_down":
-      return `Soreness in ${regionStr} — drop weight ~10% and listen to your body.`;
+      return `Effort eased on ${regionStr} today — weight unchanged.`;
     case "volume_down":
-      return `Soreness + fatigue in ${regionStr} — cut 1 set if needed.`;
+      return `Volume trimmed on ${regionStr} today — soreness + fatigue.`;
     case "swap_exercise":
       return `Soreness in ${regionStr} — consider substituting this exercise today.`;
     case "swap_day":
