@@ -42,6 +42,11 @@ export type StrengthPerLbmTrend = {
   slope_per_week: number | null;
   relative_slope_pct_per_week: number | null;
   verdict: "rising" | "holding" | "falling" | "insufficient_data";
+  /** Monday ISO dates of deload weeks that HAD strength data and were excluded from
+   *  the trend. Engine-prescribed deload weeks use 0.80× loads — including them
+   *  corrupts the verdict. The executor passes these in; the core excludes them and
+   *  surfaces the list so Carter can mention the exclusion. */
+  excluded_deload_weeks: string[];
 };
 
 const MIN_PAIRED_WEEKS = 3;
@@ -57,11 +62,20 @@ function lbmForRow(r: BodyCompRow): number | null {
   return null;
 }
 
+/** Compute the strength-per-LBM trend for one primary lift.
+ *
+ * Deload weeks are excluded from the trend: engine-prescribed deload weeks use
+ * 0.80× loads, so their e1RM is artificially depressed and carries no information
+ * about true strength on the cut. Weeks whose Monday ISO date appears in
+ * `deloadWeekStarts` are dropped after building the e1RM map; only those that
+ * actually had strength data are reported in `excluded_deload_weeks`. */
 export function computeStrengthPerLbmTrend(opts: {
   lift: PrimaryLift;
   weeksRequested: number;
   sets: StrengthLbmSetSample[];
   bodyRows: BodyCompRow[];
+  /** Optional Monday ISO dates of engine-prescribed deload weeks to exclude. */
+  deloadWeekStarts?: string[];
 }): StrengthPerLbmTrend {
   // Weekly best e1RM (Brzycki window: non-warmup, 1..12 reps).
   const e1rmByWeek = new Map<string, number>();
@@ -74,6 +88,17 @@ export function computeStrengthPerLbmTrend(opts: {
     const cur = e1rmByWeek.get(wk);
     if (cur == null || v > cur) e1rmByWeek.set(wk, v);
   }
+
+  // Drop deload weeks and collect those that actually had strength data.
+  const deloadSet = new Set(opts.deloadWeekStarts ?? []);
+  const excluded_deload_weeks: string[] = [];
+  for (const wk of deloadSet) {
+    if (e1rmByWeek.has(wk)) {
+      excluded_deload_weeks.push(wk);
+      e1rmByWeek.delete(wk);
+    }
+  }
+  excluded_deload_weeks.sort();
 
   // Weekly average LBM.
   const lbmByWeek = new Map<string, number[]>();
@@ -107,6 +132,7 @@ export function computeStrengthPerLbmTrend(opts: {
       slope_per_week: null,
       relative_slope_pct_per_week: null,
       verdict: "insufficient_data",
+      excluded_deload_weeks,
     };
   }
 
@@ -126,5 +152,6 @@ export function computeStrengthPerLbmTrend(opts: {
     slope_per_week: slope,
     relative_slope_pct_per_week: relPct,
     verdict,
+    excluded_deload_weeks,
   };
 }

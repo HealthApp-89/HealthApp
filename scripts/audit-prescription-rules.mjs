@@ -1327,6 +1327,83 @@ import { computeStrengthPerLbmTrend } from "@/lib/coach/strength-per-lbm-trend";
     bodyRows: [body("2026-07-06", 69), body("2026-07-08", 71), body("2026-06-30", 70), body("2026-06-23", 70)],
   });
   assert("avg: multiple readings averaged", Math.abs(avg.series[avg.series.length - 1].avg_lbm_kg - 70) < 1e-9);
+
+  // ── Deload exclusion fixtures ────────────────────────────────────────────────
+  // PRE-FIX note (recorded for report): without exclusion, the trailing 0.80× week
+  // (set(80,5) → e1RM = 90.0 vs. normal 112.5) drags relPct to −6.32%/wk →
+  // verdict "falling". The fix: passing deloadWeekStarts:["2026-07-06"] drops it.
+
+  // Deload exclusion: a trailing 0.80× week no longer drags the verdict.
+  const deloadTrail = computeStrengthPerLbmTrend({
+    lift: "squat", weeksRequested: 8,
+    sets: [
+      set(100, 5, "2026-06-15"), set(100, 5, "2026-06-22"),
+      set(100, 5, "2026-06-29"), set(80, 5, "2026-07-06"), // deload week: 0.80× load
+    ],
+    bodyRows: [
+      body("2026-06-16", 70), body("2026-06-23", 70),
+      body("2026-06-30", 70), body("2026-07-07", 70),
+    ],
+    deloadWeekStarts: ["2026-07-06"],
+  });
+  assert("deload excluded: verdict holding (was falling)", deloadTrail.verdict === "holding");
+  assert("deload excluded: 3 paired weeks remain", deloadTrail.weeks_with_data === 3);
+  assert("deload excluded: surfaced in output", deloadTrail.excluded_deload_weeks.length === 1 && deloadTrail.excluded_deload_weeks[0] === "2026-07-06");
+
+  // Deload week with no strength data is not reported as excluded.
+  const deloadEmpty = computeStrengthPerLbmTrend({
+    lift: "squat", weeksRequested: 8,
+    sets: [set(100, 5, "2026-06-22"), set(100, 5, "2026-06-29"), set(100, 5, "2026-07-06")],
+    bodyRows: [body("2026-06-23", 70), body("2026-06-30", 70), body("2026-07-07", 70)],
+    deloadWeekStarts: ["2026-06-15"],
+  });
+  assert("empty deload week not reported", deloadEmpty.excluded_deload_weeks.length === 0);
+
+  // ── Boundary fixtures: ±0.5%/wk threshold semantics ─────────────────────────
+  // e1RM = brzycki(100,5) = 100*36/(37-5) = 112.5; LBM constant = 70 gives
+  // relative_slope = 0 exactly (flat ratios).
+  // To get relative_slope ≈ +0.45%/wk (holding), LBM decreases at ~0.45%/wk:
+  //   lbm[i] = 70 * (1 − 0.0045 * i) → [70.0, 69.685, 69.370, 69.055]
+  //   verified relPct = 0.4531%/wk  (< 0.5 → holding)
+  // To get relative_slope ≈ +0.60%/wk (rising), LBM decreases at ~0.60%/wk:
+  //   lbm[i] = 70 * (1 − 0.0060 * i) → [70.0, 69.580, 69.160, 68.740]
+  //   verified relPct = 0.6055%/wk  (> 0.5 → rising)
+  // These are the only fixtures needed — the holding/falling/rising split is
+  // already tested by the flat/rising/falling cases above; these pin the exact
+  // boundary. The executor-side weeks clamp (4–12) is DB-coupled and has no pure
+  // fixture; it is pinned by the executor code path and verified by typecheck.
+
+  const boundaryHolding = computeStrengthPerLbmTrend({
+    lift: "squat", weeksRequested: 8,
+    sets: [set(100, 5, "2026-06-15"), set(100, 5, "2026-06-22"), set(100, 5, "2026-06-29"), set(100, 5, "2026-07-06")],
+    // lbm[i] = 70 * (1 − 0.0045*i): LBM declining at 0.45%/wk → ratio slope ≈ +0.4531%/wk (< 0.5)
+    bodyRows: [
+      body("2026-06-16", 70.000), body("2026-06-23", 69.685),
+      body("2026-06-30", 69.370), body("2026-07-07", 69.055),
+    ],
+  });
+  assert("boundary +0.45%/wk: verdict holding (strict > 0.5 threshold)", boundaryHolding.verdict === "holding");
+  assert("boundary +0.45%/wk: relPct < 0.5", boundaryHolding.relative_slope_pct_per_week != null && boundaryHolding.relative_slope_pct_per_week < 0.5);
+
+  const boundaryRising = computeStrengthPerLbmTrend({
+    lift: "squat", weeksRequested: 8,
+    sets: [set(100, 5, "2026-06-15"), set(100, 5, "2026-06-22"), set(100, 5, "2026-06-29"), set(100, 5, "2026-07-06")],
+    // lbm[i] = 70 * (1 − 0.0060*i): LBM declining at 0.60%/wk → ratio slope ≈ +0.6055%/wk (> 0.5)
+    bodyRows: [
+      body("2026-06-16", 70.000), body("2026-06-23", 69.580),
+      body("2026-06-30", 69.160), body("2026-07-07", 68.740),
+    ],
+  });
+  assert("boundary +0.60%/wk: verdict rising (strict > 0.5 threshold)", boundaryRising.verdict === "rising");
+  assert("boundary +0.60%/wk: relPct > 0.5", boundaryRising.relative_slope_pct_per_week != null && boundaryRising.relative_slope_pct_per_week > 0.5);
+
+  // Flat series: boundary sanity — constant e1RM + constant LBM → relSlope = 0.
+  const boundary = computeStrengthPerLbmTrend({
+    lift: "squat", weeksRequested: 8,
+    sets: [set(100, 5, "2026-06-15"), set(100, 5, "2026-06-22"), set(100, 5, "2026-06-29"), set(100, 5, "2026-07-06")],
+    bodyRows: [body("2026-06-16", 70), body("2026-06-23", 70), body("2026-06-30", 70), body("2026-07-07", 70)],
+  });
+  assert("boundary sanity: flat series relative slope ≈ 0", Math.abs(boundary.relative_slope_pct_per_week) < 1e-9);
 }
 
 console.log("\n## CARTER_COLS — read-access allowlist pin\n");
