@@ -6677,6 +6677,12 @@ export const CARTER_TOOLS: readonly ToolSchema[] = [
   ADHERENCE_TOOL,
   GET_WEEK_PRESCRIPTION_TOOL,
   STRENGTH_PER_LBM_TREND_TOOL,
+  // Block setup runs on Carter's surface (/strength?tab=coach setup_block
+  // mode — the "Setup new block" chip and BlockOutcomeCard links). Without
+  // these Carter narrates a block in prose with no DB write. Close-block
+  // stays Peter-only (block-level lane, see 0037 arc).
+  PROPOSE_BLOCK_TOOL,
+  COMMIT_BLOCK_TOOL,
   PROPOSE_WEEK_PLAN_TOOL,
   COMMIT_WEEK_PLAN_TOOL,
   PROPOSE_SESSION_TODAY_TOOL,

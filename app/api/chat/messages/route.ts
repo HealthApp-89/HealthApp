@@ -21,7 +21,7 @@ import { buildSnapshot, buildEphemeralHeader } from "@/lib/coach/snapshot";
 import { todayInUserTz } from "@/lib/time";
 import { getUserTimezone } from "@/lib/time/get-user-tz";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { buildSystemPrompt } from "@/lib/coach/planning-prompts";
+import { buildSystemPrompt, buildModeSections } from "@/lib/coach/planning-prompts";
 import type { ChatMode, DailyLog } from "@/lib/data/types";
 import { formatSseEvent } from "@/lib/chat/sse";
 import { computeActiveTriggers } from "@/lib/coach/voice/triggers";
@@ -536,6 +536,10 @@ export async function POST(req: Request) {
 
   type WindowRow = { id: string; role: string; content: string; created_at: string };
   let finalSystemPrompt: string;
+  // Mode ritual sections (plan_week / setup_block / intake), joined. Passed to
+  // runChatStream separately from finalSystemPrompt because specialist turns
+  // (non-Peter speakers) replace finalSystemPrompt with their own base prompt.
+  let modeBlock: string | null = null;
   let snapshot: string;
   let windowAsc: WindowRow[];
   let imgsByMsg: Map<string, { storage_path: string }[]>;
@@ -662,19 +666,30 @@ export async function POST(req: Request) {
       typeof profileRow?.system_prompt === "string" && profileRow.system_prompt.length > 0
         ? profileRow.system_prompt
         : null;
-    [finalSystemPrompt] = await Promise.all([
-      buildSystemPrompt({
+    // Mode sections are computed ONCE here and shared with runChatStream via
+    // modeBlock — specialist turns (carter on /strength) discard the
+    // Peter-targeted finalSystemPrompt, so the mode ritual (plan_week /
+    // setup_block prompts + fetched block context) must travel separately.
+    const [modeSections] = await Promise.all([
+      buildModeSections({
         supabase: sr as unknown as SupabaseClient,
         userId: user.id,
         mode: effectiveMode,
-        userPromptOverride,
-        activeTriggers,
       }),
       // Await the early-started ephemeralHeaderPromise in this same batch so
-      // that buildSystemPrompt's DB round-trips (plan_week / setup_block modes)
+      // that buildModeSections' DB round-trips (plan_week / setup_block modes)
       // overlap with the ephemeralHeader DB round-trips rather than sequencing.
       ephemeralHeaderPromise,
     ]);
+    modeBlock = modeSections.length > 0 ? modeSections.join("\n\n---\n\n") : null;
+    finalSystemPrompt = await buildSystemPrompt({
+      supabase: sr as unknown as SupabaseClient,
+      userId: user.id,
+      mode: effectiveMode,
+      userPromptOverride,
+      activeTriggers,
+      modeSections,
+    });
     if (_cpEnabled) _cpSystemPromptDone = performance.now() - _cpT0;
 
     // Graceful degradation as the user approaches the daily cap: append a
@@ -931,6 +946,7 @@ export async function POST(req: Request) {
             usageSink,
             assistantMessageId: assistantId,
             mode: effectiveMode,
+            modeBlock,
             draftDocId,
             speaker: streamSpeaker,
             peterContext,
