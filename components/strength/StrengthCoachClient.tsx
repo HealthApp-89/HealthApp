@@ -57,6 +57,28 @@ export function StrengthCoachClient({ userId }: Props) {
     ? (urlModeRaw as ChatMode)
     : "default";
 
+  // BlockOutcomeCard's "Start <LIFT> block" link carries the recommended
+  // rotation via ?prefill_focus=<lift>&prefill_target=<kg>. Validate and fold
+  // into the setup_block kickoff opener (ChatPanel's initialModeContext) so
+  // Carter opens the conversation anchored on the accepted recommendation.
+  const PREFILL_LIFTS = ["squat", "bench", "deadlift", "ohp"] as const;
+  const prefillFocusRaw = searchParams.get("prefill_focus");
+  const prefillFocus = PREFILL_LIFTS.includes(prefillFocusRaw as (typeof PREFILL_LIFTS)[number])
+    ? prefillFocusRaw
+    : null;
+  const prefillTargetRaw = searchParams.get("prefill_target");
+  const prefillTargetNum = prefillTargetRaw != null ? Number(prefillTargetRaw) : NaN;
+  const prefillTarget =
+    Number.isFinite(prefillTargetNum) && prefillTargetNum > 0 && prefillTargetNum < 1000
+      ? prefillTargetNum
+      : null;
+  const setupBlockContext =
+    initialMode === "setup_block" && prefillFocus
+      ? `Starting the recommended ${prefillFocus} focus block${
+          prefillTarget != null ? ` with target ${fmtNum(prefillTarget)} kg` : ""
+        }`
+      : undefined;
+
   // When the user lands here in a non-default mode (e.g. via the
   // "PLAN ON COACH" pill on TodayPlanCard), the data card above the chat is
   // not what they came for — they want the chat surface. Scroll the chat
@@ -293,7 +315,7 @@ export function StrengthCoachClient({ userId }: Props) {
           initialModeContext={
             initialMode === "plan_week"
               ? `Planning week of ${currentWeekStart}`
-              : undefined
+              : setupBlockContext
           }
           thread="carter"
         />
