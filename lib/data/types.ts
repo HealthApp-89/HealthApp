@@ -285,7 +285,11 @@ export type ToolCallLog = {
     | "commit_session_template"
     | "propose_meal_log"
     | "commit_meal_log"
-    | "propose_meal_suggestions";
+    | "propose_meal_suggestions"
+    | "propose_close_block"
+    | "commit_close_block"
+    | "propose_endurance_week"
+    | "commit_endurance_week";
   input: Record<string, unknown>;
   ms: number;
   result_rows: number;

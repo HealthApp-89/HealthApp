@@ -16,6 +16,8 @@ import { SessionTodayProposalCard, type SessionTodayProposal } from "@/component
 import { SessionTemplateProposalCard, type SessionTemplateProposal } from "@/components/chat/SessionTemplateProposalCard";
 import { MealLogProposalCard, type MealLogProposal } from "@/components/chat/MealLogProposalCard";
 import { MealSuggestionsCard } from "@/components/chat/MealSuggestionsCard";
+import { CloseBlockProposalCard, type CloseBlockProposal } from "@/components/chat/CloseBlockProposalCard";
+import { EnduranceWeekProposalCard, type EnduranceWeekProposal } from "@/components/chat/EnduranceWeekProposalCard";
 import type {
   MealSuggestion,
   PlanPayload,
@@ -72,6 +74,12 @@ export function ChatMessage({
   );
   const hasCommittedMealLog = toolCalls.some(
     (c) => c.name === "commit_meal_log" && !c.error,
+  );
+  const hasCommittedCloseBlock = toolCalls.some(
+    (c) => c.name === "commit_close_block" && !c.error,
+  );
+  const hasCommittedEnduranceWeek = toolCalls.some(
+    (c) => c.name === "commit_endurance_week" && !c.error,
   );
 
   if (isUser) {
@@ -460,6 +468,40 @@ export function ChatMessage({
                     }
                     onTweak={() =>
                       onFocusComposer?.("e.g., 'change rice to 200g' or 'add a banana'")
+                    }
+                  />
+                </div>
+              );
+            }
+            if (call.name === "propose_close_block") {
+              return (
+                <div key={i} style={{ marginTop: 8 }}>
+                  <CloseBlockProposalCard
+                    proposal={result.preview as CloseBlockProposal}
+                    approvalToken={result.approval_token}
+                    committed={hasCommittedCloseBlock}
+                    onApprove={(token) =>
+                      onSendUserMessage?.(`[approve:${token}]`)
+                    }
+                    onTweak={() =>
+                      onFocusComposer?.("e.g., 'hold the close until Sunday'")
+                    }
+                  />
+                </div>
+              );
+            }
+            if (call.name === "propose_endurance_week") {
+              return (
+                <div key={i} style={{ marginTop: 8 }}>
+                  <EnduranceWeekProposalCard
+                    proposal={result.preview as EnduranceWeekProposal}
+                    approvalToken={result.approval_token}
+                    committed={hasCommittedEnduranceWeek}
+                    onApprove={(token) =>
+                      onSendUserMessage?.(`[approve:${token}]`)
+                    }
+                    onTweak={() =>
+                      onFocusComposer?.("e.g., 'move the ride to Saturday'")
                     }
                   />
                 </div>
