@@ -218,6 +218,13 @@ export type RunChatStreamOpts = {
   /** Chat mode — controls which tools are exposed to the model.
    *  Default mode hides propose_ and commit_ tools to prevent accidental plan writes. */
   mode?: ChatMode;
+  /** Mode ritual sections (PLAN_WEEK_PROMPT / SETUP_BLOCK_PROMPT + fetched
+   *  block context), pre-joined by the route via buildModeSections. Peter's
+   *  systemPrompt already embeds these (buildSystemPrompt); specialist turns
+   *  replace systemPrompt with their base prompt, so the mode ritual must be
+   *  re-appended here or Carter runs setup_block/plan_week turns blind (the
+   *  2026-07-12 "Setup new block does nothing" bug). */
+  modeBlock?: string | null;
   /** Which coach voice is producing this turn. Default 'peter' (Head Coach).
    *  Specialists ('carter' | 'nora' | 'remi') get a restricted lane-specific
    *  tool subset via toolsForSpeaker() and a column-filtered query_daily_logs
@@ -733,6 +740,13 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
     : speakerSystemPromptForMode(speaker, opts.mode ?? "default");
   // Append per-turn extras: Peter dashboard block + specialist activity recap.
   let systemText = baseSystemText;
+  // Specialist turns dropped the Peter-targeted systemPrompt above — re-attach
+  // the mode ritual (plan_week / setup_block instructions + block context) so
+  // e.g. Carter actually runs the 4-beat block setup instead of defaulting to
+  // his base behavior. Peter's prompt already contains these sections.
+  if (opts.modeBlock && speaker !== "peter") {
+    systemText = `${systemText}\n\n---\n\n${opts.modeBlock}`;
+  }
   if (opts.peterDashboardBlock && speaker === "peter") {
     systemText = `${systemText}\n\n${opts.peterDashboardBlock}`;
   }

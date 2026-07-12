@@ -339,6 +339,7 @@ export default function ChatPanel({
   const startFiredRef = useRef(false);
   const intakeStartFiredRef = useRef(false);
   const planWeekStartFiredRef = useRef(false);
+  const setupBlockStartFiredRef = useRef(false);
 
   // Load history on mount or when currentMode / thread changes.
   useEffect(() => {
@@ -979,6 +980,33 @@ export default function ChatPanel({
     const opener = initialModeContext
       ? `${initialModeContext}. Let's plan it.`
       : "Let's plan this week.";
+    void send(opener, []);
+  }, [currentMode, mode, state.loaded, state.messages, initialModeContext, send]);
+
+  // Same kickoff pattern for setup_block: both entry points (the "Setup new
+  // block" composer chip and the BlockOutcomeCard deep-link with ?mode=
+  // setup_block) land the user in the mode with an empty chat — fire an
+  // opener so Carter leads with the rotation recommendation instead of
+  // waiting for the user to guess what to type. initialModeContext carries
+  // the BlockOutcomeCard prefill (focus lift + target) when present.
+  useEffect(() => {
+    if (currentMode !== "coach") return;
+    if (mode !== "setup_block") return;
+    if (!state.loaded) return;
+    if (setupBlockStartFiredRef.current) return;
+
+    const last = state.messages[state.messages.length - 1];
+    const RESUME_WINDOW_MS = 24 * 60 * 60 * 1000;
+    const isResume =
+      last &&
+      last.mode === "setup_block" &&
+      Date.now() - new Date(last.created_at).getTime() < RESUME_WINDOW_MS;
+    if (isResume) return;
+
+    setupBlockStartFiredRef.current = true;
+    const opener = initialModeContext
+      ? `${initialModeContext}. Let's set it up.`
+      : "Let's set up a new block.";
     void send(opener, []);
   }, [currentMode, mode, state.loaded, state.messages, initialModeContext, send]);
 

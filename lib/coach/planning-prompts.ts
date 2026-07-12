@@ -295,19 +295,18 @@ acknowledges directness:
 - No emoji
 `;
 
-export async function buildSystemPrompt(args: {
+/** Mode-specific prompt sections (ritual instructions + fetched DB context).
+ *  Extracted from buildSystemPrompt so the route can compute them ONCE and
+ *  hand them to runChatStream for specialist turns too — chat-stream discards
+ *  the Peter-targeted buildSystemPrompt output for carter/nora/remi speakers,
+ *  which used to silently drop PLAN_WEEK_PROMPT / SETUP_BLOCK_PROMPT on
+ *  Carter's page (the 2026-07-12 "Setup new block does nothing" bug). */
+export async function buildModeSections(args: {
   supabase: SupabaseClient;
   userId: string;
   mode: ChatMode;
-  userPromptOverride: string | null;
-  /** Carter escalation directives for THIS turn. Appended after the mode
-   *  sections so they ride on top of every prompt path (default + plan_week +
-   *  setup_block + intake). Computed by lib/coach/voice/triggers.ts. */
-  activeTriggers?: TriggerDirective[];
-}): Promise<string> {
-  const userPrompt = args.userPromptOverride ?? DEFAULT_SYSTEM_PROMPT;
-  const sections: string[] = [SCHEMA_EXPLAINER, userPrompt];
-
+}): Promise<string[]> {
+  const sections: string[] = [];
   if (args.mode === "plan_week") {
     const blockCtx = await fetchActiveBlockContext(args.supabase, args.userId);
     const autoregCtx = await fetchAutoregContext(args.supabase, args.userId, blockCtx?.primary_lift ?? null);
@@ -323,6 +322,34 @@ export async function buildSystemPrompt(args: {
     const intakeCtx = await fetchIntakeContext(args.supabase, args.userId);
     if (intakeCtx) sections.push(intakeCtx);
   }
+  return sections;
+}
+
+export async function buildSystemPrompt(args: {
+  supabase: SupabaseClient;
+  userId: string;
+  mode: ChatMode;
+  userPromptOverride: string | null;
+  /** Carter escalation directives for THIS turn. Appended after the mode
+   *  sections so they ride on top of every prompt path (default + plan_week +
+   *  setup_block + intake). Computed by lib/coach/voice/triggers.ts. */
+  activeTriggers?: TriggerDirective[];
+  /** Pre-computed buildModeSections output. When the caller already fetched
+   *  the mode sections (the chat route does, to share them with specialist
+   *  turns), pass them here to skip the duplicate DB round-trips. */
+  modeSections?: string[];
+}): Promise<string> {
+  const userPrompt = args.userPromptOverride ?? DEFAULT_SYSTEM_PROMPT;
+  const sections: string[] = [SCHEMA_EXPLAINER, userPrompt];
+
+  sections.push(
+    ...(args.modeSections ??
+      (await buildModeSections({
+        supabase: args.supabase,
+        userId: args.userId,
+        mode: args.mode,
+      }))),
+  );
 
   // Carter voice always present, regardless of mode. The mode-specific
   // prompts above already specialize ON TOP of the voice (e.g. the planning
