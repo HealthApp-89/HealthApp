@@ -373,6 +373,27 @@ export type BlockStatus = "active" | "completed" | "abandoned";
 export type PrimaryLift = "squat" | "bench" | "deadlift" | "ohp";
 export type TargetMetric = "e1rm" | "working_weight";
 
+// ── injuries (0052_injuries) ─────────────────────────────────────────────────
+
+export type InjurySeverity = "mild" | "moderate" | "severe";
+export type InjuryStatus = "active" | "resolved";
+export type Injury = {
+  id: string;
+  user_id: string;
+  area: string;
+  side: string | null;
+  cause: string | null;
+  severity: InjurySeverity;
+  onset_date: string;               // YYYY-MM-DD, backdatable
+  status: InjuryStatus;
+  resolved_at: string | null;       // timestamptz
+  affected_session_types: string[]; // e.g. ["Legs","Back"] — session_plan strings
+  affected_lifts: PrimaryLift[];
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type TrainingBlock = {
   id: string;
   user_id: string;
