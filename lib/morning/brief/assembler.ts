@@ -489,12 +489,19 @@ function composeSession(
       | undefined) ?? null;
   const sessionPrescriptions =
     inputs.thisWeekPrescription?.trainingWeek?.session_prescriptions ?? null;
+  const manualSessionEdits =
+    (inputs.thisWeekPrescription?.trainingWeek?.manual_session_edits as
+      | import("@/lib/data/types").ManualSessionEdits
+      | null
+      | undefined) ?? null;
   const weekday = weekdayFromDate(inputs.today);
   const effectivePlan = getEffectiveSessionPlan(
     inputs.sessionType,
     weekday,
     sessionPrescriptions,
     overrides,
+    null,
+    manualSessionEdits,
   );
   // Build the soreness context for the session annotator.
   // Only provide it when the reactive ladder would produce a non-none rung

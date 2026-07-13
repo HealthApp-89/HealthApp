@@ -152,6 +152,7 @@ export function StrengthCoachClient({ userId }: Props) {
         committedWeek?.session_prescriptions ?? null,
         exerciseOverrides,
         userTemplate?.exercises ?? null,
+        committedWeek?.manual_session_edits ?? null,
       )
     : null;
 

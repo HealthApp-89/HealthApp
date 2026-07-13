@@ -50,6 +50,7 @@ export function EditSessionButton(props: Props) {
         sessionType: workout.type ?? "",
         weekdayLong,
         weekOverrides: null,
+        manualEdits: null,
       });
       const draft = hydrateWorkoutAsDraft(workout, resolved.exercises);
       setInitialDraft(draft);

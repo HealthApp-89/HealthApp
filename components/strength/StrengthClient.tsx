@@ -139,6 +139,7 @@ export function StrengthClient({
         committedWeek?.session_prescriptions ?? null,
         exerciseOverrides,
         userTemplate?.exercises ?? null,
+        committedWeek?.manual_session_edits ?? null,
       )
     : null;
   const dailyPlan = buildDailyPlan(todayLog, feel, hrvBaseline, {

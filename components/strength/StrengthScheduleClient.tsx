@@ -87,9 +87,10 @@ export function StrengthScheduleClient({ userId }: Props) {
         "REST";
 
       const userTemplate = templatesMap[sessionType]?.exercises ?? null;
+      const manualEdits = (trainingWeek?.manual_session_edits ?? null) as import("@/lib/data/types").ManualSessionEdits | null;
       const exercises = sessionType === "REST"
         ? []
-        : getEffectiveSessionPlan(sessionType, weekdayLong, prescriptions, overrides, userTemplate);
+        : getEffectiveSessionPlan(sessionType, weekdayLong, prescriptions, overrides, userTemplate, manualEdits);
 
       const isToday = date === todayIso;
       const isPast = date < todayIso;
