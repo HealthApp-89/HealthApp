@@ -6686,30 +6686,40 @@ export async function executeResolveInjury(opts: {
     targetArea = (data as { area: string }).area;
   } else {
     // Resolve by area — unique active match (case-insensitive).
+    // Escape LIKE wildcards: backslash first, then % and _.
+    const safeArea = area!.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+
     const { data, error } = await opts.supabase
       .from("injuries")
-      .select("id, area")
+      .select("id, area, status")
       .eq("user_id", opts.userId)
-      .eq("status", "active")
-      .ilike("area", area!);
+      .ilike("area", safeArea);
 
     if (error) {
       return { ok: false, error: { error: `fetch_failed: ${error.message}` }, meta: { ms: Date.now() - t0, range_days: 0 } };
     }
-    const rows = (data ?? []) as { id: string; area: string }[];
-    if (rows.length === 0) {
+    const rows = (data ?? []) as { id: string; area: string; status: string }[];
+
+    // Separate active and resolved rows.
+    const activeRows = rows.filter((r) => r.status === "active");
+    const resolvedRows = rows.filter((r) => r.status === "resolved");
+
+    if (activeRows.length === 0 && resolvedRows.length > 0) {
+      return { ok: false, error: { error: "That injury is already resolved.", code: "already_resolved" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+    }
+    if (activeRows.length === 0) {
       return { ok: false, error: { error: "not_found", code: "not_found" }, meta: { ms: Date.now() - t0, range_days: 0 } };
     }
-    if (rows.length > 1) {
-      const names = rows.map((r) => r.area).join(", ");
+    if (activeRows.length > 1) {
+      const names = activeRows.map((r) => r.area).join(", ");
       return {
         ok: false,
         error: { error: `ambiguous_area: multiple active injuries match "${area}": ${names}`, code: "ambiguous_area" },
         meta: { ms: Date.now() - t0, range_days: 0 },
       };
     }
-    targetId = rows[0].id;
-    targetArea = rows[0].area;
+    targetId = activeRows[0].id;
+    targetArea = activeRows[0].area;
   }
 
   const now = new Date().toISOString();
