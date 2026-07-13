@@ -19,10 +19,12 @@ import { SHORT_TO_FULL } from "@/lib/coach/session-plan-reader";
 import { BIG_FOUR } from "@/lib/coach/big-four";
 import { addDays, mondayOf } from "./date-utils";
 import type {
+  Injury,
   WeeklyReviewPayload,
   WeeklyReviewRow,
   Weekday,
 } from "@/lib/data/types";
+import { injuryActiveOn } from "@/lib/coach/injuries";
 
 type RecapOutput = WeeklyReviewPayload["recap"];
 type PerLiftEntry = RecapOutput["per_lift"][number];
@@ -63,15 +65,29 @@ export async function composeRecap(args: {
   // Window: weekStart (Mon) → +6 days (Sun)
   const weekEnd = addDays(weekStart, 6);
 
-  // Fetch workouts in window (embedded selects through exercises → exercise_sets)
-  const { data: rawRecap, error: wErr } = await supabase
-    .from("workouts")
-    .select(SELECT_RECAP)
-    .eq("user_id", userId)
-    .gte("date", weekStart)
-    .lte("date", weekEnd)
-    .order("date", { ascending: true });
+  // Fetch workouts in window (embedded selects through exercises → exercise_sets),
+  // and injuries (onset_date ≤ weekEnd, including resolved — resolved injuries
+  // still excuse the days they covered).
+  const [
+    { data: rawRecap, error: wErr },
+    { data: injuryRows, error: injErr },
+  ] = await Promise.all([
+    supabase
+      .from("workouts")
+      .select(SELECT_RECAP)
+      .eq("user_id", userId)
+      .gte("date", weekStart)
+      .lte("date", weekEnd)
+      .order("date", { ascending: true }),
+    supabase
+      .from("injuries")
+      .select("*")
+      .eq("user_id", userId)
+      .lte("onset_date", weekEnd),
+  ]);
   if (wErr) throw wErr;
+  if (injErr) throw injErr;
+  const injuries = (injuryRows ?? []) as Injury[];
   const weekWorkouts = flattenWorkouts(rawRecap ?? []);
 
   // Sleep + nutrition + weight from daily_logs (column is `date`, not `day`).
@@ -104,10 +120,23 @@ export async function composeRecap(args: {
 
   const doneDays = new Set(weekWorkouts.map((w) => w.date));
   const sessionsSkipped: RecapOutput["sessions_skipped"] = [];
+  const sessionsInjuryExcused: NonNullable<RecapOutput["sessions_injury_excused"]> = [];
   for (const { fullDay, type } of plannedEntries) {
     if (!type || type.toUpperCase() === "REST") continue;
     const date = dayNameToDate(fullDay, weekStart);
-    if (!doneDays.has(date)) sessionsSkipped.push({ day: fullDay, type });
+    if (doneDays.has(date)) continue; // completed — not skipped
+
+    // Check whether an active injury excuses this skip.
+    const matchingInjury = injuries.find(
+      (inj) =>
+        injuryActiveOn(inj, date) &&
+        inj.affected_session_types.includes(type),
+    );
+    if (matchingInjury) {
+      sessionsInjuryExcused.push({ day: fullDay, type, area: matchingInjury.area });
+    } else {
+      sessionsSkipped.push({ day: fullDay, type });
+    }
   }
 
   // Swapped: requires training_weeks.original_session_plan (migration 0012).
@@ -163,6 +192,9 @@ export async function composeRecap(args: {
     sessions_done: sessionsDone,
     sessions_skipped: sessionsSkipped,
     sessions_swapped: sessionsSwapped,
+    ...(sessionsInjuryExcused.length > 0
+      ? { sessions_injury_excused: sessionsInjuryExcused }
+      : {}),
     per_lift: perLift,
     sleep,
     nutrition,

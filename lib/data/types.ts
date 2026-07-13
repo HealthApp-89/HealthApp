@@ -1506,6 +1506,9 @@ export type WeeklyReviewPayload = {
     sessions_done: number;
     sessions_skipped: Array<{ day: string; type: string }>;
     sessions_swapped: Array<{ day: string; from: string; to: string }>;
+    /** Optional: days excused by an active injury. Added in Injury Lifecycle arc
+     *  (Task 5). Pre-Task-5 rows omit this field; consumers should default to []. */
+    sessions_injury_excused?: Array<{ day: string; type: string; area: string }>;
     per_lift: Array<{
       lift: string;
       top_set: { weight_kg: number; reps: number; sets: number };

@@ -27,6 +27,14 @@ export function WeeklyReviewRecap({
           {recap.sessions_skipped.map((s) => `${s.day} (${s.type})`).join(", ")}
         </div>
       )}
+      {(recap.sessions_injury_excused ?? []).length > 0 && (
+        <div style={{ fontSize: 11, color: "#b45309", marginTop: 4 }}>
+          Injury excused:{" "}
+          {(recap.sessions_injury_excused ?? [])
+            .map((s) => `${s.day} — skipped (${s.area} injury)`)
+            .join(", ")}
+        </div>
+      )}
       <div
         style={{
           height: 1,
