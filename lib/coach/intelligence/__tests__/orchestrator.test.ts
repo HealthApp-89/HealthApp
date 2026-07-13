@@ -181,6 +181,8 @@ const FULL_FIXTURE_DATA: IntelligenceData = {
   },
   // Empty for tests — real data comes from coach_interventions fetch in buildAthleteIntelligence
   interventionRows: [],
+  // Empty for tests — real data comes from fetchActiveInjuries in buildAthleteIntelligence
+  liveInjuries: [],
   today: "2026-06-26",
 };
 
