@@ -93,6 +93,12 @@ export function validateInjuryInput(
     return { ok: false, error: "side must be 'left', 'right', or null", code: "invalid_side" };
   }
 
+  // cause
+  const cause = input.cause ?? null;
+  if (cause !== null && cause.trim().length > 200) {
+    return { ok: false, error: "cause must be ≤200 characters", code: "cause_too_long" };
+  }
+
   // notes
   const notes = input.notes ?? null;
   if (notes !== null && notes.length > 500) {
@@ -104,7 +110,7 @@ export function validateInjuryInput(
     data: {
       area,
       side,
-      cause: input.cause ?? null,
+      cause,
       severity,
       onset_date,
       affected_lifts,

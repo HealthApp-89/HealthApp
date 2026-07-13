@@ -85,4 +85,14 @@ describe("validateInjuryInput", () => {
     const r = validateInjuryInput({ area: "Ankle", notes: "x".repeat(501) }, TODAY);
     expect(r.ok).toBe(false);
   });
+
+  test("cause max 200 characters", () => {
+    const r = validateInjuryInput({ area: "Elbow", cause: "x".repeat(201) }, TODAY);
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.error).toBe("cause must be ≤200 characters");
+    }
+    const r2 = validateInjuryInput({ area: "Elbow", cause: "x".repeat(200) }, TODAY);
+    expect(r2.ok).toBe(true);
+  });
 });

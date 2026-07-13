@@ -39,6 +39,7 @@ export function ActiveInjuriesCard({ userId }: Props) {
 
   const [open, setOpen] = useState(false);
   const [resolving, setResolving] = useState<string | null>(null);
+  const [resolveError, setResolveError] = useState<string | null>(null);
 
   // Form state
   const [area, setArea] = useState("");
@@ -56,6 +57,7 @@ export function ActiveInjuriesCard({ userId }: Props) {
 
   async function handleResolve(id: string) {
     setResolving(id);
+    setResolveError(null);
     try {
       const res = await fetch(`/api/injuries/${id}`, {
         method: "PATCH",
@@ -63,8 +65,13 @@ export function ActiveInjuriesCard({ userId }: Props) {
         body: JSON.stringify({ status: "resolved" }),
       });
       if (res.ok) {
+        setResolveError(null);
         await queryClient.invalidateQueries({ queryKey: queryKeys.injuries.all(userId) });
+      } else {
+        setResolveError("Couldn't resolve — try again.");
       }
+    } catch (err) {
+      setResolveError("Couldn't resolve — try again.");
     } finally {
       setResolving(null);
     }
@@ -81,6 +88,7 @@ export function ActiveInjuriesCard({ userId }: Props) {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setFormError(null);
+    setResolveError(null);
     setSubmitting(true);
     try {
       const res = await fetch("/api/injuries", {
@@ -140,6 +148,12 @@ export function ActiveInjuriesCard({ userId }: Props) {
       >
         Active injuries
       </h2>
+
+      {resolveError && (
+        <div style={{ fontSize: 12, color: COLOR.danger, marginBottom: 8 }}>
+          {resolveError}
+        </div>
+      )}
 
       {isLoading ? (
         <div style={{ fontSize: 12, color: COLOR.textMuted }}>Loading…</div>
