@@ -126,7 +126,12 @@ export async function composeTrends(args: {
 
   const today = shiftDays(weekStart, 6);
   const [strengthTrend, crossInsights] = await Promise.all([
-    composeStrength({ supabase, userId, today }),
+    // Injury fetch is owned by generateCoachTrends (the live orchestrator).
+    // Weekly review §4 is a historical recap — pass [] so plateau_spans still
+    // surface but without injury gating (the proactive nudge path, not the
+    // review, is where gating fires). TODO: wire injuries here if the weekly
+    // review §4 narrative ever needs to suppress injury-gated plateaus.
+    composeStrength({ supabase, userId, today, injuries: [] }),
     composeCross({ supabase, userId, today }),
   ]);
 

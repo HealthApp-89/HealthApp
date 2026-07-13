@@ -1601,6 +1601,16 @@ export type PerLiftSlope = {
   r_squared_12w: number | null;
   plateau_active: boolean;
   plateau_weeks_flat: number;
+  /** True when an injury covers ≥50% of the 12w analysis window for this lift.
+   *  Consumers (proactive plateau nudge, weekly review §4) should suppress
+   *  plateau alerts and annotate prose when true. */
+  injury_gated: boolean;
+  /** Body-area label from the gating injury, e.g. "hip". Null when not gated. */
+  injury_area: string | null;
+  /** Prose-ready plateau label. When injury_gated, reads
+   *  "flat — injury-gated ({area} since {onset})"; otherwise the
+   *  conventional "{plateau_weeks_flat}w flat" string. */
+  plateau_label: string | null;
 };
 
 export type StrengthTrend = {
