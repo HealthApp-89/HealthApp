@@ -125,15 +125,31 @@ export async function composeTrends(args: {
   }
 
   const today = shiftDays(weekStart, 6);
-  const [strengthTrend, crossInsights] = await Promise.all([
-    // Injury fetch is owned by generateCoachTrends (the live orchestrator).
-    // Weekly review §4 is a historical recap — pass [] so plateau_spans still
-    // surface but without injury gating (the proactive nudge path, not the
-    // review, is where gating fires). TODO: wire injuries here if the weekly
-    // review §4 narrative ever needs to suppress injury-gated plateaus.
-    composeStrength({ supabase, userId, today, injuries: [] }),
+  const injuriesPromise = supabase
+    .from("injuries")
+    .select("*")
+    .eq("user_id", userId)
+    .lte("onset_date", today)
+    .order("onset_date", { ascending: false })
+    .then(({ data, error }) => {
+      if (error) {
+        console.warn("[compose-trends] injuries fetch failed", error);
+        return [];
+      }
+      return (data ?? []) as any[];
+    });
+
+  const [injuries, crossInsights] = await Promise.all([
+    injuriesPromise,
     composeCross({ supabase, userId, today }),
   ]);
+
+  const strengthTrend = await composeStrength({
+    supabase,
+    userId,
+    today,
+    injuries,
+  });
 
   const plateauSpans = strengthTrend.per_lift
     .filter((p) => p.plateau_active)

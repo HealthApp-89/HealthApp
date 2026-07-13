@@ -221,3 +221,50 @@ describe("composeStrength — injury gating", () => {
     }
   });
 });
+
+describe("pickHeadline — injury gating", () => {
+  it("plateau_active lift with injury_gated:true must not produce plateau headline", async () => {
+    const { pickHeadline } = await import("@/lib/coach/trends/index");
+
+    // Build a trends payload where a lift has both plateau_active and injury_gated.
+    // The gated lift is filtered out, so the next-priority headline wins.
+    const trends = {
+      strength: {
+        per_lift: [
+          {
+            lift: "Deadlift (Barbell)",
+            e1rm_kg_now: 180,
+            slope_pct_per_wk_4w: null,
+            slope_pct_per_wk_12w: null,
+            r_squared_4w: null,
+            r_squared_12w: null,
+            plateau_active: true,
+            plateau_weeks_flat: 4,
+            injury_gated: true, // The key: injury-gated plateau
+            injury_area: "lower back",
+            plateau_label: "flat — injury-gated (lower back since 2026-06-01)",
+          },
+        ],
+      },
+      body: {
+        weight: {
+          rate_kg_per_wk_4w: -0.45,
+          target_band: { lower: -0.7, upper: -0.2 },
+          in_band: true,
+        },
+        body_fat_pct: { delta_4w_pct: null },
+        lbm: { delta_4w_kg: null },
+      },
+      recovery: {
+        hrv: { vs_baseline_pct_4w: 0 },
+      },
+    } as unknown as CoachTrendsPayload;
+
+    const headline = pickHeadline(trends);
+
+    // Must not be the plateau headline
+    expect(headline.title).not.toContain("plateau");
+    expect(headline.title).toBe("On track");
+    expect(headline.body_md).toContain("No plateau");
+  });
+});

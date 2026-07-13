@@ -68,7 +68,7 @@ export async function generateCoachTrends(args: {
   };
 }
 
-function pickHeadline(input: {
+export function pickHeadline(input: {
   strength: CoachTrendsPayload["strength"];
   body: CoachTrendsPayload["body"];
   recovery: CoachTrendsPayload["recovery"];
