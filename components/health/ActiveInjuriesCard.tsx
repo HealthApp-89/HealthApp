@@ -32,7 +32,7 @@ async function fetchInjuries(): Promise<Injury[]> {
 
 export function ActiveInjuriesCard({ userId }: Props) {
   const queryClient = useQueryClient();
-  const { data: injuries, isLoading } = useQuery({
+  const { data: injuries, isLoading, isError } = useQuery({
     queryKey: queryKeys.injuries.all(userId),
     queryFn: fetchInjuries,
   });
@@ -157,6 +157,10 @@ export function ActiveInjuriesCard({ userId }: Props) {
 
       {isLoading ? (
         <div style={{ fontSize: 12, color: COLOR.textMuted }}>Loading…</div>
+      ) : isError ? (
+        <div style={{ fontSize: 12, color: COLOR.danger, marginBottom: 8 }}>
+          Couldn't load injuries — try refreshing.
+        </div>
       ) : activeInjuries.length === 0 ? (
         <div
           style={{ fontSize: 12, color: COLOR.textMuted, fontStyle: "italic", marginBottom: 8 }}

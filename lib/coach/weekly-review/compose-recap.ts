@@ -83,7 +83,8 @@ export async function composeRecap(args: {
       .from("injuries")
       .select("*")
       .eq("user_id", userId)
-      .lte("onset_date", weekEnd),
+      .lte("onset_date", weekEnd)
+      .order("onset_date", { ascending: false }),
   ]);
   if (wErr) throw wErr;
   if (injErr) throw injErr;
