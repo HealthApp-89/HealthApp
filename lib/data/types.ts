@@ -396,6 +396,9 @@ export type TrainingBlock = {
    *  volume target, intensity distribution, expected adaptations). NULL on
    *  strength-only blocks. */
   endurance_focus: EnduranceFocus | null;
+  /** Athlete-owned block-scope structure prefs (migration 0051). NULL =
+   *  engine defaults. */
+  session_structure_overrides: SessionStructureOverrides | null;
   created_at: string;
   completed_at: string | null;
   updated_at: string;
@@ -438,6 +441,9 @@ export type BlockOutcome = {
   recommended_next_focus: PrimaryLift | null;
   recommended_target_value_kg: number | null;
   athlete_acknowledged_at: string | null;
+  /** AI-written performance paragraph (Carter voice), generated once at block
+   *  close. Migration 0051. */
+  narrative_md: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -513,6 +519,24 @@ export type ProposedBy = "coach" | "user";
  *  static plan, different order. NULL means no overrides for any day. */
 export type ExerciseOverrides = Record<string, import("@/lib/coach/sessionPlans").PlannedExercise[]>;
 
+/** Athlete-owned week-scope edits (migration 0051). Merges at the TOP of the
+ *  session resolution chain — above session_prescriptions — so engine
+ *  repatches never clobber manual edits. `order` is a full permutation of the
+ *  resolved day's exercise names; `exercises` holds per-field deltas. */
+export type ManualSessionEdits = Partial<Record<WeekdayLong, {
+  order?: string[];
+  exercises?: Record<string, { sets?: number; kg?: number; reps?: number }>;
+}>>;
+
+/** Athlete-owned block-scope structure prefs (migration 0051). Keyed by
+ *  session_type ("Legs", "Chest", ...). Consumed by prescribeWeek for every
+ *  week of the block: order applied post-composition, set counts override
+ *  engine counts. Loads/reps stay engine-evolved (RIR/intensity per week). */
+export type SessionStructureOverrides = Record<string, {
+  order?: string[];
+  sets?: Record<string, number>;
+}>;
+
 /**
  * Per-user persistent "save deviations as my default" layer for the in-app
  * workout logger. Sits between training_weeks.exercise_overrides
@@ -580,6 +604,9 @@ export type TrainingWeek = {
    *  for this week (padel sessions, runs, etc.) that the brief and prescription
    *  engine use to apply fatigue adjustments on adjacent lift days. */
   planned_activities: PlannedActivity[];
+  /** Athlete-owned week-scope edits (migration 0051). Merges at the TOP of the
+   *  session resolution chain. NULL = no manual edits. */
+  manual_session_edits: ManualSessionEdits | null;
   committed_at: string;
   created_at: string;
   updated_at: string;
