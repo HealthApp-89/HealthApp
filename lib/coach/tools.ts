@@ -341,7 +341,7 @@ export const AUTOREGULATION_TOOL = {
 export const ADHERENCE_TOOL = {
   name: "compute_adherence",
   description:
-    "Compute planned-vs-actual session adherence and per-muscle volume deltas vs prior-4w-avg for a Mon-Sun window. Use during the RECAP beat of plan_week mode to ground the recap in concrete numbers. Note: muscle_volume_vs_4w_avg OMITS muscle categories with thin baselines (<6 sets or <2 distinct weeks of prior data). If a category is absent from the response, you DO NOT have enough history to claim drift — say so, do not invent a percentage.",
+    "Compute planned-vs-actual session adherence and per-muscle volume deltas vs prior-4w-avg for a Mon-Sun window. Use during the RECAP beat of plan_week mode to ground the recap in concrete numbers. Note: muscle_volume_vs_4w_avg OMITS muscle categories with thin baselines (<6 sets or <2 distinct weeks of prior data). If a category is absent from the response, you DO NOT have enough history to claim drift — say so, do not invent a percentage. sessions_planned EXCLUDES injury-excused days; per-day entries may carry status 'injury' with injury_area, and the result includes an injury_excused count — narrate excused skips as injury-related, never as plain non-adherence.",
   input_schema: {
     type: "object" as const,
     required: ["week_start"],

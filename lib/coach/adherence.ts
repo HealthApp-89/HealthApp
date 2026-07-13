@@ -212,6 +212,9 @@ export function classifyDayWithInjuries(
 ): { status: AdherenceDayStatus; injury_area?: string } {
   if (baseStatus !== "missed") return { status: baseStatus };
   if (!sessionType) return { status: baseStatus };
+  // First-match semantics: injuries should be ordered most-recent-first (by
+  // onset_date DESC) so the newest injury wins when multiple cover the same day
+  // and session type (e.g. re-injury after resolution).
   for (const inj of injuries) {
     if (!injuryActiveOn(inj as Injury, dayIso)) continue;
     if (inj.affected_session_types.includes(sessionType)) {
@@ -278,7 +281,8 @@ export async function computeAdherence(
       .from("injuries")
       .select("*")
       .eq("user_id", userId)
-      .lte("onset_date", endStr),
+      .lte("onset_date", endStr)
+      .order("onset_date", { ascending: false }), // most recent injury wins on first-match
   ]);
   if (profErr) throw profErr;
   if (actErr) throw actErr;

@@ -69,10 +69,10 @@ describe("classifyDayWithInjuries", () => {
     expect(result.status).toBe("rest");
   });
 
-  // (d) Fri 2026-07-18 Legs missed with injury resolved Thursday 2026-07-16 → "missed"
-  //     resolved_at date = 2026-07-16, so injuryActiveOn(inj, "2026-07-18") = false
+  // (d) Fri 2026-07-17 Legs missed with injury resolved Thursday 2026-07-16 → "missed"
+  //     resolved_at date = 2026-07-16, so injuryActiveOn(inj, "2026-07-17") = false
   it("(d) missed Legs on Friday after injury resolved Thursday → missed", () => {
-    const FRI = "2026-07-18";
+    const FRI = "2026-07-17";
     const result = classifyDayWithInjuries("missed", "Legs", FRI, [HIP_RESOLVED_THURSDAY]);
     expect(result.status).toBe("missed");
     expect(result.injury_area).toBeUndefined();
@@ -111,16 +111,19 @@ describe("classifyDayWithInjuries denominator logic (unit test of excused count)
   // We can verify this by simulating a week: only Mon Legs missed (active injury)
   // should be excluded from sessions_planned; other non-rest days should count.
   it("(e) only injury-excused days are removed from the denominator", () => {
-    // Simulate 4 sessions in a week plan: Mon Legs, Tue Chest, Wed Back, Fri Push
+    // Simulate 4 sessions in a week plan: Mon Legs, Tue Chest, Wed Back, Fri Legs
     // Mon Legs: missed while injury active → injury (excused)
-    // Tue Chest: missed → missed (not excused)
+    // Tue Chest: missed → missed (Chest ∉ affected_session_types)
     // Wed Back: completed → as_planned (not excused)
-    // Fri Push: missed but Fri is after injury resolved Thursday → missed (not excused)
+    // Fri Legs (2026-07-17): missed, injury resolved Thursday 2026-07-16 →
+    //   missed (NOT excused — resolution boundary: the day after resolved_at is clear)
+    //   This genuinely exercises the resolution-date boundary: same session type as
+    //   the active-injury fixture but the injury is no longer active.
     const scenarios: Array<{ baseStatus: "as_planned" | "swapped" | "missed" | "rest"; sessionType: string; day: string; injuries: Injury[] }> = [
       { baseStatus: "missed", sessionType: "Legs", day: "2026-07-07", injuries: [HIP_ACTIVE] },
       { baseStatus: "missed", sessionType: "Chest", day: "2026-07-08", injuries: [HIP_ACTIVE] },
       { baseStatus: "as_planned", sessionType: "Back", day: "2026-07-09", injuries: [HIP_ACTIVE] },
-      { baseStatus: "missed", sessionType: "Push", day: "2026-07-11", injuries: [HIP_RESOLVED_THURSDAY] },
+      { baseStatus: "missed", sessionType: "Legs", day: "2026-07-17", injuries: [HIP_RESOLVED_THURSDAY] },
     ];
 
     const results = scenarios.map((s) =>
@@ -131,7 +134,7 @@ describe("classifyDayWithInjuries denominator logic (unit test of excused count)
     expect(results[0].status).toBe("injury");   // Mon Legs excused
     expect(results[1].status).toBe("missed");   // Tue Chest not excused
     expect(results[2].status).toBe("as_planned"); // Wed Back completed
-    expect(results[3].status).toBe("missed");   // Fri Push after resolution
+    expect(results[3].status).toBe("missed");   // Fri Legs after resolution (boundary)
 
     // Simulate denominator computation (mirrors computeAdherence logic):
     // sessions_planned counts non-rest non-injury days

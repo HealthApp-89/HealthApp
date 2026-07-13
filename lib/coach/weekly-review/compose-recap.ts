@@ -114,7 +114,8 @@ export async function composeRecap(args: {
   // Sessions
   const sessionsDone = weekWorkouts.length;
   const plannedEntries = normalizePlannedSessions(plannedSessions);
-  const sessionsPlanned = plannedEntries.filter(
+  // Raw planned count (all non-REST days) — will be adjusted below.
+  let sessionsPlanned = plannedEntries.filter(
     (e) => e.type && e.type.toUpperCase() !== "REST",
   ).length;
 
@@ -138,6 +139,11 @@ export async function composeRecap(args: {
       sessionsSkipped.push({ day: fullDay, type });
     }
   }
+
+  // Adjust denominator: injury-excused days are not counted against the athlete.
+  // This keeps sessions_planned consistent with computeAdherence's denominator,
+  // which excludes injury days from sessions_planned before computing adherence_pct.
+  sessionsPlanned -= sessionsInjuryExcused.length;
 
   // Swapped: requires training_weeks.original_session_plan (migration 0012).
   // Pulled by caller if applicable; the orchestrator merges. Composer
