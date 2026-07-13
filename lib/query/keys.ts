@@ -136,6 +136,9 @@ export const queryKeys = {
     all: (userId: string) => ["blockHistory", userId] as const,
     one: (userId: string) => ["blockHistory", userId, "current"] as const,
   },
+  blocksRepo: {
+    all: (userId: string) => ["blocksRepo", userId] as const,
+  },
   recoveryIntelligence: {
     all: (userId: string) => ["recoveryIntelligence", userId] as const,
     one: (userId: string) => ["recoveryIntelligence", userId, "current"] as const,

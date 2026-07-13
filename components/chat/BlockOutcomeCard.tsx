@@ -42,10 +42,10 @@ export function BlockOutcomeCard({ outcome }: Props) {
 
   const startHref =
     recommendedFocus != null
-      ? `/strength?tab=coach&mode=setup_block&prefill_focus=${recommendedFocus}${
+      ? `/strength?tab=blocks&prefill_focus=${recommendedFocus}${
           recommendedTarget != null ? `&prefill_target=${recommendedTarget}` : ""
         }`
-      : "/strength?tab=coach&mode=setup_block";
+      : "/strength?tab=blocks";
 
   return (
     <div style={{ padding: "6px 12px" }}>
@@ -188,7 +188,7 @@ export function BlockOutcomeCard({ outcome }: Props) {
                 Start{recommendedFocus ? ` ${liftLabel(recommendedFocus)}` : ""} block
               </Link>
               <Link
-                href="/strength?tab=coach&mode=setup_block"
+                href="/strength?tab=blocks"
                 style={{
                   flex: 1,
                   textAlign: "center",
