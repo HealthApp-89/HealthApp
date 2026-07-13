@@ -469,6 +469,9 @@ export async function buildAthleteIntelligence(
         .order("started_on", { ascending: false }),
 
       // Active live injuries — merged into the constraints block.
+      // Deliberate asymmetry: the injuries table is new (migration 0052) and live
+      // injuries are an additive field — a fetch failure must degrade to "no live injuries"
+      // rather than let the outer catch zero the ENTIRE intelligence payload.
       fetchActiveInjuries(supabase, userId).catch((err) => {
         console.warn("[buildAthleteIntelligence] fetchActiveInjuries failed — continuing without live injuries:", err);
         return [] as Injury[];

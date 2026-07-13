@@ -87,8 +87,8 @@ function exercisesForLifts(lifts: PrimaryLift[]): string[] {
  */
 export function composeConstraints(
   profile: ProfileWithDocuments,
-  liveInjuries: Injury[] = [],
-  todayIso: string = new Date().toISOString().slice(0, 10),
+  liveInjuries: Injury[],
+  todayIso: string,
 ): ConstraintPayload {
   const activeDoc = profile?.athlete_profile_documents?.[0];
 
