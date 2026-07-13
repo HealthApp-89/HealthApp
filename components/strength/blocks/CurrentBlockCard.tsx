@@ -627,14 +627,16 @@ export function CurrentBlockCard({ payload, userId }: Props) {
           Secondary lifts — maintenance
         </div>
         <div style={{ display: "flex", gap: 6 }}>
-          {secondaries.map(({ lift, kg, daysAgo }) => {
+          {secondaries.map(({ lift, kg, daysAgo, injuryArea }) => {
             const stale = daysAgo != null && daysAgo > SECONDARY_STALE_AFTER_DAYS;
+            // Injury state takes priority over plain staleness marker
+            const injured = injuryArea != null;
             return (
               <div
                 key={lift}
                 style={{
                   flex: 1,
-                  background: stale ? COLOR.warningSoft : COLOR.surfaceAlt,
+                  background: injured ? COLOR.warningSoft : stale ? COLOR.warningSoft : COLOR.surfaceAlt,
                   borderRadius: RADIUS.cardSmall,
                   padding: "7px 4px",
                   textAlign: "center",
@@ -642,12 +644,26 @@ export function CurrentBlockCard({ payload, userId }: Props) {
               >
                 <div style={{ fontSize: 12.5, fontWeight: 700, color: COLOR.textStrong }}>
                   {kg != null ? `${fmtNum(kg)}` : "—"}
-                  {stale && (
+                  {!injured && stale && (
                     <span style={{ fontSize: 9, fontWeight: 600, color: COLOR.warningDeep, marginLeft: 3 }}>
                       {daysAgo}d
                     </span>
                   )}
                 </div>
+                {injured && (
+                  <div
+                    style={{
+                      fontSize: 8,
+                      fontWeight: 700,
+                      color: COLOR.warningDeep,
+                      textTransform: "uppercase",
+                      letterSpacing: "0.05em",
+                      marginTop: 1,
+                    }}
+                  >
+                    {injuryArea}
+                  </div>
+                )}
                 <div
                   style={{
                     fontSize: 9,

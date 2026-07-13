@@ -1268,6 +1268,10 @@ export type AdviceFlags = {
   };
   alcohol_low_readiness_warning: boolean;
   has_active_injuries: boolean;
+  /** Deduplicated list of active injury areas from live DB rows (injuries table).
+   *  Empty array when no active injuries. Consumed by the advice prompt to name
+   *  specific areas the AI should flag in its coaching prose. */
+  active_injury_areas: string[];
   poor_sleep_efficiency: boolean;
   missed_protein_yesterday: boolean;
   /** True when MorningBriefCard.coach_suggestion?.kind === 'swap_to_mobility'.

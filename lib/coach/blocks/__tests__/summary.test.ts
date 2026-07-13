@@ -33,7 +33,7 @@ describe("computeBlockPace", () => {
   });
 });
 
-import { computeSecondary } from "@/lib/coach/blocks/summary";
+import { computeSecondary, secondaryInjuryArea } from "@/lib/coach/blocks/summary";
 
 describe("computeSecondary", () => {
   const names = new Set(["deadlift (barbell)"]);
@@ -49,5 +49,40 @@ describe("computeSecondary", () => {
   test("warmup-only and non-matching workouts yield null", () => {
     expect(computeSecondary([{ date: "2026-07-01", exercises: [{ name: "Deadlift (Barbell)", exercise_sets: [{ kg: 40, reps: 5, warmup: true }] }] }], names).kg).toBeNull();
     expect(computeSecondary(workouts, new Set(["bench press (barbell)"])).kg).toBeNull();
+  });
+});
+
+import type { Injury } from "@/lib/data/types";
+
+const makeInjury = (area: string, affectedLifts: Injury["affected_lifts"]): Injury => ({
+  id: "test-id",
+  user_id: "user-1",
+  area,
+  side: null,
+  cause: null,
+  severity: "mild",
+  onset_date: "2026-07-01",
+  status: "active",
+  resolved_at: null,
+  affected_session_types: [],
+  affected_lifts: affectedLifts,
+  notes: null,
+  created_at: "2026-07-01T00:00:00Z",
+  updated_at: "2026-07-01T00:00:00Z",
+});
+
+describe("secondaryInjuryArea", () => {
+  test("returns area of first injury that covers the lift", () => {
+    const injuries: Injury[] = [
+      makeInjury("Hip", ["deadlift", "squat"]),
+      makeInjury("Shoulder", ["bench", "ohp"]),
+    ];
+    expect(secondaryInjuryArea(injuries, "deadlift")).toBe("Hip");
+    expect(secondaryInjuryArea(injuries, "ohp")).toBe("Shoulder");
+  });
+  test("returns null when no injury covers the lift", () => {
+    const injuries: Injury[] = [makeInjury("Hip", ["squat"])];
+    expect(secondaryInjuryArea(injuries, "bench")).toBeNull();
+    expect(secondaryInjuryArea([], "deadlift")).toBeNull();
   });
 });
