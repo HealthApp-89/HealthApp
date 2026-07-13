@@ -1,7 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { SESSION_PLANS, applyOrderingOverride, type PlannedExercise } from "@/lib/coach/sessionPlans";
-import type { ExerciseOverrides, SessionPrescriptions } from "@/lib/data/types";
+import type { ExerciseOverrides, ManualSessionEdits, SessionPrescriptions, WeekdayLong } from "@/lib/data/types";
 import { discoverEffectiveExercises } from "@/lib/coach/prescription/recent-workouts-discovery";
+import { applyManualSessionEdits } from "@/lib/coach/manual-edits";
 
 /**
  * Resolution chain at logger open (mirrors client-side getEffectiveSessionPlan,
@@ -26,11 +27,12 @@ export async function resolveSessionPlan(args: {
   weekdayLong: string;
   weekOverrides: ExerciseOverrides | null;
   weekPrescriptions?: SessionPrescriptions | null;
+  manualEdits?: ManualSessionEdits | null;
 }): Promise<{
   exercises: PlannedExercise[];
-  source: "week_prescription" | "week_override" | "user_template" | "recent_discovery" | "code_default";
+  source: "week_prescription" | "week_override" | "user_template" | "recent_discovery" | "code_default" | "manual_edit";
 }> {
-  const { supabase, userId, sessionType, weekdayLong, weekOverrides, weekPrescriptions } = args;
+  const { supabase, userId, sessionType, weekdayLong, weekOverrides, weekPrescriptions, manualEdits } = args;
 
   // 1. session_prescriptions (NEW TOP — Sunday-prescription system). When an
   //    exercise_override also exists for the day, it layers ordering on top of
@@ -39,18 +41,15 @@ export async function resolveSessionPlan(args: {
   const presc = weekPrescriptions?.[weekdayLong as keyof SessionPrescriptions];
   const weekOverride = weekOverrides?.[weekdayLong];
   if (presc && presc.length > 0) {
-    if (weekOverride && weekOverride.length > 0) {
-      return {
-        exercises: applyOrderingOverride(presc, weekOverride.map((e) => e.name)),
-        source: "week_prescription",
-      };
-    }
-    return { exercises: presc, source: "week_prescription" };
+    const base = weekOverride && weekOverride.length > 0
+      ? applyOrderingOverride(presc, weekOverride.map((e) => e.name))
+      : presc;
+    return applyManualLayer(base, "week_prescription", weekdayLong, manualEdits);
   }
 
   // 2. exercise_overrides (existing — permutation-only)
   if (weekOverride && weekOverride.length > 0) {
-    return { exercises: weekOverride, source: "week_override" };
+    return applyManualLayer(weekOverride, "week_override", weekdayLong, manualEdits);
   }
 
   // 3. user_session_templates (existing — per-user persistent)
@@ -64,18 +63,29 @@ export async function resolveSessionPlan(args: {
   if (error) throw error;
 
   if (data?.exercises && Array.isArray(data.exercises) && data.exercises.length > 0) {
-    return { exercises: data.exercises as PlannedExercise[], source: "user_template" };
+    return applyManualLayer(data.exercises as PlannedExercise[], "user_template", weekdayLong, manualEdits);
   }
 
   // 4. recent_workouts discovery (NEW — learned from last 4-8 sessions)
   const discovered = await discoverEffectiveExercises({ supabase, userId, sessionType });
   if (discovered && discovered.length > 0) {
-    return { exercises: discovered, source: "recent_discovery" };
+    return applyManualLayer(discovered, "recent_discovery", weekdayLong, manualEdits);
   }
 
   // 5. SESSION_PLANS (existing fallback — code default)
-  return {
-    exercises: SESSION_PLANS[sessionType] ?? [],
-    source: "code_default",
-  };
+  return applyManualLayer(SESSION_PLANS[sessionType] ?? [], "code_default", weekdayLong, manualEdits);
+}
+
+type BaseSource = "week_prescription" | "week_override" | "user_template" | "recent_discovery" | "code_default";
+
+function applyManualLayer(
+  exercises: PlannedExercise[],
+  source: BaseSource,
+  weekdayLong: string,
+  manualEdits: ManualSessionEdits | null | undefined,
+): { exercises: PlannedExercise[]; source: "week_prescription" | "week_override" | "user_template" | "recent_discovery" | "code_default" | "manual_edit" } {
+  if (!manualEdits) return { exercises, source };
+  const { exercises: out, touched } = applyManualSessionEdits(exercises, manualEdits[weekdayLong as WeekdayLong]);
+  if (touched) return { exercises: out, source: "manual_edit" };
+  return { exercises, source };
 }

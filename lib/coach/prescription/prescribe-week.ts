@@ -42,6 +42,7 @@ import { proposeActivityAwareLayout, SESSION_REGION_MAP } from "@/lib/coach/acti
 import type { MuscleRegion } from "@/lib/coach/activity/types";
 import { readSessionForDay } from "@/lib/coach/session-plan-reader";
 import { BIG_FOUR_SET } from "@/lib/coach/session-structure/tiers";
+import { applyStructureOverrides } from "@/lib/coach/prescription/structure-overrides";
 
 const FOCUS_BLOCK_CLAMP = 0.92;
 
@@ -340,7 +341,12 @@ export async function prescribeWeek(opts: {
       }
     }
 
-    const augmented = augmentFirstLoadedCompoundWithWarmups(exercises);
+    // Apply block-scope structure overrides (athlete-owned order + set counts)
+    // BEFORE warmup post-processing so warmups derive from the post-override
+    // structure: new first exercise gets the warmups, overridden set counts
+    // are what the warmup "+2 sets" rule stacks on top of.
+    const structured = applyStructureOverrides(exercises, sessionType, block?.session_structure_overrides ?? null);
+    const augmented = augmentFirstLoadedCompoundWithWarmups(structured);
 
     // Apply lighten: if this weekday has affected regions (from activity
     // overlap), trim volume on exercises that target those regions.

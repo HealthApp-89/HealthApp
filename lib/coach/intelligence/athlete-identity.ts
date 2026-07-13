@@ -10,11 +10,8 @@
 
 import type { WorkoutSession } from "@/lib/data/workouts";
 import type { FoodLogEntry } from "@/lib/food/types";
-import {
-  IdentityPayload,
-  IdentityPayloadSchema,
-  ExerciseCategory,
-} from "./types";
+import type { IdentityPayload, ExerciseCategory } from "./types";
+import { IdentityPayloadSchema } from "./types";
 
 // ---------------------------------------------------------------------------
 // Exercise → category lookup

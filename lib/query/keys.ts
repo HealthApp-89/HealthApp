@@ -73,6 +73,8 @@ export const queryKeys = {
     strength: (userId: string) => ["insights", userId, "strength"] as const,
   },
   trainingWeeks: {
+    /** Prefix key — invalidates every training-week query for this user. */
+    all: (userId: string) => ["training-weeks", userId] as const,
     one: (userId: string, weekStart: string) =>
       ["training-weeks", userId, "one", weekStart] as const,
     range: (userId: string, from: string, to: string) =>
@@ -80,6 +82,10 @@ export const queryKeys = {
   },
   blockProgress: {
     active: (userId: string) => ["block-progress", userId, "active"] as const,
+  },
+  blockSummary: {
+    all: (userId: string) => ["blockSummary", userId] as const,
+    today: (userId: string, todayIso: string) => ["blockSummary", userId, todayIso] as const,
   },
   blockOutcome: (blockId: string) => ["block-outcome", blockId] as const,
   recentE1RMs: {
@@ -131,6 +137,9 @@ export const queryKeys = {
   blockHistory: {
     all: (userId: string) => ["blockHistory", userId] as const,
     one: (userId: string) => ["blockHistory", userId, "current"] as const,
+  },
+  blocksRepo: {
+    all: (userId: string) => ["blocksRepo", userId] as const,
   },
   recoveryIntelligence: {
     all: (userId: string) => ["recoveryIntelligence", userId] as const,

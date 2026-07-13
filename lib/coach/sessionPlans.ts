@@ -2,6 +2,9 @@
 // Stage 5 will move these into profiles.training_plan if you want per-week edits.
 
 import { weekdayInUserTz } from "@/lib/time";
+import { applyManualSessionEdits } from "@/lib/coach/manual-edits";
+import { SHORT_TO_FULL } from "@/lib/coach/session-plan-reader";
+import type { ManualSessionEdits, WeekdayLong } from "@/lib/data/types";
 
 export type PlannedExercise = {
   name: string;
@@ -162,16 +165,35 @@ export function getEffectiveSessionPlan(
   sessionPrescriptions: SessionPrescriptions | null | undefined,
   overrides: ExerciseOverrides | null | undefined,
   userTemplate?: PlannedExercise[] | null,
+  manualEdits?: ManualSessionEdits | null,
 ): PlannedExercise[] {
+  // Normalize weekday to long form for manual_session_edits lookup (keys are
+  // always WeekdayLong). Short-form callers ("Mon") are normalized here;
+  // long-form callers ("Monday") pass through unchanged.
+  const weekdayLong: WeekdayLong = (
+    weekday.length === 3 ? (SHORT_TO_FULL[weekday as keyof typeof SHORT_TO_FULL] ?? weekday) : weekday
+  ) as WeekdayLong;
+
   const presc = sessionPrescriptions?.[weekday as keyof SessionPrescriptions];
   const override = overrides?.[weekday];
+  let result: PlannedExercise[];
   if (presc && presc.length > 0) {
     if (override && override.length > 0) {
-      return applyOrderingOverride(presc, override.map((e) => e.name));
+      result = applyOrderingOverride(presc, override.map((e) => e.name));
+    } else {
+      result = presc;
     }
-    return presc;
+  } else if (override && override.length > 0) {
+    result = override;
+  } else if (userTemplate && userTemplate.length > 0) {
+    result = userTemplate;
+  } else {
+    result = SESSION_PLANS[sessionType] ?? [];
   }
-  if (override && override.length > 0) return override;
-  if (userTemplate && userTemplate.length > 0) return userTemplate;
-  return SESSION_PLANS[sessionType] ?? [];
+
+  if (manualEdits) {
+    const { exercises } = applyManualSessionEdits(result, manualEdits[weekdayLong]);
+    return exercises;
+  }
+  return result;
 }

@@ -152,6 +152,7 @@ export function StrengthCoachClient({ userId }: Props) {
         committedWeek?.session_prescriptions ?? null,
         exerciseOverrides,
         userTemplate?.exercises ?? null,
+        committedWeek?.manual_session_edits ?? null,
       )
     : null;
 
@@ -196,6 +197,7 @@ export function StrengthCoachClient({ userId }: Props) {
           userId={userId}
           weekOverrides={(committedWeek?.exercise_overrides as ExerciseOverrides | null | undefined) ?? null}
           weekPrescriptions={committedWeek?.session_prescriptions ?? null}
+          manualEdits={committedWeek?.manual_session_edits ?? null}
         />
 
         {/* Mesocycle week badge + adherence row */}

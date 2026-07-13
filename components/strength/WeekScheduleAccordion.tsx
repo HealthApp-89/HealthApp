@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import type { PlannedExercise } from "@/lib/coach/sessionPlans";
 import type {
   ExerciseOverrides,
+  ManualSessionEdits,
   SessionPlan,
   SessionPrescriptions,
   Weekday,
@@ -16,6 +17,8 @@ export type WeekDayEntry = {
   date: string;
   sessionType: string;
   exercises: PlannedExercise[];
+  /** Engine-resolved plan WITHOUT the manual-edit layer (DayEditSheet baseline). */
+  baselineExercises: PlannedExercise[];
   dayClass: DayClass;
 };
 
@@ -26,7 +29,13 @@ type Props = {
   weekOverrides: ExerciseOverrides | null;
   weekPrescriptions: SessionPrescriptions | null;
   weekRirTarget?: number | null;
+  weekManualEdits: ManualSessionEdits | null;
   sessionPlan: SessionPlan;
+  /** True only for the current week with a committed training_weeks row —
+   *  gates the per-day Edit affordance. */
+  canEdit: boolean;
+  /** Active training block id (null = none) — DayEditSheet block scope. */
+  activeBlockId: string | null;
 };
 
 export function WeekScheduleAccordion({
@@ -36,7 +45,10 @@ export function WeekScheduleAccordion({
   weekOverrides,
   weekPrescriptions,
   weekRirTarget,
+  weekManualEdits,
   sessionPlan,
+  canEdit,
+  activeBlockId,
 }: Props) {
   const [expanded, setExpanded] = useState<Set<Weekday>>(new Set());
 
@@ -67,13 +79,17 @@ export function WeekScheduleAccordion({
           date={d.date}
           sessionType={d.sessionType}
           exercises={d.exercises}
+          baselineExercises={d.baselineExercises}
           dayClass={d.dayClass}
           isExpanded={expanded.has(d.weekdayShort)}
           onToggle={() => toggle(d.weekdayShort)}
           weekOverrides={weekOverrides}
           weekPrescriptions={weekPrescriptions}
           weekRirTarget={weekRirTarget}
+          weekManualEdits={weekManualEdits}
           sessionPlan={sessionPlan}
+          canEdit={canEdit}
+          activeBlockId={activeBlockId}
         />
       ))}
     </div>

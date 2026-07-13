@@ -128,6 +128,7 @@ export function MorningBriefCard({
               weekOverrides={(liveWeek?.exercise_overrides as import("@/lib/data/types").ExerciseOverrides | null | undefined) ?? null}
               weekPrescriptions={(liveWeek?.session_prescriptions as import("@/lib/data/types").SessionPrescriptions | null | undefined) ?? null}
               weekRirTarget={liveWeek?.rir_target ?? null}
+              manualEdits={(liveWeek?.manual_session_edits as import("@/lib/data/types").ManualSessionEdits | null | undefined) ?? null}
             />
             {card.variant === "kickoff" && card.this_week_plan && (
               <BriefThisWeekPlan plan={card.this_week_plan} />

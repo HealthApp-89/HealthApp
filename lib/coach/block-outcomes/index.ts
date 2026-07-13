@@ -158,6 +158,7 @@ export async function generateBlockOutcome(opts: {
       lessons,
       recommended_next_focus: rotationDecision.recommended_lift,
       recommended_target_value_kg: recommendedTargetKg,
+      narrative_md: null,
     },
   };
 }

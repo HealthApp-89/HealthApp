@@ -39,7 +39,10 @@ export function EditSessionButton(props: Props) {
       }
       // Best-effort plan resolution: weekday inferred from the workout's date.
       // weekOverrides null is acceptable — falls through to user template /
-      // SESSION_PLANS via resolveSessionPlan.
+      // SESSION_PLANS via resolveSessionPlan. manualEdits stays null on
+      // purpose: this is edit-mode for an ALREADY-COMMITTED workout — the
+      // draft hydrates from the committed sets, and the current week's
+      // manual edit layer has no bearing on a past session's actuals.
       const weekdayLong = new Date(workout.date + "T00:00:00").toLocaleDateString("en-US", {
         weekday: "long",
       });
@@ -50,6 +53,7 @@ export function EditSessionButton(props: Props) {
         sessionType: workout.type ?? "",
         weekdayLong,
         weekOverrides: null,
+        manualEdits: null,
       });
       const draft = hydrateWorkoutAsDraft(workout, resolved.exercises);
       setInitialDraft(draft);

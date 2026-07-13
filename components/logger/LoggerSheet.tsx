@@ -24,6 +24,7 @@ type Props = {
   weekdayLong: string;     // "Monday"
   weekOverrides: Record<string, PlannedExercise[]> | null;
   weekPrescriptions?: import("@/lib/data/types").SessionPrescriptions | null;
+  manualEdits?: import("@/lib/data/types").ManualSessionEdits | null;
   onClose: () => void;
   /** When set, LoggerSheet boots in edit mode: seeds state from initialDraft,
    *  skips draft-store reads/writes, hides timer controls. */
@@ -198,6 +199,7 @@ export function LoggerSheet(props: Props) {
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
   const [reorderOpen, setReorderOpen] = useState(false);
   const [committing, setCommitting] = useState(false);
+  const [resolvedSource, setResolvedSource] = useState<string | null>(null);
 
   useWakeLock(!!draft);
 
@@ -225,8 +227,10 @@ export function LoggerSheet(props: Props) {
         weekdayLong: props.weekdayLong,
         weekOverrides: props.weekOverrides ?? null,
         weekPrescriptions: props.weekPrescriptions ?? null,
+        manualEdits: props.manualEdits ?? null,
       });
       if (cancelled) return;
+      setResolvedSource(resolved.source);
       const fresh = makeDraftFromPlan({
         userId: props.userId,
         sessionType: props.sessionType,
@@ -308,7 +312,9 @@ export function LoggerSheet(props: Props) {
             supabase, userId: props.userId, sessionType: props.sessionType,
             weekdayLong: props.weekdayLong, weekOverrides: props.weekOverrides ?? null,
             weekPrescriptions: props.weekPrescriptions ?? null,
+            manualEdits: props.manualEdits ?? null,
           });
+          setResolvedSource(resolved.source);
           setDraft(makeDraftFromPlan({
             userId: props.userId, sessionType: props.sessionType,
             date: props.date, plan: resolved.exercises,
@@ -527,6 +533,14 @@ export function LoggerSheet(props: Props) {
       </div>
 
       <div className="overflow-y-auto p-3 pb-32 flex-1">
+        {!props.editMode && resolvedSource === "manual_edit" && (
+          <div className="flex items-center gap-1.5 mb-3">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-amber-400 bg-amber-400/10 border border-amber-400/30 px-2 py-0.5 rounded-md">
+              Edited plan
+            </span>
+          </div>
+        )}
+
         {!props.editMode && diverged && (
           <button
             onClick={() => setSaveDefaultOpen(true)}

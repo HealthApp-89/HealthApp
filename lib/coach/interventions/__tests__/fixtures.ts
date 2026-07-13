@@ -29,6 +29,7 @@ export function makeBlock(overrides: Partial<TrainingBlock> = {}): TrainingBlock
     target_unit: "kg",
     diet_goal: null,
     endurance_focus: null,
+    session_structure_overrides: null,
     created_at: "2026-05-25T00:00:00Z",
     completed_at: null,
     updated_at: "2026-05-25T00:00:00Z",

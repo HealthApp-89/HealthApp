@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Dumbbell } from "lucide-react";
 import type { DailyPlan } from "@/lib/coach/readiness";
-import type { ExerciseOverrides, SessionPrescriptions } from "@/lib/data/types";
+import type { ExerciseOverrides, ManualSessionEdits, SessionPrescriptions } from "@/lib/data/types";
 import { Card } from "@/components/ui/Card";
 import { RADIUS, modeColorLight } from "@/lib/ui/theme";
 import { SessionStructureBanner } from "@/components/strength/SessionStructureBanner";
@@ -28,11 +28,14 @@ type Props = {
   userId: string;
   weekOverrides: ExerciseOverrides | null;
   weekPrescriptions?: SessionPrescriptions | null;
+  /** Athlete's week-scope manual edit layer — LoggerSheet must receive it so
+   *  schedule edits reach the logger's resolved plan. */
+  manualEdits?: ManualSessionEdits | null;
 };
 
 /** Light-theme session plan card for the strength page.
  *  Shows session type, mode intensity, description, and full exercise list. */
-export function TodayPlanCard({ plan, committedFromPlan, rirTarget, researchPhase, weekStart, weekday, userId, weekOverrides, weekPrescriptions }: Props) {
+export function TodayPlanCard({ plan, committedFromPlan, rirTarget, researchPhase, weekStart, weekday, userId, weekOverrides, weekPrescriptions, manualEdits }: Props) {
   const accent = modeColorLight(plan.mode.color);
   const [loggerOpen, setLoggerOpen] = useState(false);
   const [draftEpoch, setDraftEpoch] = useState(0);
@@ -224,6 +227,7 @@ export function TodayPlanCard({ plan, committedFromPlan, rirTarget, researchPhas
         weekdayLong={weekday}
         weekOverrides={weekOverrides}
         weekPrescriptions={weekPrescriptions ?? null}
+        manualEdits={manualEdits ?? null}
         weekRirTarget={rirTarget ?? null}
         onClose={() => { setLoggerOpen(false); setDraftEpoch((e) => e + 1); }}
       />
