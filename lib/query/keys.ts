@@ -184,4 +184,7 @@ export const queryKeys = {
     activities: (userId: string, from: string, to: string) =>
       ["endurance", userId, "activities", from, to] as const,
   },
+  injuries: {
+    all: (userId: string) => ["injuries", userId] as const,
+  },
 } as const;
