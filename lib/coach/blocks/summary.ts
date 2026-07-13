@@ -30,12 +30,20 @@ import { getEffectiveSessionPlan } from "@/lib/coach/sessionPlans";
 
 export function computeBlockPace(
   points: Array<{ week: number; e1rm: number }>,
-  target: number,
+  target: number | null,
   totalWeeks: number,
 ): { currentBest: number | null; slopePerWeek: number | null; projectedHitWeek: number | null; kgToGo: number | null } {
   if (points.length === 0) return { currentBest: null, slopePerWeek: null, projectedHitWeek: null, kgToGo: null };
   const last = points[points.length - 1];
   const currentBest = last.e1rm;
+
+  // When target is null (grandfathered blocks), compute slope but return null pace fields.
+  if (target == null) {
+    if (points.length < 2) return { currentBest, slopePerWeek: null, projectedHitWeek: null, kgToGo: null };
+    const slope = olsSlope(points.map((p) => ({ x: p.week, y: p.e1rm })));
+    return { currentBest, slopePerWeek: slope, projectedHitWeek: null, kgToGo: null };
+  }
+
   const kgToGo = Math.max(0, target - currentBest);
   if (points.length < 2) return { currentBest, slopePerWeek: null, projectedHitWeek: null, kgToGo };
   const slope = olsSlope(points.map((p) => ({ x: p.week, y: p.e1rm })));
@@ -173,7 +181,7 @@ export async function assembleBlockSummary(opts: {
   const totalWeeks = Math.max(1, Math.round(daysBetween(block.start_date, block.end_date) / 7));
   const weekNum = Math.min(blockWeekOf(block.start_date, todayIso), totalWeeks);
 
-  const pace = computeBlockPace(chart, block.target_value ?? Number.POSITIVE_INFINITY, totalWeeks);
+  const pace = computeBlockPace(chart, block.target_value, totalWeeks);
   const phase = evaluateBlockPhase({
     block,
     currentWorkingKg: pace.currentBest,

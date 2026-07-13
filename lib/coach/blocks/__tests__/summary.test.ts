@@ -23,4 +23,12 @@ describe("computeBlockPace", () => {
     expect(r.projectedHitWeek).toBe(2);
     expect(r.kgToGo).toBe(0);
   });
+  test("null target yields null pace fields (grandfathered blocks)", () => {
+    const pts = [{ week: 1, e1rm: 86 }, { week: 2, e1rm: 88 }];
+    const r = computeBlockPace(pts, null, 5);
+    expect(r.currentBest).toBe(88);
+    expect(r.slopePerWeek).toBeCloseTo(2, 5);
+    expect(r.projectedHitWeek).toBeNull();
+    expect(r.kgToGo).toBeNull();
+  });
 });
