@@ -315,9 +315,9 @@ export function NewBlockEditor({ userId, prefillFocus, prefillTarget, repoRows, 
         {rec && !recLoading && (
           <div style={{ fontSize: 10.5, color: COLOR.textMuted, marginTop: 3 }}>
             {rec.used === "trend" && rec.slope_kg_per_wk != null
-              ? `Trend-based: current ${fmtNum(rec.current_e1rm ?? 0)} + ${fmtNum(rec.slope_kg_per_wk)} kg/wk observed`
+              ? `Trend-based: current ${rec.current_e1rm != null ? fmtNum(rec.current_e1rm) : "—"} + ${fmtNum(rec.slope_kg_per_wk)} kg/wk observed`
               : rec.used === "math"
-              ? `Math-based estimate: current ${fmtNum(rec.current_e1rm ?? 0)} kg`
+              ? `Math-based estimate: current ${rec.current_e1rm != null ? fmtNum(rec.current_e1rm) : "—"} kg`
               : "No history — set manually"}
             {sanityBounds && (
               <>

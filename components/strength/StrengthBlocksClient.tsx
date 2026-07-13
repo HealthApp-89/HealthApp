@@ -23,7 +23,11 @@ export function StrengthBlocksClient({ userId }: Props) {
   const rawTarget = searchParams.get("prefill_target") ?? undefined;
   const prefillFocus: PrimaryLift | null =
     rawFocus && VALID_LIFTS.has(rawFocus) ? (rawFocus as PrimaryLift) : null;
-  const prefillTarget = rawTarget ? Number(rawTarget) : null;
+  const prefillTargetNum = rawTarget != null ? Number(rawTarget) : NaN;
+  const prefillTarget =
+    Number.isFinite(prefillTargetNum) && prefillTargetNum > 0 && prefillTargetNum < 1000
+      ? prefillTargetNum
+      : null;
 
   const {
     data: summary,

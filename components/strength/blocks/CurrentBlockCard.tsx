@@ -417,7 +417,7 @@ export function CurrentBlockCard({ payload, userId }: Props) {
             {
               v:
                 pace.slopePerWeek != null
-                  ? `+${fmtNum(pace.slopePerWeek)}/wk`
+                  ? `${pace.slopePerWeek >= 0 ? "+" : ""}${fmtNum(pace.slopePerWeek)}/wk`
                   : "—",
               l: "observed step",
             },
@@ -597,7 +597,10 @@ export function CurrentBlockCard({ payload, userId }: Props) {
                 {thisWeek.nextSession.exercises[0] && (
                   <>
                     {" "}
-                    {fmtNum(thisWeek.nextSession.exercises[0].kg ?? 0)} kg —{" "}
+                    {thisWeek.nextSession.exercises[0].kg != null
+                      ? `${fmtNum(thisWeek.nextSession.exercises[0].kg)} kg`
+                      : "—"}{" "}
+                    —{" "}
                     {thisWeek.nextSession.exercises[0].sets}×
                     {thisWeek.nextSession.exercises[0].reps}
                   </>
