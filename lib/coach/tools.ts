@@ -2189,14 +2189,21 @@ export async function executeCommitCloseBlock(opts: {
   // included. Re-closing a block regenerates a fresh narrative — acceptable
   // since generateOutcomeNarrative never returns empty (fallback guarantees
   // text). Block dates were fetched above; use them directly.
-  const { generateOutcomeNarrative } = await import("@/lib/coach/block-outcomes/narrative");
-  const { narrative } = await generateOutcomeNarrative({
-    payload: outcomePayload,
-    blockWindow: {
-      start_date: blockRow.start_date as string,
-      end_date: blockRow.end_date as string,
-    },
-  });
+  let narrative: string | null = null;
+  try {
+    const { generateOutcomeNarrative } = await import("@/lib/coach/block-outcomes/narrative");
+    const result = await generateOutcomeNarrative({
+      payload: outcomePayload,
+      blockWindow: {
+        start_date: blockRow.start_date as string,
+        end_date: blockRow.end_date as string,
+      },
+    });
+    narrative = result.narrative;
+  } catch (e) {
+    // Degrade gracefully: import or generation failure leaves narrative null;
+    // upsert proceeds without narrative_md rather than failing the close.
+  }
 
   // Upsert the block_outcomes row. UNIQUE constraint is on (block_id);
   // ON CONFLICT updates the payload but preserves athlete_acknowledged_at
@@ -2206,7 +2213,7 @@ export async function executeCommitCloseBlock(opts: {
     .upsert(
       {
         ...outcomePayload,
-        narrative_md: narrative,
+        ...(narrative ? { narrative_md: narrative } : {}),
         updated_at: new Date().toISOString(),
       },
       { onConflict: "block_id", ignoreDuplicates: false },
