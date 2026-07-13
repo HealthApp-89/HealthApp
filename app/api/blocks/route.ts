@@ -30,7 +30,12 @@ export async function POST(req: Request) {
   const sr = createSupabaseServiceRoleClient() as unknown as SupabaseClient;
   const tz = await getUserTimezone(user.id);
   const todayIso = todayInUserTz(new Date(), tz);
-  const lift = body.primary_lift as "squat" | "bench" | "deadlift" | "ohp";
+
+  const LIFTS = ["squat", "bench", "deadlift", "ohp"] as const;
+  if (!LIFTS.includes(body.primary_lift as (typeof LIFTS)[number])) {
+    return NextResponse.json({ ok: false, error: "primary_lift must be one of squat|bench|deadlift|ohp", code: "invalid_input" }, { status: 422 });
+  }
+  const lift = body.primary_lift as (typeof LIFTS)[number];
   const recommendation = await computeTargetRecommendation({ supabase: sr, userId: user.id, lift, todayIso })
     .catch(() => null);
 
