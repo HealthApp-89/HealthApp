@@ -74,6 +74,20 @@ function snapQuarter(v: number): number {
   return Math.round(v * 4) / 4;
 }
 
+/** Keep the first occurrence per name among NON-WARMUP entries. Warmup ramp
+ *  entries duplicate their working entry's name (engine-owned) — the edit
+ *  layer never touches them, so they must not become rows / diff keys. */
+function editableEntries(exercises: PlannedExercise[]): PlannedExercise[] {
+  const seen = new Set<string>();
+  const out: PlannedExercise[] = [];
+  for (const e of exercises) {
+    if (e.warmup || seen.has(e.name)) continue;
+    seen.add(e.name);
+    out.push(e);
+  }
+  return out;
+}
+
 export function DayEditSheet({
   userId,
   weekStart,
@@ -85,7 +99,7 @@ export function DayEditSheet({
   onClose,
 }: Props) {
   const [mounted, setMounted] = useState(false);
-  const [rows, setRows] = useState<Row[]>(() => current.map(toRow));
+  const [rows, setRows] = useState<Row[]>(() => editableEntries(current).map(toRow));
   const [step, setStep] = useState<"edit" | "scope">("edit");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -93,14 +107,16 @@ export function DayEditSheet({
 
   useEffect(() => setMounted(true), []);
 
+  const warmupCount = useMemo(() => current.filter((e) => e.warmup).length, [current]);
+
   const baselineMap = useMemo(() => {
     const m = new Map<string, BaselineRow>();
-    for (const ex of baseline) {
+    for (const ex of editableEntries(baseline)) {
       m.set(ex.name, { sets: ex.sets ?? 3, kg: ex.baseKg ?? null, reps: ex.baseReps ?? null });
     }
     return m;
   }, [baseline]);
-  const baselineOrder = useMemo(() => baseline.map((e) => e.name), [baseline]);
+  const baselineOrder = useMemo(() => editableEntries(baseline).map((e) => e.name), [baseline]);
 
   // ── diff vs engine baseline ────────────────────────────────────────────
   const diff = useMemo(() => {
@@ -371,6 +387,12 @@ export function DayEditSheet({
               </div>
             );
           })}
+
+          {warmupCount > 0 && (
+            <p style={{ fontSize: 11, color: COLOR.textFaint, margin: "8px 0 0" }}>
+              + {warmupCount} warmup ramp {warmupCount === 1 ? "set" : "sets"} (engine-managed, not editable here).
+            </p>
+          )}
 
           <p style={{ fontSize: 11, color: COLOR.textFaint, margin: "8px 0 0" }}>
             Weight steps follow each exercise&apos;s grid (barbell 2.5 · DB pair 4).

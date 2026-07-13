@@ -15,7 +15,8 @@
 //  2. weekday must be one of the 7 WeekdayLong values.
 //  3. A training_weeks row must exist for (user_id, week_start) → 404.
 //  4. Edits validated by validateDayEdits against the server-resolved exercise
-//     names (resolveSessionPlan without the manual layer).
+//     list (resolveSessionPlan without the manual layer) — the helper reduces
+//     it to the deduplicated NON-WARMUP name universe internally.
 //
 // Returns the updated day's resolved exercise list (with edits applied) so the
 // client can update its UI without a separate refetch.
@@ -137,7 +138,6 @@ export async function PATCH(
     weekPrescriptions: (row.session_prescriptions as SessionPrescriptions | null) ?? null,
     manualEdits: null,  // IMPORTANT: no manual layer for validation baseline
   });
-  const resolvedNames = resolved.exercises.map((e) => e.name);
 
   // Read-modify-write of manual_session_edits.
   const existing = (row.manual_session_edits as ManualSessionEdits | null) ?? {};
@@ -150,7 +150,7 @@ export async function PATCH(
   } else {
     // Validate edits.
     const editsObj = rawEdits as { order?: string[]; exercises?: Record<string, { sets?: number; kg?: number; reps?: number }> };
-    const validation = validateDayEdits(editsObj, resolvedNames);
+    const validation = validateDayEdits(editsObj, resolved.exercises);
     if (!validation.ok) {
       return NextResponse.json({ ok: false, error: validation.error, code: "invalid_edits" }, { status: 422 });
     }

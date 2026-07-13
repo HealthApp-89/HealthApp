@@ -10,16 +10,19 @@
 
 import type { PlannedExercise } from "@/lib/coach/sessionPlans";
 import type { SessionStructureOverrides } from "@/lib/data/types";
+import { reorderWithWarmupAnchors } from "@/lib/coach/manual-edits";
 
 /**
  * Apply a single session-type's structure override to `exercises`.
  *
  * - `overrides` null → identity (returns `exercises` unchanged, same reference).
  * - Session type not present in overrides → identity.
- * - `order` permutation-only: only reorders when every name in `order` exists
- *   in `exercises` and the lengths match (same tolerance as
- *   `applyManualSessionEdits`).
- * - `sets` per-exercise override: applied to whatever name matches; order
+ * - `order` permutation-only over the deduplicated NON-WARMUP names: only
+ *   reorders when `order` is a complete duplicate-free permutation (same
+ *   tolerance as `applyManualSessionEdits`); warmup ramp entries re-anchor
+ *   immediately before their working entry via `reorderWithWarmupAnchors`.
+ * - `sets` per-exercise override: applied to NON-WARMUP entries only (warmup
+ *   ramp entries share the working entry's name and stay engine-owned); order
  *   override is applied after sets so the mutated entries follow the new order.
  */
 export function applyStructureOverrides(
@@ -35,22 +38,22 @@ export function applyStructureOverrides(
   // Shallow-clone each entry so we never mutate the source array.
   let out = exercises.map((e) => ({ ...e }));
 
-  // Apply set-count overrides.
+  // Apply set-count overrides (non-warmup entries only).
   if (slot.sets) {
-    const byName = new Map(out.map((e) => [e.name, e]));
+    const byName = new Map<string, PlannedExercise>();
+    for (const e of out) {
+      if (!e.warmup && !byName.has(e.name)) byName.set(e.name, e);
+    }
     for (const [name, count] of Object.entries(slot.sets)) {
       const ex = byName.get(name);
       if (ex) ex.sets = count;
     }
   }
 
-  // Apply order permutation (permutation-only: same name set, different order).
+  // Apply order permutation (non-warmup names; warmups re-anchor).
   if (slot.order && slot.order.length > 0) {
-    const byName = new Map(out.map((e) => [e.name, e]));
-    const wanted = slot.order.filter((n) => byName.has(n));
-    if (wanted.length === out.length) {
-      out = wanted.map((n) => byName.get(n)!);
-    }
+    const reordered = reorderWithWarmupAnchors(out, slot.order);
+    if (reordered) out = reordered;
   }
 
   return out;
