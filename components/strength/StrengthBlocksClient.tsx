@@ -61,7 +61,20 @@ export function StrengthBlocksClient({ userId }: Props) {
     <div style={{ padding: "0 12px 20px" }}>
       {/* Current block monitor */}
       {summary ? (
-        <CurrentBlockCard payload={summary} userId={userId} />
+        <>
+          <CurrentBlockCard payload={summary} userId={userId} />
+          {/* Where the new-block editor would sit — spec one-liner. */}
+          <p
+            style={{
+              fontSize: 12,
+              color: COLOR.textMuted,
+              textAlign: "center",
+              margin: "14px 0 4px",
+            }}
+          >
+            Next block opens when this one closes.
+          </p>
+        </>
       ) : (
         /* New block editor — shown when no active block */
         <NewBlockEditor

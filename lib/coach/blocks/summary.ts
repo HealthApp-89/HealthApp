@@ -145,7 +145,7 @@ export async function assembleBlockSummary(opts: {
       .order("date", { ascending: true }),
     supabase
       .from("training_weeks")
-      .select("session_plan, exercise_overrides, session_prescriptions, rir_target, intensity_modifier")
+      .select("session_plan, exercise_overrides, session_prescriptions, manual_session_edits, rir_target, intensity_modifier")
       .eq("user_id", userId)
       .eq("week_start", weekMonday)
       .maybeSingle(),
@@ -155,7 +155,7 @@ export async function assembleBlockSummary(opts: {
   const workouts = (workoutRows ?? []) as unknown as RawWorkout[];
   const week = (weekRow ?? null) as Pick<
     TrainingWeek,
-    "session_plan" | "exercise_overrides" | "session_prescriptions" | "rir_target" | "intensity_modifier"
+    "session_plan" | "exercise_overrides" | "session_prescriptions" | "manual_session_edits" | "rir_target" | "intensity_modifier"
   > | null;
 
   // ── chart: per-block-week max comparison value for the primary lift ──
@@ -246,7 +246,7 @@ export async function assembleBlockSummary(opts: {
 // ── helpers (pure UTC-day arithmetic on keyed YMD strings) ───────────────
 
 function findNextSession(opts: {
-  week: Pick<TrainingWeek, "session_plan" | "exercise_overrides" | "session_prescriptions"> | null;
+  week: Pick<TrainingWeek, "session_plan" | "exercise_overrides" | "session_prescriptions" | "manual_session_edits"> | null;
   todayIso: string;
   doneToday: boolean;
 }): BlockSummaryNextSession {
@@ -260,12 +260,15 @@ function findNextSession(opts: {
     const weekday = WEEKDAY_FULL[dayOfWeek(iso)];
     const type = readSessionForDay(week.session_plan, weekday);
     if (!type || type.toUpperCase() === "REST") continue;
+    // Same numbers as the logger: the manual-edit layer (6th arg) merges
+    // above session_prescriptions in every resolution chain.
     const plan = getEffectiveSessionPlan(
       type,
       weekday,
       week.session_prescriptions,
       week.exercise_overrides,
       null,
+      week.manual_session_edits,
     );
     return {
       weekday,

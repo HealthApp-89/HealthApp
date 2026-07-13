@@ -22,9 +22,11 @@
 //  A. Re-run prescribeWeek for the CURRENT week and upsert
 //     training_weeks.session_prescriptions (so the engine immediately sees the
 //     new structure preference).
-//  B. Apply the override's order + sets into the current week's
+//  B. Merge the override's order + sets into the current week's
 //     manual_session_edits for every weekday whose session type matches
-//     session_type, so the UI sees the change without waiting for Sunday cron.
+//     session_type (preserving prior week-scope kg/reps deltas), so the UI
+//     sees the change without waiting for Sunday cron. Clearing an override
+//     removes the previously-propagated order/sets pieces the same way.
 
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient, createSupabaseServiceRoleClient } from "@/lib/supabase/server";
@@ -34,6 +36,7 @@ import { todayInUserTz } from "@/lib/time";
 import { currentWeekMonday } from "@/lib/coach/week";
 import { readSessionForDay } from "@/lib/coach/session-plan-reader";
 import { resolveSessionPlan } from "@/lib/logger/resolve-plan";
+import { nonWarmupNames } from "@/lib/coach/manual-edits";
 import { upsertWeekPrescription, WEEKDAY_LONG_ORDER } from "@/lib/coach/prescription/upsert-week-prescription";
 import type {
   SessionStructureOverrides,
@@ -161,10 +164,11 @@ export async function PATCH(
   const todayIso = todayInUserTz(new Date(), tz);
   const thisMonday = currentWeekMonday(new Date(), tz);
 
-  // Build the union of allowed names:
+  // Build the union of allowed names (NON-WARMUP only — warmup ramp entries
+  // duplicate their working entry's name and are never directly editable):
   //   SESSION_PLANS[session_type] names UNION current week's resolved names for
   //   all days scheduled as session_type.
-  const staticNames = new Set<string>(SESSION_PLANS[sessionType].map((e) => e.name));
+  const staticNames = new Set<string>(nonWarmupNames(SESSION_PLANS[sessionType]));
 
   // Load current week row for resolved-names union + side-effects.
   const { data: weekRow, error: weekErr } = await supabase
@@ -194,7 +198,7 @@ export async function PATCH(
           weekPrescriptions: (week.session_prescriptions as SessionPrescriptions | null) ?? null,
           manualEdits: null,
         });
-        for (const e of dayResolved.exercises) allowedNames.add(e.name);
+        for (const n of nonWarmupNames(dayResolved.exercises)) allowedNames.add(n);
       }
     }
   }
@@ -248,19 +252,34 @@ export async function PATCH(
     }
   }
 
-  // Side-effect B: apply override's order + sets into manual_session_edits for
-  // every weekday in the current week that matches session_type, so the UI sees
-  // the change immediately without waiting for the prescription.
-  if (week && rawOverride !== null && rawOverride !== undefined) {
-    const overrideObj = rawOverride as { order?: string[]; sets?: Record<string, number> };
+  // Side-effect B: reflect the override into the current week's
+  // manual_session_edits for every weekday that matches session_type, so the
+  // UI sees the change immediately without waiting for the prescription.
+  //
+  //  - Write:  deep-MERGE per (non-warmup) exercise — preserve existing
+  //            kg/reps deltas, overwrite only sets (from the override) and
+  //            order. A plain replace erased prior week-scope kg/reps edits.
+  //  - Clear (override: null): remove the pieces the PRIOR override
+  //    propagated (order matching the prior order, sets matching the prior
+  //    per-exercise counts) while preserving unrelated kg/reps deltas.
+  const priorOverride = existingOverrides[sessionType] ?? null;
+  const isClear = rawOverride === null || rawOverride === undefined;
+  if (week && (!isClear || priorOverride)) {
+    const overrideObj = isClear
+      ? null
+      : (rawOverride as { order?: string[]; sets?: Record<string, number> });
     const existingManual = (week.manual_session_edits as ManualSessionEdits | null) ?? {};
-    let manualUpdated = { ...existingManual };
+    let manualUpdated: ManualSessionEdits = { ...existingManual };
+    let manualTouched = false;
+    type DayEdit = { order?: string[]; exercises?: Record<string, { sets?: number; kg?: number; reps?: number }> };
 
     for (const wd of WEEKDAY_LONG_ORDER) {
       const dayType = readSessionForDay(week.session_plan as Record<string, string>, wd);
       if (dayType !== sessionType) continue;
 
-      // Resolve the day's exercise list to get correct names for the manual edit.
+      // Resolve the day's exercise list to get correct names for the manual
+      // edit. The manual-edit layer's name universe is the deduplicated
+      // NON-WARMUP list (warmup ramp entries duplicate their working entry).
       const dayResolved = await resolveSessionPlan({
         supabase: sr,
         userId: user.id,
@@ -270,42 +289,96 @@ export async function PATCH(
         weekPrescriptions: (week.session_prescriptions as SessionPrescriptions | null) ?? null,
         manualEdits: null,
       });
-      const dayNames = new Set(dayResolved.exercises.map((e) => e.name));
+      const dayNonWarmup = nonWarmupNames(dayResolved.exercises);
+      const dayNames = new Set(dayNonWarmup);
 
-      // Build a day-edit from the override: filter order/sets to only names
-      // that exist in this specific day's exercises (union might include extra).
-      const dayEdit: { order?: string[]; exercises?: Record<string, { sets?: number }> } = {};
+      const existingDay: DayEdit | undefined = manualUpdated[wd as WeekdayLong];
+      let nextDay: DayEdit | null;
 
-      if (overrideObj.order) {
-        const filteredOrder = overrideObj.order.filter((n) => dayNames.has(n));
-        if (filteredOrder.length === dayResolved.exercises.length) {
-          dayEdit.order = filteredOrder;
+      if (overrideObj) {
+        // ── merge write ──
+        const merged: DayEdit = {};
+
+        // Order: override wins when it forms a complete non-warmup
+        // permutation for this specific day (union may include extra names);
+        // otherwise any existing week-scope order is preserved.
+        if (overrideObj.order) {
+          const filteredOrder = overrideObj.order.filter((n) => dayNames.has(n));
+          if (filteredOrder.length === dayNames.size) merged.order = filteredOrder;
+          else if (existingDay?.order) merged.order = existingDay.order;
+        } else if (existingDay?.order) {
+          merged.order = existingDay.order;
         }
-      }
-      if (overrideObj.sets) {
-        const filteredSets: Record<string, { sets?: number }> = {};
-        for (const [name, count] of Object.entries(overrideObj.sets)) {
-          if (dayNames.has(name)) filteredSets[name] = { sets: count };
+
+        // Exercises: keep every existing delta's kg/reps; overwrite only sets
+        // for exercises named in the override.
+        const mergedExercises: Record<string, { sets?: number; kg?: number; reps?: number }> = {};
+        for (const [name, d] of Object.entries(existingDay?.exercises ?? {})) {
+          mergedExercises[name] = { ...d };
         }
-        if (Object.keys(filteredSets).length > 0) {
-          dayEdit.exercises = { ...(dayEdit.exercises ?? {}), ...filteredSets };
+        if (overrideObj.sets) {
+          for (const [name, count] of Object.entries(overrideObj.sets)) {
+            if (!dayNames.has(name)) continue;
+            mergedExercises[name] = { ...(mergedExercises[name] ?? {}), sets: count };
+          }
         }
+        if (Object.keys(mergedExercises).length > 0) merged.exercises = mergedExercises;
+
+        nextDay = merged.order || merged.exercises ? merged : null;
+      } else {
+        // ── clear (M1) ──
+        if (!existingDay || !priorOverride) continue;
+        const cleared: DayEdit = {};
+
+        // Drop order only when it matches what the prior override propagated.
+        if (existingDay.order) {
+          const priorPropagated = priorOverride.order
+            ? priorOverride.order.filter((n) => dayNames.has(n))
+            : null;
+          const matchesPrior =
+            priorPropagated != null &&
+            priorPropagated.length === existingDay.order.length &&
+            priorPropagated.every((n, i) => n === existingDay.order![i]);
+          if (!matchesPrior) cleared.order = existingDay.order;
+        }
+
+        // Drop sets fields matching the prior override's counts; keep kg/reps.
+        const keptExercises: Record<string, { sets?: number; kg?: number; reps?: number }> = {};
+        for (const [name, d] of Object.entries(existingDay.exercises ?? {})) {
+          const kept = { ...d };
+          if (kept.sets !== undefined && priorOverride.sets?.[name] === kept.sets) {
+            delete kept.sets;
+          }
+          if (Object.keys(kept).length > 0) keptExercises[name] = kept;
+        }
+        if (Object.keys(keptExercises).length > 0) cleared.exercises = keptExercises;
+
+        nextDay = cleared.order || cleared.exercises ? cleared : null;
       }
 
-      if (dayEdit.order || dayEdit.exercises) {
-        manualUpdated = { ...manualUpdated, [wd as WeekdayLong]: dayEdit };
+      // Apply nextDay only when it actually changes this weekday's entry.
+      const changed = JSON.stringify(nextDay ?? null) !== JSON.stringify(existingDay ?? null);
+      if (!changed) continue;
+      if (nextDay) {
+        manualUpdated = { ...manualUpdated, [wd as WeekdayLong]: nextDay };
+      } else {
+        const { [wd as WeekdayLong]: _removed, ...rest } = manualUpdated;
+        manualUpdated = rest;
       }
+      manualTouched = true;
     }
 
-    const newManualValue = Object.keys(manualUpdated).length === 0 ? null : manualUpdated;
-    const { error: manualWriteErr } = await sr
-      .from("training_weeks")
-      .update({ manual_session_edits: newManualValue, updated_at: new Date().toISOString() })
-      .eq("user_id", user.id)
-      .eq("week_start", thisMonday);
-    if (manualWriteErr) {
-      console.error("[structure-overrides] manual_session_edits write failed (non-fatal):", manualWriteErr.message);
-      // Non-fatal: block override already written; manual edits are convenience only.
+    if (manualTouched) {
+      const newManualValue = Object.keys(manualUpdated).length === 0 ? null : manualUpdated;
+      const { error: manualWriteErr } = await sr
+        .from("training_weeks")
+        .update({ manual_session_edits: newManualValue, updated_at: new Date().toISOString() })
+        .eq("user_id", user.id)
+        .eq("week_start", thisMonday);
+      if (manualWriteErr) {
+        console.error("[structure-overrides] manual_session_edits write failed (non-fatal):", manualWriteErr.message);
+        // Non-fatal: block override already written; manual edits are convenience only.
+      }
     }
   }
 
