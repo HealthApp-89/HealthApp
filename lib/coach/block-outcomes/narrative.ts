@@ -84,16 +84,16 @@ export async function generateOutcomeNarrative(opts: {
     JSON.stringify({ ...payload, blockWindow }, null, 1),
   ].join("\n");
 
-  try {
-    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    try {
       const text = await callClaude(
         [{ role: "user", content: prompt }],
         { model: SHORT_FORM_MODEL, maxTokens: 400 },
       );
       if (text && narrativeNumbersValid(text, payload)) return { narrative: text, source: "ai" };
+    } catch {
+      // transient API error, continue to next attempt
     }
-  } catch {
-    // fall through to deterministic
   }
   return { narrative: deterministicNarrative(payload, blockWindow), source: "fallback" };
 }

@@ -36,4 +36,15 @@ describe("deterministicNarrative", () => {
     expect(text).toContain("90");
     expect(text.toLowerCase()).toContain("pick up");
   });
+  test("covers recommended_next_focus === primary_lift path", () => {
+    const payloadSameLift = {
+      ...payload,
+      primary_lift: "bench" as const,
+      recommended_next_focus: "bench" as const,
+      recommended_target_value_kg: 92.5,
+    };
+    const text = deterministicNarrative(payloadSameLift, win);
+    expect(text).toContain("92.5");
+    expect(text.toLowerCase()).toContain("pick up");
+  });
 });
