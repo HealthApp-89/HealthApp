@@ -81,6 +81,10 @@ export const queryKeys = {
   blockProgress: {
     active: (userId: string) => ["block-progress", userId, "active"] as const,
   },
+  blockSummary: {
+    all: (userId: string) => ["blockSummary", userId] as const,
+    today: (userId: string, todayIso: string) => ["blockSummary", userId, todayIso] as const,
+  },
   blockOutcome: (blockId: string) => ["block-outcome", blockId] as const,
   recentE1RMs: {
     one: (userId: string, today: string) =>
