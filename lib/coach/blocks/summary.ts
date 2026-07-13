@@ -97,10 +97,10 @@ export type BlockSummaryPayload = {
     sessionsPlanned: number;
     nextSession: BlockSummaryNextSession;
   };
-  /** Non-focus primary lifts: max non-warmup working kg over the last 14
+  /** Non-focus primary lifts: latest working kg over the last 42
    *  days. `clampHeld` is null in v1 — the block-outcomes clamp evaluator is
    *  inline in generateBlockOutcome and not importable without refactor. */
-  secondaries: Array<{ lift: PrimaryLift; kg: number | null; clampHeld: boolean | null }>;
+  secondaries: Array<{ lift: PrimaryLift; kg: number | null; daysAgo: number | null; clampHeld: boolean | null }>;
 };
 
 // ── Supabase-driven orchestrator ─────────────────────────────────────────
@@ -110,7 +110,39 @@ type RawExercise = { name: string; exercise_sets: RawSet[] | null };
 type RawWorkout = { date: string; exercises: RawExercise[] | null };
 
 const ALL_PRIMARY_LIFTS: PrimaryLift[] = ["squat", "bench", "deadlift", "ohp"];
-const SECONDARIES_WINDOW_DAYS = 14;
+// Maintenance monitoring must not blank a lift right when it goes stale —
+// an untrained-for-3-weeks lift is exactly the one at risk. Look back far
+// enough to catch the last realized weight and surface staleness instead
+// (2026-07-13: deadlift showed "—" because its last session was 18d ago,
+// just past the old 14d cutoff).
+const SECONDARIES_WINDOW_DAYS = 42;
+/** Days after which the UI should flag a secondary lift as stale. */
+export const SECONDARY_STALE_AFTER_DAYS = 14;
+
+/** Pure: best non-warmup working kg from the MOST RECENT workout containing
+ *  the lift, plus that workout's date. Latest-session weight (not window max)
+ *  is the honest maintenance signal — a 6-week-old heavier set shouldn't
+ *  mask a lighter current reality. */
+export function computeSecondary(
+  workouts: Array<{ date: string; exercises?: Array<{ name: string; exercise_sets?: Array<{ kg: number | null; reps: number | null; warmup: boolean | null }> | null }> | null }>,
+  names: Set<string>,
+): { kg: number | null; lastDate: string | null } {
+  let kg: number | null = null;
+  let lastDate: string | null = null;
+  for (const w of workouts) {
+    let dayBest: number | null = null;
+    for (const ex of w.exercises ?? []) {
+      if (!names.has(ex.name.toLowerCase())) continue;
+      const best = bestComparisonValue(ex.exercise_sets ?? [], "working_weight");
+      if (best != null && (dayBest == null || best > dayBest)) dayBest = best;
+    }
+    if (dayBest != null && (lastDate == null || w.date >= lastDate)) {
+      kg = dayBest;
+      lastDate = w.date;
+    }
+  }
+  return { kg, lastDate };
+}
 const WEEKDAY_FULL = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 export async function assembleBlockSummary(opts: {
@@ -200,20 +232,16 @@ export async function assembleBlockSummary(opts: {
 
   const nextSession = findNextSession({ week, todayIso, doneToday: doneDates.has(todayIso) });
 
-  // ── secondaries: last-14d max non-warmup working kg per non-focus lift ──
+  // ── secondaries: latest working kg per non-focus lift (42d window) ──
   const secondariesFrom = addDaysIso(todayIso, -SECONDARIES_WINDOW_DAYS);
   const secondaries = ALL_PRIMARY_LIFTS.filter((l) => l !== block.primary_lift).map((lift) => {
     const names = new Set(PRIMARY_LIFT_NAME_PATTERNS[lift].map((n) => n.toLowerCase()));
-    let kg: number | null = null;
-    for (const w of workouts) {
-      if (w.date < secondariesFrom) continue;
-      for (const ex of w.exercises ?? []) {
-        if (!names.has(ex.name.toLowerCase())) continue;
-        const best = bestComparisonValue(ex.exercise_sets ?? [], "working_weight");
-        if (best != null && (kg == null || best > kg)) kg = best;
-      }
-    }
-    return { lift, kg, clampHeld: null };
+    const { kg, lastDate } = computeSecondary(
+      workouts.filter((w) => w.date >= secondariesFrom),
+      names,
+    );
+    const daysAgo = lastDate != null ? daysBetween(lastDate, todayIso) : null;
+    return { lift, kg, daysAgo, clampHeld: null };
   });
 
   return {

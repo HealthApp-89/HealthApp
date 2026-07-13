@@ -17,7 +17,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { COLOR, RADIUS, SHADOW } from "@/lib/ui/theme";
 import { fmtNum } from "@/lib/ui/score";
 import { queryKeys } from "@/lib/query/keys";
-import type { BlockSummaryPayload } from "@/lib/coach/blocks/summary";
+import { SECONDARY_STALE_AFTER_DAYS, type BlockSummaryPayload } from "@/lib/coach/blocks/summary";
 import type { BlockPhase } from "@/lib/coach/prescription/types";
 
 type PhaseTag = { label: string; bg: string; fg: string };
@@ -627,32 +627,40 @@ export function CurrentBlockCard({ payload, userId }: Props) {
           Secondary lifts — maintenance
         </div>
         <div style={{ display: "flex", gap: 6 }}>
-          {secondaries.map(({ lift, kg }) => (
-            <div
-              key={lift}
-              style={{
-                flex: 1,
-                background: COLOR.surfaceAlt,
-                borderRadius: RADIUS.cardSmall,
-                padding: "7px 4px",
-                textAlign: "center",
-              }}
-            >
-              <div style={{ fontSize: 12.5, fontWeight: 700, color: COLOR.textStrong }}>
-                {kg != null ? `${fmtNum(kg)}` : "—"}
-              </div>
+          {secondaries.map(({ lift, kg, daysAgo }) => {
+            const stale = daysAgo != null && daysAgo > SECONDARY_STALE_AFTER_DAYS;
+            return (
               <div
+                key={lift}
                 style={{
-                  fontSize: 9,
-                  color: COLOR.textMuted,
-                  textTransform: "uppercase",
-                  fontWeight: 600,
+                  flex: 1,
+                  background: stale ? COLOR.warningSoft : COLOR.surfaceAlt,
+                  borderRadius: RADIUS.cardSmall,
+                  padding: "7px 4px",
+                  textAlign: "center",
                 }}
               >
-                {lift}
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: COLOR.textStrong }}>
+                  {kg != null ? `${fmtNum(kg)}` : "—"}
+                  {stale && (
+                    <span style={{ fontSize: 9, fontWeight: 600, color: COLOR.warningDeep, marginLeft: 3 }}>
+                      {daysAgo}d
+                    </span>
+                  )}
+                </div>
+                <div
+                  style={{
+                    fontSize: 9,
+                    color: COLOR.textMuted,
+                    textTransform: "uppercase",
+                    fontWeight: 600,
+                  }}
+                >
+                  {lift}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         {/* Actions */}
