@@ -86,6 +86,8 @@ import {
   executeAddPlannedActivity,
   executeProposeActivityAdjustment,
   executeCommitActivityAdjustment,
+  executeLogInjury,
+  executeResolveInjury,
   toolsForSpeaker,
   colsForSpeaker,
   type ToolResult,
@@ -135,6 +137,10 @@ const PERSIST_RESULT_TOOLS = new Set([
   // Activity adjustment: preview chip + commit confirmation must survive reload.
   "propose_activity_adjustment",
   "commit_activity_adjustment",
+  // Injury lifecycle: receipt chips must survive history reload so the athlete
+  // can see "Injury logged: hip — since Jun 29" / "Injury resolved: hip" on revisit.
+  "log_injury",
+  "resolve_injury",
 ]);
 function shouldPersistResult(name: string): boolean {
   return PERSIST_RESULT_TOOLS.has(name);
@@ -687,6 +693,18 @@ const TOOL_EXECUTORS: Record<string, (a: ToolExecArgs) => Promise<ToolResult<unk
       userId: a.opts.userId,
       input: a.input,
     }),
+  log_injury: (a) =>
+    executeLogInjury({
+      supabase: a.opts.sr,
+      userId: a.opts.userId,
+      input: a.input,
+    }),
+  resolve_injury: (a) =>
+    executeResolveInjury({
+      supabase: a.opts.sr,
+      userId: a.opts.userId,
+      input: a.input,
+    }),
   // Intake-cluster tools: all require draftDocId; share makeIntakeTool factory.
   apply_goal_target: makeIntakeTool("apply_goal_target"),
   apply_bedtime_correction: makeIntakeTool("apply_bedtime_correction"),
@@ -857,6 +875,11 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
     // the HMAC approve chip still gates the actual commit.
     if (name === "propose_block") return true;
     if (name === "commit_block") return true;
+    // Injury lifecycle tools: athlete reports an injury or marks it resolved from
+    // default chat. Direct-writes (no HMAC) — allow in all modes so the model
+    // never narrates a fake write in prose with no DB row.
+    if (name === "log_injury") return true;
+    if (name === "resolve_injury") return true;
     // Endurance write tools (Carter): athlete legitimately asks for a Z2
     // week or updates threshold HR / FTP from default chat. Without these
     // explicit allows the prefix guards below strip them, the model invents

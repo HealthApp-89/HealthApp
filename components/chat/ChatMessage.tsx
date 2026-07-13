@@ -550,6 +550,8 @@ function renderToolReceiptChip(call: {
     "add_planned_activity",
     "propose_activity_adjustment",
     "commit_activity_adjustment",
+    "log_injury",
+    "resolve_injury",
   ]);
   if (!RECEIPT_TOOLS.has(call.name)) return null;
 
@@ -675,6 +677,37 @@ function renderToolReceiptChip(call: {
       <span style={styleBase}>
         <span aria-hidden="true">✓</span>
         <span>Adjusted session: {parts || "applied"}</span>
+      </span>
+    );
+  }
+
+  if (call.name === "log_injury") {
+    const r = (call.result ?? {}) as {
+      injury?: { area?: string; side?: string | null; onset_date?: string };
+    };
+    const inj = r.injury;
+    if (!inj) return null;
+    const areaLabel = inj.area
+      ? inj.side
+        ? `${inj.area} (${inj.side})`
+        : inj.area
+      : "injury";
+    const sinceLabel = inj.onset_date ?? "";
+    return (
+      <span style={styleBase}>
+        <span aria-hidden="true">✓</span>
+        <span>Injury logged: {areaLabel}{sinceLabel ? ` — since ${sinceLabel}` : ""}</span>
+      </span>
+    );
+  }
+
+  if (call.name === "resolve_injury") {
+    const r = (call.result ?? {}) as { injury?: { area?: string } };
+    const area = r.injury?.area ?? (call.input.area as string | undefined) ?? "injury";
+    return (
+      <span style={styleBase}>
+        <span aria-hidden="true">✓</span>
+        <span>Injury resolved: {area}</span>
       </span>
     );
   }
