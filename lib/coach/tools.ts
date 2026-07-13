@@ -41,6 +41,8 @@ import { maintenanceLoadFor } from "@/lib/coach/prescription/maintenance-baselin
 import { prescribeWeek, computeActivityLayoutProposal } from "@/lib/coach/prescription/prescribe-week";
 import { upsertWeekPrescription } from "@/lib/coach/prescription/upsert-week-prescription";
 import { computeTargetRecommendation, type TargetRecommendation } from "@/lib/coach/prescription/calibrate-target";
+import { validateBlockInput, insertBlock } from "@/lib/coach/blocks/create-block";
+import { closeBlockCore } from "@/lib/coach/blocks/close-block";
 import { generateBlockOutcome, type GenerateBlockOutcomeResult } from "@/lib/coach/block-outcomes";
 import type { WorkoutSetSample } from "@/lib/coach/prescription/types";
 import type { PlannedExercise } from "@/lib/coach/sessionPlans";
@@ -1925,35 +1927,15 @@ export async function executeProposeBlock(opts: {
   const t0 = Date.now();
   const i = (opts.input ?? {}) as Record<string, unknown>;
 
-  if (typeof i.goal_text !== "string" || i.goal_text.length < 4 || i.goal_text.length > 200) {
-    return { ok: false, error: { error: "goal_text required (4-200 chars)" }, meta: { ms: Date.now() - t0, range_days: 0 } };
-  }
-  if (!isYmd(i.start_date) || !isYmd(i.end_date)) {
-    return { ok: false, error: { error: "start_date/end_date must be YYYY-MM-DD" }, meta: { ms: Date.now() - t0, range_days: 0 } };
-  }
-  const start = new Date((i.start_date as string) + "T00:00:00Z");
-  const end = new Date((i.end_date as string) + "T00:00:00Z");
-  if (start.getUTCDay() !== 1) {
-    return { ok: false, error: { error: "start_date must be a Monday" }, meta: { ms: Date.now() - t0, range_days: 0 } };
-  }
-  const expectedEnd = new Date(start);
-  expectedEnd.setUTCDate(start.getUTCDate() + 34);
-  if (end.toISOString().slice(0, 10) !== expectedEnd.toISOString().slice(0, 10)) {
-    return { ok: false, error: { error: "end_date must be exactly start_date + 34 days (5 weeks)" }, meta: { ms: Date.now() - t0, range_days: 0 } };
-  }
-  // target_metric and target_value must come together
-  const hasMetric = i.target_metric != null;
-  const hasValue = i.target_value != null;
-  if (hasMetric !== hasValue) {
-    return { ok: false, error: { error: "target_metric and target_value must both be set or both null" }, meta: { ms: Date.now() - t0, range_days: 0 } };
-  }
-  // primary_lift enum guard — schema-level enforcement only runs in the
-  // Anthropic API; server must re-validate so an unexpected string can't
-  // slip through and silently bypass the sanity-bounds check below
-  // (PRIMARY_LIFT_NAME_PATTERNS[unknown] = undefined → empty recommendation
-  // → zero enforcement).
-  if (i.primary_lift != null && !["squat", "bench", "deadlift", "ohp"].includes(i.primary_lift as string)) {
-    return { ok: false, error: { error: "primary_lift must be one of: squat, bench, deadlift, ohp" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  // Basic input validation FIRST (recommendation: null → no bounds check yet)
+  // so an invalid primary_lift never reaches computeTargetRecommendation —
+  // preserves the pre-extraction ordering where the enum guard ran before any
+  // DB fetch. Validation rules live in lib/coach/blocks/create-block.ts,
+  // shared with POST /api/blocks. Basic-validation errors carry no `code`
+  // key on the chat path (byte-identical to the pre-extraction shape).
+  const basic = validateBlockInput(i, null);
+  if (!basic.ok) {
+    return { ok: false, error: { error: basic.error }, meta: { ms: Date.now() - t0, range_days: 0 } };
   }
 
   // ── Target calibration: trend-derived sanity check ──────────────────────
@@ -1977,35 +1959,23 @@ export async function executeProposeBlock(opts: {
     }
   }
 
-  if (recommendation?.sanity_bounds != null && i.target_value != null) {
-    const [lo, hi] = recommendation.sanity_bounds;
-    const tv = i.target_value as number;
-    const outOfBounds = tv < lo || tv > hi;
-    const overrideReason = typeof i.override_reason === "string" && i.override_reason.trim().length >= 4 ? i.override_reason : null;
-    if (outOfBounds && overrideReason == null) {
-      const direction = tv < lo ? "too low" : "too high";
-      const hint = tv < lo
-        ? `Target ${tv} kg would be hit too quickly given current ${recommendation.current_e1rm} e1RM. Sanity floor for this lift is ${lo} kg.`
-        : `Target ${tv} kg exceeds realistic 4-week progression. Sanity ceiling for this lift is ${hi} kg (current ${recommendation.current_e1rm} e1RM + 1.5× the trend-realistic 4-week gain).`;
-      return {
-        ok: false,
-        error: {
-          error: `Proposed target ${tv} kg is ${direction} for a 5-week ${i.primary_lift} block. ${hint} Recommended target: ${recommendation.recommended_target} kg (${recommendation.used}-based). To proceed with ${tv} kg anyway, retry propose_block with an explicit override_reason explaining why.`,
-          code: "target_out_of_bounds",
-          hint,
-        },
-        meta: { ms: Date.now() - t0, range_days: 0 },
-      };
-    }
-    if (outOfBounds && overrideReason != null) {
-      console.info("[propose_block] target_out_of_bounds_override", {
-        userId: opts.userId,
-        lift: i.primary_lift,
-        proposed: tv,
-        bounds: [lo, hi],
-        reason: overrideReason,
-      });
-    }
+  // Bounds enforcement (same validator, now with the recommendation).
+  const v = validateBlockInput(i, recommendation);
+  if (!v.ok) {
+    return {
+      ok: false,
+      error: { error: v.error, code: v.code, hint: v.hint },
+      meta: { ms: Date.now() - t0, range_days: 0 },
+    };
+  }
+  if (v.overridden && recommendation?.sanity_bounds != null) {
+    console.info("[propose_block] target_out_of_bounds_override", {
+      userId: opts.userId,
+      lift: i.primary_lift,
+      proposed: i.target_value,
+      bounds: recommendation.sanity_bounds,
+      reason: i.override_reason,
+    });
   }
 
   const payload = i as unknown as ProposeBlockInput;
@@ -2138,126 +2108,28 @@ export async function executeCommitCloseBlock(opts: {
   }
   const p = envelope.payload as ProposeCloseBlockInput;
 
-  // Re-verify the block is still active + owned by this user.
-  const { data: blockRow, error: blockErr } = await opts.supabase
-    .from("training_blocks")
-    .select("id, status, start_date, end_date")
-    .eq("id", p.blockId)
-    .eq("user_id", opts.userId)
-    .maybeSingle();
-  if (blockErr) {
-    return { ok: false, error: { error: `active_block_fetch_failed: ${blockErr.message}`, code: "fetch_failed" }, meta: { ms: Date.now() - t0, range_days: 0 } };
-  }
-  if (!blockRow) {
-    // Distinct from propose-side "no_active_block": at commit time the token
-    // names a specific block_id; if it isn't there, the block was deleted (or
-    // the id was tampered with), not "no active block". UI/audit needs the
-    // distinction.
-    return { ok: false, error: { error: "Block not found.", code: "block_not_found" }, meta: { ms: Date.now() - t0, range_days: 0 } };
-  }
-  if (blockRow.status !== "active") {
+  // Shared close core (lib/coach/blocks/close-block.ts): re-verify the block
+  // is still active + owned by this user → regenerate outcome against fresh
+  // data → Carter-voiced narrative → block_outcomes upsert → conditional
+  // training_blocks flip. Same writes as the session-authed
+  // POST /api/blocks/close confirm path; tools.ts keeps only token
+  // verification + error-shape mapping.
+  const result = await closeBlockCore({
+    supabase: opts.supabase,
+    userId: opts.userId,
+    blockId: p.blockId,
+  });
+  if (!result.ok) {
     return {
       ok: false,
-      error: { error: `Block is already ${blockRow.status}. Nothing to close.`, code: "already_closed" },
-      meta: { ms: Date.now() - t0, range_days: 0 },
-    };
-  }
-
-  // Re-run outcome generation against fresh data (athlete may have logged a
-  // workout between propose and commit; we write what's current, not what's
-  // in the token).
-  let outcomePayload: GenerateBlockOutcomeResult["payload"];
-  try {
-    const result = await generateBlockOutcome({
-      supabase: opts.supabase,
-      userId: opts.userId,
-      blockId: p.blockId,
-    });
-    outcomePayload = result.payload;
-  } catch (e) {
-    return {
-      ok: false,
-      error: {
-        error: `Couldn't compute the block outcome at commit time. ${String(e)}`,
-        code: "outcome_generate_failed",
-      },
-      meta: { ms: Date.now() - t0, range_days: 0 },
-    };
-  }
-
-  // Generate Carter-voiced narrative BEFORE the upsert so it is always
-  // included. Re-closing a block regenerates a fresh narrative — acceptable
-  // since generateOutcomeNarrative never returns empty (fallback guarantees
-  // text). Block dates were fetched above; use them directly.
-  let narrative: string | null = null;
-  try {
-    const { generateOutcomeNarrative } = await import("@/lib/coach/block-outcomes/narrative");
-    const result = await generateOutcomeNarrative({
-      payload: outcomePayload,
-      blockWindow: {
-        start_date: blockRow.start_date as string,
-        end_date: blockRow.end_date as string,
-      },
-    });
-    narrative = result.narrative;
-  } catch (e) {
-    // Degrade gracefully: import or generation failure leaves narrative null;
-    // upsert proceeds without narrative_md rather than failing the close.
-  }
-
-  // Upsert the block_outcomes row. UNIQUE constraint is on (block_id);
-  // ON CONFLICT updates the payload but preserves athlete_acknowledged_at
-  // (which the next commit_block will stamp when the next block starts).
-  const { data: outcomeRow, error: outcomeErr } = await opts.supabase
-    .from("block_outcomes")
-    .upsert(
-      {
-        ...outcomePayload,
-        ...(narrative ? { narrative_md: narrative } : {}),
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "block_id", ignoreDuplicates: false },
-    )
-    .select("id")
-    .single();
-  if (outcomeErr || !outcomeRow) {
-    return {
-      ok: false,
-      error: { error: `block_outcomes upsert failed: ${outcomeErr?.message ?? "unknown"}`, code: "outcome_upsert_failed" },
-      meta: { ms: Date.now() - t0, range_days: 0 },
-    };
-  }
-
-  // Flip the block to completed. Idempotent — the WHERE status='active' guard
-  // makes re-runs no-op even if a concurrent close just landed.
-  //
-  // NOTE: deliberately does NOT write a `chat_messages` row with kind=
-  // 'block_outcome' (which the cron at app/api/coach/block-outcomes/sweep
-  // does). The chat-initiated close-block flow surfaces the outcome via the
-  // commit_close_block confirmation chip (PERSIST_RESULT_TOOLS) and via
-  // BLOCK_OUTCOME_CONTEXT in setup_block mode — the durable card is
-  // unnecessary on the in-chat path and would duplicate the chip.
-  const { error: updateErr } = await opts.supabase
-    .from("training_blocks")
-    .update({
-      status: "completed",
-      completed_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", p.blockId)
-    .eq("user_id", opts.userId)
-    .eq("status", "active");
-  if (updateErr) {
-    return {
-      ok: false,
-      error: { error: `training_blocks update failed: ${updateErr.message}`, code: "block_update_failed" },
+      error: { error: result.error, code: result.code },
       meta: { ms: Date.now() - t0, range_days: 0 },
     };
   }
 
   return {
     ok: true,
-    data: { block_id: p.blockId, status: "completed", outcome_id: outcomeRow.id as string },
+    data: { block_id: result.block_id, status: result.status, outcome_id: result.outcome_id },
     meta: { ms: Date.now() - t0, result_rows: 1, range_days: 35, truncated: false },
   };
 }
@@ -2289,41 +2161,22 @@ export async function executeCommitBlock(opts: {
     return { ok: false, error: { error: "That approval is missing the block details. Please re-propose.", code: "missing_payload" }, meta: { ms: Date.now() - t0, range_days: 0 } };
   }
   const p = envelope.payload as ProposeBlockInput;
-  const { data, error } = await opts.supabase
-    .from("training_blocks")
-    .insert({
-      user_id: opts.userId,
-      status: "active",
-      start_date: p.start_date,
-      end_date: p.end_date,
-      goal_text: p.goal_text,
-      primary_lift: p.primary_lift ?? null,
-      target_metric: p.target_metric ?? null,
-      target_value: p.target_value ?? null,
-      target_unit: p.target_unit ?? "kg",
-    })
-    .select()
-    .single();
-  if (error) {
-    const msg = error.code === "23505"
+
+  // Shared insert path (lib/coach/blocks/create-block.ts): training_blocks
+  // insert + outstanding block_outcomes acknowledge. Same writes as the
+  // session-authed POST /api/blocks; insertBlock returns the raw Postgres
+  // error code and each entry point maps it to prose.
+  const result = await insertBlock({ supabase: opts.supabase, userId: opts.userId, input: p });
+  if (!result.ok) {
+    const msg = result.code === "23505"
       ? "You already have an active block. Finish or abandon it before starting another."
       : "Couldn't save the block. Please try again in a moment.";
-    return { ok: false, error: { error: msg, code: error.code ?? "insert_failed" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+    return { ok: false, error: { error: msg, code: result.code }, meta: { ms: Date.now() - t0, range_days: 0 } };
   }
-
-  // Stamp any outstanding unacknowledged block_outcomes row so the
-  // BlockOutcomeCard stops surfacing and framework_state exits between-blocks
-  // mode. Safe no-op when there's no such row (first-ever block, or already
-  // acknowledged). Errors here are non-fatal — the block was saved.
-  await opts.supabase
-    .from("block_outcomes")
-    .update({ athlete_acknowledged_at: new Date().toISOString() })
-    .eq("user_id", opts.userId)
-    .is("athlete_acknowledged_at", null);
 
   return {
     ok: true,
-    data: data as TrainingBlock,
+    data: result.block,
     meta: { ms: Date.now() - t0, result_rows: 1, range_days: 35, truncated: false },
   };
 }
