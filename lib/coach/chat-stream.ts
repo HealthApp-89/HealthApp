@@ -848,6 +848,15 @@ export async function* runChatStream(opts: RunChatStreamOpts): AsyncGenerator<Ch
     // narrates a fake close in prose with no DB write.
     if (name === "propose_close_block") return true;
     if (name === "commit_close_block") return true;
+    // Block setup pair: the natural flow is close-block → discuss target →
+    // set up the next block IN THE SAME default-mode conversation (observed
+    // live 2026-07-12: PETER_BASE instructs "call propose_block /
+    // commit_block" but these were stripped here, so Peter narrated
+    // "Done — plan committed" with no DB write and the athlete trained
+    // blockless the next morning). Same reasoning as close_block above;
+    // the HMAC approve chip still gates the actual commit.
+    if (name === "propose_block") return true;
+    if (name === "commit_block") return true;
     // Endurance write tools (Carter): athlete legitimately asks for a Z2
     // week or updates threshold HR / FTP from default chat. Without these
     // explicit allows the prefix guards below strip them, the model invents
