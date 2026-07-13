@@ -2141,7 +2141,7 @@ export async function executeCommitCloseBlock(opts: {
   // Re-verify the block is still active + owned by this user.
   const { data: blockRow, error: blockErr } = await opts.supabase
     .from("training_blocks")
-    .select("id, status")
+    .select("id, status, start_date, end_date")
     .eq("id", p.blockId)
     .eq("user_id", opts.userId)
     .maybeSingle();
@@ -2185,6 +2185,19 @@ export async function executeCommitCloseBlock(opts: {
     };
   }
 
+  // Generate Carter-voiced narrative BEFORE the upsert so it is always
+  // included. Re-closing a block regenerates a fresh narrative — acceptable
+  // since generateOutcomeNarrative never returns empty (fallback guarantees
+  // text). Block dates were fetched above; use them directly.
+  const { generateOutcomeNarrative } = await import("@/lib/coach/block-outcomes/narrative");
+  const { narrative } = await generateOutcomeNarrative({
+    payload: outcomePayload,
+    blockWindow: {
+      start_date: blockRow.start_date as string,
+      end_date: blockRow.end_date as string,
+    },
+  });
+
   // Upsert the block_outcomes row. UNIQUE constraint is on (block_id);
   // ON CONFLICT updates the payload but preserves athlete_acknowledged_at
   // (which the next commit_block will stamp when the next block starts).
@@ -2193,6 +2206,7 @@ export async function executeCommitCloseBlock(opts: {
     .upsert(
       {
         ...outcomePayload,
+        narrative_md: narrative,
         updated_at: new Date().toISOString(),
       },
       { onConflict: "block_id", ignoreDuplicates: false },

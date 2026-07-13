@@ -8,6 +8,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { generateBlockOutcome } from "@/lib/coach/block-outcomes";
+import { generateOutcomeNarrative } from "@/lib/coach/block-outcomes/narrative";
 import { todayInUserTz, USER_TIMEZONE } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
@@ -24,7 +25,7 @@ export async function GET(req: Request) {
 
   const { data: blocks, error } = await supabase
     .from("training_blocks")
-    .select("id, user_id, end_date, primary_lift")
+    .select("id, user_id, start_date, end_date, primary_lift")
     .lt("end_date", today);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -52,6 +53,11 @@ export async function GET(req: Request) {
     try {
       const { payload } = await generateBlockOutcome({ supabase, userId: b.user_id, blockId: b.id });
 
+      const { narrative } = await generateOutcomeNarrative({
+        payload,
+        blockWindow: { start_date: b.start_date as string, end_date: b.end_date as string },
+      });
+
       const { error: insErr } = await supabase
         .from("block_outcomes")
         .insert({
@@ -67,6 +73,7 @@ export async function GET(req: Request) {
           lessons: payload.lessons,
           recommended_next_focus: payload.recommended_next_focus,
           recommended_target_value_kg: payload.recommended_target_value_kg,
+          narrative_md: narrative,
         });
       if (insErr) throw insErr;
 
