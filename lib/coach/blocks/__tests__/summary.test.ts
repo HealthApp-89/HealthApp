@@ -32,3 +32,22 @@ describe("computeBlockPace", () => {
     expect(r.kgToGo).toBeNull();
   });
 });
+
+import { computeSecondary } from "@/lib/coach/blocks/summary";
+
+describe("computeSecondary", () => {
+  const names = new Set(["deadlift (barbell)"]);
+  const workouts = [
+    { date: "2026-06-18", exercises: [{ name: "Deadlift (Barbell)", exercise_sets: [{ kg: 95, reps: 8, warmup: false }] }] },
+    { date: "2026-06-25", exercises: [{ name: "Deadlift (Barbell)", exercise_sets: [{ kg: 90, reps: 10, warmup: false }, { kg: 40, reps: 5, warmup: true }] }] },
+  ];
+  test("returns the LATEST session's working kg, not the window max", () => {
+    const r = computeSecondary(workouts, names);
+    expect(r.kg).toBe(90);
+    expect(r.lastDate).toBe("2026-06-25");
+  });
+  test("warmup-only and non-matching workouts yield null", () => {
+    expect(computeSecondary([{ date: "2026-07-01", exercises: [{ name: "Deadlift (Barbell)", exercise_sets: [{ kg: 40, reps: 5, warmup: true }] }] }], names).kg).toBeNull();
+    expect(computeSecondary(workouts, new Set(["bench press (barbell)"])).kg).toBeNull();
+  });
+});
