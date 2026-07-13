@@ -7,6 +7,7 @@ import { COLOR } from "@/lib/ui/theme";
 import type { CheckinRangeRow } from "@/lib/query/fetchers/checkinsRange";
 import type { FatigueLevel } from "@/lib/data/types";
 import { SymptomLogSection } from "@/components/health/SymptomLogSection";
+import { ActiveInjuriesCard } from "@/components/health/ActiveInjuriesCard";
 
 type Props = {
   userId: string;
@@ -20,6 +21,7 @@ export function HealthLogClient({ userId, initialDate }: Props) {
   return (
     <>
       <LogClient userId={userId} date={date} />
+      <ActiveInjuriesCard userId={userId} />
       <SymptomLogSection userId={userId} />
       <PastIntakesList userId={userId} />
     </>

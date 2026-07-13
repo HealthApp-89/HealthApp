@@ -13,6 +13,9 @@ export function checkPlateau(
   const events: ProactiveEvent[] = [];
   for (const lift of trends.strength.per_lift) {
     if (!lift.plateau_active) continue;
+    // Skip injury-gated lifts: the plateau is expected during recovery and
+    // surfacing a nudge would create noise rather than actionable coaching.
+    if (lift.injury_gated) continue;
     events.push({
       trigger_type: "plateau",
       trigger_key: `plateau:${lift.lift}`,

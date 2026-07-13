@@ -25,7 +25,8 @@ import { todayInUserTz } from "@/lib/time";
 import { loadWorkouts } from "@/lib/data/workouts-server";
 import type { WorkoutSession } from "@/lib/data/workouts";
 import type { FoodLogEntry } from "@/lib/food/types";
-import type { Rolling30dBaselines, IntakePayload, WhoopBaselinesJsonb, CoachInterventionRow } from "@/lib/data/types";
+import type { Rolling30dBaselines, IntakePayload, WhoopBaselinesJsonb, CoachInterventionRow, Injury } from "@/lib/data/types";
+import { fetchActiveInjuries } from "@/lib/coach/injuries";
 import { getTodayTargets } from "@/lib/morning/brief/get-today-targets";
 
 // Layer 1 composers
@@ -227,6 +228,8 @@ export type IntelligenceData = {
    * Defaults to empty array when no table exists or fetch fails.
    */
   interventionRows: CoachInterventionRow[];
+  /** Active injury rows from the injuries table — merged into constraints block. */
+  liveInjuries: Injury[];
   /** ISO date string derived from tz-aware "today" — used as generated_on anchor */
   today: string;
 };
@@ -254,6 +257,7 @@ export function assembleIntelligence(data: IntelligenceData): AthleteIntelligenc
     intake,
     targets,
     interventionRows,
+    liveInjuries,
     today,
   } = data;
 
@@ -268,7 +272,7 @@ export function assembleIntelligence(data: IntelligenceData): AthleteIntelligenc
   const identity = composeAthleteIdentity(workouts90d, foodLogEntries);
 
   const adaptedProfile = intake ? adaptIntakeToConstraintsProfile(intake) : null;
-  const constraints = composeConstraints(adaptedProfile);
+  const constraints = composeConstraints(adaptedProfile, liveInjuries, today);
 
   // coach-history requires steps: number | null (not optional) — normalize.
   const historyLogs = dailyLogs.map((l) => ({
@@ -406,6 +410,7 @@ export async function buildAthleteIntelligence(
       todayTargets,
       { data: foodLogData },
       { data: interventionsData },
+      liveInjuries,
     ] = await Promise.all([
       // All workouts — identity and interference composers filter/slice internally.
       loadWorkouts(userId),
@@ -462,6 +467,15 @@ export async function buildAthleteIntelligence(
         .not("outcome", "is", null)
         .gte("started_on", since90d)
         .order("started_on", { ascending: false }),
+
+      // Active live injuries — merged into the constraints block.
+      // Deliberate asymmetry: the injuries table is new (migration 0052) and live
+      // injuries are an additive field — a fetch failure must degrade to "no live injuries"
+      // rather than let the outer catch zero the ENTIRE intelligence payload.
+      fetchActiveInjuries(supabase, userId).catch((err) => {
+        console.warn("[buildAthleteIntelligence] fetchActiveInjuries failed — continuing without live injuries:", err);
+        return [] as Injury[];
+      }),
     ]);
 
     // ── Extract baselines ────────────────────────────────────────────────────
@@ -489,6 +503,7 @@ export async function buildAthleteIntelligence(
       intake,
       targets,
       interventionRows: (interventionsData ?? []) as CoachInterventionRow[],
+      liveInjuries,
       today,
     });
   } catch (err) {

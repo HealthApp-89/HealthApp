@@ -27,6 +27,7 @@ import { generateAdvice, generateAdviceStream } from "@/lib/morning/brief/advice
 import type { AdviceContext } from "@/lib/morning/brief/advice-prompt";
 import { fetchMuscleVolumeServer } from "@/lib/query/fetchers/muscleVolume";
 import { mondayOf } from "@/lib/coach/weekly-review/date-utils";
+import { fetchActiveInjuries } from "@/lib/coach/injuries";
 
 /** Deterministic prep: assembles every block except advice_md and computes
  *  the AdviceContext the AI needs to write the prose. Pure-ish — only reads.
@@ -55,6 +56,7 @@ export async function prepareBriefExceptAdvice(
     previousCommittedReview,
     yesterdayFoodEntriesRes,
     recentActivity,
+    liveInjuries,
   ] = await Promise.all([
     fetchBriefInputs(supabase, userId, today, tz),
     getThisWeekPrescription(supabase, userId, today),
@@ -72,6 +74,9 @@ export async function prepareBriefExceptAdvice(
     // returns [] so the ladder falls back to its grace rule (no signals
     // → none rung → suggestion unchanged vs. pre-Task-8 brief).
     loadRecentActivityForBrief(supabase, userId, today),
+    // Active injuries for brief flags (Task 7). Graceful: fetch failure
+    // degrades to empty array so the rest of the brief is unaffected.
+    fetchActiveInjuries(supabase, userId).catch(() => []),
   ]);
 
   // Top items yesterday — computed from food_log_entries. Degrade gracefully
@@ -169,6 +174,7 @@ export async function prepareBriefExceptAdvice(
     targets: inputs.todayTargets,
     thisWeekCommittedReview: thisWeekPrescription?.review ?? null,
     previousCommittedReview,
+    liveInjuries,
   });
 
   // Re-run the assembler with the authoritative phase-transition flag so

@@ -100,6 +100,7 @@ import {
 } from "@/lib/coach/activity/types";
 import { mondayOf } from "@/lib/coach/weekly-review/date-utils";
 import { applyActivityLayout } from "@/lib/training-weeks/apply-activity-layout";
+import { validateInjuryInput } from "@/lib/coach/injuries";
 
 // ── Allowlist (cross-checked against lib/data/types.ts:DailyLog + schema.sql) ─
 export const ALLOWED_COLUMNS = [
@@ -340,7 +341,7 @@ export const AUTOREGULATION_TOOL = {
 export const ADHERENCE_TOOL = {
   name: "compute_adherence",
   description:
-    "Compute planned-vs-actual session adherence and per-muscle volume deltas vs prior-4w-avg for a Mon-Sun window. Use during the RECAP beat of plan_week mode to ground the recap in concrete numbers. Note: muscle_volume_vs_4w_avg OMITS muscle categories with thin baselines (<6 sets or <2 distinct weeks of prior data). If a category is absent from the response, you DO NOT have enough history to claim drift — say so, do not invent a percentage.",
+    "Compute planned-vs-actual session adherence and per-muscle volume deltas vs prior-4w-avg for a Mon-Sun window. Use during the RECAP beat of plan_week mode to ground the recap in concrete numbers. Note: muscle_volume_vs_4w_avg OMITS muscle categories with thin baselines (<6 sets or <2 distinct weeks of prior data). If a category is absent from the response, you DO NOT have enough history to claim drift — say so, do not invent a percentage. sessions_planned EXCLUDES injury-excused days; per-day entries may carry status 'injury' with injury_area, and the result includes an injury_excused count — narrate excused skips as injury-related, never as plain non-adherence.",
   input_schema: {
     type: "object" as const,
     required: ["week_start"],
@@ -6489,6 +6490,256 @@ export type ToolSchema = {
   readonly input_schema: { readonly type: "object" } & Record<string, unknown>;
 };
 
+// ── log_injury tool ──────────────────────────────────────────────────────────
+// Direct-write (no HMAC). Creates an active injury record. The model MUST
+// infer affected_session_types + affected_lifts from conversation context
+// (e.g. "hip" → ["Legs","Back"] + ["squat","deadlift"]) and narrate them back
+// to the athlete so they can correct. If the athlete's message is vague,
+// confirm details in prose BEFORE calling. Never make the athlete type raw SQL.
+
+export const LOG_INJURY_TOOL = {
+  name: "log_injury",
+  description:
+    "Record a new active injury for the athlete. Direct-write — no approval token required. " +
+    "INFER from conversation: " +
+    "(1) affected_session_types — which training sessions are impacted (e.g. hip pain → [\"Legs\",\"Back\"]); " +
+    "(2) affected_lifts — which primary lifts are impacted (squat|bench|deadlift|ohp); " +
+    "(3) onset_date — backdate from phrases like \"two weeks ago\" using the TODAY value in the per-turn header. " +
+    "ALWAYS narrate all inferred fields back so the athlete can correct them BEFORE this tool runs. " +
+    "If the athlete's message is vague (area unclear), ask one clarifying question before calling.",
+  input_schema: {
+    type: "object" as const,
+    required: ["area"],
+    properties: {
+      area: {
+        type: "string",
+        description: "Anatomical area (e.g. 'left knee', 'hip', 'lower back'). Max 40 chars.",
+      },
+      side: {
+        type: "string",
+        enum: ["left", "right"],
+        description: "Optional laterality. Omit when not applicable.",
+      },
+      cause: {
+        type: "string",
+        description: "Brief mechanism or cause (e.g. 'padel twist', 'heavy deadlift'). Max 200 chars.",
+      },
+      severity: {
+        type: "string",
+        enum: ["mild", "moderate", "severe"],
+        description: "Estimated severity. Default 'moderate' when uncertain.",
+      },
+      onset_date: {
+        type: "string",
+        description:
+          "ISO date YYYY-MM-DD. Backdate from natural language ('two weeks ago' → compute from TODAY). Defaults to today if omitted.",
+      },
+      affected_session_types: {
+        type: "array",
+        items: { type: "string" },
+        description:
+          "Session type strings impacted (e.g. ['Legs','Back']). Infer from area if not stated.",
+      },
+      affected_lifts: {
+        type: "array",
+        items: { type: "string", enum: ["squat", "bench", "deadlift", "ohp"] },
+        description: "Primary lifts that are limited. Infer from area (hip/knee → squat+deadlift).",
+      },
+      notes: {
+        type: "string",
+        description: "Any additional context. Max 500 chars.",
+      },
+    },
+  },
+};
+
+export async function executeLogInjury(opts: {
+  supabase: SupabaseClient;
+  userId: string;
+  input: unknown;
+}): Promise<ToolResult<{ injury: { id: string; area: string; side: string | null; cause: string | null; severity: string; onset_date: string; affected_session_types: string[]; affected_lifts: string[] } }>> {
+  const t0 = Date.now();
+  const i = (opts.input ?? {}) as Record<string, unknown>;
+
+  const today = todayInUserTz(new Date(), await getUserTimezone(opts.userId));
+
+  const raw = {
+    area: typeof i.area === "string" ? i.area : "",
+    side: typeof i.side === "string" ? i.side : null,
+    cause: typeof i.cause === "string" ? i.cause : null,
+    severity: typeof i.severity === "string" ? i.severity : undefined,
+    onset_date: typeof i.onset_date === "string" ? i.onset_date : undefined,
+    affected_lifts: Array.isArray(i.affected_lifts) ? (i.affected_lifts as string[]) : [],
+    affected_session_types: Array.isArray(i.affected_session_types) ? (i.affected_session_types as string[]) : [],
+    notes: typeof i.notes === "string" ? i.notes : null,
+  };
+
+  const validated = validateInjuryInput(raw, today);
+  if (!validated.ok) {
+    return {
+      ok: false,
+      error: { error: validated.error, code: validated.code },
+      meta: { ms: Date.now() - t0, range_days: 0 },
+    };
+  }
+  const d = validated.data;
+
+  const { data, error } = await opts.supabase
+    .from("injuries")
+    .insert({
+      user_id: opts.userId,
+      area: d.area,
+      side: d.side,
+      cause: d.cause,
+      severity: d.severity,
+      onset_date: d.onset_date,
+      affected_session_types: d.affected_session_types,
+      affected_lifts: d.affected_lifts,
+      notes: d.notes,
+      status: "active",
+    })
+    .select("id, area, side, cause, severity, onset_date, affected_session_types, affected_lifts")
+    .single();
+
+  if (error) {
+    return {
+      ok: false,
+      error: { error: `insert_failed: ${error.message}` },
+      meta: { ms: Date.now() - t0, range_days: 0 },
+    };
+  }
+
+  return {
+    ok: true,
+    data: { injury: data as { id: string; area: string; side: string | null; cause: string | null; severity: string; onset_date: string; affected_session_types: string[]; affected_lifts: string[] } },
+    meta: { ms: Date.now() - t0, result_rows: 1, range_days: 0, truncated: false },
+  };
+}
+
+// ── resolve_injury tool ───────────────────────────────────────────────────────
+// Direct-write (no HMAC). Marks an active injury as resolved. Resolves by
+// injury_id (exact) or by unique case-insensitive active-area match.
+
+export const RESOLVE_INJURY_TOOL = {
+  name: "resolve_injury",
+  description:
+    "Mark an active injury as resolved. Resolves by injury_id when provided; " +
+    "otherwise finds the unique active injury matching area (case-insensitive). " +
+    "Errors: ambiguous_area (multiple actives match), not_found (none match).",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      injury_id: {
+        type: "string",
+        description: "UUID of the injury to resolve. Preferred when known.",
+      },
+      area: {
+        type: "string",
+        description:
+          "Anatomical area string to match (case-insensitive). Used only when injury_id is absent.",
+      },
+    },
+  },
+};
+
+export async function executeResolveInjury(opts: {
+  supabase: SupabaseClient;
+  userId: string;
+  input: unknown;
+}): Promise<ToolResult<{ injury: { id: string; area: string } }>> {
+  const t0 = Date.now();
+  const i = (opts.input ?? {}) as Record<string, unknown>;
+
+  const injuryId = typeof i.injury_id === "string" && i.injury_id.trim() ? i.injury_id.trim() : null;
+  const area = typeof i.area === "string" && i.area.trim() ? i.area.trim() : null;
+
+  if (!injuryId && !area) {
+    return {
+      ok: false,
+      error: { error: "Provide either injury_id or area to identify the injury." },
+      meta: { ms: Date.now() - t0, range_days: 0 },
+    };
+  }
+
+  let targetId: string;
+  let targetArea: string;
+
+  if (injuryId) {
+    // Resolve by id — verify it belongs to this user and is active.
+    const { data, error } = await opts.supabase
+      .from("injuries")
+      .select("id, area, status")
+      .eq("user_id", opts.userId)
+      .eq("id", injuryId)
+      .maybeSingle();
+
+    if (error) {
+      return { ok: false, error: { error: `fetch_failed: ${error.message}` }, meta: { ms: Date.now() - t0, range_days: 0 } };
+    }
+    if (!data) {
+      return { ok: false, error: { error: "not_found", code: "not_found" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+    }
+    if ((data as { status: string }).status !== "active") {
+      return { ok: false, error: { error: "injury is already resolved", code: "already_resolved" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+    }
+    targetId = (data as { id: string }).id;
+    targetArea = (data as { area: string }).area;
+  } else {
+    // Resolve by area — unique active match (case-insensitive).
+    // Escape LIKE wildcards: backslash first, then % and _.
+    const safeArea = area!.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+
+    const { data, error } = await opts.supabase
+      .from("injuries")
+      .select("id, area, status")
+      .eq("user_id", opts.userId)
+      .ilike("area", safeArea);
+
+    if (error) {
+      return { ok: false, error: { error: `fetch_failed: ${error.message}` }, meta: { ms: Date.now() - t0, range_days: 0 } };
+    }
+    const rows = (data ?? []) as { id: string; area: string; status: string }[];
+
+    // Separate active and resolved rows.
+    const activeRows = rows.filter((r) => r.status === "active");
+    const resolvedRows = rows.filter((r) => r.status === "resolved");
+
+    if (activeRows.length === 0 && resolvedRows.length > 0) {
+      return { ok: false, error: { error: "That injury is already resolved.", code: "already_resolved" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+    }
+    if (activeRows.length === 0) {
+      return { ok: false, error: { error: "not_found", code: "not_found" }, meta: { ms: Date.now() - t0, range_days: 0 } };
+    }
+    if (activeRows.length > 1) {
+      const names = activeRows.map((r) => r.area).join(", ");
+      return {
+        ok: false,
+        error: { error: `ambiguous_area: multiple active injuries match "${area}": ${names}`, code: "ambiguous_area" },
+        meta: { ms: Date.now() - t0, range_days: 0 },
+      };
+    }
+    targetId = activeRows[0].id;
+    targetArea = activeRows[0].area;
+  }
+
+  const now = new Date().toISOString();
+  const { error: updErr } = await opts.supabase
+    .from("injuries")
+    .update({ status: "resolved", resolved_at: now, updated_at: now })
+    .eq("user_id", opts.userId)
+    .eq("id", targetId);
+
+  if (updErr) {
+    return { ok: false, error: { error: `update_failed: ${updErr.message}` }, meta: { ms: Date.now() - t0, range_days: 0 } };
+  }
+
+  return {
+    ok: true,
+    data: { injury: { id: targetId, area: targetArea } },
+    meta: { ms: Date.now() - t0, result_rows: 1, range_days: 0, truncated: false },
+  };
+}
+
 export const PETER_TOOLS: readonly ToolSchema[] = [
   DAILY_LOGS_TOOL,
   WORKOUTS_TOOL,
@@ -6536,6 +6787,9 @@ export const PETER_TOOLS: readonly ToolSchema[] = [
   ADD_PLANNED_ACTIVITY_TOOL,
   PROPOSE_ACTIVITY_ADJUSTMENT_TOOL,
   COMMIT_ACTIVITY_ADJUSTMENT_TOOL,
+  // Injury lifecycle: Peter owns log + resolve across all domains.
+  LOG_INJURY_TOOL,
+  RESOLVE_INJURY_TOOL,
 ];
 
 // Carter: strength/training. Reads workouts + recovery-relevant daily_logs
@@ -6577,6 +6831,9 @@ export const CARTER_TOOLS: readonly ToolSchema[] = [
   ADD_PLANNED_ACTIVITY_TOOL,
   PROPOSE_ACTIVITY_ADJUSTMENT_TOOL,
   COMMIT_ACTIVITY_ADJUSTMENT_TOOL,
+  // Injury lifecycle: Carter logs + resolves injuries in the strength domain.
+  LOG_INJURY_TOOL,
+  RESOLVE_INJURY_TOOL,
 ];
 
 // Nora: nutrition. Reads food log + nutrition/body-comp daily_logs columns;
@@ -6608,6 +6865,9 @@ export const REMI_TOOLS: readonly ToolSchema[] = [
   DAILY_LOGS_TOOL,
   MARK_MOBILITY_DONE_TOOL,
   UNMARK_MOBILITY_DONE_TOOL,
+  // Injury lifecycle: Remi logs + resolves injuries in the recovery domain.
+  LOG_INJURY_TOOL,
+  RESOLVE_INJURY_TOOL,
 ];
 
 export function toolsForSpeaker(speaker: Speaker): readonly ToolSchema[] {

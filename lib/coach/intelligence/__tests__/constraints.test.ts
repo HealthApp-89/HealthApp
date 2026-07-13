@@ -8,8 +8,10 @@ import { expect, test } from "vitest";
 import { composeConstraints } from "../constraints-summary";
 import { SAMPLE_PROFILE } from "./fixtures";
 
+const TODAY = "2026-07-13";
+
 test("composeConstraints extracts active injuries with correct status", () => {
-  const result = composeConstraints(SAMPLE_PROFILE);
+  const result = composeConstraints(SAMPLE_PROFILE, [], TODAY);
 
   expect(result.active_injuries).toHaveLength(1);
   expect(result.active_injuries[0].area).toBe("shoulder");
@@ -36,14 +38,14 @@ test("composeConstraints marks injury as chronic when weeks_ago_onset >= 4", () 
     ],
   };
 
-  const result = composeConstraints(profile);
+  const result = composeConstraints(profile, [], TODAY);
 
   expect(result.active_injuries[0].status).toBe("chronic");
   expect(result.active_injuries[0].weeks_ago_onset).toBe(8);
 });
 
 test("composeConstraints extracts exercise exclusions from all injuries", () => {
-  const result = composeConstraints(SAMPLE_PROFILE);
+  const result = composeConstraints(SAMPLE_PROFILE, [], TODAY);
 
   expect(result.exercise_exclusions).toContain("OHP");
   expect(result.exercise_exclusions).toContain("Weighted Chins");
@@ -74,7 +76,7 @@ test("composeConstraints flattens exercise exclusions into a Set", () => {
     ],
   };
 
-  const result = composeConstraints(profile);
+  const result = composeConstraints(profile, [], TODAY);
 
   // Should have deduplicated "Bench Press"
   expect(new Set(result.exercise_exclusions).size).toBe(
@@ -86,7 +88,7 @@ test("composeConstraints flattens exercise exclusions into a Set", () => {
 });
 
 test("composeConstraints maps gym_type to equipment_access", () => {
-  const result = composeConstraints(SAMPLE_PROFILE);
+  const result = composeConstraints(SAMPLE_PROFILE, [], TODAY);
 
   // gym_type = "commercial" should map to "commercial_gym"
   expect(result.equipment_access).toBe("commercial_gym");
@@ -103,7 +105,7 @@ test("composeConstraints maps home gym correctly", () => {
     ],
   };
 
-  const result = composeConstraints(profile);
+  const result = composeConstraints(profile, [], TODAY);
 
   expect(result.equipment_access).toBe("home_gym");
 });
@@ -119,27 +121,27 @@ test("composeConstraints defaults to mixed for unknown gym_type", () => {
     ],
   };
 
-  const result = composeConstraints(profile);
+  const result = composeConstraints(profile, [], TODAY);
 
   expect(result.equipment_access).toBe("mixed");
 });
 
 test("composeConstraints extracts schedule constraints from keywords", () => {
-  const result = composeConstraints(SAMPLE_PROFILE);
+  const result = composeConstraints(SAMPLE_PROFILE, [], TODAY);
 
   expect(result.schedule_constraints).toContain("Max 3 sessions/week");
   expect(result.schedule_constraints).toContain("Training evenings only");
 });
 
 test("composeConstraints detects travel frequency constraint", () => {
-  const result = composeConstraints(SAMPLE_PROFILE);
+  const result = composeConstraints(SAMPLE_PROFILE, [], TODAY);
 
   // No invented cadence — just signals that travel disrupts schedule
   expect(result.schedule_constraints).toContain("Travel disrupts schedule");
 });
 
 test("composeConstraints handles null profile gracefully", () => {
-  const result = composeConstraints(null);
+  const result = composeConstraints(null, [], TODAY);
 
   expect(result.active_injuries).toEqual([]);
   expect(result.exercise_exclusions).toEqual([]);
@@ -153,7 +155,7 @@ test("composeConstraints handles missing athlete_profile_documents", () => {
     athlete_profile_documents: undefined,
   };
 
-  const result = composeConstraints(profile);
+  const result = composeConstraints(profile, [], TODAY);
 
   expect(result.active_injuries).toEqual([]);
   expect(result.exercise_exclusions).toEqual([]);
@@ -167,7 +169,7 @@ test("composeConstraints handles empty athlete_profile_documents", () => {
     athlete_profile_documents: [],
   };
 
-  const result = composeConstraints(profile);
+  const result = composeConstraints(profile, [], TODAY);
 
   expect(result.active_injuries).toEqual([]);
   expect(result.exercise_exclusions).toEqual([]);
@@ -186,7 +188,7 @@ test("composeConstraints handles missing current_injuries", () => {
     ],
   };
 
-  const result = composeConstraints(profile);
+  const result = composeConstraints(profile, [], TODAY);
 
   expect(result.active_injuries).toEqual([]);
   expect(result.exercise_exclusions).toEqual([]);
@@ -203,13 +205,13 @@ test("composeConstraints handles missing lifestyle_constraints", () => {
     ],
   };
 
-  const result = composeConstraints(profile);
+  const result = composeConstraints(profile, [], TODAY);
 
   expect(result.schedule_constraints).toEqual([]);
 });
 
 test("composeConstraints validates return type against ConstraintPayloadSchema", () => {
-  const result = composeConstraints(SAMPLE_PROFILE);
+  const result = composeConstraints(SAMPLE_PROFILE, [], TODAY);
 
   // Verify structure matches ConstraintPayload
   expect(result).toHaveProperty("active_injuries");

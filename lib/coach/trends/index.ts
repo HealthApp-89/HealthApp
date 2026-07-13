@@ -4,7 +4,7 @@
 // pick a headline insight from severity priority, return CoachTrendsPayload.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { CoachTrendsPayload } from "@/lib/data/types";
+import type { CoachTrendsPayload, Injury } from "@/lib/data/types";
 import { composeStrength } from "./compose-strength";
 import { composeBody } from "./compose-body";
 import { composeNutrition } from "./compose-nutrition";
@@ -23,14 +23,37 @@ export async function generateCoachTrends(args: {
   userId: string;
   today: string;
 }): Promise<CoachTrendsPayload> {
-  const [strength, body, nutrition, recovery, food_quality, cross_insights] = await Promise.all([
-    composeStrength(args),
+  const { supabase, userId } = args;
+
+  // Fetch injuries once without status filter so injury-gated windows cover
+  // resolved injuries whose span still overlaps the analysis window. Ordered
+  // onset_date desc so liftInjuryFor's first-match tie-break picks the
+  // most-recent-onset injury (matches the Task 1 contract).
+  const injuriesPromise = supabase
+    .from("injuries")
+    .select("*")
+    .eq("user_id", userId)
+    .lte("onset_date", args.today)
+    .order("onset_date", { ascending: false })
+    .then(({ data, error }) => {
+      if (error) {
+        // Degrade gracefully — injury gating is supplementary; don't break trends.
+        console.warn("[generateCoachTrends] injuries fetch failed", error);
+        return [] as Injury[];
+      }
+      return (data ?? []) as Injury[];
+    });
+
+  const [injuries, body, nutrition, recovery, food_quality, cross_insights] = await Promise.all([
+    injuriesPromise,
     composeBody(args),
     composeNutrition(args),
     composeRecovery(args),
     composeFoodQuality(args),
     composeCross(args),
   ]);
+
+  const strength = await composeStrength({ ...args, injuries });
 
   return {
     schema_version: 2,
@@ -45,7 +68,7 @@ export async function generateCoachTrends(args: {
   };
 }
 
-function pickHeadline(input: {
+export function pickHeadline(input: {
   strength: CoachTrendsPayload["strength"];
   body: CoachTrendsPayload["body"];
   recovery: CoachTrendsPayload["recovery"];
@@ -65,7 +88,8 @@ function pickHeadline(input: {
     };
   }
 
-  const plateauedLifts = input.strength.per_lift.filter((p) => p.plateau_active);
+  // Exclude injury-gated lifts — flat e1RM during recovery is expected, not actionable.
+  const plateauedLifts = input.strength.per_lift.filter((p) => p.plateau_active && !p.injury_gated);
   if (plateauedLifts.length > 0) {
     const longest = plateauedLifts.reduce((a, b) =>
       b.plateau_weeks_flat > a.plateau_weeks_flat ? b : a,

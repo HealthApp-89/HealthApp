@@ -125,10 +125,31 @@ export async function composeTrends(args: {
   }
 
   const today = shiftDays(weekStart, 6);
-  const [strengthTrend, crossInsights] = await Promise.all([
-    composeStrength({ supabase, userId, today }),
+  const injuriesPromise = supabase
+    .from("injuries")
+    .select("*")
+    .eq("user_id", userId)
+    .lte("onset_date", today)
+    .order("onset_date", { ascending: false })
+    .then(({ data, error }) => {
+      if (error) {
+        console.warn("[compose-trends] injuries fetch failed", error);
+        return [];
+      }
+      return (data ?? []) as any[];
+    });
+
+  const [injuries, crossInsights] = await Promise.all([
+    injuriesPromise,
     composeCross({ supabase, userId, today }),
   ]);
+
+  const strengthTrend = await composeStrength({
+    supabase,
+    userId,
+    today,
+    injuries,
+  });
 
   const plateauSpans = strengthTrend.per_lift
     .filter((p) => p.plateau_active)

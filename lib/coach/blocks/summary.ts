@@ -17,7 +17,7 @@
 // no live-clock reads (audit-timezone-usage gate).
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { PrimaryLift, TargetMetric, TrainingBlock, TrainingWeek } from "@/lib/data/types";
+import type { Injury, PrimaryLift, TargetMetric, TrainingBlock, TrainingWeek } from "@/lib/data/types";
 import type { BlockPhase } from "@/lib/coach/prescription/types";
 import { olsSlope } from "@/lib/coach/trends/linear-regression";
 import { bestComparisonValue } from "@/lib/coach/e1rm";
@@ -25,6 +25,7 @@ import { evaluateBlockPhase } from "@/lib/coach/prescription/block-phase-rule";
 import { PRIMARY_LIFT_NAME_PATTERNS } from "@/lib/coach/prescription/current-comparison-value";
 import { readSessionForDay } from "@/lib/coach/session-plan-reader";
 import { getEffectiveSessionPlan } from "@/lib/coach/sessionPlans";
+import { fetchActiveInjuries } from "@/lib/coach/injuries";
 
 // ── pure pace projection ─────────────────────────────────────────────────
 
@@ -99,8 +100,10 @@ export type BlockSummaryPayload = {
   };
   /** Non-focus primary lifts: latest working kg over the last 42
    *  days. `clampHeld` is null in v1 — the block-outcomes clamp evaluator is
-   *  inline in generateBlockOutcome and not importable without refactor. */
-  secondaries: Array<{ lift: PrimaryLift; kg: number | null; daysAgo: number | null; clampHeld: boolean | null }>;
+   *  inline in generateBlockOutcome and not importable without refactor.
+   *  `injuryArea` is set when there is an active injury whose `affected_lifts`
+   *  includes this lift (first match ordered by onset desc). */
+  secondaries: Array<{ lift: PrimaryLift; kg: number | null; daysAgo: number | null; clampHeld: boolean | null; injuryArea: string | null }>;
 };
 
 // ── Supabase-driven orchestrator ─────────────────────────────────────────
@@ -118,6 +121,15 @@ const ALL_PRIMARY_LIFTS: PrimaryLift[] = ["squat", "bench", "deadlift", "ohp"];
 const SECONDARIES_WINDOW_DAYS = 42;
 /** Days after which the UI should flag a secondary lift as stale. */
 export const SECONDARY_STALE_AFTER_DAYS = 14;
+
+/** Pure: return the `area` of the first active injury (onset desc) whose
+ *  `affected_lifts` includes `lift`, or null when none. */
+export function secondaryInjuryArea(injuries: Injury[], lift: PrimaryLift): string | null {
+  for (const inj of injuries) {
+    if (inj.affected_lifts.includes(lift)) return inj.area;
+  }
+  return null;
+}
 
 /** Pure: best non-warmup working kg from the MOST RECENT workout containing
  *  the lift, plus that workout's date. Latest-session weight (not window max)
@@ -167,7 +179,7 @@ export async function assembleBlockSummary(opts: {
   // One workouts fetch covers the chart (block window) AND the secondaries
   // (last-14d window, which can start before a young block's start_date).
   const fetchFrom = minIso(block.start_date, addDaysIso(todayIso, -SECONDARIES_WINDOW_DAYS));
-  const [{ data: workoutRows, error: wErr }, { data: weekRow, error: twErr }] = await Promise.all([
+  const [{ data: workoutRows, error: wErr }, { data: weekRow, error: twErr }, activeInjuries] = await Promise.all([
     supabase
       .from("workouts")
       .select("date, exercises(name, exercise_sets(kg, reps, warmup))")
@@ -181,6 +193,7 @@ export async function assembleBlockSummary(opts: {
       .eq("user_id", userId)
       .eq("week_start", weekMonday)
       .maybeSingle(),
+    fetchActiveInjuries(supabase, userId).catch(() => [] as Injury[]),
   ]);
   if (wErr) throw wErr;
   if (twErr) throw twErr;
@@ -241,7 +254,8 @@ export async function assembleBlockSummary(opts: {
       names,
     );
     const daysAgo = lastDate != null ? daysBetween(lastDate, todayIso) : null;
-    return { lift, kg, daysAgo, clampHeld: null };
+    const injuryArea = secondaryInjuryArea(activeInjuries, lift);
+    return { lift, kg, daysAgo, clampHeld: null, injuryArea };
   });
 
   return {

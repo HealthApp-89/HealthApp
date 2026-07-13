@@ -8,6 +8,7 @@
 import type {
   AdviceFlags,
   AthleteProfileDocument,
+  Injury,
   MorningBriefCard,
   MuscleVolumeFlag,
   MuscleVolumeSnapshot,
@@ -45,6 +46,11 @@ export type FlagInputs = {
   /** The previous-week committed weekly_review (if any). Used for the
    *  same comparison. Null when no prior review exists. */
   previousCommittedReview?: WeeklyReviewRow | null;
+  /** Active injury rows fetched live from the injuries table (ordered onset
+   *  desc). Required — pass [] when no injuries table exists yet. ORed with
+   *  the profile intake list to produce `has_active_injuries`; areas are
+   *  deduped into `active_injury_areas`. */
+  liveInjuries: Injury[];
 };
 
 /** Computes the structured GLP-1 flag from the athlete profile's health.glp1_status
@@ -80,7 +86,7 @@ function computeGlp1Flag(
 export function computeAdviceFlags(inputs: FlagInputs): AdviceFlags {
   const meds = inputs.activeProfile?.intake_payload.health.medications ?? "";
   const drinks = inputs.activeProfile?.intake_payload.nutrition.alcohol_drinks_per_week ?? 0;
-  const injuries = inputs.activeProfile?.intake_payload.health.active_injuries ?? [];
+  const profileInjuries = inputs.activeProfile?.intake_payload.health.active_injuries ?? [];
   const bedtime = inputs.activeProfile?.intake_payload.sleep_recovery.typical_bedtime;
   const wakeTime = inputs.activeProfile?.intake_payload.sleep_recovery.typical_wake_time;
   const avgSleep = inputs.activeProfile?.intake_payload.sleep_recovery.avg_sleep_hours ?? 0;
@@ -99,10 +105,17 @@ export function computeAdviceFlags(inputs: FlagInputs): AdviceFlags {
   const glp1Flag = computeGlp1Flag(inputs.activeProfile, inputs.targets);
   const glp1Active = glp1Flag.active || GLP1_REGEX.test(meds);
 
+  // has_active_injuries: ORed from profile intake list + live DB rows.
+  // active_injury_areas: deduplicated areas from live injuries only (the
+  // profile intake field is free-text and doesn't have a structured area).
+  const has_active_injuries = profileInjuries.length > 0 || inputs.liveInjuries.length > 0;
+  const active_injury_areas = [...new Set(inputs.liveInjuries.map((inj) => inj.area))];
+
   return {
     glp1: { ...glp1Flag, active: glp1Active },
     alcohol_low_readiness_warning: drinks > 0 && inputs.card.readiness.band === "low",
-    has_active_injuries: injuries.length > 0,
+    has_active_injuries,
+    active_injury_areas,
     poor_sleep_efficiency,
     missed_protein_yesterday,
     coach_swap_suggested: inputs.card.coach_suggestion?.kind === "swap_to_mobility",

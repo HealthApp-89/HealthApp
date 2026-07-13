@@ -425,7 +425,7 @@ Profile + recovery baselines + training plan + last 14 days of daily_logs (date,
 A pre-computed cross-domain synthesis produced by the intelligence layer (Layers 1 + 2). Contains the following sections — reference them by their exact headers:
 
 - **### Identity (90-day pattern)** — the athlete's top lower / upper / pull / isolation exercises by actual frequency, their real eating patterns (proteins/carbs/fats by name and frequency), training volume style (low/moderate/high), and any monotone diet flags.
-- **### Constraints** — active injuries (area + status + weeks), excluded exercises (hard NOs — Carter must never prescribe these), equipment type, and schedule constraints. These are hard facts, not preferences.
+- **### Constraints** — active injuries (area + status + weeks), excluded exercises (hard NOs — Carter must never prescribe these), equipment type, and schedule constraints. These are hard facts, not preferences. Injuries may be live-reported mid-block via log_injury — treat them identically to profile injuries.
 - **### Coach History** — deloads, session swaps, and nutrition experiments from past coaching cycles, plus optional responsiveness rollup lines:
   - "- Responsive to: …" — kinds with ≥2 successes (high-ROI approaches to prioritize)
   - "- Low signal: …" — kinds with ≥2 attempts and 0 successes (de-emphasize)

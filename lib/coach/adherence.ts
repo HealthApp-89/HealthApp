@@ -10,7 +10,7 @@
 // Arms", "Chest Triceps", etc., not always matching plan strings exactly).
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { EnduranceActivity, Weekday } from "@/lib/data/types";
+import type { EnduranceActivity, Injury, Weekday } from "@/lib/data/types";
 import { categorize, type ExerciseCategory } from "@/lib/coach/exercise-categories";
 import { workingVolume, type SetRow } from "@/lib/coach/derived";
 import { readSessionForDay } from "@/lib/coach/session-plan-reader";
@@ -19,6 +19,7 @@ import type {
   EnduranceSessionPlan,
 } from "@/lib/coach/endurance/types";
 import { defaultZ2Cap } from "@/lib/coach/endurance/hr-zones";
+import { injuryActiveOn } from "@/lib/coach/injuries";
 
 const WEEKDAYS: Weekday[] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -80,8 +81,10 @@ function matches(planned: string | null, actual: string | null): boolean {
  *  - 'swapped': mid-week edit was honored. Two sub-cases:
  *    a. swapped_to matches the actual workout (e.g., Chest → Mobility, did mobility)
  *    b. swapped_to is REST AND no workout (e.g., Chest → REST as a deliberate skip)
- *  - 'missed': nothing else — the athlete committed to something and didn't deliver. */
-export type AdherenceDayStatus = "as_planned" | "swapped" | "missed" | "rest";
+ *  - 'missed': nothing else — the athlete committed to something and didn't deliver.
+ *  - 'injury': would have been 'missed', but an active injury covers the planned
+ *    session type on that day — the skip is excused. */
+export type AdherenceDayStatus = "as_planned" | "swapped" | "missed" | "rest" | "injury";
 
 /** Per-day endurance verdict, parallel to AdherenceDayStatus but anchored to
  *  the week's `endurance_session_plan` + `endurance_activities` rows.
@@ -115,6 +118,9 @@ export type AdherenceDay = {
   /** workouts[date].type for this day, or null if no workout was logged. */
   actual: string | null;
   status: AdherenceDayStatus;
+  /** Present when status === 'injury': the area of the injury that excuses this
+   *  day's skip (e.g. 'hip', 'shoulder'). */
+  injury_area?: string;
   /** Endurance-pillar verdict. Optional: omitted on weeks with no
    *  endurance_session_plan to keep pre-endurance consumers unchanged. */
   endurance_status?: EnduranceStatus;
@@ -127,9 +133,13 @@ export type AdherenceResult = {
   /** Per-day enriched view. AI consumers of compute_adherence use this to
    *  produce prose distinguishing swapped from missed. */
   days: AdherenceDay[];
+  /** Training sessions planned for the week, EXCLUDING injury-excused days.
+   *  Injury days are not counted against the athlete's denominator. */
   sessions_planned: number;
   sessions_done: number;
   sessions_on_plan: number;
+  /** Count of days reclassified as 'injury' (excused from denominator). */
+  injury_excused: number;
   adherence_pct: number;     // sessions_on_plan / sessions_planned * 100
   done_pct: number;          // sessions_done / sessions_planned * 100
   /** Proportional delta vs the prior-28d weekly average per muscle category.
@@ -183,6 +193,37 @@ export function computeEnduranceStatus(args: {
   return "as_planned";
 }
 
+/**
+ * Pure helper: given a base status (already derived from plan vs actual),
+ * return the final status after checking whether an injury excuses the day.
+ *
+ * Only a would-be `"missed"` day is eligible for reclassification.
+ * A COMPLETED session (`"as_planned"`, `"swapped"`, `"rest"`) is never
+ * reclassified — the athlete trained through it.
+ *
+ * Returns `{ status, injury_area }` where `injury_area` is set iff the
+ * returned status is `"injury"`.
+ */
+export function classifyDayWithInjuries(
+  baseStatus: AdherenceDayStatus,
+  sessionType: string | null,
+  dayIso: string,
+  injuries: ReadonlyArray<Pick<Injury, "area" | "affected_session_types" | "onset_date" | "status" | "resolved_at">>,
+): { status: AdherenceDayStatus; injury_area?: string } {
+  if (baseStatus !== "missed") return { status: baseStatus };
+  if (!sessionType) return { status: baseStatus };
+  // First-match semantics: injuries should be ordered most-recent-first (by
+  // onset_date DESC) so the newest injury wins when multiple cover the same day
+  // and session type (e.g. re-injury after resolution).
+  for (const inj of injuries) {
+    if (!injuryActiveOn(inj as Injury, dayIso)) continue;
+    if (inj.affected_session_types.includes(sessionType)) {
+      return { status: "injury", injury_area: inj.area };
+    }
+  }
+  return { status: baseStatus };
+}
+
 /** Compute adherence for a single Mon-Sun window. */
 export async function computeAdherence(
   supabase: SupabaseClient,
@@ -212,10 +253,15 @@ export async function computeAdherence(
   const endurancePlan =
     (weekRow?.endurance_session_plan ?? null) as EnduranceSessionPlan | null;
 
-  // 1b. Endurance profile (for HR cap) + endurance activities in the window.
-  //     Both are optional — if no profile or no activities exist, the per-day
-  //     endurance_status simply falls through to 'missed'/'not_prescribed'.
-  const [{ data: profileRow, error: profErr }, { data: enduranceRows, error: actErr }] = await Promise.all([
+  // 1b. Endurance profile (for HR cap) + endurance activities in the window +
+  //     injuries (all rows with onset_date ≤ weekEnd, including resolved —
+  //     a resolved injury still excuses the days it covered).
+  //     All optional — missing data falls through gracefully.
+  const [
+    { data: profileRow, error: profErr },
+    { data: enduranceRows, error: actErr },
+    { data: injuryRows, error: injErr },
+  ] = await Promise.all([
     supabase
       .from("athlete_profile_documents")
       .select("endurance_profile")
@@ -231,9 +277,17 @@ export async function computeAdherence(
       .is("deleted_at", null)
       .gte("local_date", weekStart)
       .lte("local_date", endStr),
+    supabase
+      .from("injuries")
+      .select("*")
+      .eq("user_id", userId)
+      .lte("onset_date", endStr)
+      .order("onset_date", { ascending: false }), // most recent injury wins on first-match
   ]);
   if (profErr) throw profErr;
   if (actErr) throw actErr;
+  if (injErr) throw injErr;
+  const injuries = (injuryRows ?? []) as Injury[];
   const enduranceProfile = (profileRow?.endurance_profile ?? null) as EnduranceProfile | null;
   const hrCap =
     enduranceProfile?.threshold_hr != null
@@ -279,6 +333,7 @@ export async function computeAdherence(
   let sessions_planned = 0;
   let sessions_done = 0;
   let sessions_on_plan = 0;
+  let injury_excused = 0;
   const days: AdherenceDay[] = [];
   for (let i = 0; i < WEEKDAYS.length; i++) {
     const wd = WEEKDAYS[i];
@@ -290,25 +345,37 @@ export async function computeAdherence(
     const c = readSessionForDay(currentPlan as Record<string, string>, wd) ?? null;
     const a = actual[wd] ?? null;
     const pIsRest = !!p && tokens(p).includes("rest");
-    if (p && !pIsRest) sessions_planned += 1;
     if (a) sessions_done += 1;
     if (p && a && matches(p, a)) sessions_on_plan += 1;
 
     // Per-day status derivation
     const swapped_to = p && c && p !== c ? c : null;
-    let status: AdherenceDayStatus;
+    let baseStatus: AdherenceDayStatus;
     if (pIsRest && !a && !swapped_to) {
-      status = "rest";
+      baseStatus = "rest";
     } else if (p && a && matches(p, a)) {
-      status = "as_planned";
+      baseStatus = "as_planned";
     } else if (swapped_to && a && matches(swapped_to, a)) {
-      status = "swapped";
+      baseStatus = "swapped";
     } else if (swapped_to && !a && tokens(swapped_to).includes("rest")) {
       // Planned non-rest, swapped to REST, no workout — honoring the swap, not missed.
-      status = "swapped";
+      baseStatus = "swapped";
     } else {
-      status = "missed";
+      baseStatus = "missed";
     }
+
+    // Injury reclassification: only a would-be 'missed' non-rest day is checked.
+    // A completed session is never reclassified.
+    const { status, injury_area } = classifyDayWithInjuries(
+      baseStatus,
+      p, // planned session type (original commitment, before any swap)
+      dayStr,
+      injuries,
+    );
+
+    // Denominator: count training sessions EXCLUDING injury-excused days.
+    if (p && !pIsRest && status !== "injury") sessions_planned += 1;
+    if (status === "injury") injury_excused += 1;
 
     // Endurance pass — only attach the field when an endurance plan exists for
     // the week. Otherwise the field stays absent and pre-endurance consumers
@@ -329,6 +396,7 @@ export async function computeAdherence(
       swapped_to,
       actual: a,
       status,
+      ...(injury_area !== undefined ? { injury_area } : {}),
       ...(endurance_status !== undefined ? { endurance_status } : {}),
     });
   }
@@ -393,6 +461,7 @@ export async function computeAdherence(
     sessions_planned,
     sessions_done,
     sessions_on_plan,
+    injury_excused,
     adherence_pct,
     done_pct,
     muscle_volume_vs_4w_avg,

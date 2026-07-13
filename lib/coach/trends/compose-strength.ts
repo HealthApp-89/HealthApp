@@ -5,13 +5,28 @@
 // and 12w windows, and detects plateaus (3+ consecutive weeks within
 // 1.5% of each other). Skips deload weeks when computing plateau spans
 // so an intentional light week doesn't fire a false plateau.
+//
+// Injury gating: per-lift slope entries carry injury_gated/injury_area when
+// an injury covers ≥50% of the 12w analysis window. The plateau prose is
+// replaced with "flat — injury-gated ({area} since {onset})" when gated.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { StrengthTrend, PerLiftSlope } from "@/lib/data/types";
+import type { StrengthTrend, PerLiftSlope, Injury, PrimaryLift } from "@/lib/data/types";
 import { BIG_FOUR } from "@/lib/coach/big-four";
 import { epley } from "@/lib/coach/derived";
 import { mondayOf } from "@/lib/coach/weekly-review/date-utils";
 import { linearRegression, type Point } from "./linear-regression";
+import { liftInjuryFor } from "@/lib/coach/injuries";
+
+// Maps a BIG_FOUR display name to the PrimaryLift key used by the injury schema.
+function bigFourToPrimaryLift(lift: string): PrimaryLift | null {
+  const n = lift.toLowerCase();
+  if (n.includes("squat")) return "squat";
+  if (n.includes("deadlift")) return "deadlift";
+  if (n.includes("bench") && n.includes("press")) return "bench";
+  if ((n.includes("overhead") || n.includes("ohp")) && n.includes("press")) return "ohp";
+  return null;
+}
 
 const PLATEAU_THRESHOLD_PCT = 0.015;
 const PLATEAU_MIN_WEEKS = 3;
@@ -20,8 +35,12 @@ export async function composeStrength(args: {
   supabase: SupabaseClient;
   userId: string;
   today: string;
+  /** Injuries fetched without status filter (includes resolved) ordered
+   *  onset_date desc — so liftInjuryFor picks the most-recent-onset match on
+   *  ties. Pass [] when the caller has no injury context (weekly-review §4). */
+  injuries: Injury[];
 }): Promise<StrengthTrend> {
-  const { supabase, userId, today } = args;
+  const { supabase, userId, today, injuries } = args;
 
   const windowStart12w = shiftDays(today, -7 * 12);
 
@@ -79,7 +98,7 @@ export async function composeStrength(args: {
   const currentWeek = twRows.find((r) => r.week_start === currentMonday) ?? null;
 
   const perLift: PerLiftSlope[] = BIG_FOUR.map((lift) =>
-    computeLiftSlope(lift, weeklyPeaks.get(lift)!, deloadWeeks, today)
+    computeLiftSlope(lift, weeklyPeaks.get(lift)!, deloadWeeks, today, windowStart12w, injuries)
   );
 
   return {
@@ -95,8 +114,17 @@ function computeLiftSlope(
   weeklyPeaks: Map<string, number>,
   deloadWeeks: Set<string>,
   today: string,
+  windowStart12w: string,
+  injuries: Injury[],
 ): PerLiftSlope {
-  void today;
+  // Injury gating: check whether an injury covers ≥50% of the 12w window.
+  // Window that drives plateau_active is the 12w span (windowStart12w→today).
+  const primaryLift = bigFourToPrimaryLift(lift);
+  const gatingInjury = primaryLift
+    ? liftInjuryFor(injuries, primaryLift, windowStart12w, today)
+    : null;
+  const injury_gated = gatingInjury !== null;
+  const injury_area = gatingInjury?.area ?? null;
 
   const sortedWeeks = [...weeklyPeaks.entries()]
     .sort((a, b) => a[0].localeCompare(b[0]));
@@ -111,6 +139,9 @@ function computeLiftSlope(
       r_squared_12w: null,
       plateau_active: false,
       plateau_weeks_flat: 0,
+      injury_gated,
+      injury_area,
+      plateau_label: null,
     };
   }
 
@@ -151,6 +182,16 @@ function computeLiftSlope(
     }
   }
 
+  const plateau_active = plateauWeeks >= PLATEAU_MIN_WEEKS;
+
+  // Plateau prose: injury-gated label replaces the conventional wording.
+  let plateau_label: string | null = null;
+  if (plateau_active) {
+    plateau_label = injury_gated && gatingInjury
+      ? `flat — injury-gated (${gatingInjury.area} since ${gatingInjury.onset_date})`
+      : `${plateauWeeks}w flat`;
+  }
+
   return {
     lift,
     e1rm_kg_now: e1rmNow,
@@ -158,8 +199,11 @@ function computeLiftSlope(
     slope_pct_per_wk_12w: fit12w?.slope_pct_per_wk ?? null,
     r_squared_4w: fit4w?.r_squared ?? null,
     r_squared_12w: fit12w?.r_squared ?? null,
-    plateau_active: plateauWeeks >= PLATEAU_MIN_WEEKS,
+    plateau_active,
     plateau_weeks_flat: plateauWeeks,
+    injury_gated,
+    injury_area,
+    plateau_label,
   };
 }
 

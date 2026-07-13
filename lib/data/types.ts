@@ -373,6 +373,27 @@ export type BlockStatus = "active" | "completed" | "abandoned";
 export type PrimaryLift = "squat" | "bench" | "deadlift" | "ohp";
 export type TargetMetric = "e1rm" | "working_weight";
 
+// ── injuries (0052_injuries) ─────────────────────────────────────────────────
+
+export type InjurySeverity = "mild" | "moderate" | "severe";
+export type InjuryStatus = "active" | "resolved";
+export type Injury = {
+  id: string;
+  user_id: string;
+  area: string;
+  side: string | null;
+  cause: string | null;
+  severity: InjurySeverity;
+  onset_date: string;               // YYYY-MM-DD, backdatable
+  status: InjuryStatus;
+  resolved_at: string | null;       // timestamptz
+  affected_session_types: string[]; // e.g. ["Legs","Back"] — session_plan strings
+  affected_lifts: PrimaryLift[];
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type TrainingBlock = {
   id: string;
   user_id: string;
@@ -1247,6 +1268,10 @@ export type AdviceFlags = {
   };
   alcohol_low_readiness_warning: boolean;
   has_active_injuries: boolean;
+  /** Deduplicated list of active injury areas from live DB rows (injuries table).
+   *  Empty array when no active injuries. Consumed by the advice prompt to name
+   *  specific areas the AI should flag in its coaching prose. */
+  active_injury_areas: string[];
   poor_sleep_efficiency: boolean;
   missed_protein_yesterday: boolean;
   /** True when MorningBriefCard.coach_suggestion?.kind === 'swap_to_mobility'.
@@ -1485,6 +1510,9 @@ export type WeeklyReviewPayload = {
     sessions_done: number;
     sessions_skipped: Array<{ day: string; type: string }>;
     sessions_swapped: Array<{ day: string; from: string; to: string }>;
+    /** Optional: days excused by an active injury. Added in Injury Lifecycle arc
+     *  (Task 5). Pre-Task-5 rows omit this field; consumers should default to []. */
+    sessions_injury_excused?: Array<{ day: string; type: string; area: string }>;
     per_lift: Array<{
       lift: string;
       top_set: { weight_kg: number; reps: number; sets: number };
@@ -1577,6 +1605,16 @@ export type PerLiftSlope = {
   r_squared_12w: number | null;
   plateau_active: boolean;
   plateau_weeks_flat: number;
+  /** True when an injury covers ≥50% of the 12w analysis window for this lift.
+   *  Consumers (proactive plateau nudge, weekly review §4) should suppress
+   *  plateau alerts and annotate prose when true. */
+  injury_gated: boolean;
+  /** Body-area label from the gating injury, e.g. "hip". Null when not gated. */
+  injury_area: string | null;
+  /** Prose-ready plateau label. When injury_gated, reads
+   *  "flat — injury-gated ({area} since {onset})"; otherwise the
+   *  conventional "{plateau_weeks_flat}w flat" string. */
+  plateau_label: string | null;
 };
 
 export type StrengthTrend = {
