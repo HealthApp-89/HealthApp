@@ -1406,6 +1406,43 @@ import { computeStrengthPerLbmTrend } from "@/lib/coach/strength-per-lbm-trend";
   assert("boundary sanity: flat series relative slope ≈ 0", Math.abs(boundary.relative_slope_pct_per_week) < 1e-9);
 }
 
+console.log("\n## applyStructureOverrides — block-scope overrides honored\n");
+
+import { applyStructureOverrides } from "@/lib/coach/prescription/structure-overrides";
+
+{
+  // Fixture mirrors the test file verbatim; we keep it here so the audit
+  // script is self-verifying without needing to call prescribeWeek end-to-end
+  // (which requires a live Supabase client).
+  const legs = [
+    { name: "Squat (Barbell)", sets: 3 },
+    { name: "RDL", sets: 3 },
+  ];
+
+  // Assertion 1: override with order+sets is respected.
+  const overridden = applyStructureOverrides(legs, "Legs", {
+    Legs: { order: ["RDL", "Squat (Barbell)"], sets: { RDL: 4 } },
+  });
+  assert(
+    "structure override: order permuted (RDL first)",
+    overridden[0].name === "RDL" && overridden[1].name === "Squat (Barbell)",
+    `got [${overridden.map((e) => e.name).join(", ")}]`,
+  );
+  assert(
+    "structure override: sets applied (RDL → 4)",
+    overridden[0].sets === 4,
+    `got ${overridden[0].sets}`,
+  );
+
+  // Assertion 2: null overrides → deepEqual (byte-identical) output.
+  const nullResult = applyStructureOverrides(legs, "Legs", null);
+  assert(
+    "null overrides → same reference (identity / byte-identical)",
+    nullResult === legs,
+    "expected same reference",
+  );
+}
+
 console.log("\n## CARTER_COLS — read-access allowlist pin\n");
 {
   const src = fs.readFileSync(new URL("../lib/coach/tools.ts", import.meta.url), "utf8");
