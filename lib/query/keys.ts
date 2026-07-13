@@ -73,6 +73,8 @@ export const queryKeys = {
     strength: (userId: string) => ["insights", userId, "strength"] as const,
   },
   trainingWeeks: {
+    /** Prefix key — invalidates every training-week query for this user. */
+    all: (userId: string) => ["training-weeks", userId] as const,
     one: (userId: string, weekStart: string) =>
       ["training-weeks", userId, "one", weekStart] as const,
     range: (userId: string, from: string, to: string) =>

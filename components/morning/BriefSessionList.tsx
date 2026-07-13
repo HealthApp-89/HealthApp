@@ -59,6 +59,7 @@ export function BriefSessionList({
   weekOverrides,
   weekPrescriptions,
   weekRirTarget,
+  manualEdits,
 }: {
   session: MorningBriefCard["session"];
   isSwapped: boolean;
@@ -70,6 +71,9 @@ export function BriefSessionList({
   weekOverrides: ExerciseOverrides | null;
   weekPrescriptions?: import("@/lib/data/types").SessionPrescriptions | null;
   weekRirTarget?: number | null;
+  /** Athlete's week-scope manual edit layer — LoggerSheet must receive it so
+   *  schedule edits reach the logger's resolved plan. */
+  manualEdits?: import("@/lib/data/types").ManualSessionEdits | null;
 }) {
   const { exercises, volume_gaps } = session;
   const [loggerOpen, setLoggerOpen] = useState(false);
@@ -312,6 +316,7 @@ export function BriefSessionList({
           weekdayLong={weekday}
           weekOverrides={weekOverrides}
           weekPrescriptions={weekPrescriptions ?? null}
+          manualEdits={manualEdits ?? null}
           weekRirTarget={weekRirTarget ?? null}
           onClose={() => { setLoggerOpen(false); setDraftEpoch((e) => e + 1); }}
         />

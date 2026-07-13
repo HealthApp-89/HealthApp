@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Card } from "@/components/ui/Card";
 import { WeekScheduleAccordion, type WeekDayEntry } from "@/components/strength/WeekScheduleAccordion";
@@ -9,14 +10,31 @@ import { ActivityLayoutProposalCard } from "@/components/activity/ActivityLayout
 import { useTrainingWeek } from "@/lib/query/hooks/useTrainingWeek";
 import { useFullWorkouts } from "@/lib/query/hooks/useFullWorkouts";
 import { useUserSessionTemplates } from "@/lib/query/hooks/useUserSessionTemplates";
+import { useBlockSummary } from "@/lib/query/hooks/useBlockSummary";
 import { currentWeekMonday } from "@/lib/coach/week";
 import { getEffectiveSessionPlan, WEEKLY_SESSIONS } from "@/lib/coach/sessionPlans";
 import { readSessionForDay } from "@/lib/coach/session-plan-reader";
 import { todayInUserTz } from "@/lib/time";
 import { useProfile } from "@/lib/query/hooks/useProfile";
 import { COLOR } from "@/lib/ui/theme";
+import { fmtNum } from "@/lib/ui/score";
 import type { DayClass } from "@/components/strength/ScheduleDayRow";
-import type { Weekday, SessionPlan } from "@/lib/data/types";
+import type { Weekday, SessionPlan, ManualSessionEdits, PrimaryLift } from "@/lib/data/types";
+import type { BlockPhase } from "@/lib/coach/prescription/types";
+
+const LIFT_LABEL: Record<PrimaryLift, string> = {
+  squat: "Squat",
+  bench: "Bench",
+  deadlift: "Deadlift",
+  ohp: "OHP",
+};
+
+const PHASE_LABEL: Record<BlockPhase, string> = {
+  pre_target: "pre-target",
+  consolidation: "consolidation",
+  off_pace: "off pace",
+  deload_week: "deload",
+};
 
 const WEEKDAY_ORDER: Weekday[] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const WEEKDAY_LONG: Record<Weekday, string> = {
@@ -61,6 +79,9 @@ export function StrengthScheduleClient({ userId }: Props) {
   const { data: trainingWeek = null, isLoading: tweekLoading } = useTrainingWeek(userId, weekStart);
   const { data: workouts = [], isLoading: workoutsLoading } = useFullWorkouts(userId);
   const { data: templatesMap = {}, isLoading: templatesLoading } = useUserSessionTemplates(userId);
+  const { data: blockSummary = null } = useBlockSummary(userId, todayIso);
+
+  const isCurrentWeek = weekStart === defaultMonday;
 
   // Cap navigation: 8 weeks back, 1 forward.
   const minWeek = addDays(defaultMonday, -7 * 8);
@@ -87,10 +108,15 @@ export function StrengthScheduleClient({ userId }: Props) {
         "REST";
 
       const userTemplate = templatesMap[sessionType]?.exercises ?? null;
-      const manualEdits = (trainingWeek?.manual_session_edits ?? null) as import("@/lib/data/types").ManualSessionEdits | null;
+      const manualEdits = (trainingWeek?.manual_session_edits ?? null) as ManualSessionEdits | null;
       const exercises = sessionType === "REST"
         ? []
         : getEffectiveSessionPlan(sessionType, weekdayLong, prescriptions, overrides, userTemplate, manualEdits);
+      // Engine baseline (no manual layer) — the DayEditSheet's comparison
+      // target for the EDITED chip + engine-values subtext.
+      const baselineExercises = sessionType === "REST"
+        ? []
+        : getEffectiveSessionPlan(sessionType, weekdayLong, prescriptions, overrides, userTemplate, null);
 
       const isToday = date === todayIso;
       const isPast = date < todayIso;
@@ -109,6 +135,7 @@ export function StrengthScheduleClient({ userId }: Props) {
         date,
         sessionType,
         exercises,
+        baselineExercises,
         dayClass,
       };
     });
@@ -128,8 +155,79 @@ export function StrengthScheduleClient({ userId }: Props) {
 
   const isLoading = tweekLoading || workoutsLoading || templatesLoading;
 
+  // ── Block context strip content (current week only) ──────────────────────
+  const showBlockStrip = blockSummary !== null && isCurrentWeek;
+  const stripEyebrow = blockSummary
+    ? `${blockSummary.block.primary_lift ? `${LIFT_LABEL[blockSummary.block.primary_lift]} block` : "Training block"} · Week ${fmtNum(blockSummary.weekNum)} of ${fmtNum(blockSummary.totalWeeks)}`
+    : "";
+  const stripIntensity = blockSummary?.block.primary_lift
+    ? blockSummary.thisWeek.intensity[blockSummary.block.primary_lift] ?? null
+    : null;
+  const stripDetail = blockSummary
+    ? [
+        blockSummary.thisWeek.rir != null ? `RIR ${fmtNum(blockSummary.thisWeek.rir)}` : null,
+        stripIntensity != null ? `intensity ${fmtNum(stripIntensity)}×` : null,
+      ].filter(Boolean).join(" · ")
+    : "";
+
   return (
     <div style={{ padding: "8px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
+      {/* Block context strip — seamless link from schedule to the block monitor */}
+      {showBlockStrip && blockSummary && (
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: 10,
+            background: COLOR.surface,
+            border: `1px solid ${COLOR.divider}`,
+            borderLeft: `3px solid ${COLOR.accent}`,
+            borderRadius: 14,
+            padding: "10px 12px",
+          }}
+        >
+          <div style={{ minWidth: 0 }}>
+            <div
+              style={{
+                fontSize: 10,
+                fontWeight: 700,
+                letterSpacing: "0.08em",
+                color: COLOR.textMuted,
+                textTransform: "uppercase",
+              }}
+            >
+              {stripEyebrow}
+            </div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: COLOR.textStrong, marginTop: 2 }}>
+              {stripDetail || "—"}
+              <span style={{ color: COLOR.textMuted, fontWeight: 500 }}>
+                {" "}· {PHASE_LABEL[blockSummary.phase]}
+              </span>
+            </div>
+          </div>
+          <Link
+            href="/strength?tab=blocks"
+            style={{
+              flexShrink: 0,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+              background: COLOR.accentSoft,
+              color: COLOR.accentDeep,
+              fontSize: 10,
+              fontWeight: 700,
+              letterSpacing: "0.04em",
+              padding: "5px 10px",
+              borderRadius: 9999,
+              textDecoration: "none",
+            }}
+          >
+            VIEW BLOCK →
+          </Link>
+        </div>
+      )}
+
       {/* Week navigator */}
       <div
         style={{
@@ -242,7 +340,12 @@ export function StrengthScheduleClient({ userId }: Props) {
           weekOverrides={trainingWeek?.exercise_overrides ?? null}
           weekPrescriptions={trainingWeek?.session_prescriptions ?? null}
           weekRirTarget={trainingWeek?.rir_target ?? null}
+          weekManualEdits={(trainingWeek?.manual_session_edits ?? null) as ManualSessionEdits | null}
           sessionPlan={(trainingWeek?.session_plan ?? {}) as SessionPlan}
+          // Manual edits live on the training_weeks row and the API only
+          // accepts the current week — no committed row / past week → no edit.
+          canEdit={isCurrentWeek && hasCommittedWeek}
+          activeBlockId={blockSummary?.block.id ?? null}
         />
       )}
     </div>

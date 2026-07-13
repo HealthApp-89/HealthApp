@@ -2,12 +2,13 @@
 
 import { useState } from "react";
 import type { PlannedExercise } from "@/lib/coach/sessionPlans";
-import type { ExerciseOverrides, SessionPlan, SessionPrescriptions, Weekday } from "@/lib/data/types";
+import type { ExerciseOverrides, ManualSessionEdits, SessionPlan, SessionPrescriptions, Weekday } from "@/lib/data/types";
 import { LoggerSheet } from "@/components/logger/LoggerSheet";
 import { DaySwapSheet } from "@/components/strength/DaySwapSheet";
+import { DayEditSheet } from "@/components/strength/schedule/DayEditSheet";
 import { useExistingLoggerDraft } from "@/lib/logger/use-existing-draft";
 import { COLOR } from "@/lib/ui/theme";
-import { CircleDot, CheckCircle2, XCircle, Clock, Minus } from "lucide-react";
+import { CircleDot, CheckCircle2, XCircle, Clock, Minus, Pencil } from "lucide-react";
 
 /** Date-class discriminator — controls which footer CTAs render. */
 export type DayClass = "today" | "past_logged" | "past_unlogged" | "future" | "rest";
@@ -20,13 +21,19 @@ type Props = {
   date: string;
   sessionType: string;
   exercises: PlannedExercise[];
+  /** Engine-resolved plan WITHOUT the manual-edit layer (DayEditSheet baseline). */
+  baselineExercises: PlannedExercise[];
   dayClass: DayClass;
   isExpanded: boolean;
   onToggle: () => void;
   weekOverrides: ExerciseOverrides | null;
   weekPrescriptions: SessionPrescriptions | null;
   weekRirTarget?: number | null;
+  weekManualEdits: ManualSessionEdits | null;
   sessionPlan: SessionPlan;
+  /** Current week with a committed row — gates the Edit affordance. */
+  canEdit: boolean;
+  activeBlockId: string | null;
 };
 
 const WEEKDAY_LABEL: Record<Weekday, string> = {
@@ -54,20 +61,26 @@ export function ScheduleDayRow({
   date,
   sessionType,
   exercises,
+  baselineExercises,
   dayClass,
   isExpanded,
   onToggle,
   weekOverrides,
   weekPrescriptions,
   weekRirTarget,
+  weekManualEdits,
   sessionPlan,
+  canEdit,
+  activeBlockId,
 }: Props) {
   const [loggerOpen, setLoggerOpen] = useState(false);
   const [swapOpen, setSwapOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const [draftEpoch, setDraftEpoch] = useState(0);
   const hasDraft = useExistingLoggerDraft(userId, sessionType, draftEpoch);
 
   const isRest = dayClass === "rest";
+  const showEdit = canEdit && !isRest && exercises.length > 0;
 
   const pillLabel =
     dayClass === "today"          ? "Today" :
@@ -242,8 +255,8 @@ export function ScheduleDayRow({
               </ul>
             )}
 
-            {(showFooterToday || showFooterFuture) && (
-              <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+            {(showFooterToday || showFooterFuture || showEdit) && (
+              <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
                 {showFooterToday && (
                   <button
                     type="button"
@@ -263,22 +276,47 @@ export function ScheduleDayRow({
                     {hasDraft ? "Resume session" : "Start session"}
                   </button>
                 )}
-                <button
-                  type="button"
-                  onClick={() => setSwapOpen(true)}
-                  style={{
-                    padding: "10px 14px",
-                    borderRadius: 9999,
-                    background: COLOR.surfaceAlt,
-                    border: `1px solid ${COLOR.divider}`,
-                    fontSize: 12,
-                    fontWeight: 600,
-                    color: COLOR.textMid,
-                    cursor: "pointer",
-                  }}
-                >
-                  Swap day
-                </button>
+                {(showFooterToday || showFooterFuture) && (
+                  <button
+                    type="button"
+                    onClick={() => setSwapOpen(true)}
+                    style={{
+                      padding: "10px 14px",
+                      borderRadius: 9999,
+                      background: COLOR.surfaceAlt,
+                      border: `1px solid ${COLOR.divider}`,
+                      fontSize: 12,
+                      fontWeight: 600,
+                      color: COLOR.textMid,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Swap day
+                  </button>
+                )}
+                {showEdit && (
+                  <button
+                    type="button"
+                    onClick={() => setEditOpen(true)}
+                    aria-label={`Edit ${weekdayLong} plan`}
+                    style={{
+                      padding: "10px 14px",
+                      borderRadius: 9999,
+                      background: COLOR.surfaceAlt,
+                      border: `1px solid ${COLOR.divider}`,
+                      fontSize: 12,
+                      fontWeight: 600,
+                      color: COLOR.textMid,
+                      cursor: "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 5,
+                    }}
+                  >
+                    <Pencil size={11} aria-hidden="true" />
+                    Edit
+                  </button>
+                )}
               </div>
             )}
 
@@ -322,6 +360,7 @@ export function ScheduleDayRow({
           weekdayLong={weekdayLong}
           weekOverrides={weekOverrides}
           weekPrescriptions={weekPrescriptions}
+          manualEdits={weekManualEdits}
           weekRirTarget={weekRirTarget ?? null}
           onClose={() => {
             setLoggerOpen(false);
@@ -337,6 +376,19 @@ export function ScheduleDayRow({
           sourceDay={weekdayShort}
           plan={sessionPlan}
           onClose={() => setSwapOpen(false)}
+        />
+      )}
+
+      {editOpen && (
+        <DayEditSheet
+          userId={userId}
+          weekStart={weekStart}
+          weekdayLong={weekdayLong}
+          sessionType={sessionType}
+          baseline={baselineExercises}
+          current={exercises}
+          activeBlockId={activeBlockId}
+          onClose={() => setEditOpen(false)}
         />
       )}
     </>

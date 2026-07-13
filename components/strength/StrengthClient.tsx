@@ -202,6 +202,7 @@ export function StrengthClient({
             userId={userId}
             weekOverrides={(committedWeek?.exercise_overrides as ExerciseOverrides | null | undefined) ?? null}
             weekPrescriptions={committedWeek?.session_prescriptions ?? null}
+            manualEdits={committedWeek?.manual_session_edits ?? null}
           />
         ) : activeView === "by_muscle" ? (
           <ByMuscleView userId={userId} todayIso={todayIso} />
