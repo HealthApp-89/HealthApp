@@ -23,12 +23,21 @@ does NOT stamp and retries on the next tick; a clean run stamps even when
 today's overnight block was empty (rc=2, watch not synced) — that gap is
 covered by tomorrow's `BACKFILL_DAYS` pull.
 
-- Install: plist at `~/Library/LaunchAgents/com.apex.garmin-collector.plist`
-  (ProgramArguments `/bin/zsh <abs path>/run-when-online.sh`, `StartInterval`
-  300, `RunAtLoad` true), then
+- Install: `cp com.apex.garmin-collector.plist ~/Library/LaunchAgents/` (fix
+  the two absolute paths inside if the repo lives elsewhere), then
   `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.apex.garmin-collector.plist`.
 - Force a test run: delete the stamp file, then
   `launchctl kickstart gui/$(id -u)/com.apex.garmin-collector`.
+
+## New-Mac migration checklist
+1. Clone the repo; `cd sidecar/garmin`.
+2. Install Python ≥3.10 (python.org — macOS system Python is too old), then
+   `python3 -m venv .venv && ./.venv/bin/pip install -r requirements.txt`.
+3. Carry over the TWO secret files (not in git): `sidecar/garmin/.env`
+   (Garmin creds + ingest token/url) and `~/.garminconnect` (saved token —
+   or skip it and do one interactive MFA login per Setup step 4).
+4. Install + load the plist as above. Done — first internet after 07:00
+   triggers the daily pull.
 
 Linux fallback (plain cron, fixed time):
 ```
