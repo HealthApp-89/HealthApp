@@ -83,6 +83,23 @@ export function SetRow({
 
   const committed = !!set.committed_at;
   const [badgeOpen, setBadgeOpen] = useState(false);
+
+  // Badge selection owns the failure⇄RIR coupling: F means 0 reps in reserve
+  // by definition, so it auto-fills rir=0 (draft synced — it's local state).
+  // Leaving F undoes the auto-fill only when rir is still 0, so a hand-typed
+  // value survives badge fiddling.
+  const selectBadge = (next: { warmup: boolean; failure: boolean }) => {
+    if (next.failure) {
+      onChange({ ...next, rir: 0 });
+      setDraftRir("0");
+    } else if (set.failure && set.rir === 0) {
+      onChange({ ...next, rir: null });
+      setDraftRir("");
+    } else {
+      onChange(next);
+    }
+    setBadgeOpen(false);
+  };
   const setLabel = set.warmup ? "W" : set.failure ? "F" : String(workingSetNumber);
   const setBadgeClass = set.warmup
     ? "bg-yellow-500/15 text-yellow-300"
@@ -136,9 +153,9 @@ export function SetRow({
             <>
               <div className="fixed inset-0 z-10" onClick={() => setBadgeOpen(false)} aria-hidden />
               <div className="absolute left-0 top-7 z-20 bg-zinc-800 border border-zinc-700 rounded-lg p-1 flex flex-col gap-0.5 min-w-[44px]" role="menu">
-                <button type="button" onClick={() => { onChange({ warmup: false, failure: false }); setBadgeOpen(false); }} className="w-9 h-7 rounded text-[11px] font-semibold bg-zinc-800 text-zinc-200 hover:bg-zinc-700">{workingSetNumber}</button>
-                <button type="button" onClick={() => { onChange({ warmup: true, failure: false }); setBadgeOpen(false); }} className="w-9 h-7 rounded text-[11px] font-semibold bg-yellow-500/15 text-yellow-300 hover:bg-yellow-500/25">W</button>
-                <button type="button" onClick={() => { onChange({ warmup: false, failure: true }); setBadgeOpen(false); }} className="w-9 h-7 rounded text-[11px] font-semibold bg-red-500/15 text-red-400 hover:bg-red-500/25">F</button>
+                <button type="button" onClick={() => selectBadge({ warmup: false, failure: false })} className="w-9 h-7 rounded text-[11px] font-semibold bg-zinc-800 text-zinc-200 hover:bg-zinc-700">{workingSetNumber}</button>
+                <button type="button" onClick={() => selectBadge({ warmup: true, failure: false })} className="w-9 h-7 rounded text-[11px] font-semibold bg-yellow-500/15 text-yellow-300 hover:bg-yellow-500/25">W</button>
+                <button type="button" onClick={() => selectBadge({ warmup: false, failure: true })} className="w-9 h-7 rounded text-[11px] font-semibold bg-red-500/15 text-red-400 hover:bg-red-500/25">F</button>
               </div>
             </>
           )}
@@ -212,7 +229,7 @@ export function SetRow({
             <div className="absolute left-0 top-7 z-20 bg-zinc-800 border border-zinc-700 rounded-lg p-1 flex flex-col gap-0.5 min-w-[44px]" role="menu">
               <button
                 type="button"
-                onClick={() => { onChange({ warmup: false, failure: false }); setBadgeOpen(false); }}
+                onClick={() => selectBadge({ warmup: false, failure: false })}
                 className="w-9 h-7 rounded text-[11px] font-semibold bg-zinc-800 text-zinc-200 hover:bg-zinc-700"
                 role="menuitem"
               >
@@ -220,7 +237,7 @@ export function SetRow({
               </button>
               <button
                 type="button"
-                onClick={() => { onChange({ warmup: true, failure: false }); setBadgeOpen(false); }}
+                onClick={() => selectBadge({ warmup: true, failure: false })}
                 className="w-9 h-7 rounded text-[11px] font-semibold bg-yellow-500/15 text-yellow-300 hover:bg-yellow-500/25"
                 role="menuitem"
               >
@@ -228,7 +245,7 @@ export function SetRow({
               </button>
               <button
                 type="button"
-                onClick={() => { onChange({ warmup: false, failure: true }); setBadgeOpen(false); }}
+                onClick={() => selectBadge({ warmup: false, failure: true })}
                 className="w-9 h-7 rounded text-[11px] font-semibold bg-red-500/15 text-red-400 hover:bg-red-500/25"
                 role="menuitem"
               >
