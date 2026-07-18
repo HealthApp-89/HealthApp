@@ -29,8 +29,11 @@
 // (step + intermediate offset) so the effective jump alternates between
 // the offset and (step − offset), giving fine grids their narrower steps.
 //
-// Owns LOAD + REPS for accessories. Sets stay volume-balance-owned, EXCEPT
-// deload_week where this rule's output is final: load HELD (isolation work
+// Owns LOAD + REPS for accessories. During a focus block, load progression is
+// gated ONLY by block phase (consolidation/off_pace freeze load; deload holds)
+// — no separate below-baseline ceiling; pre_target lets the ladder step. Sets
+// stay volume-balance-owned, EXCEPT deload_week where this rule's output is
+// final: load HELD (isolation work
 // carries little systemic fatigue and percentage cuts on small dumbbells
 // round to meaningless loads; on a cut, retention wants intensity kept),
 // sets halved. Primary/secondary deload rules are untouched.
@@ -59,8 +62,6 @@ export type DoubleProgressionInput = {
   rirTarget: number;
   blockPhase: BlockPhase;
   loadability: Loadability;
-  /** roundToStep(maintenance × 0.92) during a focus block, else null. */
-  focusClampCeilingKg: number | null;
   /** Stable range anchor: static SESSION_PLANS baseReps when available. */
   bottomReps: number;
 };
@@ -200,12 +201,7 @@ export function prescribeAccessoryDoubleProgression(
   const allTopClean =
     setsAtL.length >= 2 && setsAtL.every((s) => isClean(s, top, prescribedRir));
   if (allTopClean && !loadFrozen) {
-    const nextKg = nextUpKg(effL, ex.increment);
-    if (input.focusClampCeilingKg != null && nextKg > input.focusClampCeilingKg) {
-      // Park at the clamp: hold load, prescribe the range top.
-      return { ...ex, baseKg: effL, baseReps: top };
-    }
-    return { ...ex, baseKg: nextKg, baseReps: bottom };
+    return { ...ex, baseKg: nextUpKg(effL, ex.increment), baseReps: bottom };
   }
 
   // 2) Rep up (also how consolidation parks at the top): top set clean at the

@@ -919,7 +919,7 @@ console.log("\n## double-progression-rule.ts — accessory double progression\n"
   });
   const input = (over = {}) => ({
     baseExercise: ex, currentWorkingKg: 12, recentSets: [], rirTarget: 2,
-    blockPhase: "pre_target", loadability: "coarse", focusClampCeilingKg: null,
+    blockPhase: "pre_target", loadability: "coarse",
     bottomReps: 10, ...over,
   });
 
@@ -932,13 +932,13 @@ console.log("\n## double-progression-rule.ts — accessory double progression\n"
   assert("step up: load +step on grid", up.baseKg === 14);
   assert("step up: reps reset to bottom", up.baseReps === 10);
 
-  // 2) Clamp parks at top instead of exceeding ceiling.
-  const parked = prescribeAccessoryDoubleProgression(input({
+  // 2) No clamp: clean-at-top during a focus block steps load up (double
+  //    progression completes; fatigue protection lives in the phase gates).
+  const focusStepUp = prescribeAccessoryDoubleProgression(input({
     recentSets: [S(12, 14, 2, "2026-07-07"), S(12, 14, 2, "2026-07-07")],
-    focusClampCeilingKg: 12,
   }));
-  assert("clamp: load parked at L", parked.baseKg === 12);
-  assert("clamp: reps parked at top", parked.baseReps === 14);
+  assert("focus block step up: load +step on grid", focusStepUp.baseKg === 14);
+  assert("focus block step up: reps reset to bottom", focusStepUp.baseReps === 10);
 
   // 3) Single set at L is NOT enough for a step up → rep-up path instead.
   const single = prescribeAccessoryDoubleProgression(input({

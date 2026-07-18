@@ -312,10 +312,6 @@ export async function prescribeWeek(opts: {
         const staticEx = (SESSION_PLANS[sessionType] ?? []).find(
           (e) => !e.warmup && e.name === baseEx.name,
         );
-        const step = baseEx.increment?.step ?? 2.5;
-        const focusClampCeilingKg = isFocusBlock
-          ? roundToStep(accessoryWorkingKg * FOCUS_BLOCK_CLAMP, step)
-          : null;
         const dp = prescribeAccessoryDoubleProgression({
           baseExercise: baseEx,
           currentWorkingKg: accessoryWorkingKg,
@@ -323,7 +319,6 @@ export async function prescribeWeek(opts: {
           rirTarget,
           blockPhase,
           loadability: lib?.loadability ?? "moderate",
-          focusClampCeilingKg,
           bottomReps: staticEx?.baseReps ?? baseEx.baseReps ?? 8,
         });
         if (blockPhase === "deload_week") {
