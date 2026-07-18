@@ -25,7 +25,6 @@ import { prescribeSecondaryAutoregulated } from "@/lib/coach/prescription/autore
 import { prescribeAccessoryDoubleProgression } from "@/lib/coach/prescription/double-progression-rule";
 import { prescribeAccessoryFromVolumeBand, classifyVolumeBand, type VolumeBandPosition } from "@/lib/coach/prescription/volume-balance-rule";
 import { maintenanceLoadFor } from "@/lib/coach/prescription/maintenance-baseline";
-import { roundToStep } from "@/lib/coach/prescription/calibrate-target";
 import { bestComparisonValue } from "@/lib/coach/e1rm";
 import { discoverEffectiveExercises } from "@/lib/coach/prescription/recent-workouts-discovery";
 import type { BlockPhase, WorkoutSetSample } from "@/lib/coach/prescription/types";
