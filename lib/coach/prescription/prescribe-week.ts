@@ -25,7 +25,6 @@ import { prescribeSecondaryAutoregulated } from "@/lib/coach/prescription/autore
 import { prescribeAccessoryDoubleProgression } from "@/lib/coach/prescription/double-progression-rule";
 import { prescribeAccessoryFromVolumeBand, classifyVolumeBand, type VolumeBandPosition } from "@/lib/coach/prescription/volume-balance-rule";
 import { maintenanceLoadFor } from "@/lib/coach/prescription/maintenance-baseline";
-import { roundToStep } from "@/lib/coach/prescription/calibrate-target";
 import { bestComparisonValue } from "@/lib/coach/e1rm";
 import { discoverEffectiveExercises } from "@/lib/coach/prescription/recent-workouts-discovery";
 import type { BlockPhase, WorkoutSetSample } from "@/lib/coach/prescription/types";
@@ -312,10 +311,6 @@ export async function prescribeWeek(opts: {
         const staticEx = (SESSION_PLANS[sessionType] ?? []).find(
           (e) => !e.warmup && e.name === baseEx.name,
         );
-        const step = baseEx.increment?.step ?? 2.5;
-        const focusClampCeilingKg = isFocusBlock
-          ? roundToStep(accessoryWorkingKg * FOCUS_BLOCK_CLAMP, step)
-          : null;
         const dp = prescribeAccessoryDoubleProgression({
           baseExercise: baseEx,
           currentWorkingKg: accessoryWorkingKg,
@@ -323,7 +318,6 @@ export async function prescribeWeek(opts: {
           rirTarget,
           blockPhase,
           loadability: lib?.loadability ?? "moderate",
-          focusClampCeilingKg,
           bottomReps: staticEx?.baseReps ?? baseEx.baseReps ?? 8,
         });
         if (blockPhase === "deload_week") {
