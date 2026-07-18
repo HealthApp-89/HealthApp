@@ -1032,7 +1032,7 @@ console.log("\n## double-progression-rule.ts — fix fixtures (descent stickines
   });
   const input = (over = {}) => ({
     baseExercise: ex, currentWorkingKg: 12, recentSets: [], rirTarget: 2,
-    blockPhase: "pre_target", loadability: "coarse", focusClampCeilingKg: null,
+    blockPhase: "pre_target", loadability: "coarse",
     bottomReps: 10, ...over,
   });
 
@@ -1099,7 +1099,7 @@ console.log("\n## double-progression-rule.ts — fix fixtures (descent stickines
   });
   const inputFine = (over = {}) => ({
     baseExercise: exFine, currentWorkingKg: 30, recentSets: [], rirTarget: 2,
-    blockPhase: "pre_target", loadability: "fine", focusClampCeilingKg: null,
+    blockPhase: "pre_target", loadability: "fine",
     bottomReps: 10, ...over,
   });
 
@@ -1134,7 +1134,7 @@ console.log("\n## double-progression-rule.ts — fix fixtures (descent stickines
   const exFineRep = { name: "Leg Extension (Machine)", baseReps: 10, sets: 3, rir: 2, increment: { step: 5, intermediate: 2.3 } };
   const inputFineRep = (over = {}) => ({
     baseExercise: exFineRep, currentWorkingKg: 30, recentSets: [], rirTarget: 2,
-    blockPhase: "pre_target", loadability: "fine", focusClampCeilingKg: null,
+    blockPhase: "pre_target", loadability: "fine",
     bottomReps: 10, ...over,
   });
   const SFine = (kg, reps, rir, date, extra = {}) => ({
@@ -1154,7 +1154,7 @@ console.log("\n## double-progression-rule.ts — fix fixtures (descent stickines
   });
   const inputMod = (over = {}) => ({
     baseExercise: exMod, currentWorkingKg: 12, recentSets: [], rirTarget: 2,
-    blockPhase: "pre_target", loadability: "moderate", focusClampCeilingKg: null,
+    blockPhase: "pre_target", loadability: "moderate",
     bottomReps: 10, ...over,
   });
   const modRepUp = prescribeAccessoryDoubleProgression(inputMod({
@@ -1181,7 +1181,7 @@ console.log("\n## double-progression-rule.ts — M1 strained anchor adoption\n")
   });
   const input = (over = {}) => ({
     baseExercise: ex, currentWorkingKg: 12, recentSets: [], rirTarget: 2,
-    blockPhase: "pre_target", loadability: "coarse", focusClampCeilingKg: null,
+    blockPhase: "pre_target", loadability: "coarse",
     bottomReps: 10, ...over,
   });
 
@@ -1224,7 +1224,6 @@ console.log("\n## double-progression-rule.ts — Item 3 unmapped loadability def
     // "moderate" is what prescribe-week.ts passes when lib?.loadability is null
     // (lib?.loadability ?? "moderate" at line ~324 of prescribe-week.ts).
     loadability: "moderate",
-    focusClampCeilingKg: null,
     bottomReps: 10, ...over,
   });
 
