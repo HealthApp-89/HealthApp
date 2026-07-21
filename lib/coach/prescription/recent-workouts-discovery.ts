@@ -15,6 +15,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { PlannedExercise } from "@/lib/coach/sessionPlans";
 import { SESSION_PLANS } from "@/lib/coach/sessionPlans";
+import { tierOf } from "@/lib/coach/session-structure/tiers";
 
 const MIN_SESSIONS_REQUIRED = 4; // need at least N sessions of this type to discover
 const PRESENCE_THRESHOLD = 0.5;  // exercise must appear in ≥50% of recent sessions
@@ -113,16 +114,25 @@ export async function discoverEffectiveExercises(opts: {
     });
   }
 
-  // Second pass: non-library exercises (user added something off-script).
+  // Second pass: non-library exercises (user added something off-script, or
+  // rotation swapped in a variant whose name isn't in SESSION_PLANS). Insert
+  // by fatigue tier — before the first survivor with a strictly higher tier —
+  // so a tier-2 secondary compound like "Leg Press Single Leg" lands after
+  // the tier-1 squat, not appended behind the tier-3 isolation machines.
+  // Library order (already tier-ascending) is never disturbed.
   for (const [k, entry] of presence) {
     if (libraryKeys.has(k)) continue;
     if (entry.count / totalSessions < PRESENCE_THRESHOLD) continue;
-    survivors.push({
+    const ex: PlannedExercise = {
       name: entry.exemplar.name,
       baseKg: entry.exemplar.kgs.length > 0 ? Math.max(...entry.exemplar.kgs) : undefined,
       baseReps: entry.exemplar.reps.length > 0 ? Math.round(median(entry.exemplar.reps)) : undefined,
       sets: 3,
-    });
+    };
+    const tier = tierOf(ex);
+    const insertAt = survivors.findIndex((s) => tierOf(s) > tier);
+    if (insertAt === -1) survivors.push(ex);
+    else survivors.splice(insertAt, 0, ex);
   }
 
   return survivors.length > 0 ? survivors : null;
