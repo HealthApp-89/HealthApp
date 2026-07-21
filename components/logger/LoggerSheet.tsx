@@ -388,6 +388,9 @@ export function LoggerSheet(props: Props) {
       duration_min: draft.duration_min !== undefined
         ? draft.duration_min
         : (elapsedMin > 0 ? elapsedMin : null),
+      started_at: draft.session_started_at !== undefined
+        ? draft.session_started_at
+        : draft.started_at,
       exercises: draft.exercises.map((ex, i) => ({
         name: ex.name,
         position: i,

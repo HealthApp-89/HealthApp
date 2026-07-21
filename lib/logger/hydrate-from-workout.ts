@@ -48,6 +48,7 @@ export function hydrateWorkoutAsDraft(
     date: workout.date,
     duration_min: workout.duration_min,
     started_at: nowIso,
+    session_started_at: workout.started_at,
     updated_at: nowIso,
     paused_at: null,
     paused_ms_total: 0,
