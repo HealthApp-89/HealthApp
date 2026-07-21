@@ -44,6 +44,11 @@ export type LoggerDraft = {
    *  undefined — `commitNow` then derives duration from elapsed timer. */
   duration_min?: number | null;
   started_at: string;     // ISO timestamp at sheet open; anchors elapsed timer
+  /** Preserved across edit cycles: the original workout's recorded started_at.
+   *  Set by `hydrateWorkoutAsDraft` (may be null for pre-0053 rows). Fresh
+   *  logger sessions leave this undefined — `commitNow` then sends
+   *  `started_at` (the Start Session tap). */
+  session_started_at?: string | null;
   updated_at: string;     // ISO timestamp on every change
   /** ISO timestamp when timer was paused; null = running. */
   paused_at: string | null;
@@ -65,6 +70,9 @@ export type CommitSessionPayload = {
   date: string;
   type: string;
   duration_min: number | null;
+  /** ISO timestamp of the latest "Start session" tap; edits preserve the
+   *  original workout's value. Written to workouts.started_at. */
+  started_at: string | null;
   exercises: {
     name: string;
     position: number;

@@ -25,6 +25,7 @@ export type WorkoutForEdit = {
   date: string;
   type: string | null;
   duration_min: number | null;
+  started_at: string | null;
   external_id: string;
   source: string;
   created_at: string;
@@ -32,7 +33,7 @@ export type WorkoutForEdit = {
 };
 
 const QUERY_COLS =
-  "id, user_id, date, type, duration_min, external_id, source, created_at, exercises(id, name, position, exercise_sets(set_index, kg, reps, duration_seconds, warmup, failure, rest_seconds_actual, rir))";
+  "id, user_id, date, type, duration_min, started_at, external_id, source, created_at, exercises(id, name, position, exercise_sets(set_index, kg, reps, duration_seconds, warmup, failure, rest_seconds_actual, rir))";
 
 type RawSet = WorkoutForEditSet;
 type RawExercise = { id: string; name: string; position: number | null; exercise_sets: RawSet[] | null };
