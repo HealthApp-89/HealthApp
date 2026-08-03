@@ -15,13 +15,10 @@
 //   approaching_mrv   → notes.push("Cap volume on <muscle> next session")
 //   below_mev (>1 muscle) → notes.push("Volume is light on <muscles>; check session adherence")
 
-import { SESSION_PLANS } from "@/lib/coach/sessionPlans";
 import type { WorkoutDebriefPayload } from "@/lib/coach/session-debrief/payload";
 import type { TrainingBlock, PrimaryLift } from "@/lib/data/types";
-import {
-  evaluateBlockPhase,
-  prescribePrimaryFromPhase,
-} from "@/lib/coach/prescription/block-phase-rule";
+import { evaluateBlockPhase } from "@/lib/coach/prescription/block-phase-rule";
+import type { NextSessionPrescription } from "@/lib/coach/session-debrief/next-session-prescription";
 
 /** Exercise-name patterns identifying a primary-lift instance.
  *  Mirrors target-hit-evaluator.ts so the block-phase rule fires on the
@@ -48,6 +45,9 @@ type ComposePrescriptionInput = {
   todayExercises: Array<{ name: string }>;
   block: TrainingBlock | null;
   todayIso: string;
+  /** The engine's prescription for the next session of this type. The debrief
+   *  reports these numbers verbatim — it never computes a load itself. */
+  nextSession: NextSessionPrescription | null;
   /** From training_weeks.volume_signals — muscles whose set bump the engine
    *  withheld because prior bumps were not performed. Defaults to none. */
   volumeSignals?: Array<{ muscle: string; weekly_sets: number; mev: number; weekly_exposures: number }>;
@@ -56,107 +56,75 @@ type ComposePrescriptionInput = {
 export function composePrescription(
   input: ComposePrescriptionInput,
 ): WorkoutDebriefPayload["prescription"] {
-  const { sessionType, lifts, volume, volumeSignals = [] } = input;
-  const planEntries = SESSION_PLANS[sessionType] ?? [];
-
+  const { sessionType, lifts, volume, volumeSignals = [], nextSession } = input;
   const weight_changes: WorkoutDebriefPayload["prescription"]["weight_changes"] = [];
 
-  for (const lift of lifts) {
-    const planEntry = planEntries.find((p) => p.name.toLowerCase() === lift.name.toLowerCase());
-    const step = planEntry?.increment?.step ?? 2.5; // default 2.5kg if no plan entry
+  // Every load comes from the engine's stored prescription. The debrief used
+  // to re-derive these with `lift.tag === "PR"` standing in for the engine's
+  // cleanliness check; those disagree whenever a PR is set while grinding, so
+  // the card could display a weight the plan did not contain.
+  const prescribedByName = new Map(
+    (nextSession?.exercises ?? []).map((e) => [e.name.trim().toLowerCase(), e]),
+  );
 
-    // ── Block-phase rule short-circuit for the block's primary (focus) lift ──
-    // The framework is authoritative for the focus lift — it overrides the
-    // naive PR/stall/regression → +step / hold / -step logic because the
-    // framework decides progression based on the block target + remaining
-    // weeks, not just last-session delta.
+  const blockPhase =
+    input.block != null
+      ? evaluateBlockPhase({
+          block: input.block,
+          currentWorkingKg: null,
+          recentProgressionRatePerWeek: null,
+          todayIso: input.todayIso,
+        })
+      : null;
+
+  for (const lift of lifts) {
+    const prescribed = prescribedByName.get(lift.name.trim().toLowerCase());
+    if (!prescribed) continue;               // not in next session — nothing to report
+    if (prescribed.baseKg == null) continue; // bodyweight — never emit 0
+
     const liftKey = liftFromExerciseName(lift.name);
     const isBlockFocusLift =
-      input.block != null &&
-      input.block.primary_lift != null &&
-      liftKey === input.block.primary_lift;
+      input.block != null && input.block.primary_lift != null && liftKey === input.block.primary_lift;
+    const todayKg = lift.top_set_today.kg;
 
-    if (isBlockFocusLift && input.block != null) {
-      const phase = evaluateBlockPhase({
-        block: input.block,
-        currentWorkingKg: lift.top_set_today.kg ?? null,
-        // We don't compute a precise recent rate here — pass null so the
-        // function still classifies off_pace based on remaining weeks vs
-        // target via its required-rate check (the rate-comparison branch
-        // is bypassed when rate is null, but the deload-week + consolidation
-        // discriminators still fire correctly).
-        recentProgressionRatePerWeek: null,
-        todayIso: input.todayIso,
-      });
-      const baseExercise = planEntry ?? { name: lift.name, increment: { step } };
-      const prescribed = prescribePrimaryFromPhase({
-        baseExercise: baseExercise as Parameters<typeof prescribePrimaryFromPhase>[0]["baseExercise"],
-        phase,
-        currentWorkingKg: lift.top_set_today.kg ?? 0,
-        lastWeekHitRirTargetCleanly: lift.tag === "PR", // PR tag = clean overshoot
-        rirTarget: 2, // placeholder; doesn't influence kg in this rule
-        baselineSets: planEntry?.sets ?? 3,
-        baselineReps: planEntry?.baseReps ?? 6,
-      });
-
-      let rationale: string;
-      switch (phase) {
+    let rationale: string;
+    if (isBlockFocusLift && input.block != null && blockPhase != null) {
+      switch (blockPhase) {
         case "consolidation":
           rationale = `Block target ${input.block.target_value} kg was hit at week ${input.block.target_hit_at_week}. Consolidation phase: hold ${prescribed.baseKg} kg, progress reps to ${prescribed.baseReps}. We do NOT push load further this block.`;
           break;
         case "off_pace": {
           const wLeft = weeksLeft(input.block, input.todayIso);
-          const requiredRate = ((input.block.target_value ?? 0) - (lift.top_set_today.kg ?? 0)) / Math.max(1, wLeft);
-          rationale = `Block target ${input.block.target_value} kg is out of reach in remaining accumulation weeks (would require +${requiredRate.toFixed(1)} kg/wk vs normal +${step} kg). HOLD ${prescribed.baseKg} kg and accept — we renegotiate the target next block, not in mid-block.`;
+          const requiredRate = ((input.block.target_value ?? 0) - (todayKg ?? 0)) / Math.max(1, wLeft);
+          rationale = `Block target ${input.block.target_value} kg is out of reach in remaining accumulation weeks (would require +${requiredRate.toFixed(1)} kg/wk vs normal progression). HOLD ${prescribed.baseKg} kg and accept — we renegotiate the target next block, not in mid-block.`;
           break;
         }
         case "deload_week":
           rationale = `Deload week — drop to ${prescribed.baseKg} kg (~0.80×) with halved sets.`;
           break;
-        case "pre_target":
-          if ((prescribed.baseKg ?? 0) > (lift.top_set_today.kg ?? 0)) {
-            rationale = `On pace for the block target. Take the +${step} kg next session: ${prescribed.baseKg} kg.`;
-          } else {
-            rationale = `Hold ${prescribed.baseKg} kg — last session didn't meet the prescribed RIR cleanly.`;
-          }
-          break;
+        default:
+          rationale =
+            todayKg != null && prescribed.baseKg > todayKg
+              ? `On pace for the block target. Take the step next session: ${prescribed.baseKg} kg.`
+              : `Hold ${prescribed.baseKg} kg — last session didn't meet the prescribed RIR cleanly.`;
       }
-
-      weight_changes.push({
-        exercise: lift.name,
-        new_kg: prescribed.baseKg ?? lift.top_set_today.kg ?? 0,
-        rationale,
-      });
-      continue; // skip the naive logic for this lift
+    } else if (todayKg == null) {
+      rationale = `Prescribed at ${prescribed.baseKg} kg × ${prescribed.baseReps} next session.`;
+    } else if (prescribed.baseKg > todayKg) {
+      rationale = `Stepping to ${prescribed.baseKg} kg next session — you owned ${todayKg} kg today.`;
+    } else if (prescribed.baseKg < todayKg) {
+      rationale = `Dropping to ${prescribed.baseKg} kg next session — the engine autoregulated after today's effort.`;
+    } else {
+      rationale = `Holding ${prescribed.baseKg} kg — hit the prescribed reps at target RIR before it steps.`;
     }
 
-    if (lift.tag == null) continue;
-
-    const todayKg = lift.top_set_today.kg;
-    if (todayKg == null) continue;
-
-    if (lift.tag === "PR") {
-      weight_changes.push({
-        exercise: lift.name,
-        new_kg: Math.round((todayKg + step) * 4) / 4, // round to 0.25kg
-        rationale: `PR (+${lift.delta_e1rm?.toFixed(1) ?? "?"}kg e1RM) — take the +${step}kg next session.`,
-      });
-    } else if (lift.tag === "regression") {
-      weight_changes.push({
-        exercise: lift.name,
-        new_kg: Math.max(0, Math.round((todayKg - step) * 4) / 4),
-        rationale: `Regressed vs last session — drop ${step}kg and rebuild.`,
-      });
-    } else if (lift.tag === "stall") {
-      weight_changes.push({
-        exercise: lift.name,
-        new_kg: todayKg,
-        rationale: `Stalled at this load — hold ${todayKg}kg, target prescribed RIR cleanly before bumping.`,
-      });
-    }
+    weight_changes.push({ exercise: lift.name, new_kg: prescribed.baseKg, rationale });
   }
 
   const notes: string[] = [];
+  if (nextSession == null) {
+    notes.push(`Next ${sessionType} session isn't planned yet — no load changes to report.`);
+  }
   const over = volume.filter((v) => v.status === "over_mrv");
   const near = volume.filter((v) => v.status === "approaching_mrv");
   const low = volume.filter((v) => v.status === "below_mev");
@@ -183,7 +151,7 @@ export function composePrescription(
   }
 
   return {
-    next_session_date: null, // populated by orchestrator from training_weeks
+    next_session_date: nextSession?.date ?? null,
     weight_changes,
     notes,
     volume_signals: volumeSignals,

@@ -1542,13 +1542,14 @@ console.log("\n## session-debrief — volume signal coherence\n");
   const withSignal = composePrescription({
     ...baseInput,
     volumeSignals: [{ muscle: "Calves", weekly_sets: 3.9, mev: 8, weekly_exposures: 1 }],
+    nextSession: null,
   });
   const signalNote = withSignal.notes.join(" ");
   assert("signalled muscle gets the frequency framing", /Calves.*second exposure/i.test(signalNote));
   assert("signalled muscle never gets an add-sets recommendation", !/add .*set/i.test(signalNote));
   assert("signal is carried on the payload for the narrator", withSignal.volume_signals?.length === 1);
 
-  const withoutSignal = composePrescription({ ...baseInput, volumeSignals: [] });
+  const withoutSignal = composePrescription({ ...baseInput, volumeSignals: [], nextSession: null });
   assert(
     "unsignalled below-MEV muscles keep the adherence note",
     withoutSignal.notes.some((n) => n.includes("check session adherence")),
@@ -1566,6 +1567,50 @@ console.log("\n## session-debrief — plan_changes routing\n");
   assert("repatch note routes to plan_changes", planChanges.length === 1);
   assert("advisory notes exclude repatch entries", advisory.every((n) => !n.startsWith("Plan updated for ")));
   assert("advisory notes keep the volume note", advisory.length === 1);
+}
+
+console.log("\n## session-debrief — prescription comes from the stored plan\n");
+{
+  const lifts = [
+    { name: "Squat (Barbell)", top_set_today: { kg: 80, reps: 7, e1rm: 96 }, top_set_last: { kg: 80, reps: 8, e1rm: 99 }, delta_e1rm: -3, rir_today: 2, tag: "regression" },
+    // tag "PR" is the exact defect: the old code took this as "clean" and
+    // proposed today + step. It must now report the STORED load.
+    { name: "Leg Extension (Machine)", top_set_today: { kg: 38, reps: 15, e1rm: 57 }, top_set_last: { kg: 36, reps: 15, e1rm: 54 }, delta_e1rm: 3, rir_today: 0, tag: "PR" },
+    // Present today, absent from the prescription — must be skipped.
+    { name: "Calf Raise (Off-script)", top_set_today: { kg: 50, reps: 15, e1rm: 75 }, top_set_last: { kg: 50, reps: 15, e1rm: 75 }, delta_e1rm: 0, rir_today: 2, tag: "stall" },
+    // Bodyweight in the prescription — must be skipped, never emitted as 0.
+    { name: "Back Extension", top_set_today: { kg: null, reps: 10, e1rm: null }, top_set_last: { kg: null, reps: 10, e1rm: null }, delta_e1rm: null, rir_today: 2, tag: null },
+  ];
+  const nextSession = {
+    date: "2026-08-10",
+    weekday: "Monday",
+    source: "row",
+    exercises: [
+      { name: "Squat (Barbell)", baseKg: 80, baseReps: 7, sets: 3 },
+      { name: "Leg Extension (Machine)", baseKg: 40, baseReps: 12, sets: 3 },
+      { name: "Back Extension", baseKg: null, baseReps: 10, sets: 3 },
+    ],
+  };
+  const out = composePrescription({
+    sessionType: "Legs", lifts, volume: [], todayExercises: [], block: null,
+    todayIso: "2026-08-03", volumeSignals: [], nextSession,
+  });
+  const byName = new Map(out.weight_changes.map((c) => [c.exercise, c.new_kg]));
+
+  assert("squat reports the stored 80, not a derived number", byName.get("Squat (Barbell)") === 80);
+  assert("a PR-tagged lift reports the stored 40, not today+step", byName.get("Leg Extension (Machine)") === 40);
+  assert("a lift absent from the prescription is skipped", !byName.has("Calf Raise (Off-script)"));
+  assert("a bodyweight prescribed entry is skipped", !byName.has("Back Extension"));
+  assert("no weight_change is ever emitted with new_kg 0", out.weight_changes.every((c) => c.new_kg > 0));
+  assert("next_session_date is populated from the resolved session", out.next_session_date === "2026-08-10");
+
+  const none = composePrescription({
+    sessionType: "Legs", lifts, volume: [], todayExercises: [], block: null,
+    todayIso: "2026-08-03", volumeSignals: [], nextSession: null,
+  });
+  assert("null nextSession yields no weight changes", none.weight_changes.length === 0);
+  assert("null nextSession explains why", none.notes.some((n) => /isn't planned yet/i.test(n)));
+  assert("null nextSession leaves next_session_date null", none.next_session_date === null);
 }
 
 summary("audit-prescription-rules");

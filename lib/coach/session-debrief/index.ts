@@ -16,6 +16,7 @@ import { composeLifts } from "@/lib/coach/session-debrief/compose-lifts";
 import { composeVolume } from "@/lib/coach/session-debrief/compose-volume";
 import { composeAutoregulation } from "@/lib/coach/session-debrief/compose-autoregulation";
 import { composePrescription } from "@/lib/coach/session-debrief/compose-prescription";
+import { readNextSessionPrescription } from "@/lib/coach/session-debrief/next-session-prescription";
 import { generateNarrative } from "@/lib/coach/session-debrief/narrative-prompt";
 import {
   tldrFromPayload,
@@ -157,6 +158,17 @@ export async function generateWorkoutDebrief(opts: {
     weekly_exposures: s.weekly_exposures,
   }));
 
+  // The engine's prescription for the next session of this type. Graceful:
+  // null when the session type has been dropped from the plan.
+  const nextSession = await readNextSessionPrescription({
+    supabase,
+    userId,
+    sessionType: workout.type as string,
+    afterIso: workout.date as string,
+    block: activeBlock,
+    todayIso: workout.date as string,
+  });
+
   const prescription = composePrescription({
     sessionType: workout.type as string,
     lifts,
@@ -165,6 +177,7 @@ export async function generateWorkoutDebrief(opts: {
     block: activeBlock,
     todayIso: workout.date as string,
     volumeSignals,
+    nextSession,
   });
 
   // Mid-week repatch visibility: when THIS workout changed the remaining
