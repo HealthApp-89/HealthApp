@@ -33,6 +33,7 @@ import type {
   SessionPrescriptions,
   TrainingBlock,
   TrainingWeek,
+  VolumeFrequencySignal,
   WeekdayLong,
 } from "@/lib/data/types";
 import { prescribeWeek, computeActivityLayoutProposal } from "@/lib/coach/prescription/prescribe-week";
@@ -181,12 +182,14 @@ export async function upsertWeekPrescription(opts: {
     };
   }
 
+  const volumeSignals: VolumeFrequencySignal[] = [];
   const prescription = await prescribeWeek({
     supabase,
     userId,
     block,
     week: workingRow,
     todayIso,
+    signals: volumeSignals,
   });
 
   const finalPrescription = opts.preserveDaysThrough
@@ -218,6 +221,7 @@ export async function upsertWeekPrescription(opts: {
       .from("training_weeks")
       .update({
         session_prescriptions: finalPrescription,
+        volume_signals: volumeSignals.length > 0 ? volumeSignals : null,
         updated_at: new Date().toISOString(),
       })
       .eq("user_id", userId)
@@ -238,6 +242,7 @@ export async function upsertWeekPrescription(opts: {
         proposed_by: "coach",
         endurance_session_plan: workingRow.endurance_session_plan,
         session_prescriptions: finalPrescription,
+        volume_signals: volumeSignals.length > 0 ? volumeSignals : null,
         committed_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       });
