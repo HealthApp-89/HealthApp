@@ -54,7 +54,11 @@ export function tldrFromPayload(p: WorkoutDebriefPayload): string {
 
   // Line 3: mid-week repatch signal (deterministic — mirrors the
   // "Plan updated for <weekday>: …" notes written by loadRepatchNotes).
-  const repatched = p.prescription.notes.filter((n) => n.startsWith("Plan updated for "));
+  // Reads plan_changes since 2026-08-03; falls back to scanning notes so
+  // debriefs stored before the split still render their ↻ line.
+  const repatched = (p.prescription.plan_changes ?? []).length > 0
+    ? (p.prescription.plan_changes ?? [])
+    : p.prescription.notes.filter((n) => n.startsWith("Plan updated for "));
   if (repatched.length > 0) {
     const days = repatched.map((n) => n.slice("Plan updated for ".length).split(":")[0]);
     lines.push(`↻ Plan updated: ${days.join(", ")}`);

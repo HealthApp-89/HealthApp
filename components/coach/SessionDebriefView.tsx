@@ -151,7 +151,25 @@ export function SessionDebriefView({ payload }: { payload: WorkoutDebriefPayload
       {/* Prescription */}
       <section>
         <h2 style={{ fontSize: 14, fontWeight: 700, margin: "0 0 8px 0" }}>Prescription for next session</h2>
-        {payload.prescription.weight_changes.length === 0 && payload.prescription.notes.length === 0 && (
+        {(payload.prescription.plan_changes ?? []).length > 0 && (
+          <ul
+            style={{
+              paddingLeft: 18,
+              margin: "0 0 8px 0",
+              fontSize: 13,
+              fontWeight: 600,
+              color: COLOR.textStrong,
+              lineHeight: 1.5,
+            }}
+          >
+            {(payload.prescription.plan_changes ?? []).map((n, i) => (
+              <li key={i}>{n}</li>
+            ))}
+          </ul>
+        )}
+        {payload.prescription.weight_changes.length === 0 &&
+          payload.prescription.notes.length === 0 &&
+          (payload.prescription.plan_changes ?? []).length === 0 && (
           <p style={{ fontSize: 13, color: COLOR.textMuted }}>No changes — repeat the session as written.</p>
         )}
         {payload.prescription.weight_changes.length > 0 && (

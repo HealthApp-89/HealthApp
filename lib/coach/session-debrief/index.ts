@@ -170,7 +170,15 @@ export async function generateWorkoutDebrief(opts: {
   // Mid-week repatch visibility: when THIS workout changed the remaining
   // week's numbers, say so — deterministic lines, no AI.
   const repatchNotes = await loadRepatchNotes(supabase, userId, workout.date as string);
-  if (repatchNotes.length > 0) prescription.notes.push(...repatchNotes);
+  // Mid-week repatch entries are a real load change, not advisory text —
+  // they get their own field so the UI can surface them above the notes.
+  if (repatchNotes.length > 0) {
+    prescription.plan_changes = [
+      ...(prescription.plan_changes ?? []),
+      ...repatchNotes.filter((n) => n.startsWith("Plan updated for ")),
+    ];
+    prescription.notes.push(...repatchNotes.filter((n) => !n.startsWith("Plan updated for ")));
+  }
 
   // 4. Body comp (best-effort; null if unavailable).
   const body_comp = await loadBodyComp(supabase, userId);
