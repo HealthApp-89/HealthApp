@@ -24,6 +24,7 @@ import { currentComparisonValueForLift } from "@/lib/coach/prescription/current-
 import { prescribeSecondaryAutoregulated } from "@/lib/coach/prescription/autoregulation-rule";
 import { prescribeAccessoryDoubleProgression } from "@/lib/coach/prescription/double-progression-rule";
 import { prescribeAccessoryFromVolumeBand, classifyVolumeBand, type VolumeBandPosition } from "@/lib/coach/prescription/volume-balance-rule";
+import { recentEffortQuality } from "@/lib/coach/prescription/effort-quality";
 import { maintenanceLoadFor } from "@/lib/coach/prescription/maintenance-baseline";
 import { bestComparisonValue } from "@/lib/coach/e1rm";
 import { discoverEffectiveExercises } from "@/lib/coach/prescription/recent-workouts-discovery";
@@ -324,11 +325,14 @@ export async function prescribeWeek(opts: {
           exercises.push(dp);
         } else {
           const band: VolumeBandPosition = classifyVolumeBandForMuscle(baseEx, volumeContext);
+          const effort = recentEffortQuality(baseEx.name, recentSets, todayIso);
           exercises.push(
             prescribeAccessoryFromVolumeBand({
               baseExercise: dp,
               currentSets: baseEx.sets ?? 3,
               bandPosition: band,
+              hardRate: effort.hardRate,
+              effortSampleSets: effort.totalSets,
             }),
           );
         }
