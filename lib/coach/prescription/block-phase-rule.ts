@@ -120,14 +120,14 @@ export function prescribePrimaryFromPhase(opts: {
 
 // ── helpers ──────────────────────────────────────────────────────────
 
-function currentBlockWeek(block: TrainingBlock, todayIso: string): number {
+export function currentBlockWeek(block: TrainingBlock, todayIso: string): number {
   const start = new Date(block.start_date + "T00:00:00Z");
   const today = new Date(todayIso + "T00:00:00Z");
   const days = Math.floor((today.getTime() - start.getTime()) / (24 * 60 * 60 * 1000));
   return Math.max(1, Math.floor(days / 7) + 1);
 }
 
-function totalBlockWeeks(block: TrainingBlock): number {
+export function totalBlockWeeks(block: TrainingBlock): number {
   const start = new Date(block.start_date + "T00:00:00Z");
   const end = new Date(block.end_date + "T00:00:00Z");
   const days = Math.floor((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000));
