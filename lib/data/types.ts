@@ -590,6 +590,20 @@ export type RepatchLogEntry = {
   changes: RepatchChange[];
 };
 
+/** Emitted when the engine withholds a below-MEV set bump because prior
+ *  bumps were prescribed but not performed. The real constraint in that
+ *  state is training FREQUENCY, not sets per session. */
+export type VolumeFrequencySignal = {
+  muscle: TargetedMuscleGroup;
+  /** The muscle's 8-week rolling weekly set count. */
+  weekly_sets: number;
+  mev: number;
+  /** Distinct training days this week that hit the muscle. */
+  weekly_exposures: number;
+  /** Exercises whose bump was withheld. */
+  suppressed_exercises: string[];
+};
+
 export type TrainingWeek = {
   id: string;
   user_id: string;
@@ -611,6 +625,10 @@ export type TrainingWeek = {
    *  prescription written; resolver falls back to exercise_overrides →
    *  SESSION_PLANS. */
   session_prescriptions: SessionPrescriptions | null;
+  /** Migration 0054: per-muscle records of a below-MEV set bump the engine
+   *  WITHHELD because prior bumps were prescribed but not performed. NULL on
+   *  pre-0054 rows and on any week with no suppression. */
+  volume_signals: VolumeFrequencySignal[] | null;
   repatch_log: RepatchLogEntry[] | null;
   weekly_focus: string | null;
   intensity_modifier: IntensityModifier;

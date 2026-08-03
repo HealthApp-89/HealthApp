@@ -24,6 +24,9 @@ import { currentComparisonValueForLift } from "@/lib/coach/prescription/current-
 import { prescribeSecondaryAutoregulated } from "@/lib/coach/prescription/autoregulation-rule";
 import { prescribeAccessoryDoubleProgression } from "@/lib/coach/prescription/double-progression-rule";
 import { prescribeAccessoryFromVolumeBand, classifyVolumeBand, type VolumeBandPosition } from "@/lib/coach/prescription/volume-balance-rule";
+import { recentEffortQuality } from "@/lib/coach/prescription/effort-quality";
+import { setAdherenceFor, IGNORED_EXPOSURES_LIMIT } from "@/lib/coach/prescription/volume-adherence";
+import type { VolumeFrequencySignal } from "@/lib/data/types";
 import { maintenanceLoadFor } from "@/lib/coach/prescription/maintenance-baseline";
 import { bestComparisonValue } from "@/lib/coach/e1rm";
 import { discoverEffectiveExercises } from "@/lib/coach/prescription/recent-workouts-discovery";
@@ -181,8 +184,13 @@ export async function prescribeWeek(opts: {
   block: TrainingBlock | null;
   week: TrainingWeek;
   todayIso: string;
+  /** Optional collector. When supplied, the engine pushes one signal per
+   *  muscle whose set bump was withheld for non-adherence. Callers that
+   *  don't care omit it — an out-param keeps the return type stable for
+   *  the existing call sites. */
+  signals?: VolumeFrequencySignal[];
 }): Promise<SessionPrescriptions> {
-  const { supabase, userId, block, week, todayIso } = opts;
+  const { supabase, userId, block, week, todayIso, signals } = opts;
   const out: SessionPrescriptions = {};
 
   // ── Activity-aware lighten: load planned activities for the week and detect
@@ -236,6 +244,16 @@ export async function prescribeWeek(opts: {
   // Per-muscle weekly-volume snapshot for accessory band classification.
   // null on fetch failure → callers fall back to "in_band" (no-op).
   const volumeContext = await fetchVolumeContext(supabase, userId, todayIso);
+
+  // Prior week's prescribed set counts, keyed by lowercased exercise name —
+  // the denominator for adherence. Graceful: any failure yields an empty map
+  // (adherence reports 0 ignored exposures, so the gate never fires).
+  const priorPrescribedSets = await fetchPriorPrescribedSets(supabase, userId, week.week_start);
+
+  // Muscles whose bump was withheld for non-adherence, and the exercises it
+  // was withheld on. Converted to VolumeFrequencySignals after the weekday
+  // loop, once weekly exposure counts are known.
+  const suppressedByMuscle = new Map<TargetedMuscleGroup, string[]>();
 
   const isFocusBlock = block != null && block.primary_lift != null;
   const focusLift: PrimaryLift | null = isFocusBlock ? block!.primary_lift : null;
@@ -324,13 +342,42 @@ export async function prescribeWeek(opts: {
           exercises.push(dp);
         } else {
           const band: VolumeBandPosition = classifyVolumeBandForMuscle(baseEx, volumeContext);
-          exercises.push(
-            prescribeAccessoryFromVolumeBand({
-              baseExercise: dp,
-              currentSets: baseEx.sets ?? 3,
-              bandPosition: band,
-            }),
+          const effort = recentEffortQuality(baseEx.name, recentSets, todayIso);
+          const adherence = setAdherenceFor(
+            baseEx.name,
+            priorPrescribedSets.get(baseEx.name.toLowerCase()) ?? null,
+            recentSets,
+            todayIso,
           );
+          const wantsBump = band === "below_mev" || band === "at_mev";
+          const adherenceSuppressed =
+            wantsBump && adherence.ignoredExposures >= IGNORED_EXPOSURES_LIMIT;
+
+          if (adherenceSuppressed) {
+            // Hold at what the athlete actually performs and record the
+            // muscle so a frequency signal is emitted instead of a bump.
+            const group = inferPrimaryTargetedMuscle(baseEx);
+            if (group) {
+              suppressedByMuscle.set(group, [
+                ...(suppressedByMuscle.get(group) ?? []),
+                baseEx.name,
+              ]);
+            }
+            exercises.push({
+              ...dp,
+              sets: adherence.realizedMedian ?? baseEx.sets ?? 3,
+            });
+          } else {
+            exercises.push(
+              prescribeAccessoryFromVolumeBand({
+                baseExercise: dp,
+                currentSets: baseEx.sets ?? 3,
+                bandPosition: band,
+                hardRate: effort.hardRate,
+                effortSampleSets: effort.totalSets,
+              }),
+            );
+          }
         }
       }
     }
@@ -355,6 +402,28 @@ export async function prescribeWeek(opts: {
       );
     } else {
       out[weekday] = augmented;
+    }
+  }
+
+  // Build one frequency signal per suppressed muscle. weekly_exposures counts
+  // the distinct prescribed training days that hit the muscle — the number the
+  // recommendation is actually about.
+  if (signals && suppressedByMuscle.size > 0 && volumeContext) {
+    for (const [group, exerciseNames] of suppressedByMuscle) {
+      let exposures = 0;
+      for (const dayExercises of Object.values(out)) {
+        const hits = (dayExercises ?? []).some(
+          (ex) => !ex.warmup && inferPrimaryTargetedMuscle(ex) === group,
+        );
+        if (hits) exposures++;
+      }
+      signals.push({
+        muscle: group,
+        weekly_sets: volumeContext.rolling_avg_8wk[group] ?? 0,
+        mev: literatureBand(group, "intermediate").mev,
+        weekly_exposures: exposures,
+        suppressed_exercises: exerciseNames,
+      });
     }
   }
 
@@ -602,6 +671,39 @@ async function fetchRecentSets(
         });
       }
     }
+  }
+  return out;
+}
+
+/** Map of lowercased exercise name → prescribed set count from the most
+ *  recent stored week BEFORE `weekStart`. Empty map on any failure. */
+async function fetchPriorPrescribedSets(
+  supabase: SupabaseClient,
+  userId: string,
+  weekStart: string,
+): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  try {
+    const { data } = await supabase
+      .from("training_weeks")
+      .select("session_prescriptions")
+      .eq("user_id", userId)
+      .lt("week_start", weekStart)
+      .order("week_start", { ascending: false })
+      .limit(1);
+    const presc = (data?.[0]?.session_prescriptions ?? null) as SessionPrescriptions | null;
+    if (!presc) return out;
+    for (const day of Object.values(presc)) {
+      for (const ex of day ?? []) {
+        if (ex.warmup) continue;
+        const k = ex.name.toLowerCase();
+        // First non-warmup entry per name wins — matches how the manual-edit
+        // layer and volume rules address an exercise.
+        if (!out.has(k) && typeof ex.sets === "number") out.set(k, ex.sets);
+      }
+    }
+  } catch {
+    // Graceful: no prior data → no adherence gating.
   }
   return out;
 }
