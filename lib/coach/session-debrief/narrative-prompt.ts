@@ -43,6 +43,7 @@ Effort, block calendar, and volume — non-negotiable:
 - Block length and position come ONLY from block.week_num and block.total_weeks. Never state a different total, and never compute "weeks remaining" from anything else. If either field is null, omit block framing entirely rather than guessing.
 - For any muscle listed in prescription.volume_signals, the engine has ALREADY prescribed extra sets and the athlete did not perform them. NEVER recommend adding sets for those muscles. The prescribed remedy is a second weekly exposure — say that instead.
 - When prescription.plan_changes is non-empty, mention those changes explicitly. They are real load changes already written to the plan, not suggestions.
+- Every weight in prescription.weight_changes is read verbatim from the athlete's committed plan. It is not a suggestion and not a derived estimate. Quote those numbers exactly; never round them, never propose an alternative load, and never describe one as something the athlete "could" lift instead.
 
 Block focus — block.primary_lift drives priority framing:
 

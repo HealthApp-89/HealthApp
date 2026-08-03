@@ -60,7 +60,35 @@ export async function readNextSessionPrescription(opts: {
       .eq("user_id", userId)
       .eq("week_start", weekStart)
       .maybeSingle();
-    const row = (data as TrainingWeek | null) ?? null;
+    let row = (data as TrainingWeek | null) ?? null;
+
+    // No row yet for that week — the Sunday cron has not run. Seed a synthetic
+    // working row from the most recent prior week so the session_plan (and
+    // therefore the weekday→type mapping) carries forward. Mirrors
+    // read-prescription.ts and upsert-week-prescription.ts. NEVER persisted.
+    if (!row) {
+      const { data: priorRows } = await supabase
+        .from("training_weeks")
+        .select("*")
+        .eq("user_id", userId)
+        .lt("week_start", weekStart)
+        .order("week_start", { ascending: false })
+        .limit(1);
+      const prior = (priorRows?.[0] as TrainingWeek | undefined) ?? null;
+      if (prior) {
+        row = {
+          ...prior,
+          id: "",
+          week_start: weekStart,
+          original_session_plan: null,
+          exercise_overrides: null,
+          session_prescriptions: null,
+          manual_session_edits: null,
+          volume_signals: null,
+        } as TrainingWeek;
+      }
+    }
+
     weekCache.set(weekStart, row);
     return row;
   }
