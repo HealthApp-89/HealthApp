@@ -71,27 +71,40 @@ export async function discoverEffectiveExercises(opts: {
   // appearing twice in one session still counts once).
   type PresenceEntry = {
     count: number;
-    exemplar: { name: string; kgs: number[]; reps: number[] };
+    exemplar: { name: string; kgs: number[]; reps: number[]; setsPerSession: number[] };
   };
   const presence: Map<string, PresenceEntry> = new Map();
 
   for (const w of workouts) {
-    const seenInThisSession = new Set<string>();
+    // Per-session working-set tally. Presence counts ONCE per session per
+    // name, but sets accumulate from EVERY row bearing that name: warmup ramp
+    // entries are stored as separate `exercises` rows sharing the working
+    // entry's name (see augmentFirstLoadedCompoundWithWarmups), so the old
+    // "skip the second row" guard discarded the working sets of any lift with
+    // a warmup ramp.
+    const sessionSetCounts = new Map<string, number>();
     for (const ex of w.exercises ?? []) {
       const k = ex.name.toLowerCase();
-      if (seenInThisSession.has(k)) continue;
-      seenInThisSession.add(k);
       const entry: PresenceEntry =
-        presence.get(k) ?? { count: 0, exemplar: { name: ex.name, kgs: [], reps: [] } };
-      entry.count += 1;
+        presence.get(k) ?? { count: 0, exemplar: { name: ex.name, kgs: [], reps: [], setsPerSession: [] } };
+      if (!sessionSetCounts.has(k)) {
+        entry.count += 1;
+        sessionSetCounts.set(k, 0);
+      }
       for (const s of ex.exercise_sets ?? []) {
         // Exclude warmup sets from baseKg/baseReps so the discovered exemplar
-        // tracks working-set loads, not warmup ramping.
+        // tracks working-set loads and working-set COUNTS, not warmup ramping.
         if (s.warmup) continue;
         if (typeof s.kg === "number") entry.exemplar.kgs.push(s.kg);
         if (typeof s.reps === "number") entry.exemplar.reps.push(s.reps);
+        sessionSetCounts.set(k, (sessionSetCounts.get(k) ?? 0) + 1);
       }
       presence.set(k, entry);
+    }
+    // An appearance contributing zero non-warmup sets is not evidence of
+    // working volume — don't let it drag the median down.
+    for (const [k, n] of sessionSetCounts) {
+      if (n > 0) presence.get(k)!.exemplar.setsPerSession.push(n);
     }
   }
 
@@ -111,6 +124,11 @@ export async function discoverEffectiveExercises(opts: {
       ...libEx,
       baseKg: found.exemplar.kgs.length > 0 ? Math.max(...found.exemplar.kgs) : libEx.baseKg,
       baseReps: found.exemplar.reps.length > 0 ? Math.round(median(found.exemplar.reps)) : libEx.baseReps,
+      // Realized working-set count. Median (not max) for consistency with
+      // baseReps and robustness to a single outlier session.
+      sets: found.exemplar.setsPerSession.length > 0
+        ? Math.round(median(found.exemplar.setsPerSession))
+        : (libEx.sets ?? 3),
     });
   }
 
@@ -127,7 +145,9 @@ export async function discoverEffectiveExercises(opts: {
       name: entry.exemplar.name,
       baseKg: entry.exemplar.kgs.length > 0 ? Math.max(...entry.exemplar.kgs) : undefined,
       baseReps: entry.exemplar.reps.length > 0 ? Math.round(median(entry.exemplar.reps)) : undefined,
-      sets: 3,
+      sets: entry.exemplar.setsPerSession.length > 0
+        ? Math.round(median(entry.exemplar.setsPerSession))
+        : 3,
     };
     const tier = tierOf(ex);
     const insertAt = survivors.findIndex((s) => tierOf(s) > tier);
