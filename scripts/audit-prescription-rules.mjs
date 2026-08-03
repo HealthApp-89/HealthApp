@@ -15,6 +15,13 @@ import { classifyLightenTier, lightenExercise, lastWeekClean, consecutiveMisses 
 import { mergePreservedDays } from "@/lib/coach/prescription/upsert-week-prescription";
 import { mondayOfIso, diffFutureDays, diffDay, formatRepatchNotes } from "@/lib/coach/prescription/repatch-week";
 import { patchExercisesForRung, revertDayExercises, hasMorningPatchEntry, hasMorningRevertEntry } from "@/lib/coach/prescription/patch-today";
+import {
+  isEffortSuppressed,
+  HARD_RATE_SUPPRESS_THRESHOLD,
+  MIN_SETS_FOR_EFFORT_GATE,
+} from "@/lib/coach/prescription/volume-balance-rule";
+import { recentEffortQuality } from "@/lib/coach/prescription/effort-quality";
+import { setAdherenceFor, IGNORED_EXPOSURES_LIMIT } from "@/lib/coach/prescription/volume-adherence";
 import fs from "node:fs";
 import { createAuditReporter } from "./audit-utils.mjs";
 
@@ -1450,6 +1457,44 @@ console.log("\n## CARTER_COLS — read-access allowlist pin\n");
     assert(`CARTER_COLS contains ${col}`, block.includes(`"${col}"`));
   }
   assert("CARTER_COLS has exactly 10 columns", (block.match(/"/g) ?? []).length === 20);
+}
+
+console.log("\n## Effort gate\n");
+{
+  const ex = { name: "Lat Pulldown (Cable)", baseKg: 50, baseReps: 12, sets: 3 };
+  const bump = (hardRate, effortSampleSets) =>
+    prescribeAccessoryFromVolumeBand({ baseExercise: ex, currentSets: 3, bandPosition: "below_mev", hardRate, effortSampleSets }).sets;
+
+  assert("clean effort below MEV adds a set", bump(0, 6) === 4);
+  assert("two-of-three hard sets withholds the bump", bump(2 / 3, 6) === 3);
+  assert("exactly one third still bumps", bump(HARD_RATE_SUPPRESS_THRESHOLD, 3) === 4);
+  assert("sample below the floor ignores the gate", bump(1, MIN_SETS_FOR_EFFORT_GATE - 1) === 4);
+  assert(
+    "above_mrv drop is never suppressed",
+    isEffortSuppressed({ baseExercise: ex, currentSets: 4, bandPosition: "above_mrv", hardRate: 1, effortSampleSets: 9 }) === false,
+  );
+
+  const s = (o) => ({ exercise_name: "Lat Pulldown (Cable)", exercise_key: null, kg: 50, reps: 12, warmup: false, failure: false, performed_on: "2026-08-01", rir: 2, ...o });
+  const q = recentEffortQuality("Lat Pulldown (Cable)", [s({}), s({}), s({ failure: true })], "2026-08-03");
+  assert("hardRate counts failure sets", Math.abs(q.hardRate - 1 / 3) < 1e-9);
+  assert("rir 0 counts as hard", recentEffortQuality("Lat Pulldown (Cable)", [s({ rir: 0 })], "2026-08-03").hardSets === 1);
+  assert("null rir is not hard", recentEffortQuality("Lat Pulldown (Cable)", [s({ rir: null })], "2026-08-03").hardSets === 0);
+}
+
+console.log("\n## Adherence gate\n");
+{
+  const session = (date, n) =>
+    Array.from({ length: n }, () => ({ exercise_name: "Leg Extension (Machine)", exercise_key: null, kg: 40, reps: 12, warmup: false, failure: false, performed_on: date, rir: 2 }));
+
+  const short2 = setAdherenceFor("Leg Extension (Machine)", 4, [...session("2026-08-01", 3), ...session("2026-07-25", 3)], "2026-08-03");
+  assert("two short exposures reach the limit", short2.ignoredExposures >= IGNORED_EXPOSURES_LIMIT);
+  assert("realized median reflects what was performed", short2.realizedMedian === 3);
+
+  const met = setAdherenceFor("Leg Extension (Machine)", 4, [...session("2026-08-01", 3), ...session("2026-07-25", 4)], "2026-08-03");
+  assert("a met exposure stops the count", met.ignoredExposures === 1);
+
+  const none = setAdherenceFor("Leg Extension (Machine)", null, session("2026-08-01", 3), "2026-08-03");
+  assert("null prescription yields zero ignored exposures", none.ignoredExposures === 0);
 }
 
 summary("audit-prescription-rules");

@@ -257,15 +257,27 @@ does not restructure the split on its own.
 **Expected effect on the athlete's current plan** (cumulative across Changes 1 and 3;
 Change 2 contributes nothing at today's effort profile, as noted above):
 
-| Day | Now | After |
-| --- | --- | --- |
-| Legs | 21 | 18 |
-| Chest | 16 | 16 |
-| Back | 26 | 21 |
-| Arms | 33 | 29 |
-| **Weekly total** | **96** | **84** |
+| Day | Now | Projected | **Measured after implementation** |
+| --- | --- | --- | --- |
+| Legs | 21 | 18 | **18** |
+| Chest | 16 | 16 | **16** |
+| Back | 26 | 21 | **26** |
+| Arms | 33 | 29 | **33** |
+| **Weekly total** | **96** | **84** | **93** |
 
 Every removed set is one that was prescribed and not performed.
+
+**Correction (measured 2026-08-03, post-implementation):** the projection of 84 was
+optimistic. The adherence gate needs `IGNORED_EXPOSURES_LIMIT` (2) sessions of evidence in
+its 28-day window before it can fire. Legs has two qualifying sessions (2026-07-13,
+2026-07-21) so Quads and Calves suppress as designed. Back has only one (2026-07-23) and
+Arms none — a consequence of once-weekly frequency plus the missed vacation week — so those
+bumps stand for now and the real figure is 93. Lat Pulldown also stays at 5 rather than
+dropping to 4, because `discoverEffectiveExercises` requires `MIN_SESSIONS_REQUIRED` (4)
+sessions of a session type before it returns anything: Back falls short, so the static
+`SESSION_PLANS` value of 4 is still the input to the `+1`. Both gates are evidence-gated by
+design; they will engage on Back and Arms once those exposures accumulate. The e2e ceiling
+assertion is scoped to the same evidence floor so it does not sit permanently red.
 
 ## Phasing
 

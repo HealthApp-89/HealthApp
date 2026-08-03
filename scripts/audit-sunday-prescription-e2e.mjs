@@ -149,5 +149,73 @@ if (!week) {
   }
 }
 
+console.log("\n## Prescribed vs realized set ceiling\n");
+{
+  const { data: tw } = await supabase
+    .from("training_weeks")
+    .select("week_start, session_prescriptions, volume_signals")
+    .eq("user_id", userId)
+    .order("week_start", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const { data: workouts } = await supabase
+    .from("workouts")
+    .select("date, exercises(name, exercise_sets(warmup))")
+    .eq("user_id", userId)
+    .gte("date", subtractDaysIso(new Date().toISOString().slice(0, 10), 28));
+
+  // Median realized non-warmup sets per session, per exercise name.
+  const perExercise = new Map();
+  for (const w of workouts ?? []) {
+    const counts = new Map();
+    for (const ex of w.exercises ?? []) {
+      const n = (ex.exercise_sets ?? []).filter((s) => !s.warmup).length;
+      if (n > 0) counts.set(ex.name.toLowerCase(), (counts.get(ex.name.toLowerCase()) ?? 0) + n);
+    }
+    for (const [k, n] of counts) {
+      if (!perExercise.has(k)) perExercise.set(k, []);
+      perExercise.get(k).push(n);
+    }
+  }
+
+  // The adherence gate can only fire once it has IGNORED_EXPOSURES_LIMIT
+  // sessions of evidence in the 28d window. Exercises below that floor are
+  // reported for visibility but do NOT fail the audit — asserting on them
+  // would keep this gate permanently red for a once-weekly session type,
+  // which is exactly how a regression check gets ignored.
+  const EVIDENCE_FLOOR = 2;
+  let violations = 0;
+  const insufficient = [];
+  for (const day of Object.values(tw?.session_prescriptions ?? {})) {
+    for (const ex of day ?? []) {
+      if (ex.warmup) continue;
+      const realized = perExercise.get(ex.name.toLowerCase());
+      if (!realized || realized.length === 0) continue;
+      const sorted = [...realized].sort((a, b) => a - b);
+      const med = sorted[Math.floor(sorted.length / 2)];
+      if ((ex.sets ?? 0) <= med + 1) continue;
+      if (realized.length < EVIDENCE_FLOOR) {
+        insufficient.push(`${ex.name}: prescribed ${ex.sets}, realized median ${med} (only ${realized.length} session(s) of evidence)`);
+        continue;
+      }
+      violations++;
+      console.error(`    ${ex.name}: prescribed ${ex.sets}, realized median ${med}`);
+    }
+  }
+  for (const line of insufficient) console.log(`    - not yet gateable — ${line}`);
+  assert(
+    "no accessory with sufficient evidence prescribed more than realized median + 1",
+    violations === 0,
+  );
+  assert("volume_signals column is readable", tw !== null);
+}
+
+function subtractDaysIso(iso, days) {
+  const d = new Date(iso + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() - days);
+  return d.toISOString().slice(0, 10);
+}
+
 console.log(`\n${pass} passed, ${fail} failed.`);
 process.exit(fail === 0 ? 0 : 1);
