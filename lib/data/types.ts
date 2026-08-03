@@ -2081,6 +2081,21 @@ export type WorkoutDebriefPayload = {
     next_session_date: string | null;
     weight_changes: Array<{ exercise: string; new_kg: number; rationale: string }>;
     notes: string[];
+    /** Muscles whose set bump the engine WITHHELD for non-adherence
+     *  (migration 0054). The remedy for these is a second weekly exposure,
+     *  never more sets. Optional: absent on debriefs generated before
+     *  2026-08-03 — every reader must use `?? []`. */
+    volume_signals?: Array<{
+      muscle: string;
+      weekly_sets: number;
+      mev: number;
+      weekly_exposures: number;
+    }>;
+    /** Mid-week repatch entries ("Plan updated for <weekday>: …"), split out
+     *  of `notes` so the UI can surface a real load change above advisory
+     *  text. Optional: absent on debriefs generated before 2026-08-03 —
+     *  every reader must use `?? []`. */
+    plan_changes?: string[];
   };
 
   narrative_md: string;

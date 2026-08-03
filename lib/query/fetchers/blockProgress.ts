@@ -17,6 +17,12 @@ import {
 } from "@/lib/coach/progress-metrics";
 import { todayInUserTz } from "@/lib/time";
 import type { PrimaryLift, TrainingBlock } from "@/lib/data/types";
+import {
+  evaluateBlockPhase,
+  currentBlockWeek,
+  totalBlockWeeks,
+} from "@/lib/coach/prescription/block-phase-rule";
+import { mondayOfIso } from "@/lib/time/dates";
 
 export type BlockProgressPayload =
   | {
@@ -25,7 +31,7 @@ export type BlockProgressPayload =
   | {
       block: TrainingBlock;
       current_week: number;
-      total_weeks: 5;
+      total_weeks: number;
       research_phase: "accumulate" | "deload";
       rir_target: number | null;
 
@@ -54,10 +60,46 @@ export type BlockProgressPayload =
       adherence_pct: number;
     };
 
-const RIR_BY_WEEK: Record<number, number | null> = { 1: 4, 2: 3, 3: 2, 4: 1, 5: null };
-const PHASE_BY_WEEK: Record<number, "accumulate" | "deload"> = {
-  1: "accumulate", 2: "accumulate", 3: "accumulate", 4: "accumulate", 5: "deload",
+export type BlockCalendar = {
+  current_week: number;
+  total_weeks: number;
+  research_phase: "accumulate" | "deload";
+  rir_target: number;
 };
+
+/** Block week / length / phase / RIR, derived from the block's own dates and
+ *  the committed week row. Pure — every field here was previously invented by
+ *  a hardcoded 5-week table that had silently diverged from the prescription
+ *  engine (see docs/superpowers/specs/2026-08-03-debrief-block-truth-design.md).
+ *
+ *  `weekRirTarget` is training_weeks.rir_target for the current week, or null
+ *  when unset / no row. The `?? 2` fallback is the SAME expression prescribeWeek
+ *  uses (`week.rir_target ?? 2`) — that is what keeps the debrief and the engine
+ *  from disagreeing again.
+ *
+ *  evaluateBlockPhase's off-pace branch needs realized-load inputs the caller
+ *  does not have; passing null is correct because the only discriminator this
+ *  function needs (deload_week) is decided by `week >= totalBlockWeeks` before
+ *  those inputs are read. consolidation and pre_target both mean "accumulate"
+ *  for the two-value research_phase. */
+export function deriveBlockCalendar(
+  block: TrainingBlock,
+  weekRirTarget: number | null,
+  todayIso: string,
+): BlockCalendar {
+  const phase = evaluateBlockPhase({
+    block,
+    currentWorkingKg: null,
+    recentProgressionRatePerWeek: null,
+    todayIso,
+  });
+  return {
+    current_week: currentBlockWeek(block, todayIso),
+    total_weeks: totalBlockWeeks(block),
+    research_phase: phase === "deload_week" ? "deload" : "accumulate",
+    rir_target: weekRirTarget ?? 2,
+  };
+}
 
 export async function computeBlockProgress(
   supabase: SupabaseClient,
@@ -95,10 +137,22 @@ export async function computeBlockProgress(
 
   const start = new Date(block.start_date + "T00:00:00Z");
   const todayD = new Date(today + "T00:00:00Z");
-  const weeksElapsed = Math.floor((todayD.getTime() - start.getTime()) / (7 * 86_400_000));
-  const currentWeek = Math.min(5, Math.max(1, weeksElapsed + 1));
-  const rirTarget = RIR_BY_WEEK[currentWeek];
-  const phase = PHASE_BY_WEEK[currentWeek];
+  // Current week's committed rir_target — the engine's source of truth.
+  const { data: weekRow } = await supabase
+    .from("training_weeks")
+    .select("rir_target")
+    .eq("user_id", userId)
+    .eq("week_start", mondayOfIso(today))
+    .maybeSingle();
+
+  const calendar = deriveBlockCalendar(block, weekRow?.rir_target ?? null, today);
+  const currentWeek = calendar.current_week;
+  const rirTarget = calendar.rir_target;
+  const phase = calendar.research_phase;
+  // Weeks completed since block start. Previously derived from a current_week
+  // that was clamped to 5, so computeOnPace silently capped at 4 in any block
+  // longer than five weeks; it now receives the true elapsed count.
+  const weeksElapsed = currentWeek - 1;
 
   const fmt = (d: Date) => d.toISOString().slice(0, 10);
   const startMinus28 = new Date(start); startMinus28.setUTCDate(start.getUTCDate() - 28);
@@ -136,7 +190,7 @@ export async function computeBlockProgress(
   return {
     block,
     current_week: currentWeek,
-    total_weeks: 5,
+    total_weeks: calendar.total_weeks,
     research_phase: phase,
     rir_target: rirTarget,
     e1rm_at_block_start: e1rmAtStart,

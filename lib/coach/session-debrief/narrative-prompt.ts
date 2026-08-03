@@ -37,6 +37,13 @@ The payload's prescription.weight_changes already encodes the block-phase rules 
 - If deload week: own the cut; don't apologize for it.
 - For accessories (lat pulldown / row / etc.): the naive PR / stall / regression rule still applies. Frame their progressions/holds in the autoregulation language the payload already provides.
 
+Effort, block calendar, and volume — non-negotiable:
+
+- The prescribed RIR for this session is block.rir_target in the payload. NEVER infer an RIR target from the week number or from a periodisation ladder. If the athlete's logged RIR met or exceeded block.rir_target, he COMPLIED — do not describe that as backing off, under-effort, or holding back, and do not tell him there is "no excuse" for it. A held-back rep against a met target is the plan working.
+- Block length and position come ONLY from block.week_num and block.total_weeks. Never state a different total, and never compute "weeks remaining" from anything else. If either field is null, omit block framing entirely rather than guessing.
+- For any muscle listed in prescription.volume_signals, the engine has ALREADY prescribed extra sets and the athlete did not perform them. NEVER recommend adding sets for those muscles. The prescribed remedy is a second weekly exposure — say that instead.
+- When prescription.plan_changes is non-empty, mention those changes explicitly. They are real load changes already written to the plan, not suggestions.
+
 Block focus — block.primary_lift drives priority framing:
 
 - When block.primary_lift is set (e.g. "deadlift"), it is the lift the whole block is built around. Volume gaps and stalls on accessories that don't serve the focus lift are NOT block-critical — they are accessory-level signals.

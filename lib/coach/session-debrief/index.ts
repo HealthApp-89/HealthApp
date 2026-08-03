@@ -7,7 +7,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { SetRow } from "@/lib/coach/derived";
-import type { TrainingBlock, RepatchLogEntry } from "@/lib/data/types";
+import type { TrainingBlock, RepatchLogEntry, VolumeFrequencySignal } from "@/lib/data/types";
 import { computeBlockProgress } from "@/lib/query/fetchers/blockProgress";
 import { mondayOfIso, formatRepatchNotes } from "@/lib/coach/prescription/repatch-week";
 import { todayInUserTz } from "@/lib/time";
@@ -25,6 +25,25 @@ import {
 export type GenerateResult =
   | { ok: true; payload: WorkoutDebriefPayload }
   | { ok: false; skipped: "no_working_sets" | "no_exercises" };
+
+/** Collapse exercise ROWS into one entry per exercise. Warmup ramp entries are
+ *  stored as separate `exercises` rows sharing the working entry's name (see
+ *  augmentFirstLoadedCompoundWithWarmups), so a per-row mapping produced
+ *  duplicate lifts and — for warmup-only rows, where topSet() is null —
+ *  phantom "Hold 0 kg" prescriptions. Entries with no working set are dropped
+ *  entirely: they are not a lift the athlete performed. */
+export function mergeExerciseRows<T extends { warmup: boolean }>(
+  rows: Array<{ name: string; sets: T[] }>,
+): Array<{ name: string; sets: T[] }> {
+  const byKey = new Map<string, { name: string; sets: T[] }>();
+  for (const row of rows) {
+    const key = row.name.trim().toLowerCase();
+    const existing = byKey.get(key);
+    if (existing) existing.sets.push(...row.sets);
+    else byKey.set(key, { name: row.name, sets: [...row.sets] });
+  }
+  return [...byKey.values()].filter((e) => e.sets.some((s) => !s.warmup));
+}
 
 export async function generateWorkoutDebrief(opts: {
   supabase: SupabaseClient;
@@ -61,19 +80,21 @@ export async function generateWorkoutDebrief(opts: {
     );
   if (setsErr) throw new Error(`sets lookup failed: ${setsErr.message}`);
 
-  const todayExercises: Array<{ name: string; sets: SetRow[] }> = exs.map((e) => ({
-    name: e.name as string,
-    sets: ((allSets ?? []) as Array<{ exercise_id: string } & SetRow>)
-      .filter((s) => s.exercise_id === e.id)
-      .map((s) => ({
-        kg: s.kg,
-        reps: s.reps,
-        duration_seconds: s.duration_seconds,
-        warmup: s.warmup,
-        failure: s.failure,
-        rir: s.rir,
-      })),
-  }));
+  const todayExercises: Array<{ name: string; sets: SetRow[] }> = mergeExerciseRows(
+    exs.map((e) => ({
+      name: e.name as string,
+      sets: ((allSets ?? []) as Array<{ exercise_id: string } & SetRow>)
+        .filter((s) => s.exercise_id === e.id)
+        .map((s) => ({
+          kg: s.kg,
+          reps: s.reps,
+          duration_seconds: s.duration_seconds,
+          warmup: s.warmup,
+          failure: s.failure,
+          rir: s.rir,
+        })),
+    })),
+  );
 
   const totalWorking = todayExercises.reduce(
     (n, ex) => n + ex.sets.filter((s) => !s.warmup).length,
@@ -121,6 +142,21 @@ export async function generateWorkoutDebrief(opts: {
     };
   })();
 
+  // Withheld-bump signals for the workout's week (migration 0054). Graceful:
+  // any failure or a pre-0054 row yields [] and the notes behave as before.
+  const { data: signalRow } = await supabase
+    .from("training_weeks")
+    .select("volume_signals")
+    .eq("user_id", userId)
+    .eq("week_start", mondayOfIso(workout.date as string))
+    .maybeSingle();
+  const volumeSignals = ((signalRow?.volume_signals ?? []) as VolumeFrequencySignal[]).map((s) => ({
+    muscle: s.muscle as string,
+    weekly_sets: s.weekly_sets,
+    mev: s.mev,
+    weekly_exposures: s.weekly_exposures,
+  }));
+
   const prescription = composePrescription({
     sessionType: workout.type as string,
     lifts,
@@ -128,12 +164,21 @@ export async function generateWorkoutDebrief(opts: {
     todayExercises,
     block: activeBlock,
     todayIso: workout.date as string,
+    volumeSignals,
   });
 
   // Mid-week repatch visibility: when THIS workout changed the remaining
   // week's numbers, say so — deterministic lines, no AI.
   const repatchNotes = await loadRepatchNotes(supabase, userId, workout.date as string);
-  if (repatchNotes.length > 0) prescription.notes.push(...repatchNotes);
+  // Mid-week repatch entries are a real load change, not advisory text —
+  // they get their own field so the UI can surface them above the notes.
+  if (repatchNotes.length > 0) {
+    prescription.plan_changes = [
+      ...(prescription.plan_changes ?? []),
+      ...repatchNotes.filter((n) => n.startsWith("Plan updated for ")),
+    ];
+    prescription.notes.push(...repatchNotes.filter((n) => !n.startsWith("Plan updated for ")));
+  }
 
   // 4. Body comp (best-effort; null if unavailable).
   const body_comp = await loadBodyComp(supabase, userId);

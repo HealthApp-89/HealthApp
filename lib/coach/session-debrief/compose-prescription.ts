@@ -48,12 +48,15 @@ type ComposePrescriptionInput = {
   todayExercises: Array<{ name: string }>;
   block: TrainingBlock | null;
   todayIso: string;
+  /** From training_weeks.volume_signals — muscles whose set bump the engine
+   *  withheld because prior bumps were not performed. Defaults to none. */
+  volumeSignals?: Array<{ muscle: string; weekly_sets: number; mev: number; weekly_exposures: number }>;
 };
 
 export function composePrescription(
   input: ComposePrescriptionInput,
 ): WorkoutDebriefPayload["prescription"] {
-  const { sessionType, lifts, volume } = input;
+  const { sessionType, lifts, volume, volumeSignals = [] } = input;
   const planEntries = SESSION_PLANS[sessionType] ?? [];
 
   const weight_changes: WorkoutDebriefPayload["prescription"]["weight_changes"] = [];
@@ -163,14 +166,28 @@ export function composePrescription(
   } else if (near.length > 0) {
     notes.push(`Cap volume on ${near.map((v) => v.muscle).join(", ")} next session — approaching MRV.`);
   }
-  if (low.length >= 2) {
-    notes.push(`Volume is light on ${low.map((v) => v.muscle).join(", ")} this week — check session adherence.`);
+  // A muscle carrying a withheld-bump signal must NOT be told to add sets —
+  // that lever was already prescribed and not performed (migration 0054).
+  // The remedy is another weekly exposure.
+  const signalByMuscle = new Map(volumeSignals.map((s) => [s.muscle, s]));
+  for (const v of low) {
+    const sig = signalByMuscle.get(v.muscle);
+    if (!sig) continue;
+    notes.push(
+      `${v.muscle} below MEV at ${sig.weekly_exposures} session${sig.weekly_exposures === 1 ? "" : "s"}/week — a second exposure is the fix, not more sets.`,
+    );
+  }
+  const unsignalled = low.filter((v) => !signalByMuscle.has(v.muscle));
+  if (unsignalled.length >= 2) {
+    notes.push(`Volume is light on ${unsignalled.map((v) => v.muscle).join(", ")} this week — check session adherence.`);
   }
 
   return {
     next_session_date: null, // populated by orchestrator from training_weeks
     weight_changes,
     notes,
+    volume_signals: volumeSignals,
+    plan_changes: [],
   };
 }
 
