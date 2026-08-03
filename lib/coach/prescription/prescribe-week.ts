@@ -648,13 +648,18 @@ async function fetchRecentSets(
   const cutoff = subtractDaysIso(todayIso, 28);
   const { data, error } = await supabase
     .from("workouts")
-    .select("date, exercises(name, exercise_sets(kg, reps, warmup, failure, rir))")
+    .select("date, exercises(name, exercise_sets(kg, reps, warmup, failure, rir, set_index))")
     .eq("user_id", userId)
     .gte("date", cutoff)
-    .order("date", { ascending: false });
+    .order("date", { ascending: false })
+    // Make the embedded set ordering CONTRACTUAL. Both effort predicates are
+    // order-independent by construction (session-grouping.ts), but without
+    // this PostgREST's ordering is incidental — which is how lastWeekClean
+    // came to read the first set of a session while documenting the last.
+    .order("set_index", { referencedTable: "exercises.exercise_sets", ascending: true });
   if (error || !data) return [];
 
-  type RawSet = { kg: number | null; reps: number | null; warmup: boolean | null; failure: boolean | null; rir: number | null };
+  type RawSet = { kg: number | null; reps: number | null; warmup: boolean | null; failure: boolean | null; rir: number | null; set_index: number | null };
   type RawExercise = { name: string; exercise_sets: RawSet[] | null };
   type RawWorkout = { date: string; exercises: RawExercise[] | null };
 
