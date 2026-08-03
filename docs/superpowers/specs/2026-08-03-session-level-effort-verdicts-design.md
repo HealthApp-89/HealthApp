@@ -204,9 +204,27 @@ run onward.
   - `consecutiveMisses` counts sessions and stops at the first unstrained session
   - empty history → `lastWeekClean === false`, `consecutiveMisses === 0`
 - **Existing audit assertions** in `scripts/audit-prescription-rules.mjs` (the
-  `lastWeekClean` / `consecutiveMisses` block) are single-set fixtures that remain valid
-  under session semantics — a one-set session. Re-run them unchanged; do not rewrite an
-  assertion to make it pass. Add session-level assertions alongside.
+  `lastWeekClean` / `consecutiveMisses` block): all eight `lastWeekClean` assertions are
+  single-set fixtures and remain valid under session semantics — a one-set session. Two of
+  the three `consecutiveMisses` assertions also hold. Do not rewrite an assertion to make it
+  pass, with **one deliberate exception**:
+
+  ```js
+  assert(
+    "consecutiveMisses legacy path unchanged when RIR absent",
+    consecutiveMisses([{ ...base, reps: 4 }, base], ex, 2) === 1,
+  );
+  ```
+
+  Both fixture sets share `performed_on: "2026-07-06"`, so they are **one session**, and
+  neither is strained: `reps: 4` is short of the prescribed 6, but `rir` is absent, so
+  `isStrainedSet` is false. Under semantic C the expected value becomes **0** — reps-short
+  with unrecorded RIR is exactly the "athlete chose to stop" case that must hold rather than
+  descend. This assertion must be updated to `=== 0` and its name changed to reflect the new
+  rule (e.g. `"reps-short with no recorded RIR does not count as a miss"`). It is the only
+  existing assertion whose expected value changes; any other change means the implementation
+  is wrong.
+- Add session-level assertions alongside the existing block.
 - **Behaviour-neutrality check for the extraction:** the accessory double-progression tests
   and audit assertions must pass **unchanged**.
 - **Verification gate:** `npm run typecheck`, `npx vitest run`,
