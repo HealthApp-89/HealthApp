@@ -24,6 +24,11 @@ import { currentComparisonValueForLift } from "@/lib/coach/prescription/current-
 import { prescribeSecondaryAutoregulated } from "@/lib/coach/prescription/autoregulation-rule";
 import { prescribeAccessoryDoubleProgression } from "@/lib/coach/prescription/double-progression-rule";
 import { prescribeAccessoryFromVolumeBand, classifyVolumeBand, type VolumeBandPosition } from "@/lib/coach/prescription/volume-balance-rule";
+import {
+  sessionsForExercise,
+  isCleanSet,
+  isStrainedSet,
+} from "@/lib/coach/prescription/session-grouping";
 import { recentEffortQuality } from "@/lib/coach/prescription/effort-quality";
 import { setAdherenceFor, IGNORED_EXPOSURES_LIMIT } from "@/lib/coach/prescription/volume-adherence";
 import type { VolumeFrequencySignal } from "@/lib/data/types";
@@ -724,46 +729,44 @@ async function fetchVolumeContext(
 
 // ── pure inference helpers ─────────────────────────────────────────────────
 
-/** Returns true if the most-recent non-warmup set for this exercise was a
- *  clean working set: not failure, hit or exceeded prescribed reps, AND —
- *  when the set carries a recorded RIR — met the prescribed RIR
- *  (`ex.rir ?? rirTarget`). A set ground out below the prescribed RIR is
- *  dirty: the load was too heavy relative to plan, so the engine holds
- *  instead of stepping. `rir == null` collapses to the legacy verdict.
+/** True when EVERY working set of the athlete's most recent session for this
+ *  exercise was clean: not failure, hit the prescribed reps, and — when RIR
+ *  was recorded — met the prescribed RIR (`ex.rir ?? rirTarget`).
+ *
+ *  Gates a load INCREASE, so it is deliberately strict: a session that opens
+ *  clean and then collapses must not earn a step. Judged over the whole
+ *  session via `every`, so it does not depend on set ordering (fetchRecentSets
+ *  cannot reliably express "the most recent set" — see session-grouping.ts).
  *  Exported for scripts/audit-prescription-rules.mjs. */
 export function lastWeekClean(
   sets: WorkoutSetSample[],
   ex: PlannedExercise,
   rirTarget: number,
 ): boolean {
-  const matching = setsForExercise(sets, ex);
-  const top = matching[0]; // recent-first
-  if (top == null) return false;
-  if (top.failure) return false;
-  if (ex.baseReps != null && top.reps < ex.baseReps) return false;
+  const last = sessionsForExercise(sets, ex.name)[0];
+  if (last == null) return false;
   const prescribedRir = ex.rir ?? rirTarget;
-  if (top.rir != null && top.rir < prescribedRir) return false;
-  return true;
+  return last.sets.every((s) => isCleanSet(s, ex.baseReps ?? 0, prescribedRir));
 }
 
-/** Count consecutive recent non-warmup sets that were dirty (failure, fell
- *  short of prescribed reps, or ground below the prescribed RIR when RIR was
- *  recorded). Walks newest-first; stops at first clean.
+/** Count consecutive recent SESSIONS (newest first) in which the athlete
+ *  showed strain on this exercise — a set taken to failure, or ground below
+ *  the prescribed RIR. Stops at the first unstrained session.
+ *
+ *  Gates a 10% load CUT, so it is deliberately conservative: a compliant
+ *  reps-short session (stopped early at or above target RIR, no failure) is
+ *  NOT a miss. That mirrors the accessory ladder's step-down rule — the
+ *  athlete choosing to stop holds the load, it never descends.
  *  Exported for scripts/audit-prescription-rules.mjs. */
 export function consecutiveMisses(
   sets: WorkoutSetSample[],
   ex: PlannedExercise,
   rirTarget: number,
 ): number {
-  const matching = setsForExercise(sets, ex);
   const prescribedRir = ex.rir ?? rirTarget;
   let misses = 0;
-  for (const s of matching) {
-    const clean =
-      !s.failure &&
-      (ex.baseReps == null || s.reps >= ex.baseReps) &&
-      (s.rir == null || s.rir >= prescribedRir);
-    if (clean) break;
+  for (const session of sessionsForExercise(sets, ex.name)) {
+    if (!session.sets.some((s) => isStrainedSet(s, prescribedRir))) break;
     misses++;
   }
   return misses;
