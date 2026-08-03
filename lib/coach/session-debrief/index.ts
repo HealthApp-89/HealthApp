@@ -26,6 +26,25 @@ export type GenerateResult =
   | { ok: true; payload: WorkoutDebriefPayload }
   | { ok: false; skipped: "no_working_sets" | "no_exercises" };
 
+/** Collapse exercise ROWS into one entry per exercise. Warmup ramp entries are
+ *  stored as separate `exercises` rows sharing the working entry's name (see
+ *  augmentFirstLoadedCompoundWithWarmups), so a per-row mapping produced
+ *  duplicate lifts and — for warmup-only rows, where topSet() is null —
+ *  phantom "Hold 0 kg" prescriptions. Entries with no working set are dropped
+ *  entirely: they are not a lift the athlete performed. */
+export function mergeExerciseRows<T extends { warmup: boolean }>(
+  rows: Array<{ name: string; sets: T[] }>,
+): Array<{ name: string; sets: T[] }> {
+  const byKey = new Map<string, { name: string; sets: T[] }>();
+  for (const row of rows) {
+    const key = row.name.trim().toLowerCase();
+    const existing = byKey.get(key);
+    if (existing) existing.sets.push(...row.sets);
+    else byKey.set(key, { name: row.name, sets: [...row.sets] });
+  }
+  return [...byKey.values()].filter((e) => e.sets.some((s) => !s.warmup));
+}
+
 export async function generateWorkoutDebrief(opts: {
   supabase: SupabaseClient;
   userId: string;
@@ -61,19 +80,21 @@ export async function generateWorkoutDebrief(opts: {
     );
   if (setsErr) throw new Error(`sets lookup failed: ${setsErr.message}`);
 
-  const todayExercises: Array<{ name: string; sets: SetRow[] }> = exs.map((e) => ({
-    name: e.name as string,
-    sets: ((allSets ?? []) as Array<{ exercise_id: string } & SetRow>)
-      .filter((s) => s.exercise_id === e.id)
-      .map((s) => ({
-        kg: s.kg,
-        reps: s.reps,
-        duration_seconds: s.duration_seconds,
-        warmup: s.warmup,
-        failure: s.failure,
-        rir: s.rir,
-      })),
-  }));
+  const todayExercises: Array<{ name: string; sets: SetRow[] }> = mergeExerciseRows(
+    exs.map((e) => ({
+      name: e.name as string,
+      sets: ((allSets ?? []) as Array<{ exercise_id: string } & SetRow>)
+        .filter((s) => s.exercise_id === e.id)
+        .map((s) => ({
+          kg: s.kg,
+          reps: s.reps,
+          duration_seconds: s.duration_seconds,
+          warmup: s.warmup,
+          failure: s.failure,
+          rir: s.rir,
+        })),
+    })),
+  );
 
   const totalWorking = todayExercises.reduce(
     (n, ex) => n + ex.sets.filter((s) => !s.warmup).length,
