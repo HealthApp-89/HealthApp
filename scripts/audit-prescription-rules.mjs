@@ -742,9 +742,42 @@ console.log("\n## prescribe-week.ts — RIR-aware clean predicates\n");
     ) === 1,
   );
   assert(
-    "consecutiveMisses legacy path unchanged when RIR absent",
-    consecutiveMisses([{ ...base, reps: 4 }, base], ex, 2) === 1,
+    "reps-short with no recorded RIR does not count as a miss (athlete chose to stop)",
+    consecutiveMisses([{ ...base, reps: 4 }, base], ex, 2) === 0,
   );
+
+  // Session-level semantics (2026-08-03). The two production regressions that
+  // exposed the single-set bug, plus the asymmetry between the two gates.
+  const dl = { name: "Deadlift (Barbell)", baseReps: 8, sets: 3, rir: 2 };
+  const dlBase = { exercise_name: "Deadlift (Barbell)", exercise_key: null, kg: 90, warmup: false, failure: false, performed_on: "2026-07-23" };
+  const collapsed = [
+    { ...dlBase, reps: 8, rir: 2 },
+    { ...dlBase, reps: 8, rir: 1 },
+    { ...dlBase, reps: 8, rir: 0, failure: true },
+  ];
+  assert("collapsed session is dirty (was clean pre-fix)", lastWeekClean(collapsed, dl, 2) === false);
+  assert("collapsed session counts as one strained session", consecutiveMisses(collapsed, dl, 2) === 1);
+
+  const allClean = [
+    { ...dlBase, reps: 8, rir: 2 },
+    { ...dlBase, reps: 8, rir: 2 },
+    { ...dlBase, reps: 8, rir: 2 },
+  ];
+  assert("all-clean session earns the step", lastWeekClean(allClean, dl, 2) === true);
+  assert("all-clean session is not a miss", consecutiveMisses(allClean, dl, 2) === 0);
+
+  // Asymmetry: compliant reps-short blocks the step but does NOT trigger a cut.
+  const compliantShort = [{ ...dlBase, reps: 4, rir: 3 }];
+  assert("compliant reps-short does not earn a step", lastWeekClean(compliantShort, dl, 2) === false);
+  assert("compliant reps-short does not count as a miss", consecutiveMisses(compliantShort, dl, 2) === 0);
+
+  // Only the latest session gates the step.
+  const latestCleanOlderDirty = [
+    { ...dlBase, reps: 8, rir: 2 },
+    { ...dlBase, reps: 8, rir: 0, failure: true, performed_on: "2026-07-16" },
+  ];
+  assert("older dirty session does not block a clean latest session", lastWeekClean(latestCleanOlderDirty, dl, 2) === true);
+  assert("empty history is dirty with zero misses", lastWeekClean([], dl, 2) === false && consecutiveMisses([], dl, 2) === 0);
 }
 
 console.log("\n## upsert-week-prescription.ts — mergePreservedDays\n");

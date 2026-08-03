@@ -43,6 +43,11 @@
 import type { PlannedExercise } from "@/lib/coach/sessionPlans";
 import type { BlockPhase, WorkoutSetSample } from "@/lib/coach/prescription/types";
 import { roundToStep } from "@/lib/coach/prescription/calibrate-target";
+import {
+  sessionsForExercise,
+  isCleanSet,
+  isStrainedSet,
+} from "@/lib/coach/prescription/session-grouping";
 
 export type Loadability = "fine" | "moderate" | "coarse";
 
@@ -102,50 +107,6 @@ export function nextDownKg(L: number, inc: Increment): number {
   return down > 0 ? down : Math.min(im, step);
 }
 
-type SessionSets = { date: string; sets: WorkoutSetSample[] };
-
-/** Non-warmup samples for the exercise, grouped per session date, newest first.
- *
- *  NOTE — dual-slot exercises (e.g. Lateral Raise appears on both Chest and
- *  Arms days): history is name-keyed, so sets from both days merge into the
- *  same session window. This is an ACCEPTED limitation: the worst-case outcome
- *  is a spurious hold (two slots with different rep anchors may dilute the
- *  "all-clean-at-top" gate), not a phantom step-up or step-down. Hold-biased
- *  behaviour is safe after the strain gate, so no per-slot partitioning is
- *  needed in v1. If rep anchors diverge significantly between slots in the
- *  future, partition by session_type key instead. */
-function sessionsFor(recentSets: WorkoutSetSample[], name: string): SessionSets[] {
-  const needle = name.trim().toLowerCase();
-  const byDate = new Map<string, WorkoutSetSample[]>();
-  for (const s of recentSets) {
-    if (s.warmup) continue;
-    if (s.exercise_name.trim().toLowerCase() !== needle) continue;
-    const list = byDate.get(s.performed_on) ?? [];
-    list.push(s);
-    byDate.set(s.performed_on, list);
-  }
-  return [...byDate.entries()]
-    .map(([date, sets]) => ({ date, sets }))
-    .sort((a, b) => (a.date < b.date ? 1 : -1));
-}
-
-/** Clean = completed (not failure), hit the reps threshold, and — when RIR
- *  was recorded — met the prescribed RIR. Null RIR degrades to reps-only. */
-function isClean(s: WorkoutSetSample, repsThreshold: number, prescribedRir: number): boolean {
-  if (s.failure) return false;
-  if (s.reps < repsThreshold) return false;
-  if (s.rir != null && s.rir < prescribedRir) return false;
-  return true;
-}
-
-/** Strain evidence: the set was genuinely hard — taken to failure or ground
- *  below the prescribed RIR. Reps-short with high (or unrecorded) RIR means
- *  the athlete CHOSE to stop (lighten compliance, time cap) — that holds, it
- *  never descends. Null-RIR history can therefore only descend via failure. */
-function isStrained(s: WorkoutSetSample, prescribedRir: number): boolean {
-  return s.failure || (s.rir != null && s.rir < prescribedRir);
-}
-
 function topSet(sets: WorkoutSetSample[]): WorkoutSetSample {
   return [...sets].sort((a, b) => b.kg - a.kg || b.reps - a.reps)[0];
 }
@@ -169,7 +130,7 @@ export function prescribeAccessoryDoubleProgression(
     };
   }
 
-  const sessions = sessionsFor(input.recentSets, ex.name);
+  const sessions = sessionsForExercise(input.recentSets, ex.name);
   const last = sessions[0] ?? null;
   if (!last) return { ...ex, baseKg: L, baseReps: bottom };
 
@@ -190,7 +151,7 @@ export function prescribeAccessoryDoubleProgression(
   let effL = L;
   if (
     lastTop.kg < L &&
-    (isClean(lastTop, bottom, prescribedRir) || isStrained(lastTop, prescribedRir)) &&
+    (isCleanSet(lastTop, bottom, prescribedRir) || isStrainedSet(lastTop, prescribedRir)) &&
     nextUpKg(lastTop.kg, ex.increment) >= L
   ) {
     effL = lastTop.kg;
@@ -199,7 +160,7 @@ export function prescribeAccessoryDoubleProgression(
   // 1) Step up: ≥2 working sets at kg ≥ effL, ALL clean at the range top.
   const setsAtL = last.sets.filter((s) => s.kg >= effL);
   const allTopClean =
-    setsAtL.length >= 2 && setsAtL.every((s) => isClean(s, top, prescribedRir));
+    setsAtL.length >= 2 && setsAtL.every((s) => isCleanSet(s, top, prescribedRir));
   if (allTopClean && !loadFrozen) {
     return { ...ex, baseKg: nextUpKg(effL, ex.increment), baseReps: bottom };
   }
@@ -210,7 +171,7 @@ export function prescribeAccessoryDoubleProgression(
   if (
     blockPhase !== "off_pace" &&
     lastTop.kg >= effL &&
-    isClean(lastTop, bottom, prescribedRir)
+    isCleanSet(lastTop, bottom, prescribedRir)
   ) {
     return { ...ex, baseKg: effL, baseReps: Math.min(top, lastTop.reps + 1) };
   }
@@ -223,15 +184,15 @@ export function prescribeAccessoryDoubleProgression(
   const lastTopAtEffL = lastTop.kg >= effL;
   const lastDirtyStrained =
     lastTopAtEffL &&
-    !isClean(lastTop, bottom, prescribedRir) &&
-    isStrained(lastTop, prescribedRir);
+    !isCleanSet(lastTop, bottom, prescribedRir) &&
+    isStrainedSet(lastTop, prescribedRir);
 
   const prevTop = prev != null ? topSet(prev.sets) : null;
   const prevDirtyStrained =
     prevTop != null &&
     prevTop.kg >= effL &&
-    !isClean(prevTop, bottom, prescribedRir) &&
-    isStrained(prevTop, prescribedRir);
+    !isCleanSet(prevTop, bottom, prescribedRir) &&
+    isStrainedSet(prevTop, prescribedRir);
 
   if (!loadFrozen && lastDirtyStrained && prevDirtyStrained) {
     return { ...ex, baseKg: nextDownKg(effL, ex.increment), baseReps: bottom };
