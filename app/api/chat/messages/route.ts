@@ -30,6 +30,7 @@ import { buildPeterContextBlock } from "@/lib/coach/peter-context";
 import { loadLatestPeterDashboard } from "@/lib/coach/peter-dashboard";
 import { buildThisWeeksExercisesBlock } from "@/lib/coach/carter-context/this-weeks-exercises";
 import { buildThisWeeksPrescriptionBlock } from "@/lib/coach/carter-context/this-weeks-prescription";
+import { buildVolumeSignalsBlock } from "@/lib/coach/carter-context/volume-signals";
 import { buildFrameworkStateBlock } from "@/lib/coach/carter-context/framework-state";
 import { renderEatingIdentityBlock } from "@/lib/coach/nora-suggestions/render-injection";
 import type { EatingIdentity, DietaryExclusions } from "@/lib/data/types";
@@ -862,7 +863,7 @@ export async function POST(req: Request) {
         : [null, null];
       const carterContext = initialSpeaker === "carter"
         ? await (async () => {
-            const [exercisesBlock, frameworkBlock, prescriptionBlock] = await Promise.all([
+            const [exercisesBlock, frameworkBlock, prescriptionBlock, volumeSignalsBlock] = await Promise.all([
               buildThisWeeksExercisesBlock({ supabase: sr, userId: user.id }).catch((err) => {
                 console.warn("[chat] buildThisWeeksExercisesBlock failed", err);
                 return null;
@@ -875,11 +876,16 @@ export async function POST(req: Request) {
                 console.warn("[chat] buildThisWeeksPrescriptionBlock failed", err);
                 return null;
               }),
+              buildVolumeSignalsBlock({ supabase: sr, userId: user.id }).catch((err) => {
+                console.warn("[chat] buildVolumeSignalsBlock failed", err);
+                return null;
+              }),
             ]);
             // Ordering: framework rule first (the non-negotiable phase rule),
             // then the canonical prescription Carter must quote, then the
-            // exercise metadata that supports off-prescription substitutions.
-            const parts = [frameworkBlock, prescriptionBlock, exercisesBlock].filter(
+            // volume-frequency signals that constrain how he may change it,
+            // then the exercise metadata supporting off-prescription swaps.
+            const parts = [frameworkBlock, prescriptionBlock, volumeSignalsBlock, exercisesBlock].filter(
               (b): b is string => !!b,
             );
             return parts.length > 0 ? parts.join("\n\n") : null;
