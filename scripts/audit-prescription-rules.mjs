@@ -22,6 +22,7 @@ import {
 } from "@/lib/coach/prescription/volume-balance-rule";
 import { recentEffortQuality } from "@/lib/coach/prescription/effort-quality";
 import { setAdherenceFor, IGNORED_EXPOSURES_LIMIT } from "@/lib/coach/prescription/volume-adherence";
+import { composePrescription } from "@/lib/coach/session-debrief/compose-prescription";
 import fs from "node:fs";
 import { createAuditReporter } from "./audit-utils.mjs";
 
@@ -1528,6 +1529,43 @@ console.log("\n## Adherence gate\n");
 
   const none = setAdherenceFor("Leg Extension (Machine)", null, session("2026-08-01", 3), "2026-08-03");
   assert("null prescription yields zero ignored exposures", none.ignoredExposures === 0);
+}
+
+console.log("\n## session-debrief — volume signal coherence\n");
+{
+  const volume = [
+    { muscle: "Calves", sets_today: 3, sets_this_week: 4.5, band: { mev: 8, mav_low: 12, mav_high: 16, mrv: 20 }, status: "below_mev" },
+    { muscle: "Hams",   sets_today: 3, sets_this_week: 4.5, band: { mev: 6, mav_low: 10, mav_high: 16, mrv: 20 }, status: "below_mev" },
+  ];
+  const baseInput = { sessionType: "Legs", lifts: [], volume, todayExercises: [], block: null, todayIso: "2026-08-03" };
+
+  const withSignal = composePrescription({
+    ...baseInput,
+    volumeSignals: [{ muscle: "Calves", weekly_sets: 3.9, mev: 8, weekly_exposures: 1 }],
+  });
+  const signalNote = withSignal.notes.join(" ");
+  assert("signalled muscle gets the frequency framing", /Calves.*second exposure/i.test(signalNote));
+  assert("signalled muscle never gets an add-sets recommendation", !/add .*set/i.test(signalNote));
+  assert("signal is carried on the payload for the narrator", withSignal.volume_signals?.length === 1);
+
+  const withoutSignal = composePrescription({ ...baseInput, volumeSignals: [] });
+  assert(
+    "unsignalled below-MEV muscles keep the adherence note",
+    withoutSignal.notes.some((n) => n.includes("check session adherence")),
+  );
+  assert("composePrescription initialises plan_changes", Array.isArray(withoutSignal.plan_changes));
+}
+
+console.log("\n## session-debrief — plan_changes routing\n");
+{
+  const notes = ["Volume is light on Hams, Calves this week — check session adherence."];
+  const repatch = ["Plan updated for Tuesday: Overhead Press (Barbell) 30 → 25 kg"];
+  // Mirrors the orchestrator's routing in session-debrief/index.ts.
+  const planChanges = repatch.filter((n) => n.startsWith("Plan updated for "));
+  const advisory = [...notes, ...repatch].filter((n) => !n.startsWith("Plan updated for "));
+  assert("repatch note routes to plan_changes", planChanges.length === 1);
+  assert("advisory notes exclude repatch entries", advisory.every((n) => !n.startsWith("Plan updated for ")));
+  assert("advisory notes keep the volume note", advisory.length === 1);
 }
 
 summary("audit-prescription-rules");

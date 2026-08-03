@@ -7,7 +7,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { SetRow } from "@/lib/coach/derived";
-import type { TrainingBlock, RepatchLogEntry } from "@/lib/data/types";
+import type { TrainingBlock, RepatchLogEntry, VolumeFrequencySignal } from "@/lib/data/types";
 import { computeBlockProgress } from "@/lib/query/fetchers/blockProgress";
 import { mondayOfIso, formatRepatchNotes } from "@/lib/coach/prescription/repatch-week";
 import { todayInUserTz } from "@/lib/time";
@@ -142,6 +142,21 @@ export async function generateWorkoutDebrief(opts: {
     };
   })();
 
+  // Withheld-bump signals for the workout's week (migration 0054). Graceful:
+  // any failure or a pre-0054 row yields [] and the notes behave as before.
+  const { data: signalRow } = await supabase
+    .from("training_weeks")
+    .select("volume_signals")
+    .eq("user_id", userId)
+    .eq("week_start", mondayOfIso(workout.date as string))
+    .maybeSingle();
+  const volumeSignals = ((signalRow?.volume_signals ?? []) as VolumeFrequencySignal[]).map((s) => ({
+    muscle: s.muscle as string,
+    weekly_sets: s.weekly_sets,
+    mev: s.mev,
+    weekly_exposures: s.weekly_exposures,
+  }));
+
   const prescription = composePrescription({
     sessionType: workout.type as string,
     lifts,
@@ -149,6 +164,7 @@ export async function generateWorkoutDebrief(opts: {
     todayExercises,
     block: activeBlock,
     todayIso: workout.date as string,
+    volumeSignals,
   });
 
   // Mid-week repatch visibility: when THIS workout changed the remaining
