@@ -471,6 +471,29 @@ import type { NextSessionPrescription } from "@/lib/coach/session-debrief/next-s
     next_session_date: nextSession?.date ?? null,
 ```
 
+- [ ] **Step 3b: Update the two pre-existing audit calls**
+
+`scripts/audit-prescription-rules.mjs` already calls `composePrescription` twice in the
+`## session-debrief — volume signal coherence` block (the `withSignal` and `withoutSignal`
+cases from the previous arc). Both predate `nextSession`. Add `nextSession: null` to each:
+
+```js
+  const withSignal = composePrescription({
+    ...baseInput,
+    volumeSignals: [{ muscle: "Calves", weekly_sets: 3.9, mev: 8, weekly_exposures: 1 }],
+    nextSession: null,
+  });
+```
+
+```js
+  const withoutSignal = composePrescription({ ...baseInput, volumeSignals: [], nextSession: null });
+```
+
+Those two cases assert on `notes` and `volume_signals` only, so passing `null` is correct —
+they are exercising the volume path, not the prescription path. Note that a `null`
+`nextSession` now also appends the "isn't planned yet" note; that does not affect their
+assertions, which check for the presence of specific notes rather than an exact list.
+
 - [ ] **Step 4: Wire the reader into the orchestrator**
 
 In `lib/coach/session-debrief/index.ts`, add the import:
