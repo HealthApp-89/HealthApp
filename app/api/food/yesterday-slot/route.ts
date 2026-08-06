@@ -7,6 +7,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getUserTimezone } from "@/lib/time/get-user-tz";
+import { localDayRangeUtc } from "@/lib/time";
 
 const QuerySchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -32,7 +34,10 @@ export async function GET(req: Request) {
   if (!parsed.success) return NextResponse.json({ error: parsed.error.message }, { status: 400 });
 
   const yesterday = priorDate(parsed.data.date);
-  const dayAfter = parsed.data.date;
+
+  // Bound the prior calendar day as lived in the athlete's timezone, not UTC.
+  const tz = await getUserTimezone(user.id);
+  const { startUtc, endUtc } = localDayRangeUtc(yesterday, tz);
 
   const { data, error } = await supabase
     .from("food_log_entries")
@@ -40,8 +45,8 @@ export async function GET(req: Request) {
     .eq("user_id", user.id)
     .eq("status", "committed")
     .eq("meal_slot", parsed.data.slot)
-    .gte("eaten_at", `${yesterday}T00:00:00Z`)
-    .lt("eaten_at", `${dayAfter}T00:00:00Z`);
+    .gte("eaten_at", startUtc)
+    .lt("eaten_at", endUtc);
   if (error) return NextResponse.json({ error: "query_failed" }, { status: 500 });
 
   const ids = (data ?? []).map((r) => r.id);

@@ -1,11 +1,18 @@
 // app/api/food/library/route.ts
 //
-// GET ?slot=&q=&recent_days=30&frequent_days=30&section_limit=20
+// GET ?slot=&q=&recent_days=&frequent_days=180&section_limit=20
 //   → { favorite_meals, favorite_items, recent, frequent, catalog? }
 //
 // Catalog renders ONLY when q != "".
 // When q != "", dedupe across sections by lowercased name:
 //   Favorites > Recent > Frequent > Catalog.
+//
+// Window policy (see migration 0055): `recent` is UNWINDOWED by default —
+// "Recent" means "the last N distinct things you ate", an ordering rather than
+// a calendar window. The previous 30-day default emptied the whole section
+// after any logging gap longer than a month. `frequent` keeps a window because
+// frequency is meaningless without a time basis, but 180d is wide enough to
+// survive a normal break. Both params remain overridable per request.
 
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -14,8 +21,9 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 const QuerySchema = z.object({
   slot: z.enum(["breakfast", "lunch", "dinner", "snack"]).nullable().optional(),
   q: z.string().max(200).optional(),
-  recent_days: z.coerce.number().int().min(1).max(180).default(30),
-  frequent_days: z.coerce.number().int().min(1).max(180).default(30),
+  // Omitted => no lower bound at all (RPC treats NULL p_days as unwindowed).
+  recent_days: z.coerce.number().int().min(1).max(3650).optional(),
+  frequent_days: z.coerce.number().int().min(1).max(3650).default(180),
   section_limit: z.coerce.number().int().min(1).max(50).default(20),
 });
 
@@ -62,7 +70,7 @@ export async function GET(req: Request) {
 
   const recentP = supabase.rpc("food_recent_items", {
     p_user_id: user.id,
-    p_days: recent_days,
+    p_days: recent_days ?? null,
     p_limit: section_limit,
   });
   const frequentP = supabase.rpc("food_frequent_items", {

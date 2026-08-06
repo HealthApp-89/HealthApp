@@ -32,7 +32,9 @@ export function HistoryPickerSheet({
   onCommitted: () => void;
 }) {
   const today = useUserToday(userId) ?? "";
-  const minDate = offsetDate(today, -60);
+  // Must match MAX_LOOKBACK_DAYS in /api/food/history — a tighter bound here
+  // silently hides days the server would happily return.
+  const minDate = offsetDate(today, -365);
 
   const [date, setDate] = useState(offsetDate(today, -1)); // yesterday by default
   const [selected, setSelected] = useState<SelectedItem[]>([]);

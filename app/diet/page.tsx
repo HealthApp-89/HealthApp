@@ -54,7 +54,7 @@ export default async function DietPage({
     // Food entries for the selected date (slot cards + macro totals)
     qc.prefetchQuery({
       queryKey: queryKeys.foodEntries.range(user.id, date, date),
-      queryFn: () => fetchFoodEntriesServer(supabase, user.id, date, date),
+      queryFn: () => fetchFoodEntriesServer(supabase, user.id, date, date, tz),
     }),
     // Nutrition targets for the selected date (kcal ring + per-slot targets)
     qc.prefetchQuery({
