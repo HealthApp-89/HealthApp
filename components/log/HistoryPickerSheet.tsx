@@ -8,6 +8,7 @@ import { HistoryPickerBucket, type SelectedItem } from "./HistoryPickerBucket";
 import { HistoryPickerSlotCard } from "./HistoryPickerSlotCard";
 import { useFoodHistory } from "@/lib/query/hooks/useFoodHistory";
 import { useUserToday } from "@/lib/query/hooks/useUserToday";
+import { COLOR, RADIUS } from "@/lib/ui/theme";
 import type { FoodLogEntry, MealSlot } from "@/lib/food/types";
 
 function offsetDate(iso: string, deltaDays: number): string {
@@ -161,9 +162,9 @@ export function HistoryPickerSheet({
         onClearAll={clearAll}
       />
       <div className="space-y-3 p-3">
-        {isLoading && <p className="text-xs text-zinc-500">Loading…</p>}
+        {isLoading && <p className="text-xs" style={{ color: COLOR.textMuted }}>Loading…</p>}
         {!isLoading && !dayData && (
-          <p className="text-xs text-zinc-500">No entries logged on {date}.</p>
+          <p className="text-xs" style={{ color: COLOR.textMuted }}>No entries logged on {date}.</p>
         )}
         {dayData && MEAL_SLOTS.map((slot) => (
           <HistoryPickerSlotCard
@@ -177,13 +178,17 @@ export function HistoryPickerSheet({
           />
         ))}
       </div>
-      {error && <p className="px-3 pb-2 text-xs text-red-400">{error}</p>}
-      <div className="sticky bottom-0 border-t border-zinc-800 bg-zinc-950 p-3">
+      {error && <p className="px-3 pb-2 text-xs" style={{ color: COLOR.danger }}>{error}</p>}
+      <div
+        className="sticky bottom-0 p-3"
+        style={{ borderTop: `1px solid ${COLOR.divider}`, background: COLOR.surface }}
+      >
         <button
           type="button"
           onClick={commit}
           disabled={busy || selected.length === 0}
-          className="w-full rounded-md bg-zinc-100 py-2 text-sm text-zinc-900 disabled:opacity-50"
+          className="w-full py-2 text-sm font-medium disabled:opacity-50"
+          style={{ background: COLOR.accent, color: "#ffffff", borderRadius: RADIUS.input }}
         >
           {busy ? "…" : `Add ${selected.length} item${selected.length === 1 ? "" : "s"} to ${destinationSlot}`}
         </button>

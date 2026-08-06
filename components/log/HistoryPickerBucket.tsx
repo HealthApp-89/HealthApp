@@ -2,6 +2,7 @@
 
 import { MEAL_SLOTS, mealSlotLabel } from "@/lib/food/meal-slot";
 import { fmtNum } from "@/lib/ui/score";
+import { COLOR, RADIUS } from "@/lib/ui/theme";
 import type { FoodItem, MealSlot } from "@/lib/food/types";
 
 export type SelectedItem = {
@@ -25,21 +26,30 @@ export function HistoryPickerBucket({
 }) {
   if (selected.length === 0) {
     return (
-      <div className="px-3 py-2 text-xs text-zinc-500 border-b border-zinc-800">
+      <div
+        className="px-3 py-2 text-xs"
+        style={{ color: COLOR.textMuted, borderBottom: `1px solid ${COLOR.divider}` }}
+      >
         Tap items below to add them. Selected items will appear here.
       </div>
     );
   }
   return (
-    <div className="border-b border-zinc-800 px-3 py-2">
+    <div className="px-3 py-2" style={{ borderBottom: `1px solid ${COLOR.divider}` }}>
       <div className="flex items-center justify-between">
-        <div className="text-xs uppercase tracking-wider text-zinc-400">
+        <div className="text-xs uppercase tracking-wider" style={{ color: COLOR.textMuted }}>
           Selected ({selected.length}) — Add to:
         </div>
         <select
           value={destinationSlot}
           onChange={(e) => onChangeDestination(e.target.value as MealSlot)}
-          className="rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-zinc-100"
+          className="px-2 py-1 text-xs"
+          style={{
+            background: COLOR.surfaceAlt,
+            border: `1px solid ${COLOR.divider}`,
+            borderRadius: RADIUS.input,
+            color: COLOR.textStrong,
+          }}
         >
           {MEAL_SLOTS.map((s) => (
             <option key={s} value={s}>{mealSlotLabel(s)}</option>
@@ -48,16 +58,35 @@ export function HistoryPickerBucket({
       </div>
       <ul className="mt-2 space-y-1">
         {selected.map((s, idx) => (
-          <li key={`${s.source_entry_id}-${idx}`} className="flex items-center justify-between text-xs text-zinc-300">
+          <li
+            key={`${s.source_entry_id}-${idx}`}
+            className="flex items-center justify-between text-xs"
+            style={{ color: COLOR.textMid }}
+          >
             <span>
               {s.item.name} {fmtNum(s.item.qty_g)}g
-              <span className="ml-2 text-zinc-500">· {s.source_date}</span>
+              <span className="ml-2" style={{ color: COLOR.textMuted }}>· {s.source_date}</span>
             </span>
-            <button type="button" onClick={() => onRemove(idx)} aria-label="Remove" className="px-2">×</button>
+            <button
+              type="button"
+              onClick={() => onRemove(idx)}
+              aria-label="Remove"
+              className="px-2"
+              style={{ color: COLOR.textMuted }}
+            >
+              ×
+            </button>
           </li>
         ))}
       </ul>
-      <button type="button" onClick={onClearAll} className="mt-1 text-xs text-zinc-500 underline">Clear all</button>
+      <button
+        type="button"
+        onClick={onClearAll}
+        className="mt-1 text-xs underline"
+        style={{ color: COLOR.accent }}
+      >
+        Clear all
+      </button>
     </div>
   );
 }
