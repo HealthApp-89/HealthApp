@@ -20,10 +20,10 @@ export function HandoffLine({
 }) {
   return (
     <div className="flex justify-center py-2">
-      <div className="rounded-full bg-zinc-900 border border-zinc-800 px-3 py-1 text-[11px] text-zinc-500">
+      <div className="rounded-full bg-surface-alt border border-divider px-3 py-1 text-[11px] text-muted">
         {speakerName(from)} → {speakerName(to)}
         {briefing && (
-          <span className="ml-2 italic text-zinc-600">— {briefing}</span>
+          <span className="ml-2 italic text-mid">— {briefing}</span>
         )}
       </div>
     </div>

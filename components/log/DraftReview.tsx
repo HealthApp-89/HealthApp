@@ -227,13 +227,13 @@ export function DraftReview({
 
   return (
     <div className="space-y-3">
-      <ul className="divide-y divide-zinc-800 rounded-md border border-zinc-800">
+      <ul className="divide-y divide-divider rounded-md border border-divider">
         {entry.items.map((it, idx) => {
           if (editing === idx) {
             if (pickingFor === idx) {
               return (
-                <li key={idx} className="space-y-2 bg-zinc-900/60 p-3 text-sm">
-                  <div className="text-xs uppercase tracking-wider text-zinc-400">
+                <li key={idx} className="space-y-2 bg-surface-alt/60 p-3 text-sm">
+                  <div className="text-xs uppercase tracking-wider text-mid">
                     Replacing: {it.name}
                   </div>
                   <FoodSearchPicker
@@ -244,12 +244,12 @@ export function DraftReview({
               );
             }
             return (
-              <li key={idx} className="space-y-2 bg-zinc-900/60 p-3 text-sm">
-                <div className="text-xs uppercase tracking-wider text-zinc-400">
+              <li key={idx} className="space-y-2 bg-surface-alt/60 p-3 text-sm">
+                <div className="text-xs uppercase tracking-wider text-mid">
                   Editing: {it.name}
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-zinc-400">Qty</span>
+                  <span className="text-xs text-mid">Qty</span>
                   <input
                     type="number"
                     inputMode="numeric"
@@ -260,16 +260,16 @@ export function DraftReview({
                       const v = e.target.value;
                       setEditQty(v === "" ? "" : Number(v));
                     }}
-                    className="w-20 rounded-md border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm text-zinc-100"
+                    className="w-20 rounded-md border border-divider bg-surface px-2 py-1 text-sm text-strong"
                   />
-                  <span className="text-xs text-zinc-400">g</span>
+                  <span className="text-xs text-mid">g</span>
                   <div className="ml-auto flex gap-1">
                     {QTY_PRESETS.map((q) => (
                       <button
                         key={q}
                         type="button"
                         onClick={() => setEditQty(q)}
-                        className="rounded border border-zinc-700 px-2 py-0.5 text-xs text-zinc-300"
+                        className="rounded border border-divider px-2 py-0.5 text-xs text-mid"
                       >
                         {q}
                       </button>
@@ -280,15 +280,15 @@ export function DraftReview({
                 <button
                   type="button"
                   onClick={() => setPickingFor(idx)}
-                  className="text-xs text-zinc-400 underline"
+                  className="text-xs text-mid underline"
                 >
                   Change food →
                 </button>
                 <div className="flex gap-2">
-                  <button type="button" onClick={cancelEdit} disabled={editBusy} className="flex-1 rounded-md border border-zinc-700 py-1 text-xs">
+                  <button type="button" onClick={cancelEdit} disabled={editBusy} className="flex-1 rounded-md border border-divider py-1 text-xs">
                     Cancel
                   </button>
-                  <button type="button" onClick={saveQty} disabled={editBusy || typeof editQty !== "number" || editQty <= 0} className="flex-1 rounded-md bg-zinc-100 py-1 text-xs text-zinc-900">
+                  <button type="button" onClick={saveQty} disabled={editBusy || typeof editQty !== "number" || editQty <= 0} className="flex-1 rounded-md bg-accent py-1 text-xs text-white">
                     {editBusy ? "..." : "Save"}
                   </button>
                 </div>
@@ -310,7 +310,7 @@ export function DraftReview({
                     <ChipBadge state={chipFor(it)} />
                   </button>
                 </div>
-                <div className="text-xs text-zinc-400">
+                <div className="text-xs text-mid">
                   {fmtNum(it.qty_g)} g · {fmtNum(it.kcal)} kcal · {fmtNum(it.protein_g)} P · {fmtNum(it.carbs_g)} C · {fmtNum(it.fat_g)} F
                 </div>
               </div>
@@ -320,7 +320,7 @@ export function DraftReview({
                     type="button"
                     onClick={() => toggleFavorite(it)}
                     aria-label={isItemFavorite(it.name) ? "Unfavorite item" : "Favorite item"}
-                    className="rounded p-1 text-zinc-400 hover:bg-zinc-800 hover:text-amber-400"
+                    className="rounded p-1 text-mid hover:bg-surface-alt hover:text-amber-400"
                   >
                     {isItemFavorite(it.name) ? "★" : "☆"}
                   </button>
@@ -330,7 +330,7 @@ export function DraftReview({
                   onClick={() => startEdit(idx)}
                   aria-label={`Edit ${it.name}`}
                   disabled={editBusy}
-                  className="rounded p-1 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
+                  className="rounded p-1 text-mid hover:bg-surface-alt hover:text-strong"
                 >
                   ✎
                 </button>
@@ -339,7 +339,7 @@ export function DraftReview({
                   onClick={() => deleteRow(idx)}
                   aria-label={`Delete ${it.name}`}
                   disabled={editBusy}
-                  className="rounded p-1 text-zinc-400 hover:bg-zinc-800 hover:text-red-400"
+                  className="rounded p-1 text-mid hover:bg-surface-alt hover:text-red-400"
                 >
                   ×
                 </button>
@@ -353,10 +353,10 @@ export function DraftReview({
       </div>
       {(error || editError) && editing === null && <p className="text-xs text-red-400">{error ?? editError}</p>}
       <div className="flex gap-2">
-        <button type="button" onClick={onDiscard} disabled={busy} className="flex-1 rounded-md border border-zinc-700 py-2 text-sm">
+        <button type="button" onClick={onDiscard} disabled={busy} className="flex-1 rounded-md border border-divider py-2 text-sm">
           Discard
         </button>
-        <button type="button" onClick={onCommit} disabled={busy} className="flex-1 rounded-md bg-zinc-100 py-2 text-sm text-zinc-900">
+        <button type="button" onClick={onCommit} disabled={busy} className="flex-1 rounded-md bg-accent py-2 text-sm text-white">
           {busy ? "..." : "Commit"}
         </button>
       </div>

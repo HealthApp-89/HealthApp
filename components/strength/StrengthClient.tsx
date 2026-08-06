@@ -212,8 +212,8 @@ export function StrengthClient({
               <div className="mb-3 flex justify-center" style={{ color: COLOR.textFaint }}>
                 <Dumbbell size={32} aria-hidden="true" />
               </div>
-              <div className="text-sm text-white/40 mb-2">No workouts logged yet</div>
-              <div className="text-xs text-white/25 leading-relaxed">
+              <div className="text-sm text-mid mb-2">No workouts logged yet</div>
+              <div className="text-xs text-muted leading-relaxed">
                 Manual entry coming in Stage 4. Strong-app screenshot ingest planned.
               </div>
             </div>
@@ -230,10 +230,10 @@ export function StrengthClient({
             {sessionsOnDate.length === 0 ? (
               <Card>
                 <div className="text-center py-10">
-                  <div className="text-sm text-white/45">
+                  <div className="text-sm text-mid">
                     No workouts logged on {selectedDate}
                   </div>
-                  <div className="text-[11px] text-white/25 mt-1">
+                  <div className="text-[11px] text-muted mt-1">
                     Pick another date — your earliest is {earliestWorkout}.
                   </div>
                 </div>

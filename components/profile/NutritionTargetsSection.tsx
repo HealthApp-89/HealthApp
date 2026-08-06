@@ -105,8 +105,8 @@ export function NutritionTargetsSection({
     save({ kcal: null, macro_ratios: null, meal_ratios: null });
 
   return (
-    <section className="rounded-lg border border-zinc-800 p-4">
-      <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-zinc-400">
+    <section className="rounded-lg border border-divider p-4">
+      <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-mid">
         Nutrition targets
       </h2>
 
@@ -114,7 +114,7 @@ export function NutritionTargetsSection({
       <div className="mb-4">
         <div className="flex items-baseline justify-between">
           <label className="text-sm">Daily calories</label>
-          <span className="text-xs text-zinc-500">
+          <span className="text-xs text-muted">
             Source: {src?.kcal ?? "—"}
           </span>
         </div>
@@ -126,13 +126,13 @@ export function NutritionTargetsSection({
             onFocus={selectOnFocus}
             min={800}
             max={6000}
-            className="w-32 rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-sm text-zinc-100"
+            className="w-32 rounded-md border border-divider bg-surface-alt px-2 py-1 text-sm text-strong"
           />
           <button
             type="button"
             onClick={saveKcal}
             disabled={busy}
-            className="rounded-md bg-zinc-100 px-3 py-1 text-xs text-zinc-900"
+            className="rounded-md bg-accent px-3 py-1 text-xs text-white"
           >
             Save kcal
           </button>
@@ -143,7 +143,7 @@ export function NutritionTargetsSection({
       <div className="mb-4">
         <div className="flex items-baseline justify-between">
           <label className="text-sm">Macro split (%)</label>
-          <span className="text-xs text-zinc-500">
+          <span className="text-xs text-muted">
             Source: {src?.macros ?? "—"}
           </span>
         </div>
@@ -152,14 +152,14 @@ export function NutritionTargetsSection({
           <PctInput label="C" value={carbsPct} onChange={setCarbsPct} />
           <PctInput label="F" value={fatPct} onChange={setFatPct} />
         </div>
-        <div className="mt-1 text-xs text-zinc-500">
+        <div className="mt-1 text-xs text-muted">
           Sum: {proteinPct + carbsPct + fatPct}%
         </div>
         <button
           type="button"
           onClick={saveMacros}
           disabled={busy}
-          className="mt-2 rounded-md bg-zinc-100 px-3 py-1 text-xs text-zinc-900"
+          className="mt-2 rounded-md bg-accent px-3 py-1 text-xs text-white"
         >
           Save macros
         </button>
@@ -169,7 +169,7 @@ export function NutritionTargetsSection({
       <div className="mb-4">
         <div className="flex items-baseline justify-between">
           <label className="text-sm">Meal split (%)</label>
-          <span className="text-xs text-zinc-500">
+          <span className="text-xs text-muted">
             Source: {src?.meal_ratios ?? "—"}
           </span>
         </div>
@@ -179,14 +179,14 @@ export function NutritionTargetsSection({
           <PctInput label="D" value={diPct} onChange={setDiPct} />
           <PctInput label="S" value={snPct} onChange={setSnPct} />
         </div>
-        <div className="mt-1 text-xs text-zinc-500">
+        <div className="mt-1 text-xs text-muted">
           Sum: {bfPct + luPct + diPct + snPct}%
         </div>
         <button
           type="button"
           onClick={saveMeals}
           disabled={busy}
-          className="mt-2 rounded-md bg-zinc-100 px-3 py-1 text-xs text-zinc-900"
+          className="mt-2 rounded-md bg-accent px-3 py-1 text-xs text-white"
         >
           Save meal split
         </button>
@@ -199,13 +199,13 @@ export function NutritionTargetsSection({
           type="button"
           onClick={resetAll}
           disabled={busy}
-          className="text-zinc-400 underline"
+          className="text-mid underline"
         >
           Reset to plan
         </button>
         <Link
           href="/coach?mode=default&starter=nutrition_targets"
-          className="text-zinc-100 underline"
+          className="text-strong underline"
         >
           Ask coach to recommend →
         </Link>
@@ -225,7 +225,7 @@ function PctInput({
 }) {
   return (
     <label className="block">
-      <span className="text-zinc-400">{label}</span>
+      <span className="text-mid">{label}</span>
       <input
         type="number"
         value={value}
@@ -233,7 +233,7 @@ function PctInput({
         onFocus={selectOnFocus}
         min={0}
         max={100}
-        className="mt-1 w-full rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-zinc-100"
+        className="mt-1 w-full rounded-md border border-divider bg-surface-alt px-2 py-1 text-strong"
       />
     </label>
   );

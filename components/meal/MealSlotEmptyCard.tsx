@@ -69,19 +69,19 @@ export function MealSlotEmptyCard({
   };
 
   return (
-    <section className="rounded-lg border border-dashed border-zinc-700">
+    <section className="rounded-lg border border-dashed border-divider">
       <header className="flex items-center justify-between p-3">
         <div>
-          <div className="text-sm font-semibold text-zinc-300">{mealSlotLabel(slot)}</div>
+          <div className="text-sm font-semibold text-mid">{mealSlotLabel(slot)}</div>
           {targetKcal !== null && (
-            <div className="text-xs text-zinc-500">0 / {fmtNum(targetKcal)} target</div>
+            <div className="text-xs text-muted">0 / {fmtNum(targetKcal)} target</div>
           )}
         </div>
         <button
           type="button"
           onClick={onLog}
           aria-label={`Log ${mealSlotLabel(slot)}`}
-          className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-100 text-lg font-semibold text-zinc-900"
+          className="flex h-8 w-8 items-center justify-center rounded-full bg-accent text-lg font-semibold text-white"
         >
           +
         </button>
@@ -92,7 +92,7 @@ export function MealSlotEmptyCard({
             type="button"
             onClick={copyYesterday}
             disabled={busy}
-            className="rounded-full border border-zinc-700 px-3 py-1 text-xs text-zinc-100 disabled:opacity-50"
+            className="rounded-full border border-divider px-3 py-1 text-xs text-strong disabled:opacity-50"
           >
             📋 Copy yesterday ({yesterdayIds.length} {yesterdayIds.length === 1 ? "item" : "items"})
           </button>
@@ -100,7 +100,7 @@ export function MealSlotEmptyCard({
         <button
           type="button"
           onClick={onPickFromHistory}
-          className="rounded-full border border-zinc-700 px-3 py-1 text-xs text-zinc-100"
+          className="rounded-full border border-divider px-3 py-1 text-xs text-strong"
         >
           📚 Pick from history
         </button>

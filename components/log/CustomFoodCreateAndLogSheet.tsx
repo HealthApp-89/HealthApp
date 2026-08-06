@@ -135,13 +135,13 @@ export function CustomFoodCreateAndLogSheet({
       )}
       {step === "qty" && savedItem && (
         <div className="space-y-4">
-          <p className="text-sm text-zinc-300">
+          <p className="text-sm text-mid">
             Saved &ldquo;{savedItem.name}&rdquo; to your library. Log how much
             you&rsquo;re eating now:
           </p>
-          <div className="rounded-md border border-zinc-800 bg-zinc-900/50 p-3 text-xs text-zinc-400">
-            <div className="text-zinc-500 mb-1">Per 100g</div>
-            <div className="text-zinc-200">
+          <div className="rounded-md border border-divider bg-surface-alt/50 p-3 text-xs text-mid">
+            <div className="text-muted mb-1">Per 100g</div>
+            <div className="text-strong">
               {fmtNum(savedItem.per_100g.kcal)} kcal ·{" "}
               {fmtNum(savedItem.per_100g.protein_g)}P ·{" "}
               {fmtNum(savedItem.per_100g.carbs_g)}C ·{" "}
@@ -149,13 +149,13 @@ export function CustomFoodCreateAndLogSheet({
             </div>
           </div>
           <div>
-            <label className="block text-xs text-zinc-400 mb-1">Quantity (g)</label>
+            <label className="block text-xs text-mid mb-1">Quantity (g)</label>
             <input
               type="number"
               inputMode="decimal"
               value={qtyG}
               onChange={(e) => setQtyG(e.target.value)}
-              className="w-full rounded-md border border-zinc-800 bg-zinc-900 p-2 text-sm text-zinc-100"
+              className="w-full rounded-md border border-divider bg-surface-alt p-2 text-sm text-strong"
             />
           </div>
           {error && <p className="text-xs text-red-400">{error}</p>}
@@ -164,7 +164,7 @@ export function CustomFoodCreateAndLogSheet({
               type="button"
               onClick={handleClose}
               disabled={busy}
-              className="flex-1 rounded-md border border-zinc-800 py-2 text-sm text-zinc-400"
+              className="flex-1 rounded-md border border-divider py-2 text-sm text-mid"
             >
               Done (skip log)
             </button>
@@ -172,7 +172,7 @@ export function CustomFoodCreateAndLogSheet({
               type="button"
               onClick={handleLog}
               disabled={busy}
-              className="flex-1 rounded-md bg-zinc-100 py-2 text-sm font-medium text-zinc-900 disabled:opacity-50"
+              className="flex-1 rounded-md bg-accent py-2 text-sm font-medium text-white disabled:opacity-50"
             >
               {busy ? "Logging…" : "Log it"}
             </button>
