@@ -79,7 +79,7 @@ export function SessionRow({ session, selectedExercise, isLast }: Props) {
               scroll={false}
               onClick={onClick}
               aria-pressed={isSelected}
-              className="text-[10px] px-2.5 py-1 rounded-full touch-manipulation select-none transition-[background,border-color,color,transform] active:scale-[0.97] active:bg-white/10"
+              className="text-[10px] px-2.5 py-1 rounded-full touch-manipulation select-none transition-[background,border-color,color,transform] active:scale-[0.97] active:bg-black/5"
               style={{
                 background: isSelected ? `${wc}22` : COLOR.surfaceAlt,
                 border: `1px solid ${isSelected ? wc + "66" : COLOR.divider}`,

@@ -40,28 +40,28 @@ export function LibraryClient({ userId }: { userId: string }) {
     await queryClient.invalidateQueries({ queryKey: queryKeys.userFoodItems.all(userId) });
   };
 
-  if (isLoading) return <div className="p-4 text-zinc-500">Loading…</div>;
+  if (isLoading) return <div className="p-4 text-muted">Loading…</div>;
   if (isError) return <div className="p-4 text-amber-400">Couldn&apos;t load library.</div>;
   const rows = items ?? [];
 
   return (
     <>
       <main className="px-4 py-6 max-w-2xl mx-auto">
-        <h1 className="text-xl font-semibold text-zinc-100 mb-1">My Library</h1>
-        <p className="text-zinc-500 text-sm mb-4">
+        <h1 className="text-xl font-semibold text-strong mb-1">My Library</h1>
+        <p className="text-muted text-sm mb-4">
           Saved foods and recipes. These resolve first when you log meals.
         </p>
 
         <button
           type="button"
           onClick={() => setCreateOpen(true)}
-          className="mb-6 w-full rounded-md bg-zinc-100 py-2 text-sm font-medium text-zinc-900"
+          className="mb-6 w-full rounded-md bg-accent py-2 text-sm font-medium text-white"
         >
           + Add custom food
         </button>
 
         {rows.length === 0 && (
-          <div className="text-zinc-600 text-sm py-12 text-center">
+          <div className="text-mid text-sm py-12 text-center">
             Nothing saved yet. Tap &ldquo;+ Add custom food&rdquo; above, or save
             a meal from the food log.
           </div>
@@ -72,12 +72,12 @@ export function LibraryClient({ userId }: { userId: string }) {
             return (
               <li
                 key={it.id}
-                className="rounded-2xl bg-zinc-900 border border-zinc-800 p-3 text-sm"
+                className="rounded-2xl bg-surface-alt border border-divider p-3 text-sm"
               >
                 <div className="flex items-baseline justify-between gap-3">
                   <div className="flex-1 min-w-0">
-                    <div className="text-zinc-100 truncate">{it.name}</div>
-                    <div className="text-xs text-zinc-500 mt-0.5">
+                    <div className="text-strong truncate">{it.name}</div>
+                    <div className="text-xs text-muted mt-0.5">
                       {isRecipe
                         ? `Recipe · ${it.composite_of?.length ?? 0} ingredients · default ${fmtNum(it.default_serving_g ?? 0)}g`
                         : `${fmtNum(it.per_100g?.kcal ?? 0)} kcal · ${fmtNum(it.per_100g?.protein_g ?? 0)}P / 100g`}
@@ -87,7 +87,7 @@ export function LibraryClient({ userId }: { userId: string }) {
                     type="button"
                     disabled={busyId === it.id}
                     onClick={() => handleDelete(it.id)}
-                    className="text-zinc-500 hover:text-amber-400 text-xs"
+                    className="text-muted hover:text-amber-400 text-xs"
                   >
                     {busyId === it.id ? "…" : "Delete"}
                   </button>

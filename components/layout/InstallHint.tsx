@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { COLOR } from "@/lib/ui/theme";
 
 const STORAGE_KEY = "apex.install-hint-dismissed";
 
@@ -34,9 +35,9 @@ export function InstallHint() {
       role="status"
       className="mx-4 mt-2 rounded-[12px] px-3 py-2 flex items-center justify-between gap-3 text-[11px]"
       style={{
-        background: "rgba(10,132,255,0.08)",
-        border: "1px solid rgba(10,132,255,0.25)",
-        color: "rgba(255,255,255,0.85)",
+        background: COLOR.accentSoft,
+        border: `1px solid ${COLOR.accent}40`,
+        color: COLOR.accentDeep,
       }}
     >
       <span>
@@ -46,7 +47,8 @@ export function InstallHint() {
         type="button"
         onClick={dismiss}
         aria-label="Dismiss install hint"
-        className="text-white/45 hover:text-white px-1"
+        className="px-1"
+        style={{ color: COLOR.accentDeep, opacity: 0.7 }}
       >
         ✕
       </button>

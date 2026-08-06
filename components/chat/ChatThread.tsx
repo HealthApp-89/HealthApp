@@ -200,9 +200,9 @@ function ChatThreadInner({
         if (it.kind === "day") {
           return (
             <div key={`d-${i}`} className="flex items-center gap-3 px-4 py-2">
-              <div className="flex-1 h-px bg-white/[0.06]" />
-              <div className="text-[10px] uppercase tracking-wider text-white/30">{it.label}</div>
-              <div className="flex-1 h-px bg-white/[0.06]" />
+              <div className="flex-1 h-px bg-divider" />
+              <div className="text-[10px] uppercase tracking-wider text-muted">{it.label}</div>
+              <div className="flex-1 h-px bg-divider" />
             </div>
           );
         }

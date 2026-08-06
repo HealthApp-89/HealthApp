@@ -121,12 +121,12 @@ export function FoodEntryEditSheet({
     <BottomSheet open onClose={onClose} title="Edit meal">
       <div className="space-y-3 p-4">
         <div className="grid grid-cols-2 gap-2">
-          <label className="text-xs text-zinc-400">
+          <label className="text-xs text-mid">
             Meal
             <select
               value={mealSlot}
               onChange={(e) => setMealSlot(e.target.value as MealSlot)}
-              className="mt-1 w-full rounded-md border border-zinc-700 bg-zinc-900 p-2 text-sm text-zinc-100"
+              className="mt-1 w-full rounded-md border border-divider bg-surface-alt p-2 text-sm text-strong"
             >
               {MEAL_SLOTS.map((s) => (
                 <option key={s} value={s}>{mealSlotLabel(s)}</option>
@@ -134,18 +134,18 @@ export function FoodEntryEditSheet({
             </select>
           </label>
 
-          <label className="text-xs text-zinc-400">
+          <label className="text-xs text-mid">
             Time
             <input
               type="datetime-local"
               value={toLocalInputValue(eatenAt, tz)}
               onChange={(e) => setEatenAt(fromLocalInputValue(e.target.value, tz))}
-              className="mt-1 w-full rounded-md border border-zinc-700 bg-zinc-900 p-2 text-sm text-zinc-100"
+              className="mt-1 w-full rounded-md border border-divider bg-surface-alt p-2 text-sm text-strong"
             />
           </label>
         </div>
         {items.map((it, idx) => (
-          <div key={idx} className="rounded-md border border-zinc-800 p-3">
+          <div key={idx} className="rounded-md border border-divider p-3">
             <div className="flex items-center justify-between">
               <div className="text-sm font-medium">{it.name}</div>
               <button
@@ -183,7 +183,7 @@ export function FoodEntryEditSheet({
                 {isItemFavorite(it.name) ? "★" : "☆"}
               </button>
             </div>
-            <label className="mt-2 block text-xs text-zinc-400">
+            <label className="mt-2 block text-xs text-mid">
               Quantity (g)
               <input
                 type="number"
@@ -191,10 +191,10 @@ export function FoodEntryEditSheet({
                 value={qtyStrings[idx] ?? ""}
                 onChange={(e) => setQtyString(idx, e.target.value)}
                 onFocus={(e) => e.currentTarget.select()}
-                className="mt-1 w-full rounded-md border border-zinc-700 bg-zinc-900 p-2 text-sm text-zinc-100"
+                className="mt-1 w-full rounded-md border border-divider bg-surface-alt p-2 text-sm text-strong"
               />
             </label>
-            <div className="mt-2 text-xs text-zinc-500">
+            <div className="mt-2 text-xs text-muted">
               {fmtNum(it.kcal)} kcal · {fmtNum(it.protein_g)} P ·{" "}
               {fmtNum(it.carbs_g)} C · {fmtNum(it.fat_g)} F
             </div>
@@ -214,7 +214,7 @@ export function FoodEntryEditSheet({
             type="button"
             onClick={save}
             disabled={busy}
-            className="flex-1 rounded-md bg-zinc-100 py-2 text-sm text-zinc-900"
+            className="flex-1 rounded-md bg-accent py-2 text-sm text-white"
           >
             {busy ? "..." : "Save"}
           </button>

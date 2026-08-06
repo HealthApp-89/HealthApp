@@ -41,7 +41,7 @@ export function MonitorTile({
   const dotColor = accent ?? tok.dot;
   return (
     <div
-      className="rounded-[14px] border border-white/[0.06] px-4 py-3 flex flex-col gap-2 min-h-[96px]"
+      className="rounded-[14px] border border-divider px-4 py-3 flex flex-col gap-2 min-h-[96px]"
       style={{
         background: COLOR.surfaceAlt,
       }}

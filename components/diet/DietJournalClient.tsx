@@ -176,11 +176,11 @@ export function DietJournalClient({ userId, initialDate, initialView, todayIso, 
               type="button"
               onClick={() => shift(-1)}
               aria-label="Previous day"
-              className="px-3 py-1 text-lg text-zinc-400 hover:text-zinc-100"
+              className="px-3 py-1 text-lg text-mid hover:text-strong"
             >
               ‹
             </button>
-            <div className="text-sm font-semibold text-zinc-100">
+            <div className="text-sm font-semibold text-strong">
               {weekday}, {monthDay}
             </div>
             <button
@@ -188,7 +188,7 @@ export function DietJournalClient({ userId, initialDate, initialView, todayIso, 
               onClick={() => shift(1)}
               disabled={isToday}
               aria-label="Next day"
-              className="px-3 py-1 text-lg text-zinc-400 hover:text-zinc-100 disabled:opacity-30"
+              className="px-3 py-1 text-lg text-mid hover:text-strong disabled:opacity-30"
             >
               ›
             </button>

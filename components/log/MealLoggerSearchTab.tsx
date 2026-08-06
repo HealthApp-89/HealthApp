@@ -102,19 +102,19 @@ export function MealLoggerSearchTab({
     <div className="space-y-4">
       {picks.length > 0 && (
         <div className="space-y-2">
-          <div className="text-xs uppercase tracking-wider text-zinc-400">In this meal ({picks.length})</div>
-          <ul className="divide-y divide-zinc-800 rounded-md border border-zinc-800">
+          <div className="text-xs uppercase tracking-wider text-mid">In this meal ({picks.length})</div>
+          <ul className="divide-y divide-divider rounded-md border border-divider">
             {picks.map((p, idx) => (
               <li key={idx} className="flex items-center justify-between p-2 text-sm">
                 <div className="min-w-0">
                   <div className="truncate">{p.candidate.name}</div>
-                  <div className="text-xs text-zinc-400">{fmtNum(p.qty_g)} g</div>
+                  <div className="text-xs text-mid">{fmtNum(p.qty_g)} g</div>
                 </div>
                 <button
                   type="button"
                   onClick={() => setPicks((prev) => prev.filter((_, i) => i !== idx))}
                   aria-label="Remove"
-                  className="ml-2 shrink-0 rounded p-1 text-zinc-400 hover:bg-zinc-800 hover:text-red-400"
+                  className="ml-2 shrink-0 rounded p-1 text-mid hover:bg-surface-alt hover:text-red-400"
                 >
                   ×
                 </button>
@@ -125,7 +125,7 @@ export function MealLoggerSearchTab({
             type="button"
             onClick={buildDraft}
             disabled={busy}
-            className="w-full rounded-md bg-zinc-100 py-2 text-sm text-zinc-900 disabled:opacity-50"
+            className="w-full rounded-md bg-accent py-2 text-sm text-white disabled:opacity-50"
           >
             {busy ? "..." : `Review (${picks.length} item${picks.length === 1 ? "" : "s"})`}
           </button>

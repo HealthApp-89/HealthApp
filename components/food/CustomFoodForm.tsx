@@ -157,26 +157,26 @@ export function CustomFoodForm({
   return (
     <div className="space-y-4">
       <div>
-        <label className="block text-xs text-zinc-400 mb-1">Name</label>
+        <label className="block text-xs text-mid mb-1">Name</label>
         <input
           type="text"
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="e.g. Greek yogurt 5%"
-          className="w-full rounded-md border border-zinc-800 bg-zinc-900 p-2 text-sm text-zinc-100"
+          className="w-full rounded-md border border-divider bg-surface-alt p-2 text-sm text-strong"
         />
       </div>
 
       <div>
-        <label className="block text-xs text-zinc-400 mb-1">Macros are…</label>
+        <label className="block text-xs text-mid mb-1">Macros are…</label>
         <div className="flex gap-2">
           <button
             type="button"
             onClick={() => setBasis("per_100g")}
             className={`flex-1 rounded-md border px-3 py-2 text-sm ${
               basis === "per_100g"
-                ? "border-zinc-100 bg-zinc-800 text-zinc-100"
-                : "border-zinc-800 text-zinc-400"
+                ? "border-divider bg-surface-alt text-strong"
+                : "border-divider text-mid"
             }`}
           >
             Per 100g
@@ -186,8 +186,8 @@ export function CustomFoodForm({
             onClick={() => setBasis("per_serving")}
             className={`flex-1 rounded-md border px-3 py-2 text-sm ${
               basis === "per_serving"
-                ? "border-zinc-100 bg-zinc-800 text-zinc-100"
-                : "border-zinc-800 text-zinc-400"
+                ? "border-divider bg-surface-alt text-strong"
+                : "border-divider text-mid"
             }`}
           >
             Per serving
@@ -197,72 +197,72 @@ export function CustomFoodForm({
 
       {basis === "per_serving" && (
         <div>
-          <label className="block text-xs text-zinc-400 mb-1">Serving size (g)</label>
+          <label className="block text-xs text-mid mb-1">Serving size (g)</label>
           <input
             type="number"
             inputMode="decimal"
             value={servingG}
             onChange={(e) => setServingG(e.target.value)}
             placeholder="e.g. 60"
-            className="w-full rounded-md border border-zinc-800 bg-zinc-900 p-2 text-sm text-zinc-100"
+            className="w-full rounded-md border border-divider bg-surface-alt p-2 text-sm text-strong"
           />
         </div>
       )}
 
       <div className="grid grid-cols-3 gap-2">
         <div>
-          <label className="block text-xs text-zinc-400 mb-1">Protein (g) *</label>
+          <label className="block text-xs text-mid mb-1">Protein (g) *</label>
           <input
             type="number"
             inputMode="decimal"
             value={proteinG}
             onChange={(e) => setProteinG(e.target.value)}
-            className="w-full rounded-md border border-zinc-800 bg-zinc-900 p-2 text-sm text-zinc-100"
+            className="w-full rounded-md border border-divider bg-surface-alt p-2 text-sm text-strong"
           />
         </div>
         <div>
-          <label className="block text-xs text-zinc-400 mb-1">Carbs (g) *</label>
+          <label className="block text-xs text-mid mb-1">Carbs (g) *</label>
           <input
             type="number"
             inputMode="decimal"
             value={carbsG}
             onChange={(e) => setCarbsG(e.target.value)}
-            className="w-full rounded-md border border-zinc-800 bg-zinc-900 p-2 text-sm text-zinc-100"
+            className="w-full rounded-md border border-divider bg-surface-alt p-2 text-sm text-strong"
           />
         </div>
         <div>
-          <label className="block text-xs text-zinc-400 mb-1">Fat (g) *</label>
+          <label className="block text-xs text-mid mb-1">Fat (g) *</label>
           <input
             type="number"
             inputMode="decimal"
             value={fatG}
             onChange={(e) => setFatG(e.target.value)}
-            className="w-full rounded-md border border-zinc-800 bg-zinc-900 p-2 text-sm text-zinc-100"
+            className="w-full rounded-md border border-divider bg-surface-alt p-2 text-sm text-strong"
           />
         </div>
       </div>
 
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <label className="block text-xs text-zinc-400 mb-1">Fiber (g)</label>
+          <label className="block text-xs text-mid mb-1">Fiber (g)</label>
           <input
             type="number"
             inputMode="decimal"
             value={fiberG}
             onChange={(e) => setFiberG(e.target.value)}
             placeholder="0"
-            className="w-full rounded-md border border-zinc-800 bg-zinc-900 p-2 text-sm text-zinc-100"
+            className="w-full rounded-md border border-divider bg-surface-alt p-2 text-sm text-strong"
           />
         </div>
         <div>
-          <label className="block text-xs text-zinc-400 mb-1">Calories (kcal)</label>
+          <label className="block text-xs text-mid mb-1">Calories (kcal)</label>
           <input
             type="number"
             inputMode="decimal"
             value={kcalOverride}
             onChange={(e) => setKcalOverride(e.target.value)}
             placeholder={atwaterKcal > 0 ? fmtNum(atwaterKcal) : "auto"}
-            className="w-full rounded-md border border-zinc-800 bg-zinc-900 p-2 text-sm text-zinc-100"
+            className="w-full rounded-md border border-divider bg-surface-alt p-2 text-sm text-strong"
           />
         </div>
       </div>
@@ -275,20 +275,20 @@ export function CustomFoodForm({
       )}
 
       <div>
-        <label className="block text-xs text-zinc-400 mb-1">Notes (optional)</label>
+        <label className="block text-xs text-mid mb-1">Notes (optional)</label>
         <textarea
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
           maxLength={2000}
           rows={2}
           placeholder="Brand, where the macros come from, etc."
-          className="w-full rounded-md border border-zinc-800 bg-zinc-900 p-2 text-sm text-zinc-100"
+          className="w-full rounded-md border border-divider bg-surface-alt p-2 text-sm text-strong"
         />
       </div>
 
-      <div className="rounded-md border border-zinc-800 bg-zinc-900/50 p-3 text-xs text-zinc-400">
-        <div className="text-zinc-500 mb-1">Per 100g preview</div>
-        <div className="text-zinc-200">
+      <div className="rounded-md border border-divider bg-surface-alt/50 p-3 text-xs text-mid">
+        <div className="text-muted mb-1">Per 100g preview</div>
+        <div className="text-strong">
           {fmtNum(per100g.kcal)} kcal · {fmtNum(per100g.protein_g)}P ·{" "}
           {fmtNum(per100g.carbs_g)}C · {fmtNum(per100g.fat_g)}F ·{" "}
           {fmtNum(per100g.fiber_g)} fib
@@ -311,7 +311,7 @@ export function CustomFoodForm({
           type="button"
           onClick={onCancel}
           disabled={busy}
-          className="flex-1 rounded-md border border-zinc-800 py-2 text-sm text-zinc-400"
+          className="flex-1 rounded-md border border-divider py-2 text-sm text-mid"
         >
           Cancel
         </button>
@@ -319,7 +319,7 @@ export function CustomFoodForm({
           type="button"
           onClick={submit}
           disabled={busy}
-          className="flex-1 rounded-md bg-zinc-100 py-2 text-sm font-medium text-zinc-900 disabled:opacity-50"
+          className="flex-1 rounded-md bg-accent py-2 text-sm font-medium text-white disabled:opacity-50"
         >
           {busy ? "Saving…" : "Save to library"}
         </button>

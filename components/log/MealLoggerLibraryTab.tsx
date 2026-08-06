@@ -110,12 +110,12 @@ export function MealLoggerLibraryTab({
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         placeholder="Search foods, meals…"
-        className="w-full rounded-md border border-zinc-800 bg-zinc-900 p-3 text-sm text-zinc-100 placeholder:text-zinc-500"
+        className="w-full rounded-md border border-divider bg-surface-alt p-3 text-sm text-strong placeholder:text-muted"
       />
 
       {error && <p className="text-xs text-red-400">{error}</p>}
-      {isLoading && <p className="text-xs text-zinc-500">Loading…</p>}
-      {busy && <p className="text-xs text-zinc-500">Logging…</p>}
+      {isLoading && <p className="text-xs text-muted">Loading…</p>}
+      {busy && <p className="text-xs text-muted">Logging…</p>}
 
       <LibrarySection
         title="★ Favorites"

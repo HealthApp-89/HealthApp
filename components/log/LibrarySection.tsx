@@ -14,15 +14,15 @@ export function LibrarySection({
   empty?: string;
 }) {
   return (
-    <section className="rounded-lg border border-zinc-800">
-      <header className="border-b border-zinc-900 px-3 py-2 text-xs uppercase tracking-wider text-zinc-400">
+    <section className="rounded-lg border border-divider">
+      <header className="border-b border-divider px-3 py-2 text-xs uppercase tracking-wider text-mid">
         {title}
         {typeof count === "number" && count > 0 && (
-          <span className="ml-2 text-zinc-500">{count}</span>
+          <span className="ml-2 text-muted">{count}</span>
         )}
       </header>
       {count === 0 && empty ? (
-        <div className="px-3 py-4 text-xs text-zinc-500">{empty}</div>
+        <div className="px-3 py-4 text-xs text-muted">{empty}</div>
       ) : (
         children
       )}
