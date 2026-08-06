@@ -1,5 +1,7 @@
 "use client";
 
+import { COLOR, RADIUS } from "@/lib/ui/theme";
+
 export function HistoryPickerDateBar({
   date,
   onChange,
@@ -23,12 +25,16 @@ export function HistoryPickerDateBar({
   const canGoForward = nextIso <= maxDate;
 
   return (
-    <div className="flex items-center justify-between px-3 py-2 border-b border-zinc-800">
+    <div
+      className="flex items-center justify-between px-3 py-2"
+      style={{ borderBottom: `1px solid ${COLOR.divider}` }}
+    >
       <button
         type="button"
         onClick={() => canGoBack && onChange(prevIso)}
         disabled={!canGoBack}
-        className="px-3 py-1 text-sm text-zinc-100 disabled:opacity-30"
+        className="px-3 py-1 text-sm disabled:opacity-30"
+        style={{ color: COLOR.textStrong }}
       >
         ◀
       </button>
@@ -38,13 +44,20 @@ export function HistoryPickerDateBar({
         min={minDate}
         max={maxDate}
         onChange={(e) => onChange(e.target.value)}
-        className="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-1 text-sm text-zinc-100"
+        className="px-3 py-1 text-sm"
+        style={{
+          background: COLOR.surfaceAlt,
+          border: `1px solid ${COLOR.divider}`,
+          borderRadius: RADIUS.input,
+          color: COLOR.textStrong,
+        }}
       />
       <button
         type="button"
         onClick={() => canGoForward && onChange(nextIso)}
         disabled={!canGoForward}
-        className="px-3 py-1 text-sm text-zinc-100 disabled:opacity-30"
+        className="px-3 py-1 text-sm disabled:opacity-30"
+        style={{ color: COLOR.textStrong }}
       >
         ▶
       </button>

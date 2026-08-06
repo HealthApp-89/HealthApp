@@ -2,6 +2,7 @@
 
 import { mealSlotLabel } from "@/lib/food/meal-slot";
 import { fmtNum } from "@/lib/ui/score";
+import { COLOR, RADIUS } from "@/lib/ui/theme";
 import type { FoodItem, FoodLogEntry, MealSlot } from "@/lib/food/types";
 
 type ItemKey = string;
@@ -25,15 +26,25 @@ export function HistoryPickerSlotCard({
   const totalItems = entries.reduce((a, e) => a + e.items.length, 0);
 
   return (
-    <section className="rounded-lg border border-zinc-800">
-      <header className="flex items-center justify-between border-b border-zinc-900 px-3 py-2">
-        <div className="text-xs uppercase tracking-wider text-zinc-400">
+    <section
+      style={{
+        background: COLOR.surface,
+        border: `1px solid ${COLOR.divider}`,
+        borderRadius: RADIUS.cardSmall,
+      }}
+    >
+      <header
+        className="flex items-center justify-between px-3 py-2"
+        style={{ borderBottom: `1px solid ${COLOR.divider}` }}
+      >
+        <div className="text-xs uppercase tracking-wider" style={{ color: COLOR.textMuted }}>
           {date} — {mealSlotLabel(slot)} ({totalItems} {totalItems === 1 ? "item" : "items"})
         </div>
         <button
           type="button"
           onClick={() => onSelectAllInSlot(entries)}
-          className="text-xs text-zinc-100 underline"
+          className="text-xs font-medium underline"
+          style={{ color: COLOR.accent }}
         >
           Select all
         </button>
@@ -44,16 +55,24 @@ export function HistoryPickerSlotCard({
             const key: ItemKey = `${e.id}::${idx}`;
             const checked = selectedKeys.has(key);
             return (
-              <li key={key} className="flex items-center gap-2 border-b border-zinc-900 px-3 py-2 last:border-b-0">
+              <li
+                key={key}
+                className="flex items-center gap-2 px-3 py-2 last:border-b-0"
+                style={{ borderBottom: `1px solid ${COLOR.divider}` }}
+              >
                 <input
                   type="checkbox"
                   checked={checked}
                   onChange={() => onToggleItem(e, idx)}
-                  className="h-4 w-4"
+                  className="h-4 w-4 shrink-0"
+                  style={{ accentColor: COLOR.accent }}
                 />
-                <div className="flex-1 text-xs text-zinc-300">
-                  <div className="font-medium text-zinc-100">{it.name}</div>
-                  <div className="text-zinc-500">
+                <div className="flex-1 text-xs">
+                  <div className="font-medium" style={{ color: COLOR.textStrong }}>{it.name}</div>
+                  {/* textMid, not textMuted: this line is data the athlete
+                      actually reads, and textMuted (#7a7e95) is only 4.0:1 on
+                      white — below AA for 12px text. */}
+                  <div style={{ color: COLOR.textMid }}>
                     {fmtNum(it.qty_g)}g · {fmtNum(it.kcal)} kcal · {fmtNum(it.protein_g)}P · {fmtNum(it.carbs_g)}C · {fmtNum(it.fat_g)}F
                   </div>
                 </div>
