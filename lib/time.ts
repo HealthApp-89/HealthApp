@@ -80,6 +80,74 @@ export function todayInUserTz(now: Date = new Date(), tz: string): string {
   return ymdInUserTz(now, tz);
 }
 
+/** Offset of `tz` from UTC at instant `when`, in ms (positive east of UTC).
+ *  Derived by formatting the instant into `tz` and re-reading the wall clock
+ *  as if it were UTC — the difference is the offset. */
+function tzOffsetMsAt(when: Date, tz: string): number {
+  const fmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+  const parts = fmt.formatToParts(when);
+  const get = (t: Intl.DateTimeFormatPartTypes) =>
+    Number(parts.find((p) => p.type === t)?.value ?? "0");
+  const hour = get("hour") % 24; // some ICU builds emit "24" for midnight
+  const asIfUtc = Date.UTC(get("year"), get("month") - 1, get("day"), hour, get("minute"), get("second"));
+  return asIfUtc - when.getTime();
+}
+
+/** The UTC instant of local midnight starting `dateIso` in `tz`.
+ *  Two-pass: guess with the offset at the naive instant, then re-read the
+ *  offset at the guess so DST transition days resolve correctly. */
+function localMidnightUtcMs(dateIso: string, tz: string): number {
+  const naive = Date.parse(`${dateIso}T00:00:00Z`);
+  if (!Number.isFinite(naive)) {
+    throw new Error(`localDayRangeUtc: invalid date "${dateIso}"`);
+  }
+  let ts = naive - tzOffsetMsAt(new Date(naive), tz);
+  ts = naive - tzOffsetMsAt(new Date(ts), tz);
+  return ts;
+}
+
+/** Half-open UTC instant range `[startUtc, endUtc)` covering the calendar day
+ *  `dateIso` (YYYY-MM-DD) as lived in `tz`.
+ *
+ *  This is the inverse of `ymdInUserTz` and the correct way to bound a
+ *  `timestamptz` column by a local calendar day. Querying
+ *  `gte ${date}T00:00:00Z` instead misfiles every row logged between local
+ *  midnight and the UTC offset — for Asia/Dubai (UTC+4) that is every entry
+ *  from 00:00 to 04:00 local, which lands on the previous day.
+ *
+ *  DST-correct: spring-forward days span 23h, fall-back days 25h.
+ *  An unrecognised `tz` degrades to UTC rather than throwing, matching the
+ *  defensive posture of the other helpers in this module. */
+export function localDayRangeUtc(
+  dateIso: string,
+  tz: string,
+): { startUtc: string; endUtc: string } {
+  let zone = tz;
+  try {
+    new Intl.DateTimeFormat("en-CA", { timeZone: zone });
+  } catch {
+    zone = "UTC";
+  }
+  const start = localMidnightUtcMs(dateIso, zone);
+  const next = new Date(Date.parse(`${dateIso}T00:00:00Z`) + 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+  const end = localMidnightUtcMs(next, zone);
+  return {
+    startUtc: new Date(start).toISOString(),
+    endUtc: new Date(end).toISOString(),
+  };
+}
+
 /** Day of week in the given tz: "Monday" | "Tuesday" | ... */
 export function weekdayInUserTz(now: Date = new Date(), tz: string): string {
   return partsInUserTz(now, tz).weekday;
