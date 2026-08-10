@@ -8,6 +8,8 @@ import { RestTimeDialog } from "@/components/logger/RestTimeDialog";
 import { annotateSession } from "@/lib/coach/session-structure/annotate";
 import { evaluateSet, type CoachLine, type LiveSessionContext, type SessionSetRef } from "@/lib/coach/live-session";
 import { CoachLineRow } from "@/components/logger/CoachLine";
+import { findApplyTargetSetIndex } from "@/lib/logger/apply-target";
+import { seedRir } from "@/lib/logger/seed-rir";
 import { fireCue } from "@/lib/logger/audio-cue";
 
 type Props = {
@@ -46,6 +48,10 @@ function ExerciseCardInner({
   const [restDialogOpen, setRestDialogOpen] = useState(false);
   const [unparsedBanner, setUnparsedBanner] = useState<string | null>(null);
   const [coachLine, setCoachLine] = useState<CoachLine | null>(null);
+  // Tracked separately from restAfterSetIndex so that skipping the rest timer
+  // takes down the timer and NOT the verdict — the load call is still
+  // actionable after the athlete decides to start the next set early.
+  const [coachLineSetIndex, setCoachLineSetIndex] = useState<number | null>(null);
 
   const commitSet = useCallback((setIndex: number) => {
     const nowIso = new Date().toISOString();
@@ -66,6 +72,13 @@ function ExerciseCardInner({
     // whenever the context snapshot is unavailable. Runs against nextSets
     // (post-commit) so the just-committed set is visible to the rules, and
     // sessionSets spans ALL exercises so the failure budget counts session-wide.
+    //
+    // The line is ALWAYS replaced, never merely overwritten-when-present: with
+    // no `else`, a set committed while liveContext was undefined (the query key
+    // hashes the exercise-name list, so Add/Remove/Replace mints a new key and
+    // `data` goes undefined until the refetch lands — permanently, if offline)
+    // left the PREVIOUS set's line on screen underneath the new one.
+    let line: CoachLine | null = null;
     if (liveContext) {
       const committedSet = nextSets[setIndex];
       const sessionSets: SessionSetRef[] = allExercises.flatMap((ex, i) =>
@@ -73,15 +86,16 @@ function ExerciseCardInner({
           .filter((s) => !s.warmup && s.committed_at != null)
           .map((s) => ({ exerciseName: ex.name, set: s })),
       );
-      const line = evaluateSet({
+      line = evaluateSet({
         set: committedSet,
         exercise: nextExercise,
         sessionSets,
         context: liveContext,
       });
-      setCoachLine(line);
-      if (line?.cue) fireCue();
     }
+    setCoachLine(line);
+    setCoachLineSetIndex(line ? setIndex : null);
+    if (line?.cue) fireCue();
   }, [exercise, exerciseIndex, onExerciseChange, effectiveRest, liveContext, allExercises]);
 
   const uncommitSet = useCallback((setIndex: number) => {
@@ -89,7 +103,17 @@ function ExerciseCardInner({
       i === setIndex ? { ...s, committed_at: null } : s,
     );
     onExerciseChange(exerciseIndex, { ...exercise, sets: nextSets });
-  }, [exercise, exerciseIndex, onExerciseChange]);
+    // The verdict was about a set that no longer counts as committed. Take it
+    // down, along with the rest timer it triggered.
+    if (coachLineSetIndex === setIndex) {
+      setCoachLine(null);
+      setCoachLineSetIndex(null);
+    }
+    if (restAfterSetIndex === setIndex) {
+      setRestAfterSetIndex(null);
+      setActiveRestStartedAt(null);
+    }
+  }, [exercise, exerciseIndex, onExerciseChange, coachLineSetIndex, restAfterSetIndex]);
 
   const patchSet = useCallback((setIndex: number, patch: Partial<ExerciseSetDraft>) => {
     const nextSets = exercise.sets.map((s, i) => (i === setIndex ? { ...s, ...patch } : s));
@@ -115,7 +139,13 @@ function ExerciseCardInner({
       duration_seconds: null,
       warmup: false,
       failure: false,
-      rir: isTimeBased ? null : (last?.rir ?? null),
+      // Seeded from the PRESCRIBED effort target (seedRir), not inherited from
+      // the last set. A seeded RIR is read by the live-session load call as if
+      // it were an athlete observation, so it has to be the number the plan
+      // expects — which is also what the Target column shows. Inheriting the
+      // previous set's value would carry a real observation (e.g. RIR 0) onto
+      // a set that has not happened yet and fire a guardrail on commit.
+      rir: isTimeBased ? null : seedRir(exercise.prescribed, last?.rir ?? null),
       committed_at: null,
     };
     onExerciseChange(exerciseIndex, { ...exercise, sets: [...exercise.sets, next] });
@@ -197,18 +227,20 @@ function ExerciseCardInner({
                 onRemove={() => removeSet(i)}
                 onUnparsedVoice={setUnparsedBanner}
               />
-              {restAfterSetIndex === i && coachLine && (
+              {coachLineSetIndex === i && coachLine && (
                 <tr><td colSpan={7}>
                   <CoachLineRow
                     line={coachLine}
                     onApply={(kg) => {
-                      // Only write into an EMPTY, uncommitted field — never
-                      // clobber a number the athlete is already typing.
-                      const target = exercise.sets.findIndex(
-                        (s2, j) => j > i && !s2.committed_at && s2.kg == null,
-                      );
+                      // First uncommitted set after this one. See
+                      // lib/logger/apply-target.ts for exactly what is and is
+                      // not guarded here — notably NOT "kg must be empty",
+                      // which never matched because pending sets are
+                      // pre-filled with the prescribed baseKg.
+                      const target = findApplyTargetSetIndex(exercise.sets, i);
                       if (target >= 0) patchSet(target, { kg });
                       setCoachLine(null);
+                      setCoachLineSetIndex(null);
                     }}
                   />
                 </td></tr>
