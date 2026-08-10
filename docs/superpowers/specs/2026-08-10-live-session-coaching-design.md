@@ -150,13 +150,15 @@ existing rules, never a new author of them.
 
 | Question | Existing owner |
 |---|---|
-| Was this set clean / strained? | `isCleanSet`, `isStrainedSet` — `lib/coach/prescription/session-grouping.ts` |
+| What is the effort band (easy / on / strained) for this set? | **New to this module:** `effortBand()` — `lib/coach/live-session/helpers.ts`. This is deliberately NOT `isCleanSet`/`isStrainedSet` (`lib/coach/prescription/session-grouping.ts`) — those two answer a session-level question over a `WorkoutSetSample[]` history the weekly engine has assembled; the live rule needs a three-way easy/on/strained band on a single in-flight draft set, mid-set, before any session exists to group. |
 | What is the next load up / down on this grid? | `nextUpKg`, `nextDownKg` — `lib/coach/prescription/double-progression-rule.ts` |
 | Is this a PR? | `brzycki`, `bestComparisonValue` — `lib/coach/e1rm.ts` |
 | What tier / rest / RPE is this exercise? | `tierOf`, `restPrescription`, `repsForExercise` — `lib/coach/session-structure/` |
 | Snapping an off-grid load | `roundToStep` — `lib/coach/prescription/calibrate-target.ts` |
 
-No rule module may define its own notion of "clean", "one step up", or "PR".
+No rule module may define its own notion of "one step up" or "PR". Effort
+classification is the one new predicate this module owns — see the row above
+for why.
 
 ## The rules
 

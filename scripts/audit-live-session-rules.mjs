@@ -20,11 +20,14 @@ const { assert, summary } = createAuditReporter();
 // failure-budget count), and the LiveSessionContext assembled once at logger
 // open by lib/query/fetchers/liveSessionContext.ts.
 //
-// Default exercise is "Decline Bench Press (Barbell)" — a real SESSION_PLANS
-// entry, fatigue tier 1 (lib/coach/session-structure/tiers.ts), baseKg 60,
-// baseReps 10, sets 3, plain 2.5kg grid. Default set is exactly on-plan
-// (10 reps @ RIR 2, matching rirTarget 2) so any fixture that overrides only
-// `set` starts from silence unless the override pushes it off-plan.
+// Default exercise is named after a real SESSION_PLANS entry, "Decline Bench
+// Press (Barbell)" (fatigue tier 1 — lib/coach/session-structure/tiers.ts),
+// but the numbers below are fixture-only and do NOT mirror the production
+// entry (which prescribes baseReps: 8): baseKg 60, baseReps 10, sets 3, plain
+// 2.5kg grid, chosen so the on-plan defaults below line up round. Default set
+// is exactly on-plan (10 reps @ RIR 2, matching rirTarget 2) so any fixture
+// that overrides only `set` starts from silence unless the override pushes it
+// off-plan.
 
 function mkSet(over = {}) {
   return {
