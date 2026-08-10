@@ -12,6 +12,7 @@ import {
   isRestOvertime,
   sameSet,
   restBetweenSets,
+  remapTimerSets,
   type TimerState,
 } from "@/lib/logger/set-timer";
 
@@ -206,6 +207,72 @@ describe("sameSet", () => {
     expect(sameSet(SET_A, SET_B)).toBe(false);
     expect(sameSet(null, null)).toBe(false);
     expect(sameSet(SET_A, null)).toBe(false);
+  });
+});
+
+describe("remapTimerSets", () => {
+  /** Index map for "the set at `removed` was deleted and the survivors
+   *  re-indexed" — exactly what ExerciseCard's delete does to `set_index`. */
+  const removeAt = (removed: number) => (i: number) =>
+    i === removed ? null : i > removed ? i - 1 : i;
+
+  /** `rest` with both refs on SET_A (exercise 0, set 1) — the shape the
+   *  machine is actually in while the zoomed entry row is open. */
+  function resting(): TimerState {
+    return timerReducer(running(T0), {
+      type: "press_stop", nowMs: T0 + 38_000, prescribedRestSeconds: 180,
+    });
+  }
+
+  it("shifts the in-play ref down when a set BELOW it is removed", () => {
+    // The reachable case: a warmup at index 0 is deleted while set 1 is live.
+    const next = remapTimerSets(running(T0), 0, removeAt(0));
+    expect(next.activeSet).toEqual({ exerciseIndex: 0, setIndex: 0 });
+    expect(next.phase).toBe("running");
+    expect(next.anchorMs).toBe(T0);
+  });
+
+  it("leaves the in-play ref alone when a set ABOVE it is removed", () => {
+    const r = running(T0);
+    expect(remapTimerSets(r, 0, removeAt(3))).toBe(r);
+  });
+
+  it("returns to idle when the in-play set itself is removed", () => {
+    expect(remapTimerSets(running(T0), 0, removeAt(1))).toEqual(IDLE_TIMER);
+  });
+
+  it("remaps pendingEntry alongside activeSet, preserving its workSeconds", () => {
+    const next = remapTimerSets(resting(), 0, removeAt(0));
+    expect(next.activeSet).toEqual({ exerciseIndex: 0, setIndex: 0 });
+    expect(next.pendingEntry).toEqual({ exerciseIndex: 0, setIndex: 0, workSeconds: 33 });
+    // Rest keeps running underneath — a delete elsewhere must not touch it.
+    expect(next.phase).toBe("rest");
+    expect(next.restSeconds).toBe(175);
+  });
+
+  it("ignores a removal in a DIFFERENT exercise", () => {
+    const r = resting();
+    expect(remapTimerSets(r, 1, removeAt(0))).toBe(r);
+    expect(remapTimerSets(r, 7, removeAt(1))).toBe(r);
+  });
+
+  it("drops only pendingEntry when the two refs sit in different exercises", () => {
+    // Not producible by the reducer, but remapTimerSets is a pure function of
+    // TimerState and must not assume the two refs agree.
+    const mixed: TimerState = {
+      phase: "rest",
+      anchorMs: T0,
+      activeSet: { exerciseIndex: 1, setIndex: 0 },
+      restSeconds: 175,
+      pendingEntry: { exerciseIndex: 0, setIndex: 2, workSeconds: 33 },
+    };
+    const next = remapTimerSets(mixed, 0, removeAt(2));
+    expect(next.pendingEntry).toBeNull();
+    expect(next.activeSet).toEqual({ exerciseIndex: 1, setIndex: 0 });
+  });
+
+  it("is a no-op on an idle timer", () => {
+    expect(remapTimerSets(IDLE_TIMER, 0, removeAt(0))).toBe(IDLE_TIMER);
   });
 });
 

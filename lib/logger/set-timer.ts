@@ -130,6 +130,54 @@ export function timerReducer(state: TimerState, action: TimerAction): TimerState
 }
 
 /**
+ * Re-point the timer's stored refs after the SET list of one exercise changed
+ * under them.
+ *
+ * `SetRef.setIndex` is positional, so deleting a set that sits BEFORE the one
+ * in play leaves both stored refs one too high and they silently name the row
+ * that slid up into the slot. `clear_for_set` cannot cover this: it only fires
+ * on an EXACT ref match, so a delete anywhere below the live set is invisible
+ * to it. That mis-stamps `committed_at` / `work_seconds` today, and once the
+ * zoomed entry row lands it writes the athlete's typed kg / reps / RIR onto a
+ * different set — undetectable after the fact.
+ *
+ * Mirrors `remapTimerExercises` in LoggerSheet, including its rule for a
+ * vanished target: if the set in play (or being rested after) is gone there is
+ * nothing left to stop or save, so drop the whole timer rather than let it
+ * advance against a set that no longer exists.
+ *
+ * `mapSetIndex` returns the set's new index within `exerciseIndex`, or null if
+ * it is gone. Refs in any OTHER exercise are untouched.
+ */
+export function remapTimerSets(
+  state: TimerState,
+  exerciseIndex: number,
+  mapSetIndex: (oldIndex: number) => number | null,
+): TimerState {
+  if (state.activeSet === null && state.pendingEntry === null) return state;
+  let next = state;
+
+  if (next.activeSet && next.activeSet.exerciseIndex === exerciseIndex) {
+    const moved = mapSetIndex(next.activeSet.setIndex);
+    if (moved === null) return IDLE_TIMER;
+    if (moved !== next.activeSet.setIndex) {
+      next = { ...next, activeSet: { ...next.activeSet, setIndex: moved } };
+    }
+  }
+
+  if (next.pendingEntry && next.pendingEntry.exerciseIndex === exerciseIndex) {
+    const moved = mapSetIndex(next.pendingEntry.setIndex);
+    if (moved === null) {
+      next = { ...next, pendingEntry: null };
+    } else if (moved !== next.pendingEntry.setIndex) {
+      next = { ...next, pendingEntry: { ...next.pendingEntry, setIndex: moved } };
+    }
+  }
+
+  return next;
+}
+
+/**
  * Session wall clock in ms: time since `started_at`, minus every completed
  * pause interval, frozen while `paused_at` is set.
  *

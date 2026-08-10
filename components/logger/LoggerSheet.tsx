@@ -16,6 +16,7 @@ import { fmtNum } from "@/lib/ui/score";
 import {
   IDLE_TIMER,
   timerReducer,
+  remapTimerSets,
   workSecondsFor,
   getElapsedMs,
   type TimerState,
@@ -522,6 +523,41 @@ export function LoggerSheet(props: Props) {
     });
   }, []);
 
+  /**
+   * Delete one set of one exercise.
+   *
+   * Lives here rather than in ExerciseCard because the three things a delete
+   * does — drop the row, re-index the survivors' `set_index` (the RPC writes
+   * it verbatim, so gaps would persist in the DB), and re-point the timer's
+   * refs — have to be ONE atomic draft update. Split across two callbacks it
+   * was not: `clear_for_set` only matches an exact ref, so deleting a set
+   * BELOW the one in play left `activeSet` / `pendingEntry` one index too
+   * high, silently naming the row that slid up into the deleted slot.
+   *
+   * The deleted row's own `started_at` / `work_seconds` need no blanking —
+   * they go with the row.
+   */
+  const handleSetRemove = useCallback((exerciseIndex: number, setIndex: number) => {
+    const mapSetIndex = (i: number) => (i === setIndex ? null : i > setIndex ? i - 1 : i);
+    setDraft((prev) => {
+      if (!prev) return prev;
+      const target = prev.exercises[exerciseIndex];
+      if (!target || setIndex < 0 || setIndex >= target.sets.length) return prev;
+      const exercises = prev.exercises.map((ex, ei) =>
+        ei !== exerciseIndex ? ex : {
+          ...ex,
+          sets: ex.sets
+            .filter((_unused, si) => si !== setIndex)
+            .map((s, si) => ({ ...s, set_index: si })),
+        },
+      );
+      return withTimer(
+        { ...prev, exercises },
+        remapTimerSets(timerOf(prev), exerciseIndex, mapSetIndex),
+      );
+    });
+  }, []);
+
   const handleRestOverrideChange = useCallback((exerciseIndex: number, seconds: number) => {
     setRestOverrides((prev) => ({ ...prev, [exerciseIndex]: seconds }));
   }, []);
@@ -874,6 +910,7 @@ export function LoggerSheet(props: Props) {
             // the per-row START affordance must not be offered at all.
             onTimerStart={props.editMode ? undefined : handleTimerStart}
             onSetCleared={handleSetCleared}
+            onSetRemove={handleSetRemove}
             onRestOverrideChange={handleRestOverrideChange}
           />
         ))}

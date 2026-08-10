@@ -31,8 +31,13 @@ type Props = {
   /** Athlete tapped START on a specific set row. Undefined in edit mode, where
    *  no live timer runs and the affordance must not be offered. */
   onTimerStart?: (set: SetRef) => void;
-  /** A set was uncommitted or deleted — clears timer state pointing at it. */
+  /** A set was uncommitted — clears timer state pointing at it. */
   onSetCleared: (set: SetRef) => void;
+  /** Delete a set. Owned by LoggerSheet, NOT applied locally: the filter, the
+   *  `set_index` re-index and the timer-ref remap have to land in one atomic
+   *  draft update or the timer ends up naming the row that slid up into the
+   *  deleted slot. See remapTimerSets. */
+  onSetRemove: (exerciseIndex: number, setIndex: number) => void;
   /** Rest override chosen in this card's dialog, lifted so LoggerSheet can seed
    *  the rest countdown when it dispatches `press_stop`. */
   onRestOverrideChange: (exerciseIndex: number, seconds: number) => void;
@@ -40,7 +45,7 @@ type Props = {
 
 function ExerciseCardInner({
   userId, externalId, exercise, exerciseIndex, allExercises, onExerciseChange, onReplace, onRemove, onReorderAll, liveContext,
-  timer, onTimerStart, onSetCleared, onRestOverrideChange,
+  timer, onTimerStart, onSetCleared, onSetRemove, onRestOverrideChange,
 }: Props) {
   // Tier + rest prescription from session-structure annotation.
   const annotated = useMemo(() => {
@@ -123,18 +128,13 @@ function ExerciseCardInner({
   }, [exercise, exerciseIndex, onExerciseChange]);
 
   const removeSet = useCallback((setIndex: number) => {
-    // Clear FIRST, remove second. onExerciseChange re-indexes the surviving
-    // sets, so a clear dispatched after it would name the row that slid into
-    // this slot — blanking started_at/work_seconds on the wrong set and
-    // leaving the timer still pointed at the deleted one.
-    onSetCleared({ exerciseIndex, setIndex });
-    // Re-index remaining sets so set_index stays contiguous (the RPC writes
-    // the payload's set_index verbatim — gaps would persist in the DB).
-    const nextSets = exercise.sets
-      .filter((_, i) => i !== setIndex)
-      .map((s, i) => ({ ...s, set_index: i }));
-    onExerciseChange(exerciseIndex, { ...exercise, sets: nextSets });
-  }, [exercise, exerciseIndex, onExerciseChange, onSetCleared]);
+    // The verdict is anchored to a positional index; the delete shifts every
+    // row below it. Taking it down is cheaper and safer than remapping a piece
+    // of transient UI.
+    setCoachLine(null);
+    setCoachLineSetIndex(null);
+    onSetRemove(exerciseIndex, setIndex);
+  }, [exerciseIndex, onSetRemove]);
 
   const addSet = useCallback(() => {
     const last = exercise.sets[exercise.sets.length - 1];
