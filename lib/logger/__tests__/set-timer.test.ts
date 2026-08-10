@@ -13,6 +13,7 @@ import {
   sameSet,
   restBetweenSets,
   remapTimerSets,
+  totalWorkSeconds,
   type TimerState,
 } from "@/lib/logger/set-timer";
 
@@ -318,5 +319,48 @@ describe("restBetweenSets", () => {
     const prev = { started_at: iso(T0), work_seconds: 200, committed_at: iso(T0 + 205_000) };
     const next = { started_at: iso(T0 + 100_000), committed_at: iso(T0 + 130_000) };
     expect(restBetweenSets(prev, next)).toBe(0);
+  });
+});
+
+describe("totalWorkSeconds", () => {
+  const committed = (workSeconds: number | null) => ({
+    committed_at: "2026-08-10T06:00:00.000Z",
+    work_seconds: workSeconds,
+  });
+  const uncommitted = (workSeconds: number | null) => ({
+    committed_at: null,
+    work_seconds: workSeconds,
+  });
+
+  it("sums work_seconds across committed sets in every exercise", () => {
+    const exercises = [
+      { sets: [committed(30), committed(45)] },
+      { sets: [committed(20)] },
+    ];
+    expect(totalWorkSeconds(exercises)).toBe(95);
+  });
+
+  it("excludes a null work_seconds rather than counting it as zero", () => {
+    // A hand-logged set sits alongside two timed ones — it must not silently
+    // zero-fill and it must not throw.
+    const exercises = [{ sets: [committed(30), committed(null), committed(20)] }];
+    expect(totalWorkSeconds(exercises)).toBe(50);
+  });
+
+  it("excludes uncommitted (still zoomed) sets even when timed", () => {
+    const exercises = [{ sets: [committed(30), uncommitted(15)] }];
+    expect(totalWorkSeconds(exercises)).toBe(30);
+  });
+
+  it("returns zero for an all-untimed (hand-logged) session", () => {
+    const exercises = [
+      { sets: [committed(null), committed(null)] },
+      { sets: [committed(null)] },
+    ];
+    expect(totalWorkSeconds(exercises)).toBe(0);
+  });
+
+  it("returns zero for an empty exercise list", () => {
+    expect(totalWorkSeconds([])).toBe(0);
   });
 });

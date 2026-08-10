@@ -195,6 +195,35 @@ export function getElapsedMs(
   return Math.max(0, end - start - clock.paused_ms_total);
 }
 
+/** The set/exercise shapes totalWorkSeconds needs. Structural so both
+ *  ExerciseDraft/ExerciseSetDraft and any future plain-row shape satisfy it. */
+type WorkSecondsSet = { committed_at: string | null; work_seconds?: number | null };
+type WorkSecondsExercise = { sets: WorkSecondsSet[] };
+
+/**
+ * Total honest work time across every COMMITTED set in a session, in seconds.
+ *
+ * `work_seconds` is nullable — hand-logged sets, Strong CSV imports, and
+ * pre-timer rows carry NULL and are excluded rather than counted as zero, so
+ * a partially-timed session does not understate its own work total. An
+ * uncommitted (still zoomed) set is excluded too; the caller is responsible
+ * for flushing any pending entry before reading this if it wants the final
+ * set counted.
+ *
+ * Single source of truth for this sum — SetTimerDock's live WORK counter and
+ * FinishSummary's work:rest ratio both call this rather than each keeping
+ * their own copy of the same filter.
+ */
+export function totalWorkSeconds(exercises: WorkSecondsExercise[]): number {
+  let total = 0;
+  for (const ex of exercises) {
+    for (const s of ex.sets) {
+      if (s.committed_at && s.work_seconds != null) total += s.work_seconds;
+    }
+  }
+  return total;
+}
+
 function elapsedSecondsSinceAnchor(state: TimerState, nowMs: number): number {
   if (state.anchorMs === null) return 0;
   return Math.floor((nowMs - state.anchorMs) / 1000);

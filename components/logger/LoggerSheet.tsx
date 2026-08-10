@@ -22,6 +22,7 @@ import {
   getElapsedMs,
   sameSet,
   restBetweenSets,
+  totalWorkSeconds,
   type TimerState,
   type SetRef,
 } from "@/lib/logger/set-timer";
@@ -735,13 +736,7 @@ export function LoggerSheet(props: Props) {
   /** Total honest time under load so far — the dock's WORK counter. */
   const workSecondsTotal = useMemo(() => {
     if (!draft) return 0;
-    let total = 0;
-    for (const ex of draft.exercises) {
-      for (const s of ex.sets) {
-        if (s.committed_at && s.work_seconds != null) total += s.work_seconds;
-      }
-    }
-    return total;
+    return totalWorkSeconds(draft.exercises);
   }, [draft]);
 
   // Between-sets coaching context. Fetched once (staleTime: Infinity) as soon
