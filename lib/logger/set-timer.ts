@@ -1,0 +1,159 @@
+// lib/logger/set-timer.ts
+//
+// The logger's set/rest state machine. Pure — no React, no Date.now(), no I/O.
+// Every "now" arrives as a parameter so the whole thing is testable and so the
+// UI can re-derive from an absolute anchor after the phone has been locked.
+//
+// The load-bearing idea is PHONE_LAG_SECONDS. The athlete racks the bar, then
+// picks up the phone, unlocks it, and taps stop — about five seconds during
+// which he is already resting. Back-dating the set end by that lag makes work
+// time honest AND anchors the rest countdown at the rack instead of the tap.
+// They are the same fact seen from two sides, which is why one constant drives
+// both and neither is allowed to re-declare it.
+
+/** Seconds between racking the bar and the stop press actually registering. */
+export const PHONE_LAG_SECONDS = 5;
+
+/** Walk-up countdown after START. Deliberately NOT counted as work. */
+export const COUNTDOWN_SECONDS = 5;
+
+export type SetRef = { exerciseIndex: number; setIndex: number };
+
+export type TimerPhase = "idle" | "countdown" | "running" | "rest";
+
+export type TimerState = {
+  phase: TimerPhase;
+  /** Absolute epoch ms the current phase started. Null only when idle.
+   *  For `rest` this is the RACK time, already back-dated by the phone lag. */
+  anchorMs: number | null;
+  /** The set the phase concerns: counting down to it, lifting it, or resting
+   *  after it. */
+  activeSet: SetRef | null;
+  /** Seeded rest length for the rest currently running (prescribed − lag). */
+  restSeconds: number;
+  /** Zoomed entry row. Deliberately NOT a phase: entry and rest are
+   *  concurrent, and making entry a phase value would make them mutually
+   *  exclusive — exactly the coupling this design removes. */
+  pendingEntry: (SetRef & { workSeconds: number }) | null;
+};
+
+export const IDLE_TIMER: TimerState = {
+  phase: "idle",
+  anchorMs: null,
+  activeSet: null,
+  restSeconds: 0,
+  pendingEntry: null,
+};
+
+export type TimerAction =
+  | { type: "press_start"; set: SetRef; nowMs: number }
+  /** Countdown reached zero, or the athlete tapped to skip it. */
+  | { type: "countdown_elapsed"; nowMs: number }
+  | { type: "press_stop"; nowMs: number; prescribedRestSeconds: number }
+  | { type: "save_entry" }
+  /** A set was uncommitted or deleted. */
+  | { type: "clear_for_set"; set: SetRef }
+  | { type: "reset" };
+
+export function sameSet(a: SetRef | null, b: SetRef | null): boolean {
+  if (!a || !b) return false;
+  return a.exerciseIndex === b.exerciseIndex && a.setIndex === b.setIndex;
+}
+
+/** Honest time under load. Floored at 1 so a very short set cannot go
+ *  negative once the lag is deducted. Truncates rather than rounds — a set is
+ *  not credited with a second it did not complete. */
+export function workSecondsFor(startAnchorMs: number, stopPressMs: number): number {
+  const raw = Math.floor((stopPressMs - startAnchorMs) / 1000) - PHONE_LAG_SECONDS;
+  return Math.max(1, raw);
+}
+
+/** Rest is already PHONE_LAG_SECONDS old when the stop press registers. */
+export function restSeedSeconds(prescribedRestSeconds: number): number {
+  return Math.max(1, prescribedRestSeconds - PHONE_LAG_SECONDS);
+}
+
+export function timerReducer(state: TimerState, action: TimerAction): TimerState {
+  switch (action.type) {
+    case "press_start": {
+      // Starting a new set while one is mid-flight is not a thing the UI
+      // offers (the circle reads STOP), so treat it as a no-op rather than
+      // silently discarding an in-progress set's anchor.
+      if (state.phase === "countdown" || state.phase === "running") return state;
+      return {
+        phase: "countdown",
+        anchorMs: action.nowMs,
+        activeSet: action.set,
+        restSeconds: 0,
+        // Caller persists any open entry BEFORE dispatching — see the
+        // auto-save in LoggerSheet's handleStart.
+        pendingEntry: null,
+      };
+    }
+
+    case "countdown_elapsed": {
+      if (state.phase !== "countdown") return state;
+      return { ...state, phase: "running", anchorMs: action.nowMs };
+    }
+
+    case "press_stop": {
+      if (state.phase !== "running" || state.anchorMs === null || state.activeSet === null) {
+        return state;
+      }
+      const workSeconds = workSecondsFor(state.anchorMs, action.nowMs);
+      return {
+        phase: "rest",
+        // Anchor at the rack, not the tap.
+        anchorMs: action.nowMs - PHONE_LAG_SECONDS * 1000,
+        activeSet: state.activeSet,
+        restSeconds: restSeedSeconds(action.prescribedRestSeconds),
+        pendingEntry: { ...state.activeSet, workSeconds },
+      };
+    }
+
+    case "save_entry": {
+      if (state.pendingEntry === null) return state;
+      return { ...state, pendingEntry: null };
+    }
+
+    case "clear_for_set": {
+      if (sameSet(state.activeSet, action.set)) return IDLE_TIMER;
+      if (state.pendingEntry && sameSet(state.pendingEntry, action.set)) {
+        return { ...state, pendingEntry: null };
+      }
+      return state;
+    }
+
+    case "reset":
+      return IDLE_TIMER;
+  }
+}
+
+function elapsedSecondsSinceAnchor(state: TimerState, nowMs: number): number {
+  if (state.anchorMs === null) return 0;
+  return Math.floor((nowMs - state.anchorMs) / 1000);
+}
+
+/** Whole seconds left in the walk-up countdown. Zero outside `countdown`. */
+export function countdownRemaining(state: TimerState, nowMs: number): number {
+  if (state.phase !== "countdown") return 0;
+  return Math.max(0, COUNTDOWN_SECONDS - elapsedSecondsSinceAnchor(state, nowMs));
+}
+
+/** Seconds under load so far. Zero outside `running`. */
+export function elapsedWorkSeconds(state: TimerState, nowMs: number): number {
+  if (state.phase !== "running") return 0;
+  return Math.max(0, elapsedSecondsSinceAnchor(state, nowMs));
+}
+
+/** SIGNED seconds left in rest — negative once the athlete is over. Deliberately
+ *  unclamped: overtime is information, not an error state, and the dock renders
+ *  it as a negative counter. Zero outside `rest`. */
+export function restRemaining(state: TimerState, nowMs: number): number {
+  if (state.phase !== "rest") return 0;
+  return state.restSeconds - elapsedSecondsSinceAnchor(state, nowMs);
+}
+
+export function isRestOvertime(state: TimerState, nowMs: number): boolean {
+  return state.phase === "rest" && restRemaining(state, nowMs) < 0;
+}
