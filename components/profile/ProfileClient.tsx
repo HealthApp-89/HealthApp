@@ -192,10 +192,6 @@ export function ProfileClient({
         {showLabCard && <LabPromptCard userId={userId} />}
       </div>
 
-      <SectionLabel>Workout logger</SectionLabel>
-      <div style={{ padding: "0 8px 14px" }}>
-      </div>
-
       <SectionLabel>Connected sources</SectionLabel>
       <div style={{ padding: "0 8px", display: "flex", flexDirection: "column", gap: "6px" }}>
         <ConnectionsPanel
