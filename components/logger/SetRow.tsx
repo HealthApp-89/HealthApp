@@ -6,7 +6,7 @@ import { usePreviousSet } from "@/lib/query/hooks/usePreviousSet";
 import { VoiceMicButton } from "@/components/logger/VoiceMicButton";
 import { fmtNum } from "@/lib/ui/score";
 import { selectOnFocus } from "@/lib/ui/inputs";
-import { fireRestDoneCue } from "@/lib/logger/rest-timer";
+import { fireCue } from "@/lib/logger/audio-cue";
 
 type Props = {
   userId: string;
@@ -64,7 +64,7 @@ export function SetRow({
     if (timerStartedAt != null && targetDurationSeconds != null
         && elapsedSeconds >= targetDurationSeconds && !cueFiredRef.current) {
       cueFiredRef.current = true;
-      fireRestDoneCue();
+      fireCue();
     }
   }, [timerStartedAt, elapsedSeconds, targetDurationSeconds]);
   // tick is read by the effects above via Date.now(); reference it so the

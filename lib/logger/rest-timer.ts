@@ -76,27 +76,10 @@ export function useWakeLock(active: boolean) {
   }, [active]);
 }
 
-/**
- * Fire a 200ms vibration + short bleep on rest-timer completion.
- */
-export function fireRestDoneCue() {
-  try {
-    if ("vibrate" in navigator) navigator.vibrate(200);
-  } catch {}
-  try {
-    const ctx = new (window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext!)();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.frequency.value = 880;
-    gain.gain.setValueAtTime(0.1, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start();
-    osc.stop(ctx.currentTime + 0.25);
-    setTimeout(() => ctx.close(), 500);
-  } catch {}
-}
+// The rest-done cue lives in lib/logger/audio-cue.ts. It cannot be built at
+// fire time: iOS requires the AudioContext to be created inside a user
+// gesture, so the logger unlocks it on first tap and timers only replay it.
+// Import { fireCue } from "@/lib/logger/audio-cue" at the call site.
 
 // Minimal browser type for WakeLockSentinel.
 interface WakeLockSentinel {
