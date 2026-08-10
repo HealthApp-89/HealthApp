@@ -89,8 +89,14 @@ function scopeForMode(
   );
 }
 
+/** Shift a YYYY-MM-DD by whole days. Returns "" for input that is not a real
+ *  calendar date, rather than building an Invalid Date whose toISOString()
+ *  throws mid-render. `useUserToday` returns undefined until the profile query
+ *  resolves and callers coerce that to "" — see scopeCoachForRender for why
+ *  that is handled as "scope unknown" instead of being passed through here. */
 function shiftYmd(ymd: string, days: number): string {
   const dt = new Date(ymd + "T12:00:00Z");
+  if (Number.isNaN(dt.getTime())) return "";
   dt.setUTCDate(dt.getUTCDate() + days);
   return dt.toISOString().slice(0, 10);
 }
@@ -115,6 +121,11 @@ function scopeCoachForRender(
     const cutoff = Date.now() - scopeHours * 60 * 60 * 1000;
     return messages.filter((m) => new Date(m.created_at).getTime() >= cutoff);
   }
+  // "Which calendar day is it?" is unanswerable until the profile (and so the
+  // timezone) has loaded — useUserToday returns undefined and callers coerce
+  // that to "". Show the thread unscoped for that render rather than filtering
+  // against a date we do not have; the scope applies as soon as it resolves.
+  if (!todayYmd) return messages;
   const yesterdayYmd = shiftYmd(todayYmd, -1);
   return messages.filter((m) => {
     const ymd = ymdInUserTz(new Date(m.created_at), tz);
@@ -1284,9 +1295,15 @@ export default function ChatPanel({
           // prefill+submit through the same send() callback the composer's
           // send button uses, so all standard guards (inFlightAssistantId,
           // optimistic dispatch, /api/chat/messages) apply unchanged.
+          // `today` is "" until the profile (and so the timezone) loads, and the
+          // chips derive a week-start from it — `new Date("T12:00:00Z")` is an
+          // Invalid Date and Intl.DateTimeFormat throws on it during render.
+          // Withholding the chips for that one render is invisible; they appear
+          // as soon as the date is known.
           const showSuggestionChips =
             currentMode === "coach" &&
             mode === "default" &&
+            !!today &&
             !composerText &&
             !composerFocused;
 
