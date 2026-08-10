@@ -107,6 +107,28 @@ describe("ruleFailureBudget", () => {
       ruleFailureBudget(mkInput({ name: "Squat (Barbell)", sets: [s0, s1], current: s1 })),
     ).toBeNull();
   });
+
+  it("fires on a mid-exercise failure set of isolation work — exemption is final set only", () => {
+    const s0 = mkSet({ set_index: 0, failure: true, rir: 0 });
+    const s1 = mkSet({ set_index: 1, failure: true, rir: 0 });
+    const s2 = mkSet({ set_index: 2, rir: 2 });
+    const line = ruleFailureBudget(
+      mkInput({ name: "Lateral Raise (Dumbbell)", sets: [s0, s1, s2], current: s1 }),
+    );
+    expect(line).not.toBeNull();
+    expect(line!.kind).toBe("guardrail");
+    expect(line!.text).toContain("2nd");
+  });
+
+  it("ignores failure sets that are warmups — they do not count toward the budget", () => {
+    const w0 = mkSet({ set_index: 0, warmup: true, failure: true, rir: 0 });
+    const w1 = mkSet({ set_index: 1, warmup: true, rir: 0 });
+    const s0 = mkSet({ set_index: 2, rir: 2 });
+    const line = ruleFailureBudget(
+      mkInput({ name: "Squat (Barbell)", sets: [w0, w1, s0], current: s0 }),
+    );
+    expect(line).toBeNull();
+  });
 });
 
 describe("ruleDropOff", () => {
