@@ -239,8 +239,14 @@ counter goes negative, and the pending row turns red.
 
 ## What is preserved
 
-- The manual `○` commit path. The timer is additive; a set can still be logged
-  by hand, leaving `work_seconds` null.
+- The manual `○` commit path, for **rep-based** sets: the timer is additive, and
+  such a set can still be logged by hand, leaving `work_seconds` null. It is
+  narrower for TIME-BASED work in live mode, where `○` is deliberately disabled
+  (`SetRow.tsx`): committing by hand there would stamp `committed_at` with
+  `duration_seconds` still null — a plank recorded as no plank at all — so a
+  mobility session goes through the dock. Edit mode, which runs no dock, keeps
+  its own hand-editable seconds field and so keeps a hand-commit path for
+  time-based rows.
 - **Edit mode** runs no live timer. `work_seconds` and `started_at` are
   preserved from the hydrated row, the same preserved-across-edit pattern
   already used for `duration_min` and `session_started_at`.
@@ -254,7 +260,7 @@ counter goes negative, and the pending row turns red.
 | Set shorter than 5s | `work_seconds` floors at 1. |
 | Rest prescription ≤ 5s | Seeds at 1s rather than 0 or negative. |
 | Session pause during countdown/running | Pause control is disabled — pausing mid-set is meaningless. |
-| Session pause during rest | Freezes the rest clock along with the session clock. |
+| Session pause during rest | Rest keeps running. Rest is wall-clock real — a paused session does not un-rest the muscle — so freezing it would make the countdown assert recovery the athlete has not had, and the rest seed feeding `rest_seconds_actual` would stop matching the gap the body actually took. Only the SESSION counter freezes. |
 | Uncommitting a timed set | Clears `work_seconds` and `started_at`; timer returns to `idle`. |
 | Phone locked mid-rest | Clock is anchor-derived, so it reads correctly on unlock, including deep into overtime. |
 | Switching exercises mid-rest | Rest keeps running; the dock continues to name the set it belongs to. |
