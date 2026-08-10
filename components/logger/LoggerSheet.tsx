@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import type { PlannedExercise } from "@/lib/coach/sessionPlans";
@@ -19,9 +19,16 @@ import {
   remapTimerSets,
   workSecondsFor,
   getElapsedMs,
+  sameSet,
   type TimerState,
   type SetRef,
 } from "@/lib/logger/set-timer";
+import {
+  evaluateSet,
+  type CoachLine,
+  type LiveSessionContext,
+  type SessionSetRef,
+} from "@/lib/coach/live-session";
 import { SetTimerDock } from "@/components/logger/SetTimerDock";
 import { ExerciseCard } from "@/components/logger/ExerciseCard";
 import { ExercisePicker } from "@/components/logger/ExercisePicker";
@@ -110,12 +117,68 @@ function withTimer(draft: LoggerDraft, next: TimerState): LoggerDraft {
   return { ...draft, timer: next, updated_at: new Date().toISOString() };
 }
 
-/**
- * Persist the zoomed entry row's in-flight values onto the draft before the
- * next set starts. Task 6 fills this in.
- */
+/** Commit whatever is in the open entry row and close it. Called by the Save
+ *  button and, implicitly, by pressing START on the next set — the fields are
+ *  pre-filled from the prescription, so the flow never blocks on typing.
+ *
+ *  Touches no clock: `save_entry` clears `pendingEntry` and leaves the rest
+ *  countdown running underneath, which is the whole point of splitting commit
+ *  out of stop. */
 function commitPendingEntry(draft: LoggerDraft): LoggerDraft {
-  return draft;
+  const timer = draft.timer ?? IDLE_TIMER;
+  const entry = timer.pendingEntry;
+  if (!entry) return draft;
+  const exercises = draft.exercises.map((ex, ei) =>
+    ei !== entry.exerciseIndex ? ex : {
+      ...ex,
+      sets: ex.sets.map((s, si) =>
+        si !== entry.setIndex || s.committed_at ? s : {
+          ...s,
+          committed_at: new Date().toISOString(),
+        },
+      ),
+    },
+  );
+  return {
+    ...draft,
+    exercises,
+    timer: timerReducer(timer, { type: "save_entry" }),
+  };
+}
+
+/**
+ * Between-sets coaching for the set just committed. THE evaluation site —
+ * every commit path (the manual ○, the zoom's Save, and the auto-save when
+ * START is pressed on the next set) funnels through it.
+ *
+ * This repo's documented recurring failure is a second copy of an engine rule
+ * drifting out of sync with the first, so the set-collection logic exists once:
+ * `sessionSets` spans ALL exercises, because the failure budget is a
+ * session-level count, and `draft` is already post-commit so the just-finished
+ * set is visible to the rules.
+ *
+ * Returns null — silence — whenever the context snapshot is unavailable. Callers
+ * ALWAYS replace the displayed line with this result, never merely overwrite it
+ * when non-null: the query key hashes the exercise-name list, so Add / Remove /
+ * Replace mints a new key and `data` goes undefined until the refetch lands
+ * (permanently, if offline), which would otherwise strand the PREVIOUS set's
+ * line on screen underneath the new one.
+ */
+function evaluateCommittedSet(
+  draft: LoggerDraft,
+  ref: SetRef,
+  liveContext: LiveSessionContext | undefined,
+): CoachLine | null {
+  if (!liveContext) return null;
+  const ex = draft.exercises[ref.exerciseIndex];
+  const set = ex?.sets[ref.setIndex];
+  if (!ex || !set) return null;
+  const sessionSets: SessionSetRef[] = draft.exercises.flatMap((e) =>
+    e.sets
+      .filter((s) => !s.warmup && s.committed_at != null)
+      .map((s) => ({ exerciseName: e.name, set: s })),
+  );
+  return evaluateSet({ set, exercise: ex, sessionSets, context: liveContext });
 }
 
 /**
@@ -192,12 +255,18 @@ function annotatedRestFor(draft: LoggerDraft, exerciseIndex: number): number {
 
 /** First set in draft order with no `committed_at`. Null once every set is
  *  committed — the dock then disables its START affordance rather than
- *  dispatching a start for a set that does not exist. */
-function firstPendingSet(draft: LoggerDraft): SetRef | null {
+ *  dispatching a start for a set that does not exist.
+ *
+ *  `skip` is the set with the zoomed entry row open. Since Task 6 that set is
+ *  uncommitted until Save, so without skipping it START would offer to re-run
+ *  the set the athlete just finished — and `handleTimerStart` commits the entry
+ *  first, so it would count down to a set it had just committed. */
+function firstPendingSet(draft: LoggerDraft, skip: SetRef | null): SetRef | null {
   for (let ei = 0; ei < draft.exercises.length; ei++) {
     const sets = draft.exercises[ei].sets;
     for (let si = 0; si < sets.length; si++) {
-      if (!sets[si].committed_at) return { exerciseIndex: ei, setIndex: si };
+      const ref = { exerciseIndex: ei, setIndex: si };
+      if (!sets[si].committed_at && !sameSet(ref, skip)) return ref;
     }
   }
   return null;
@@ -350,6 +419,25 @@ export function LoggerSheet(props: Props) {
   /** Per-exercise rest override, lifted out of ExerciseCard so `press_stop`
    *  can seed the session-level rest countdown with it. */
   const [restOverrides, setRestOverrides] = useState<Record<number, number>>({});
+  /** Which card has its RestTimeDialog up, if any. Lifted for the same reason
+   *  the sheet's own dialogs are tracked: the dock portals to <body> and must
+   *  unmount while a modal is over the sheet. */
+  const [restDialogOpenIndex, setRestDialogOpenIndex] = useState<number | null>(null);
+  /** The between-sets line and the set it belongs to, as one value so the
+   *  clear/remap rules below stay pure single-setState updates. */
+  const [coach, setCoach] = useState<{ line: CoachLine; set: SetRef } | null>(null);
+  /** A set was just committed and is awaiting evaluation. The handlers only
+   *  record WHICH set; the effect below evaluates once the draft carrying that
+   *  commit has rendered. Keeping evaluateSet out of the setDraft updaters is
+   *  what lets those updaters stay pure functions of `prev`. */
+  const [pendingCoachEval, setPendingCoachEval] = useState<SetRef | null>(null);
+  /** Latest open entry row, readable from the stable timer callbacks. They use
+   *  functional setDraft (so they never close over a draft snapshot) and so
+   *  cannot see `pendingEntry` — but the auto-save on START has to know which
+   *  set it just committed in order to coach on it. Written only from the
+   *  effect below, read only from event handlers, which run after that effect
+   *  has flushed. */
+  const pendingEntryRef = useRef<SetRef | null>(null);
 
   useWakeLock(!!draft);
 
@@ -421,6 +509,10 @@ export function LoggerSheet(props: Props) {
     // timer's refs and the lifted rest overrides have to move with it.
     const mapIndex = (i: number) => (i === index ? null : i > index ? i - 1 : i);
     setRestOverrides((prev) => keepUnmovedRestOverrides(prev, mapIndex));
+    // The line is transient UI anchored to a positional ref; the list edit
+    // moves every ref below. Taking it down beats remapping it (and matches
+    // what used to happen for free when the card remounted).
+    setCoach(null);
     setDraft((prev) => {
       if (!prev) return prev;
       return {
@@ -445,6 +537,7 @@ export function LoggerSheet(props: Props) {
   // the `!draft` early return, same hook-order rule as the callbacks above.
 
   const handleTimerStart = useCallback((set: SetRef) => {
+    const autoSaved = pendingEntryRef.current;
     setDraft((prev) => {
       if (!prev) return prev;
       // Auto-save any open entry first: the fields are pre-filled from the
@@ -456,7 +549,41 @@ export function LoggerSheet(props: Props) {
         timerReducer(timerOf(withEntrySaved), { type: "press_start", set, nowMs: Date.now() }),
       );
     });
+    if (autoSaved) {
+      setPendingCoachEval({ exerciseIndex: autoSaved.exerciseIndex, setIndex: autoSaved.setIndex });
+    }
   }, []);
+
+  /** Manual ○ commit. Lives here, not in ExerciseCard, so both commit paths
+   *  reach `evaluateCommittedSet` through the same signal. */
+  const handleSetCommit = useCallback((exerciseIndex: number, setIndex: number) => {
+    setDraft((prev) => {
+      if (!prev) return prev;
+      const nowIso = new Date().toISOString();
+      const exercises = prev.exercises.map((ex, ei) =>
+        ei !== exerciseIndex ? ex : {
+          ...ex,
+          sets: ex.sets.map((s, si) =>
+            si !== setIndex || s.committed_at ? s : { ...s, committed_at: nowIso },
+          ),
+        },
+      );
+      return { ...prev, exercises, updated_at: nowIso };
+    });
+    setPendingCoachEval({ exerciseIndex, setIndex });
+  }, []);
+
+  /** Save the zoomed entry row. Writes the numbers, closes the zoom, and
+   *  deliberately touches NO clock — rest keeps running underneath. */
+  const handleEntrySave = useCallback((ref: SetRef) => {
+    // Guards a second tap landing before the re-render: the entry is already
+    // saved, so re-committing (and re-coaching) it would be noise.
+    if (!sameSet(pendingEntryRef.current, ref)) return;
+    setDraft((prev) => (prev ? commitPendingEntry(prev) : prev));
+    setPendingCoachEval({ exerciseIndex: ref.exerciseIndex, setIndex: ref.setIndex });
+  }, []);
+
+  const handleCoachLineDismiss = useCallback(() => setCoach(null), []);
 
   const handleCountdownElapsed = useCallback(() => {
     setDraft((prev) => {
@@ -491,20 +618,18 @@ export function LoggerSheet(props: Props) {
         restOverrides[ref.exerciseIndex]
         ?? annotatedRestFor(prev, ref.exerciseIndex);
       const next = timerReducer(cur, { type: "press_stop", nowMs, prescribedRestSeconds: prescribedRest });
-      // Task 5 commits straight away; Task 6 moves this into the zoom's Save.
+      // Stop records the honest work time and opens the zoom; it does NOT
+      // commit. Commit is the Save tap (or the auto-save when START is pressed
+      // on the next set), which is what lets entry and rest run concurrently.
       const exercises = prev.exercises.map((ex, ei) =>
         ei !== ref.exerciseIndex ? ex : {
           ...ex,
           sets: ex.sets.map((s, si) =>
-            si !== ref.setIndex ? s : {
-              ...s,
-              work_seconds: workSeconds,
-              committed_at: new Date(nowMs).toISOString(),
-            },
+            si !== ref.setIndex ? s : { ...s, work_seconds: workSeconds },
           ),
         },
       );
-      return withTimer({ ...prev, exercises }, timerReducer(next, { type: "save_entry" }));
+      return withTimer({ ...prev, exercises }, next);
     });
   }, [restOverrides]);
 
@@ -521,6 +646,8 @@ export function LoggerSheet(props: Props) {
       );
       return withTimer({ ...prev, exercises }, timerReducer(timerOf(prev), { type: "clear_for_set", set }));
     });
+    // The verdict was about a set that no longer counts as committed.
+    setCoach((c) => (c && sameSet(c.set, set) ? null : c));
   }, []);
 
   /**
@@ -556,10 +683,22 @@ export function LoggerSheet(props: Props) {
         remapTimerSets(timerOf(prev), exerciseIndex, mapSetIndex),
       );
     });
+    // The coach line is anchored to a positional ref too — same shift.
+    setCoach((c) => {
+      if (!c || c.set.exerciseIndex !== exerciseIndex) return c;
+      const moved = mapSetIndex(c.set.setIndex);
+      return moved === null ? null : { ...c, set: { ...c.set, setIndex: moved } };
+    });
   }, []);
 
   const handleRestOverrideChange = useCallback((exerciseIndex: number, seconds: number) => {
     setRestOverrides((prev) => ({ ...prev, [exerciseIndex]: seconds }));
+  }, []);
+
+  const handleRestDialogOpenChange = useCallback((exerciseIndex: number, open: boolean) => {
+    setRestDialogOpenIndex((prev) =>
+      open ? exerciseIndex : prev === exerciseIndex ? null : prev,
+    );
   }, []);
 
   /** Total honest time under load so far — the dock's WORK counter. */
@@ -584,6 +723,33 @@ export function LoggerSheet(props: Props) {
     [draft],
   );
   const liveContext = useLiveSessionContext(props.userId, props.date, exerciseNames);
+
+  // Mirror the open entry row into a ref the stable timer callbacks can read.
+  // See the declaration above for why they cannot read it from `draft`.
+  useEffect(() => {
+    const entry = draft?.timer?.pendingEntry ?? null;
+    pendingEntryRef.current = entry
+      ? { exerciseIndex: entry.exerciseIndex, setIndex: entry.setIndex }
+      : null;
+  }, [draft]);
+
+  // THE between-sets evaluation. Runs once per committed set, after the draft
+  // carrying that commit has rendered, for every commit path alike.
+  //
+  // Edit mode passes no context, so the rules go silent: hydrateWorkoutAsDraft
+  // stamps every set's committed_at with the workout's created_at, and
+  // re-committing a set while editing a three-week-old session would otherwise
+  // celebrate a PR for a lift long since logged.
+  useEffect(() => {
+    if (!pendingCoachEval || !draft) return;
+    const line = evaluateCommittedSet(
+      draft,
+      pendingCoachEval,
+      props.editMode ? undefined : liveContext.data,
+    );
+    setCoach(line ? { line, set: pendingCoachEval } : null);
+    setPendingCoachEval(null);
+  }, [pendingCoachEval, draft, liveContext.data, props.editMode]);
 
   const isPaused = !!draft?.paused_at;
 
@@ -636,11 +802,12 @@ export function LoggerSheet(props: Props) {
   const timer = timerOf(draft);
   const midSet = timer.phase === "countdown" || timer.phase === "running";
   // What START dispatches. During `rest`, timer.activeSet is the set just
-  // FINISHED, so the next set always comes from the pending scan.
-  const nextSetRef = firstPendingSet(draft);
+  // FINISHED, so the next set always comes from the pending scan — and the set
+  // with the zoom still open is excluded, because START commits it on the way.
+  const nextSetRef = firstPendingSet(draft, timer.pendingEntry);
   const anyDialogOpen =
     pickerOpen || reorderOpen || saveDefaultOpen || finishOpen
-    || closeConfirmOpen || resetConfirmOpen;
+    || closeConfirmOpen || resetConfirmOpen || restDialogOpenIndex !== null;
   // What the caption describes: the set in play mid-set, otherwise the next one.
   const { activeLabel, targetLabel } = describeSet(draft, midSet ? timer.activeSet : nextSetRef);
 
@@ -896,22 +1063,19 @@ export function LoggerSheet(props: Props) {
             onReplace={handleExerciseReplace}
             onRemove={handleExerciseRemove}
             onReorderAll={handleReorderAll}
-            // Edit mode replays a historical workout: hydrateWorkoutAsDraft
-            // stamps every set's committed_at with the workout's created_at,
-            // so re-committing a set while editing a three-week-old session
-            // would fire a live PR celebration (audio and all) for a lift long
-            // since logged. The hook itself stays unconditional above — making
-            // the CALL conditional is a hook-order violation, and with no
-            // render-test harness in this repo it would pass typecheck and the
-            // whole unit suite and break only in the production build.
-            liveContext={props.editMode ? undefined : liveContext.data}
             timer={timer}
             // Edit mode replays a historical workout — no live timer runs, so
             // the per-row START affordance must not be offered at all.
             onTimerStart={props.editMode ? undefined : handleTimerStart}
+            onSetCommit={handleSetCommit}
+            onEntrySave={handleEntrySave}
             onSetCleared={handleSetCleared}
             onSetRemove={handleSetRemove}
             onRestOverrideChange={handleRestOverrideChange}
+            onRestDialogOpenChange={handleRestDialogOpenChange}
+            coachLine={coach && coach.set.exerciseIndex === i ? coach.line : null}
+            coachLineSetIndex={coach && coach.set.exerciseIndex === i ? coach.set.setIndex : null}
+            onCoachLineDismiss={handleCoachLineDismiss}
           />
         ))}
 
@@ -961,6 +1125,8 @@ export function LoggerSheet(props: Props) {
               setDraft({ ...draft, exercises: [...draft.exercises, newEx] });
             } else {
               const idx = pickerMode.replace_index;
+              // The line named the exercise that just got replaced.
+              setCoach(null);
               setDraft({
                 ...draft,
                 exercises: draft.exercises.map((e, j) => j === idx ? { ...e, name } : e),
@@ -986,6 +1152,7 @@ export function LoggerSheet(props: Props) {
               return moved === -1 ? null : moved;
             };
             setRestOverrides((o) => keepUnmovedRestOverrides(o, mapIndex));
+            setCoach(null);
             setDraft((prev) => {
               if (!prev) return prev;
               return {
@@ -1091,7 +1258,7 @@ export function LoggerSheet(props: Props) {
             </p>
             <div className="flex gap-2">
               <button
-                onClick={() => { setDraft(resetDraft(draft, props.weekRirTarget ?? 2)); setResetConfirmOpen(false); }}
+                onClick={() => { setCoach(null); setDraft(resetDraft(draft, props.weekRirTarget ?? 2)); setResetConfirmOpen(false); }}
                 className="flex-1 bg-red-600 text-white rounded-lg py-2 text-sm font-medium"
               >
                 Reset

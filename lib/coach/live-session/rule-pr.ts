@@ -3,8 +3,8 @@
 // Celebrate at the moment it happens, not three hours later in the debrief.
 // Celebration has a half-life.
 //
-// This is the only rule that returns cue: true. The audio cue is reserved for
-// PRs so that a sound always means something genuinely happened.
+// This is the only rule that returns cue: true. Emphasis is reserved for PRs
+// so that a highlighted line always means something genuinely happened.
 
 import { brzycki } from "@/lib/coach/e1rm";
 import { fmtNum } from "@/lib/ui/score";
@@ -24,8 +24,8 @@ function round1(n: number): number {
  *  queries `.lt("date", today)` and the hook holds it at `staleTime: Infinity`),
  *  so nothing in it moves when a PR happens mid-session. Without this, sets of
  *  100×5, 100×5, 100×4 against a stored best of 110 produce the IDENTICAL PR
- *  line twice — and a second audio cue, which is precisely the thing that makes
- *  a sound stop meaning something.
+ *  line twice — and a second burst of emphasis, which is precisely the thing
+ *  that makes emphasis stop meaning anything.
  *
  *  Derived from `sessionSets` rather than module state so the rule stays pure.
  *  Strictly BEFORE this set: `set_index < set.set_index`, or nothing would ever
