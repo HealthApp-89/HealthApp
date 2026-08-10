@@ -23,7 +23,11 @@ import type { TargetMetric } from "@/lib/data/types";
 /** Brzycki 1RM formula: 1RM = kg × 36 / (37 − reps). Valid for 1..12 reps.
  *  Returns null for reps outside that range. */
 export function brzycki(kg: number, reps: number): number | null {
-  if (kg <= 0) return null;
+  // Non-finite kg must be rejected explicitly: `NaN <= 0` is false, so a
+  // bare `kg <= 0` guard lets NaN straight through and every downstream
+  // consumer then renders "NaN" (the live-session PR line would celebrate it,
+  // audio cue and all).
+  if (!Number.isFinite(kg) || kg <= 0) return null;
   if (!Number.isFinite(reps) || reps < 1 || reps > 12) return null;
   return (kg * 36) / (37 - reps);
 }
@@ -32,7 +36,7 @@ export function brzycki(kg: number, reps: number): number | null {
  *  Returns null for reps outside that range. Slightly more conservative than
  *  Brzycki at low reps, more aggressive at high reps. */
 export function epley(kg: number, reps: number): number | null {
-  if (kg <= 0) return null;
+  if (!Number.isFinite(kg) || kg <= 0) return null;
   if (!Number.isFinite(reps) || reps < 1 || reps > 12) return null;
   return kg * (1 + reps / 30);
 }
@@ -50,8 +54,12 @@ export function bestComparisonValue(
   let best: number | null = null;
   for (const s of sets) {
     if (s.warmup) continue;
-    if (s.kg == null || s.kg <= 0) continue;
-    if (s.reps == null || s.reps < 1) continue;
+    // Same NaN trap as brzycki above: `NaN <= 0` / `NaN < 1` are both false,
+    // so without the finite check a non-finite kg becomes `best` on the
+    // working_weight branch (where the value is the raw kg, not a brzycki
+    // return the formula could reject).
+    if (s.kg == null || !Number.isFinite(s.kg) || s.kg <= 0) continue;
+    if (s.reps == null || !Number.isFinite(s.reps) || s.reps < 1) continue;
     let value: number | null;
     if (target_metric === "e1rm") {
       value = brzycki(s.kg, s.reps);

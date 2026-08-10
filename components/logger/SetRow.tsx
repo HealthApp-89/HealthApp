@@ -22,6 +22,8 @@ type Props = {
    *  dead hangs, etc.) instead of the kg/reps inputs. Counts down to 0 then
    *  continues counting up so the user can stop early or run over. */
   targetDurationSeconds: number | null;
+  /** Prescribed load x reps @RIR for this exercise. Null for time-based work. */
+  target: { kg: number | null; reps: number | null; rir: number | null } | null;
   /** When false, the Delete option in the badge popup is disabled — used by
    *  the parent to prevent removing the exercise's last remaining set. */
   canRemove: boolean;
@@ -41,11 +43,26 @@ function fmtMmSs(totalSeconds: number): string {
 
 export function SetRow({
   userId, exerciseName, excludeWorkoutExternalId, set, workingSetNumber,
-  isActive, targetDurationSeconds, canRemove, onChange, onCommit, onUncommit, onRemove, onUnparsedVoice,
+  isActive, targetDurationSeconds, target, canRemove, onChange, onCommit, onUncommit, onRemove, onUnparsedVoice,
 }: Props) {
   const [draftKg, setDraftKg] = useState<string>(set.kg !== null ? String(set.kg) : "");
   const [draftReps, setDraftReps] = useState<string>(set.reps !== null ? String(set.reps) : "");
   const [draftRir, setDraftRir] = useState<string>(set.rir !== null && set.rir !== undefined ? String(set.rir) : "");
+
+  // draftKg is otherwise mount-only local state, so an external write to
+  // set.kg (the apply-tap in ExerciseCard calling patchSet directly) would
+  // never reach this input — the box would keep showing stale/blank text,
+  // and a stray focus+blur with no typing would then overwrite the applied
+  // value back to null via the onBlur handler below. Re-sync draftKg only
+  // when the PROP itself changes (tracked via a ref so in-progress typing,
+  // which changes draftKg but not set.kg, is never fought).
+  const lastKgProp = useRef(set.kg);
+  useEffect(() => {
+    if (set.kg !== lastKgProp.current) {
+      lastKgProp.current = set.kg;
+      setDraftKg(set.kg !== null ? String(set.kg) : "");
+    }
+  }, [set.kg]);
 
   // Timer mode: local started_at (ms). Ticks every 250ms while running.
   // Resets when the set is uncommitted.
@@ -266,13 +283,22 @@ export function SetRow({
           </>
         )}
       </td>
-      <td className="py-1 text-[10.5px] text-zinc-600">
-        {prev.data ? (
-          <span title={prev.data.fallback ? `Last available set on ${prev.data.workout_date}` : prev.data.workout_date}>
-            {prev.data.kg === null ? "BW" : fmtNum(prev.data.kg)} × {prev.data.reps ?? "—"}
-            {prev.data.fallback && <span className="text-zinc-700">·</span>}
-          </span>
-        ) : "—"}
+      <td className="py-1 text-[10.5px] leading-tight">
+        {target && (target.kg != null || target.reps != null) && (
+          <div className="text-zinc-300 font-mono tabular-nums">
+            {target.kg != null ? fmtNum(target.kg) : "BW"}
+            {target.reps != null ? ` × ${target.reps}` : ""}
+            {target.rir != null ? ` @${target.rir}` : ""}
+          </div>
+        )}
+        <div className="text-zinc-600">
+          {prev.data ? (
+            <span title={prev.data.fallback ? `Last available set on ${prev.data.workout_date}` : prev.data.workout_date}>
+              {prev.data.kg === null ? "BW" : fmtNum(prev.data.kg)} × {prev.data.reps ?? "—"}
+              {prev.data.fallback && <span className="text-zinc-700">·</span>}
+            </span>
+          ) : "—"}
+        </div>
       </td>
       <td className="py-1">
         <input

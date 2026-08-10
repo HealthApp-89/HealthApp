@@ -9,7 +9,9 @@ import { resolveSessionPlan } from "@/lib/logger/resolve-plan";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { loadDraft, saveDraft, clearDraft } from "@/lib/logger/draft-store";
 import { useWakeLock } from "@/lib/logger/rest-timer";
+import { seedRir } from "@/lib/logger/seed-rir";
 import { unlockCue, releaseCue } from "@/lib/logger/audio-cue";
+import { useLiveSessionContext } from "@/lib/query/hooks/useLiveSessionContext";
 import { ExerciseCard } from "@/components/logger/ExerciseCard";
 import { ExercisePicker } from "@/components/logger/ExercisePicker";
 import { ResumeDraftPrompt } from "@/components/logger/ResumeDraftPrompt";
@@ -59,7 +61,7 @@ function makeDraftFromPlan(args: {
       // warmups and duration-based exercises carry no RIR
       rir: (!!p.warmup && j === 0) || p.duration_seconds != null
         ? null
-        : (args.weekRirTarget ?? 2),
+        : seedRir(p, args.weekRirTarget),
       committed_at: null,
     })),
   }));
@@ -87,7 +89,7 @@ function getElapsedMs(
 }
 
 /** Wipe all entered sets + timer state, keep the current exercise list. */
-function resetDraft(draft: LoggerDraft): LoggerDraft {
+function resetDraft(draft: LoggerDraft, weekRirTarget: number | null): LoggerDraft {
   const nowIso = new Date().toISOString();
   return {
     ...draft,
@@ -104,8 +106,13 @@ function resetDraft(draft: LoggerDraft): LoggerDraft {
         duration_seconds: null,
         warmup: !!ex.prescribed.warmup && j === 0,
         failure: false,
-        // reset starts RIR blank; athlete re-enters per set
-        rir: null,
+        // Same seed as a fresh draft (see seedRir). Reset used to blank RIR,
+        // which silently switched the between-sets load call off for the rest
+        // of the session — it requires a recorded RIR and cannot tell a blank
+        // from "not yet reached".
+        rir: (!!ex.prescribed.warmup && j === 0) || ex.prescribed.duration_seconds != null
+          ? null
+          : seedRir(ex.prescribed, weekRirTarget),
         committed_at: null,
       })),
     })),
@@ -286,6 +293,17 @@ export function LoggerSheet(props: Props) {
   const handleReorderAll = useCallback(() => {
     setReorderOpen(true);
   }, []);
+
+  // Between-sets coaching context. Fetched once (staleTime: Infinity) as soon
+  // as we know which exercises are in play. Must stay above the early
+  // `!draft` return below — draft starts null and loads async, so the first
+  // render takes that guard, and a hook placed after it would run on only
+  // some renders (React error #310, see the comment above handleExerciseChange).
+  const exerciseNames = useMemo(
+    () => (draft ? draft.exercises.map((e) => e.name) : []),
+    [draft],
+  );
+  const liveContext = useLiveSessionContext(props.userId, props.date, exerciseNames);
 
   const isPaused = !!draft?.paused_at;
 
@@ -576,6 +594,15 @@ export function LoggerSheet(props: Props) {
             onReplace={handleExerciseReplace}
             onRemove={handleExerciseRemove}
             onReorderAll={handleReorderAll}
+            // Edit mode replays a historical workout: hydrateWorkoutAsDraft
+            // stamps every set's committed_at with the workout's created_at,
+            // so re-committing a set while editing a three-week-old session
+            // would fire a live PR celebration (audio and all) for a lift long
+            // since logged. The hook itself stays unconditional above — making
+            // the CALL conditional is a hook-order violation, and with no
+            // render-test harness in this repo it would pass typecheck and the
+            // whole unit suite and break only in the production build.
+            liveContext={props.editMode ? undefined : liveContext.data}
           />
         ))}
 
@@ -716,7 +743,7 @@ export function LoggerSheet(props: Props) {
             </p>
             <div className="flex gap-2">
               <button
-                onClick={() => { setDraft(resetDraft(draft)); setResetConfirmOpen(false); }}
+                onClick={() => { setDraft(resetDraft(draft, props.weekRirTarget ?? 2)); setResetConfirmOpen(false); }}
                 className="flex-1 bg-red-600 text-white rounded-lg py-2 text-sm font-medium"
               >
                 Reset
