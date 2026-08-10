@@ -10,6 +10,7 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { loadDraft, saveDraft, clearDraft } from "@/lib/logger/draft-store";
 import { useWakeLock } from "@/lib/logger/rest-timer";
 import { unlockCue, releaseCue } from "@/lib/logger/audio-cue";
+import { useLiveSessionContext } from "@/lib/query/hooks/useLiveSessionContext";
 import { ExerciseCard } from "@/components/logger/ExerciseCard";
 import { ExercisePicker } from "@/components/logger/ExercisePicker";
 import { ResumeDraftPrompt } from "@/components/logger/ResumeDraftPrompt";
@@ -286,6 +287,17 @@ export function LoggerSheet(props: Props) {
   const handleReorderAll = useCallback(() => {
     setReorderOpen(true);
   }, []);
+
+  // Between-sets coaching context. Fetched once (staleTime: Infinity) as soon
+  // as we know which exercises are in play. Must stay above the early
+  // `!draft` return below — draft starts null and loads async, so the first
+  // render takes that guard, and a hook placed after it would run on only
+  // some renders (React error #310, see the comment above handleExerciseChange).
+  const exerciseNames = useMemo(
+    () => (draft ? draft.exercises.map((e) => e.name) : []),
+    [draft],
+  );
+  const liveContext = useLiveSessionContext(props.userId, props.date, exerciseNames);
 
   const isPaused = !!draft?.paused_at;
 
@@ -576,6 +588,7 @@ export function LoggerSheet(props: Props) {
             onReplace={handleExerciseReplace}
             onRemove={handleExerciseRemove}
             onReorderAll={handleReorderAll}
+            liveContext={liveContext.data}
           />
         ))}
 

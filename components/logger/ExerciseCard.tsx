@@ -6,6 +6,9 @@ import { SetRow } from "@/components/logger/SetRow";
 import { RestBar } from "@/components/logger/RestBar";
 import { RestTimeDialog } from "@/components/logger/RestTimeDialog";
 import { annotateSession } from "@/lib/coach/session-structure/annotate";
+import { evaluateSet, type CoachLine, type LiveSessionContext, type SessionSetRef } from "@/lib/coach/live-session";
+import { CoachLineRow } from "@/components/logger/CoachLine";
+import { fireCue } from "@/lib/logger/audio-cue";
 
 type Props = {
   userId: string;
@@ -18,10 +21,13 @@ type Props = {
   onReplace: (index: number) => void;
   onRemove: (index: number) => void;
   onReorderAll: () => void;
+  /** Snapshot fetched at logger open. Undefined while loading or on fetch
+   *  failure — the coaching line then degrades to silence. */
+  liveContext?: LiveSessionContext;
 };
 
 function ExerciseCardInner({
-  userId, externalId, exercise, exerciseIndex, allExercises, onExerciseChange, onReplace, onRemove, onReorderAll,
+  userId, externalId, exercise, exerciseIndex, allExercises, onExerciseChange, onReplace, onRemove, onReorderAll, liveContext,
 }: Props) {
   // Tier + rest prescription from session-structure annotation.
   const annotated = useMemo(() => {
@@ -39,6 +45,7 @@ function ExerciseCardInner({
   const [menuOpen, setMenuOpen] = useState(false);
   const [restDialogOpen, setRestDialogOpen] = useState(false);
   const [unparsedBanner, setUnparsedBanner] = useState<string | null>(null);
+  const [coachLine, setCoachLine] = useState<CoachLine | null>(null);
 
   const commitSet = useCallback((setIndex: number) => {
     const nowIso = new Date().toISOString();
@@ -47,13 +54,35 @@ function ExerciseCardInner({
       if (i !== setIndex) return s;
       return { ...s, committed_at: nowIso };
     });
+    const nextExercise = { ...exercise, sets: nextSets };
 
     // rest_seconds_actual on the NEXT pending set is captured at its own commit time.
-    onExerciseChange(exerciseIndex, { ...exercise, sets: nextSets });
+    onExerciseChange(exerciseIndex, nextExercise);
     setRestAfterSetIndex(setIndex);
     setActiveRestSeconds(effectiveRest);
     setActiveRestStartedAt(now);
-  }, [exercise, exerciseIndex, onExerciseChange, effectiveRest]);
+
+    // Between-sets coaching. Silent by design on an on-plan set, and silent
+    // whenever the context snapshot is unavailable. Runs against nextSets
+    // (post-commit) so the just-committed set is visible to the rules, and
+    // sessionSets spans ALL exercises so the failure budget counts session-wide.
+    if (liveContext) {
+      const committedSet = nextSets[setIndex];
+      const sessionSets: SessionSetRef[] = allExercises.flatMap((ex, i) =>
+        (i === exerciseIndex ? nextSets : ex.sets)
+          .filter((s) => !s.warmup && s.committed_at != null)
+          .map((s) => ({ exerciseName: ex.name, set: s })),
+      );
+      const line = evaluateSet({
+        set: committedSet,
+        exercise: nextExercise,
+        sessionSets,
+        context: liveContext,
+      });
+      setCoachLine(line);
+      if (line?.cue) fireCue();
+    }
+  }, [exercise, exerciseIndex, onExerciseChange, effectiveRest, liveContext, allExercises]);
 
   const uncommitSet = useCallback((setIndex: number) => {
     const nextSets = exercise.sets.map((s, i) =>
@@ -125,7 +154,7 @@ function ExerciseCardInner({
         <thead>
           <tr className="text-zinc-500 text-[10px]">
             <th className="text-left font-normal py-1">Set</th>
-            <th className="text-left font-normal py-1">Previous</th>
+            <th className="text-left font-normal py-1">Target / prev</th>
             <th className="text-left font-normal py-1">
               {exercise.prescribed.duration_seconds != null ? "Timer" : "kg"}
             </th>
@@ -152,6 +181,15 @@ function ExerciseCardInner({
                 }
                 isActive={!s.committed_at && exercise.sets.findIndex((x) => !x.committed_at) === i}
                 targetDurationSeconds={exercise.prescribed.duration_seconds ?? null}
+                target={
+                  exercise.prescribed.duration_seconds != null
+                    ? null
+                    : {
+                        kg: exercise.prescribed.baseKg ?? null,
+                        reps: exercise.prescribed.baseReps ?? null,
+                        rir: exercise.prescribed.rir ?? null,
+                      }
+                }
                 canRemove={exercise.sets.length > 1}
                 onChange={(patch) => patchSet(i, patch)}
                 onCommit={() => commitSet(i)}
@@ -159,6 +197,22 @@ function ExerciseCardInner({
                 onRemove={() => removeSet(i)}
                 onUnparsedVoice={setUnparsedBanner}
               />
+              {restAfterSetIndex === i && coachLine && (
+                <tr><td colSpan={7}>
+                  <CoachLineRow
+                    line={coachLine}
+                    onApply={(kg) => {
+                      // Only write into an EMPTY, uncommitted field — never
+                      // clobber a number the athlete is already typing.
+                      const target = exercise.sets.findIndex(
+                        (s2, j) => j > i && !s2.committed_at && s2.kg == null,
+                      );
+                      if (target >= 0) patchSet(target, { kg });
+                      setCoachLine(null);
+                    }}
+                  />
+                </td></tr>
+              )}
               {restAfterSetIndex === i && (
                 <tr><td colSpan={7}>
                   <RestBar
