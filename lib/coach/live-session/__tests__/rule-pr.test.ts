@@ -54,7 +54,8 @@ describe("rulePr", () => {
   it("reports the margin over the previous best", () => {
     const line = rulePr(mkInput({ kg: 100, reps: 5, best: 110 }));
     const e1rm = brzycki(100, 5)!;
-    expect(line!.text).toContain(`${Math.round((e1rm - 110) * 10) / 10}`);
+    const margin = Math.round((e1rm - 110) * 10) / 10;
+    expect(line!.text).toContain(`past your best by ${margin}.`);
   });
 
   it("stays silent when the set does not beat the best", () => {
@@ -70,9 +71,20 @@ describe("rulePr", () => {
     expect(rulePr(mkInput({ kg: 200, reps: 5, best: 110 }))).toBeNull();
   });
 
-  it("still fires just inside the 15 percent guard", () => {
-    // best 100, set 100x3 -> 105.9 e1RM = +5.9%
-    expect(rulePr(mkInput({ kg: 100, reps: 3, best: 100 }))).not.toBeNull();
+  it("fires just inside the 15 percent ceiling", () => {
+    // best 100, set 102x5 -> Brzycki ~114.75 = +14.75%
+    const line = rulePr(mkInput({ kg: 102, reps: 5, best: 100 }));
+    const e1rm = brzycki(102, 5)!;
+    expect(e1rm / 100).toBeLessThan(1.15);
+    expect(line).not.toBeNull();
+  });
+
+  it("stays silent just past the 15 percent ceiling", () => {
+    // best 100, set 102.3x5 -> Brzycki ~115.09 = +15.09%
+    const line = rulePr(mkInput({ kg: 102.3, reps: 5, best: 100 }));
+    const e1rm = brzycki(102.3, 5)!;
+    expect(e1rm / 100).toBeGreaterThan(1.15);
+    expect(line).toBeNull();
   });
 
   it("stays silent on warmup sets", () => {
