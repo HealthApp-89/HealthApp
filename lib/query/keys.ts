@@ -64,6 +64,15 @@ export const queryKeys = {
     one: (userId: string, exerciseName: string, workingSetOrdinal: number, excludeId: string | null) =>
       ["previous-set", userId, exerciseName.trim().toLowerCase(), "ws", workingSetOrdinal, excludeId ?? "none"] as const,
   },
+  liveSessionContext: {
+    one: (userId: string, date: string, exerciseNames: readonly string[]) =>
+      [
+        "live-session-context",
+        userId,
+        date,
+        [...exerciseNames].map((n) => n.trim().toLowerCase()).sort().join("|"),
+      ] as const,
+  },
   tokens: {
     whoop: (userId: string) => ["tokens", userId, "whoop"] as const,
     withings: (userId: string) => ["tokens", userId, "withings"] as const,
