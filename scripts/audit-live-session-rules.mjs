@@ -188,6 +188,109 @@ console.log("\n## evaluateSet — PR priority and guards\n");
   );
 }
 
+console.log("\n## evaluateSet — a PR fires ONCE per session, not once per set\n");
+
+{
+  // bestByExercise is frozen at logger open (.lt("date", today), staleTime
+  // Infinity), so nothing in it moves when a PR happens mid-session. The
+  // session-local high-water mark inside rule-pr.ts is what stops the identical
+  // line — and a second audio cue — from firing on every subsequent set at the
+  // same load. 100x5 = 112.5 Brzycki against a stored best of 110.
+  const name = "Decline Bench Press (Barbell)";
+  const s0 = mkSet({ set_index: 0, kg: 100, reps: 5, rir: 2 });
+  const s1 = mkSet({ set_index: 1, kg: 100, reps: 5, rir: 2 });
+  const s2 = mkSet({ set_index: 2, kg: 100, reps: 4, rir: 2 });
+  const s3 = mkSet({ set_index: 3, kg: 105, reps: 5, rir: 2 });
+
+  const withSets = (sets, current) => ({
+    ...mkInput({ set: current, sets, bestByExercise: { [name]: 110 } }),
+    set: current,
+  });
+
+  const first = evaluateSet(withSets([s0], s0));
+  assert("first set clearing the stored best fires the PR", first?.rule === "pr", `got ${JSON.stringify(first)}`);
+  assert("that PR carries the audio cue", first?.cue === true);
+
+  const repeat = evaluateSet(withSets([s0, s1], s1));
+  assert(
+    "an identical second set at the same load does NOT re-fire the PR",
+    repeat?.rule !== "pr",
+    `got ${JSON.stringify(repeat)}`,
+  );
+  assert("and therefore fires no second audio cue", repeat?.cue !== true, `got ${JSON.stringify(repeat)}`);
+
+  const lower = evaluateSet(withSets([s0, s1, s2], s2));
+  assert(
+    "a third set below the session best is not a PR either",
+    lower?.rule !== "pr",
+    `got ${JSON.stringify(lower)}`,
+  );
+
+  const genuine = evaluateSet(withSets([s0, s1, s2, s3], s3));
+  assert(
+    "a set that genuinely beats the new session best DOES fire again",
+    genuine?.rule === "pr",
+    `got ${JSON.stringify(genuine)}`,
+  );
+}
+
+console.log("\n## evaluateSet — drop-off is scoped: tier 1-2, once per exercise\n");
+
+{
+  // Lateral Raise (tier 3), baseReps 15, fixed load to RIR 2. 15/13/11/10 is a
+  // textbook accessory progression, not a stopping signal — and because
+  // drop-off outranks the load call, firing there cost the athlete the verdict
+  // as well as showing a wrong one.
+  const iso = [
+    mkSet({ set_index: 0, reps: 15, rir: 2 }),
+    mkSet({ set_index: 1, reps: 13, rir: 2 }),
+    mkSet({ set_index: 2, reps: 11, rir: 2 }),
+    mkSet({ set_index: 3, reps: 10, rir: 2 }),
+  ];
+  for (const i of [2, 3]) {
+    const line = evaluateSet(
+      mkInput({
+        name: "Lateral Raise (Dumbbell)",
+        set: iso[i],
+        sets: iso.slice(0, i + 1),
+        prescribed: { baseReps: 15 },
+      }),
+    );
+    assert(
+      `isolation set ${i + 1} of 15/13/11/10 draws no drop-off guardrail`,
+      line?.rule !== "drop_off",
+      `got ${JSON.stringify(line)}`,
+    );
+  }
+
+  // Same decay pattern on a tier-1 compound: fires exactly once.
+  const heavy = [
+    mkSet({ set_index: 0, reps: 12, rir: 2 }),
+    mkSet({ set_index: 1, reps: 9, rir: 2 }),
+    mkSet({ set_index: 2, reps: 7, rir: 2 }),
+    mkSet({ set_index: 3, reps: 6, rir: 2 }),
+    mkSet({ set_index: 4, reps: 5, rir: 2 }),
+  ];
+  const fired = evaluateSet(
+    mkInput({ set: heavy[2], sets: heavy.slice(0, 3), prescribed: { baseReps: 12 } }),
+  );
+  assert(
+    "tier-1 compound fires drop-off on the third set",
+    fired?.rule === "drop_off",
+    `got ${JSON.stringify(fired)}`,
+  );
+  for (const i of [3, 4]) {
+    const again = evaluateSet(
+      mkInput({ set: heavy[i], sets: heavy.slice(0, i + 1), prescribed: { baseReps: 12 } }),
+    );
+    assert(
+      `drop-off does not re-fire on set ${i + 1} — once per exercise`,
+      again?.rule !== "drop_off",
+      `got ${JSON.stringify(again)}`,
+    );
+  }
+}
+
 console.log("\n## evaluateSet — never throws\n");
 
 {

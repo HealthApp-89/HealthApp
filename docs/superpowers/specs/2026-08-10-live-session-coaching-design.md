@@ -126,6 +126,18 @@ export type LiveSessionContext = {
 };
 ```
 
+`blockPhase` is NOT computed in the fetcher. It comes from
+`computeWholeBlockPhase` (`lib/coach/prescription/whole-block-phase.ts`), the
+same function `prescribeWeek` calls — extracted out of `prescribe-week.ts` for
+exactly this reuse. The live rule gates load calls on the phase, so a local
+re-derivation means the coach offers an increase on a set the weekly engine
+froze. Three inputs have to match, and all three were wrong when hand-rolled:
+the focus lift is resolved from the WEEK's `session_plan` (not today's exercise
+list, or the same block reports a different phase depending on which day the
+logger is opened), and both `currentWorkingKg` and the progression rate are read
+off the **28-day** slice. The 180-day window is for `bestByExercise` and nothing
+else.
+
 ### Data flow
 
 `LiveSessionContext` is fetched **once, at logger open**, by a new hook
@@ -176,10 +188,18 @@ Priority order. First non-null wins; at most one line per committed set.
 **Guards:**
 
 - Silent when there is no prior history for the exercise (`best` is null) —
-  a first-ever entry is not a PR.
+  a first-ever entry is not a PR. This gate reads the STORED best only, so a
+  within-session ramp on a brand-new exercise cannot manufacture one either.
 - Silent when the implied e1RM jump exceeds **15%** in a single session. That
   is a mistyped weight far more often than a genuine PR, and a false
   celebration is worse than a missed one.
+- The bar is `max(storedBest, sessionBestBeforeThisSet)`. `bestByExercise` is a
+  snapshot frozen at logger open, so without a session-local high-water mark
+  three sets of 100×5 / 100×5 / 100×4 against a stored best of 110 emit the
+  identical PR line — and a second audio cue — on set 2. The mark is derived
+  from `sessionSets` inside the rule rather than held in module state, so the
+  rule stays pure; the just-committed set is excluded by `set_index`, or
+  nothing would ever clear its own bar.
 
 ### 2. Failure budget — `rule-failure-budget.ts`
 
@@ -193,13 +213,29 @@ set of a tier-3/4 isolation exercise (where training to failure is appropriate).
 
 ### 3. Drop-off — `rule-drop-off.ts`
 
-**Fires when** ≥3 working sets of this exercise are committed and the latest
-set's reps are below **75%** of the best working set at the same-or-higher load.
+**Fires when** the exercise is **tier 1 or 2**, ≥3 working sets of it are
+committed, and the latest set's reps are below **75%** of the best working set
+at the same-or-higher load. **At most once per exercise**, mirroring rest
+discipline.
 
 **Line:** `12 → 9 → 7. Past the useful range — last set or move on.`
 
-`kind: "guardrail"`. Rationale: rep drop-off at fixed load is the practical
-proxy for velocity loss, which is the standard in-session stopping criterion.
+`kind: "guardrail"`. Rationale: rep drop-off at fixed load is a practical
+stand-in for velocity loss. Be precise about the borrowing — the velocity-loss
+literature measures per-rep bar velocity WITHIN a set against a set-opening
+baseline, which no equipment here records. Inter-set rep counts are coarser and
+noisier, hence both scopes:
+
+- **Tier 1-2 only.** On isolation and finisher work a fixed load taken to a
+  fixed RIR is *supposed* to bleed reps set over set: a Lateral Raise at
+  `baseReps 15` running 15/13/11/10 is its own prescription executing
+  correctly. Firing there flagged a perfect accessory and, because drop-off
+  outranks the load call, swallowed the useful verdict too. Gating by tier is
+  preferred over globally tightening the 75% ratio, because the ratio at which
+  decay stops being normal genuinely differs by tier — one tighter number would
+  still be wrong in both directions.
+- **Once per exercise.** The condition stays true once reps have fallen, so
+  without the cap the rule re-fired on every set past the third.
 
 ### 4. Load call — `rule-load-call.ts`
 
@@ -284,8 +320,20 @@ directly beneath the set just committed and immediately above `RestBar`.
   `load_call`. Follows the existing token usage in `ExerciseCard`.
 - `role="status"` with `aria-live="polite"`.
 - When `apply_kg` is present the number is a tap target. Tapping writes it into
-  the next pending set's kg field via the existing `patchSet` callback and
-  nothing else.
+  the FIRST uncommitted set after the current one, via the existing `patchSet`
+  callback and nothing else. Target selection lives in
+  `lib/logger/apply-target.ts` so it can be unit-tested — the first version
+  additionally required `kg == null`, which no pending set ever satisfies
+  (`makeDraftFromPlan` pre-fills the prescribed `baseKg`), making the button a
+  permanent silent no-op.
+- The line is cleared and re-derived on every commit, including when the
+  context snapshot is unavailable — otherwise the previous set's verdict
+  re-renders under a later set.
+- Not rendered at all in the logger's **edit mode**: `hydrate-from-workout.ts`
+  stamps historical sets with a `committed_at`, so re-committing one while
+  editing a three-week-old workout would otherwise fire a live PR celebration
+  for a lift long since logged. `LoggerSheet` passes `liveContext={undefined}`;
+  the hook call itself stays unconditional (hook-order).
 - PRs additionally call `fireCue()` from `lib/logger/audio-cue.ts`.
 
 ### Target column
@@ -351,9 +399,10 @@ in a production build), then a real session in the gym.
 |---|---|
 | The line becomes wallpaper | The silence rule. Nothing on an on-plan set. |
 | A mistyped weight fakes a PR | Suppress e1RM jumps >15% in one session. |
-| Apply-tap races the athlete typing | Only write into an empty, uncommitted kg field. |
+| Apply-tap races the athlete typing | Only write into a LATER, uncommitted set. Requiring an empty field was tried and is unimplementable: pending sets are always pre-filled. |
 | Live and weekly engines disagree | Shared predicates and grid functions; anti-drift test. |
-| Guardrails read as nagging | Failure budget needs ≥2 prior failure sets; rest discipline caps at once per exercise. |
+| Guardrails read as nagging | Failure budget needs ≥2 prior failure sets; rest discipline and drop-off both cap at once per exercise; drop-off is further scoped to tier 1-2. |
+| A PR re-celebrates on every set at the same load | Session-local high-water mark in `rule-pr.ts`. |
 
 ## Dependency
 
