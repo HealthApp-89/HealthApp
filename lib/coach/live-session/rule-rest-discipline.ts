@@ -5,7 +5,18 @@
 //
 // ExerciseSetDraft.rest_seconds_actual is undefined mid-session, so this rule
 // derives rest itself — through the SAME helper that LoggerSheet writes to the
-// column, so the live number and the persisted one cannot drift.
+// column, so the MEASUREMENT cannot drift.
+//
+// The two callers do NOT agree on which set to measure from, and that is
+// deliberate: LoggerSheet's commitNow takes the previous COMMITTED set
+// (`arr[sIdx - 1]`, warmups included) because rest_seconds_actual is a
+// per-row record of the real gap that preceded that row, whatever came
+// before it. This rule takes the previous committed NON-WARMUP set, because
+// it judges rest against restPrescription, which describes inter-WORKING-set
+// rest only. They therefore differ on the first working set after a warmup —
+// the first exercise of every lifting day. See restBefore for why counting a
+// warmup there would false-flag and then, via the once-per-exercise gate,
+// permanently silence the rule for that exercise.
 //
 // That shared helper is restBetweenSets. It measures true rest: from the prior
 // set's real end (started_at + work_seconds) to this set's real start. The

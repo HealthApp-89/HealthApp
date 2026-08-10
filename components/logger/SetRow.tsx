@@ -41,6 +41,16 @@ type Props = {
   onUnparsedVoice: (transcript: string) => void;
 };
 
+/** m:ss for the committed-row work stamp. Same shape SetEntryRow's `◷ 0:33
+ *  work` chip uses — that chip lives inside the zoom and unmounts on Save, so
+ *  without this the athlete could never see an individual set's work time
+ *  again, only the Finish summary's aggregate. */
+function mmss(total: number): string {
+  const m = Math.floor(total / 60);
+  const r = total % 60;
+  return `${m}:${r.toString().padStart(2, "0")}`;
+}
+
 export function SetRow({
   userId, exerciseName, excludeWorkoutExternalId, set, workingSetNumber,
   isActive, editMode, targetDurationSeconds, target, canRemove, onChange, onCommit, onUncommit, onRemove, onUnparsedVoice,
@@ -87,6 +97,16 @@ export function SetRow({
 
   const committed = !!set.committed_at;
   const [badgeOpen, setBadgeOpen] = useState(false);
+
+  // Per-row work stamp for a committed, TIMED set. Rendered inside the
+  // existing Target/prev cell — no extra <td>, so both the 6-column
+  // (time-based) and 7-column (rep-based) variants still match their headers.
+  // Null `work_seconds` renders NOTHING at all: hand-logged sets, Strong CSV
+  // imports and pre-0056 rows are legitimately untimed, and a "0s" or a dashed
+  // chip would assert a measurement that was never taken.
+  const workStamp = committed && set.work_seconds != null
+    ? `◷ ${mmss(set.work_seconds)}`
+    : null;
 
   // Badge selection owns the failure⇄RIR coupling: F means 0 reps in reserve
   // by definition, so it auto-fills rir=0 (draft synced — it's local state).
@@ -184,8 +204,11 @@ export function SetRow({
         // so it gets its own hand-editable seconds field here, matching how
         // the rep-based row below stays hand-editable in edit mode too.
         <>
-          <td className="py-1 text-[10.5px] text-zinc-600">
-            {targetDurationSeconds}s target
+          <td className="py-1 text-[10.5px] text-zinc-600 leading-tight">
+            <div>{targetDurationSeconds}s target</div>
+            {workStamp && (
+              <div className="font-mono tabular-nums" title="Time under load">{workStamp}</div>
+            )}
           </td>
           <td className="py-1"></td>
           <td className="py-1">
@@ -253,7 +276,15 @@ export function SetRow({
               </div>
             )}
             <div className="text-zinc-600">
-              {prev.data ? (
+              {/* Second line of the cell, one thing at a time. The previous-set
+                  hint is a pre-set aid — `usePreviousSet` is disabled once the
+                  row commits — so on a committed timed row the work stamp
+                  takes the slot rather than adding a third line and breaking
+                  the table's density. A committed UNTIMED row keeps whatever
+                  it showed before. */}
+              {workStamp ? (
+                <span className="font-mono tabular-nums" title="Time under load">{workStamp}</span>
+              ) : prev.data ? (
                 <span title={prev.data.fallback ? `Last available set on ${prev.data.workout_date}` : prev.data.workout_date}>
                   {prev.data.kg === null ? "BW" : fmtNum(prev.data.kg)} × {prev.data.reps ?? "—"}
                   {prev.data.fallback && <span className="text-zinc-700">·</span>}

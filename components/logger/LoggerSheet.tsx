@@ -249,6 +249,13 @@ function remapTimerExercises(
  * showing the prescription while `press_stop` seeds rest from the override.
  * Keeping only the entries whose card did NOT remount makes them agree by
  * construction. (Keying by exercise name would not: the card still remounts.)
+ *
+ * This helper covers the list edits that MOVE indices — Remove and Reorder.
+ * Replace is the third remount trigger and cannot be expressed as an index map:
+ * the index is unchanged, but the card's `key` embeds `ex.name`, so swapping
+ * the name remounts it just the same — and the surviving override would then
+ * belong to a DIFFERENT exercise. The replace branch therefore deletes its own
+ * entry outright; see the ExercisePicker `onPick` handler below.
  */
 function keepUnmovedRestOverrides(
   overrides: Record<number, number>,
@@ -586,7 +593,23 @@ export function LoggerSheet(props: Props) {
           ),
         },
       );
-      return { ...prev, exercises, updated_at: nowIso };
+      // The dock stays armed on the set in play, so a manual ○ on THAT set
+      // would leave phase:"running" pointing at an already-committed row. The
+      // circle still reads STOP, and the athlete may well tap it minutes later
+      // — "Start this set" is hidden mid-set, so the dock is the only thing
+      // offering an action — at which point `handleStop` stamps the whole gap
+      // as `work_seconds` and it reaches `exercise_sets`, poisoning
+      // restBetweenSets, the work:rest ratio and `rest_seconds_actual`. Same
+      // failure class, same remedy as `pauseAndClose`: drop the timer. The
+      // set was committed by hand, so it is untimed by definition — its
+      // `work_seconds` stays null, which every consumer already reads as
+      // "not timed".
+      const cur = timerOf(prev);
+      const midSet = cur.phase === "countdown" || cur.phase === "running";
+      const timer = midSet && sameSet(cur.activeSet, { exerciseIndex, setIndex })
+        ? timerReducer(cur, { type: "reset" })
+        : prev.timer ?? null;
+      return { ...prev, exercises, timer, updated_at: nowIso };
     });
     setPendingCoachEval({ exerciseIndex, setIndex });
   }, []);
@@ -1179,6 +1202,19 @@ export function LoggerSheet(props: Props) {
               const idx = pickerMode.replace_index;
               // The line named the exercise that just got replaced.
               setCoach(null);
+              // ExerciseCard's key embeds `ex.name`, so the rename remounts
+              // the card and resets its LOCAL restOverrideSeconds to null.
+              // The lifted copy has to go with it or `press_stop` would seed
+              // rest from an override belonging to the exercise that is no
+              // longer there, while the card's "+ Add set (m:ss)" label shows
+              // the new exercise's prescription. Same invariant
+              // keepUnmovedRestOverrides exists to hold, different trigger.
+              setRestOverrides((o) => {
+                if (!(idx in o)) return o;
+                const next = { ...o };
+                delete next[idx];
+                return next;
+              });
               setDraft({
                 ...draft,
                 exercises: draft.exercises.map((e, j) => j === idx ? { ...e, name } : e),
