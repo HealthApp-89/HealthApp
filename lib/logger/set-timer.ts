@@ -157,3 +157,45 @@ export function restRemaining(state: TimerState, nowMs: number): number {
 export function isRestOvertime(state: TimerState, nowMs: number): boolean {
   return state.phase === "rest" && restRemaining(state, nowMs) < 0;
 }
+
+/** The two set shapes restBetweenSets needs. Structural so both
+ *  ExerciseSetDraft and a plain DB row satisfy it. */
+type RestPrevSet = {
+  started_at?: string | null;
+  work_seconds?: number | null;
+  committed_at: string | null;
+};
+type RestNextSet = {
+  started_at?: string | null;
+  committed_at: string | null;
+};
+
+/**
+ * Seconds of ACTUAL rest between two consecutive committed sets.
+ *
+ * Preferred path uses true anchors: the previous set ended at
+ * `started_at + work_seconds`, so rest is the gap from there to the next set's
+ * start. The legacy path — commit timestamp deltas — measured rest PLUS set
+ * execution, which is why ruleRestDiscipline's own header called it a proxy.
+ *
+ * Falls back to that proxy whenever either side lacks timer data, so
+ * hand-logged sets, Strong imports, and pre-0056 rows keep their old value
+ * rather than silently becoming null.
+ */
+export function restBetweenSets(prev: RestPrevSet, next: RestNextSet): number | null {
+  if (prev.started_at && prev.work_seconds != null && next.started_at) {
+    const prevEnd = Date.parse(prev.started_at) + prev.work_seconds * 1000;
+    const nextStart = Date.parse(next.started_at);
+    if (Number.isFinite(prevEnd) && Number.isFinite(nextStart)) {
+      return Math.max(0, Math.round((nextStart - prevEnd) / 1000));
+    }
+  }
+
+  if (prev.committed_at && next.committed_at) {
+    const delta = Date.parse(next.committed_at) - Date.parse(prev.committed_at);
+    if (!Number.isFinite(delta) || delta < 0) return null;
+    return Math.round(delta / 1000);
+  }
+
+  return null;
+}

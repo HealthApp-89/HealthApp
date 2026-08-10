@@ -11,6 +11,7 @@ import {
   restRemaining,
   isRestOvertime,
   sameSet,
+  restBetweenSets,
   type TimerState,
 } from "@/lib/logger/set-timer";
 
@@ -205,5 +206,50 @@ describe("sameSet", () => {
     expect(sameSet(SET_A, SET_B)).toBe(false);
     expect(sameSet(null, null)).toBe(false);
     expect(sameSet(SET_A, null)).toBe(false);
+  });
+});
+
+describe("restBetweenSets", () => {
+  const iso = (ms: number) => new Date(ms).toISOString();
+
+  it("measures true rest: next start minus previous end", () => {
+    const prev = { started_at: iso(T0), work_seconds: 33, committed_at: iso(T0 + 38_000) };
+    // Previous set truly ended at T0+33s. Next set starts 175s later.
+    const next = { started_at: iso(T0 + 33_000 + 175_000), committed_at: iso(T0 + 260_000) };
+    expect(restBetweenSets(prev, next)).toBe(175);
+  });
+
+  it("excludes set-execution time that the commit-delta proxy included", () => {
+    const prev = { started_at: iso(T0), work_seconds: 40, committed_at: iso(T0 + 45_000) };
+    const next = { started_at: iso(T0 + 100_000), committed_at: iso(T0 + 140_000) };
+    // Commit-to-commit would say 95s. True rest is 100 - 40 = 60s.
+    expect(restBetweenSets(prev, next)).toBe(60);
+  });
+
+  it("falls back to the commit delta when the previous set was not timed", () => {
+    const prev = { started_at: null, work_seconds: null, committed_at: iso(T0) };
+    const next = { started_at: iso(T0 + 120_000), committed_at: iso(T0 + 150_000) };
+    expect(restBetweenSets(prev, next)).toBe(150);
+  });
+
+  it("falls back to the commit delta when the next set was not timed", () => {
+    const prev = { started_at: iso(T0), work_seconds: 30, committed_at: iso(T0 + 35_000) };
+    const next = { started_at: null, committed_at: iso(T0 + 155_000) };
+    expect(restBetweenSets(prev, next)).toBe(120);
+  });
+
+  it("returns null when there is no commit timestamp to fall back on", () => {
+    expect(
+      restBetweenSets(
+        { started_at: null, work_seconds: null, committed_at: null },
+        { started_at: null, committed_at: iso(T0) },
+      ),
+    ).toBeNull();
+  });
+
+  it("clamps a negative result to zero rather than emitting nonsense", () => {
+    const prev = { started_at: iso(T0), work_seconds: 200, committed_at: iso(T0 + 205_000) };
+    const next = { started_at: iso(T0 + 100_000), committed_at: iso(T0 + 130_000) };
+    expect(restBetweenSets(prev, next)).toBe(0);
   });
 });
