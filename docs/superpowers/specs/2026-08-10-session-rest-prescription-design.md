@@ -10,13 +10,13 @@
 Three defects in how the app prescribes rest.
 
 **1. The values are ranges, and the logger silently takes the bottom of every one.**
-`restPrescription` returns `{min, max}`. [ExerciseCard.tsx:33](../../../components/logger/ExerciseCard.tsx#L33) reads `.min`. So a heavy compound prescribed "3–5 min" runs a 3-minute timer, every time. The athlete never sees the top of the range unless they read the chip on the brief and override manually. A range that one consumer always resolves to its floor is not a range — it is a lower value with extra display noise.
+`restPrescription` returns `{min, max}`. [ExerciseCard.tsx:41](../../../components/logger/ExerciseCard.tsx#L41) reads `.min`. So a heavy compound prescribed "3–5 min" runs a 3-minute timer, every time. The athlete never sees the top of the range unless they read the chip on the brief and override manually. A range that one consumer always resolves to its floor is not a range — it is a lower value with extra display noise.
 
 **2. Rest between exercises does not exist as a concept.**
 The rest bar fires between sets within an `ExerciseCard`. When the last set of exercise N commits, the bar runs exercise N's set rest and then the athlete moves to card N+1 untimed. In practice the transition into a heavy compound needs more rest than the transition between two sets of an isolation — the current model cannot express that.
 
 **3. Warm-up rest is flat, including the ramp set immediately before a heavy top set.**
-`augmentWarmups` in [prescribe-week.ts:516](../../../lib/coach/prescription/prescribe-week.ts#L516) inserts two `warmup: true` `PlannedExercise` entries before the first loaded compound of every lifting day. All warm-up entries get 30–60 s. The second one is the last thing standing between the athlete and their heaviest working set of the day; 45 s there compromises the set the whole session is built around. Per the standing warm-up rule this fires on every lifting day.
+`augmentWarmups` in [prescribe-week.ts:495](../../../lib/coach/prescription/prescribe-week.ts#L495) inserts two `warmup: true` `PlannedExercise` entries before the first loaded compound of every lifting day. All warm-up entries get 30–60 s. The second one is the last thing standing between the athlete and their heaviest working set of the day; 45 s there compromises the set the whole session is built around. Per the standing warm-up rule this fires on every lifting day.
 
 **4. A manual rest override does not survive the session.**
 The logger's "Edit rest time" dialog stores its value in `useState` on `ExerciseCard` rather than on the draft. It therefore vanishes on resume and on exercise reorder, and it does not reach a rest bar that is already counting down. The athlete's explicit correction to the engine is the one value in the logger that is not durable.
@@ -88,7 +88,7 @@ When exercise N is the last in the session, no transition bar fires; the existin
 The logger already has an "Edit rest time" dialog, and its value already governs every subsequent set of that exercise — `restOverrideSeconds` is `ExerciseCard`-level state feeding `effectiveRest`, which every `commitSet` reads. But it is `useState`, not draft data, and three holes make it behave as if it were not exercise-wide:
 
 1. **Lost on resume.** The override is not in `LoggerDraft`, so [draft-store.ts](../../../lib/logger/draft-store.ts) never mirrors it to IndexedDB. Close the sheet mid-session, reopen, and the timer silently reverts to the prescription with no indication anything changed.
-2. **Lost on reorder.** Cards are keyed `` `${draft.started_at}-${ex.name}-${i}` `` at [LoggerSheet.tsx:569](../../../components/logger/LoggerSheet.tsx#L569). The index in that key means reordering exercises remounts the cards and resets every override to null.
+2. **Lost on reorder.** Cards are keyed `` `${draft.started_at}-${ex.name}-${i}` `` at [LoggerSheet.tsx:587](../../../components/logger/LoggerSheet.tsx#L587). The index in that key means reordering exercises remounts the cards and resets every override to null.
 3. **Ignored by the running bar.** `activeRestSeconds` is snapshotted into state at commit time, so editing rest while a countdown is on screen does not touch the bar being watched. Only the *next* commit picks the new value up.
 
 Fix: move the override out of component state and onto the draft.
@@ -144,7 +144,7 @@ Scope boundaries:
 
 `UNDER_REST_RATIO` stays at 0.6. The old thresholds were low because the underlying prescriptions were the floors of ranges nobody honoured; now that the prescription is the honest number, 60% of it is the right line for "meaningfully under-rested". The guardrail firing more often is the intended consequence, not a regression — but it should be watched for nagging in the first week of live use, since the rule's own once-per-exercise gate is the only volume control.
 
-The existing fixtures in [evaluate-set.test.ts](../../../lib/coach/live-session/__tests__/evaluate-set.test.ts) that assert on rest deltas need their timings re-checked against the new thresholds.
+The existing fixtures in [evaluate-set.test.ts](../../../lib/coach/live-session/__tests__/evaluate-set.test.ts) that assert on rest deltas need their timings re-checked against the new thresholds. Line 59 of that file carries a comment pinning the old arithmetic verbatim (`restPrescription(tier 1, 5) = { min: 180 }. 60% = 108s.`) — it must be rewritten, not just the assertions around it.
 
 ## Testing
 
