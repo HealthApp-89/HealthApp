@@ -10,6 +10,12 @@ type Props = {
   workSeconds: number;
   /** Time-based exercise: show a single seconds field instead of kg/reps/RIR. */
   timeBased: boolean;
+  /** What the prescription itself specifies, used ONLY to tell "the athlete
+   *  cleared a field the plan asks for" apart from "this exercise has no such
+   *  field". Bodyweight and mobility work carries neither — see the Save
+   *  guard below. */
+  prescribedKg: number | null;
+  prescribedReps: number | null;
   canRemove: boolean;
   onChange: (patch: Partial<ExerciseSetDraft>) => void;
   onSave: () => void;
@@ -23,7 +29,8 @@ function mmss(total: number): string {
 }
 
 export function SetEntryRow({
-  set, workingSetNumber, workSeconds, timeBased, canRemove, onChange, onSave, onRemove,
+  set, workingSetNumber, workSeconds, timeBased, prescribedKg, prescribedReps,
+  canRemove, onChange, onSave, onRemove,
 }: Props) {
   const [badgeOpen, setBadgeOpen] = useState(false);
   const [draftKg, setDraftKg] = useState(set.kg !== null ? String(set.kg) : "");
@@ -86,20 +93,32 @@ export function SetEntryRow({
   };
 
   /**
-   * The same commit guard SetRow puts on its ○ button, so the manual path and
-   * the zoom cannot disagree about what counts as a loggable set.
+   * Block Save only on data that is genuinely MISSING — a field the plan asks
+   * for that the athlete has emptied. Never on a field the exercise does not
+   * have.
+   *
+   * A blanket "kg and reps must both be non-null" (SetRow's guard, transplanted
+   * whole) bricks this button on every bodyweight and mobility prescription:
+   * Push Up — the first row of every Push session — plus Dead Bug, Reverse
+   * Crunch, Back Extension and most of the Wednesday mobility list carry no
+   * `baseKg`, and several carry no `baseReps` either. Those athletes were being
+   * told "Enter a weight to save" on a bodyweight movement. So each half is
+   * gated on the prescription actually specifying that field.
    *
    * Evaluated against the LOCAL field values rather than `set`, deliberately.
    * The draft only catches up on blur, and a `disabled` button swallows the
    * very tap that would have blurred the input — reading `set.reps` would leave
    * Save dead under a rep count the athlete can plainly see. This asks the
-   * honest question instead: would saving right now write a null?
+   * honest question instead: would saving right now drop a number the plan
+   * expects?
    *
-   * Time-based work is measured in seconds and legitimately carries neither, so
-   * it is exempt. Warmups are exempt from the kg half, as in SetRow.
+   * Time-based work is measured in seconds and carries neither. Warmups are
+   * exempt from the kg half, as in SetRow.
    */
-  const missingKg = !timeBased && !set.warmup && num(draftKg, parseFloat) === null;
-  const missingReps = !timeBased && num(draftReps, (s) => parseInt(s, 10)) === null;
+  const missingKg =
+    !timeBased && !set.warmup && prescribedKg != null && num(draftKg, parseFloat) === null;
+  const missingReps =
+    !timeBased && prescribedReps != null && num(draftReps, (s) => parseInt(s, 10)) === null;
   const cannotSave = missingKg || missingReps;
 
   return (

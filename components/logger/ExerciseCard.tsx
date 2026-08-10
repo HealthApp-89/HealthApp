@@ -216,6 +216,8 @@ function ExerciseCardInner({
                     workingSetNumber={workingSetNumber}
                     workSeconds={pendingEntry.workSeconds}
                     timeBased={timeBased}
+                    prescribedKg={exercise.prescribed.baseKg ?? null}
+                    prescribedReps={exercise.prescribed.baseReps ?? null}
                     canRemove={exercise.sets.length > 1}
                     onChange={(patch) => patchSet(i, patch)}
                     onSave={() => onEntrySave({ exerciseIndex, setIndex: i })}
