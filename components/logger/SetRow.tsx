@@ -49,6 +49,21 @@ export function SetRow({
   const [draftReps, setDraftReps] = useState<string>(set.reps !== null ? String(set.reps) : "");
   const [draftRir, setDraftRir] = useState<string>(set.rir !== null && set.rir !== undefined ? String(set.rir) : "");
 
+  // draftKg is otherwise mount-only local state, so an external write to
+  // set.kg (the apply-tap in ExerciseCard calling patchSet directly) would
+  // never reach this input — the box would keep showing stale/blank text,
+  // and a stray focus+blur with no typing would then overwrite the applied
+  // value back to null via the onBlur handler below. Re-sync draftKg only
+  // when the PROP itself changes (tracked via a ref so in-progress typing,
+  // which changes draftKg but not set.kg, is never fought).
+  const lastKgProp = useRef(set.kg);
+  useEffect(() => {
+    if (set.kg !== lastKgProp.current) {
+      lastKgProp.current = set.kg;
+      setDraftKg(set.kg !== null ? String(set.kg) : "");
+    }
+  }, [set.kg]);
+
   // Timer mode: local started_at (ms). Ticks every 250ms while running.
   // Resets when the set is uncommitted.
   const [timerStartedAt, setTimerStartedAt] = useState<number | null>(null);
