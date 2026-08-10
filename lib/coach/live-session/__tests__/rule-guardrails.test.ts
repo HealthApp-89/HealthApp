@@ -181,4 +181,73 @@ describe("ruleDropOff", () => {
       ruleDropOff(mkInput({ name: "Squat (Barbell)", sets: [w, s1, s2, s3], current: s3 })),
     ).toBeNull();
   });
+
+  // ── scope: tier 1-2 only ────────────────────────────────────────────────
+  //
+  // On isolation work a fixed load taken to a fixed RIR is SUPPOSED to bleed
+  // reps set over set. Firing there flagged a textbook accessory AND, because
+  // drop-off outranks the load call, swallowed the useful verdict.
+
+  it("stays silent on isolation work — rep decay there is the prescription working", () => {
+    // Lateral Raise (tier 3), baseReps 15, fixed load to RIR 2: 15/13/11/10.
+    // Set 3 is 11 < 15 x 0.75 = 11.25, so the ungated rule would fire here.
+    const s0 = mkSet({ set_index: 0, reps: 15 });
+    const s1 = mkSet({ set_index: 1, reps: 13 });
+    const s2 = mkSet({ set_index: 2, reps: 11 });
+    const s3 = mkSet({ set_index: 3, reps: 10 });
+    expect(
+      ruleDropOff(mkInput({ name: "Lateral Raise (Dumbbell)", sets: [s0, s1, s2], current: s2 })),
+    ).toBeNull();
+    expect(
+      ruleDropOff(mkInput({ name: "Lateral Raise (Dumbbell)", sets: [s0, s1, s2, s3], current: s3 })),
+    ).toBeNull();
+  });
+
+  it("still fires on a tier-2 secondary compound", () => {
+    const s0 = mkSet({ set_index: 0, reps: 12 });
+    const s1 = mkSet({ set_index: 1, reps: 9 });
+    const s2 = mkSet({ set_index: 2, reps: 7 });
+    expect(
+      ruleDropOff(mkInput({ name: "Romanian Deadlift (Barbell)", sets: [s0, s1, s2], current: s2 })),
+    ).not.toBeNull();
+  });
+
+  // ── scope: once per exercise ────────────────────────────────────────────
+
+  it("does not re-fire on a fourth set once it has already flagged", () => {
+    const s0 = mkSet({ set_index: 0, reps: 12 });
+    const s1 = mkSet({ set_index: 1, reps: 9 });
+    const s2 = mkSet({ set_index: 2, reps: 7 }); // fires
+    const s3 = mkSet({ set_index: 3, reps: 6 }); // condition still true — must be silent
+    expect(
+      ruleDropOff(mkInput({ name: "Squat (Barbell)", sets: [s0, s1, s2], current: s2 })),
+    ).not.toBeNull();
+    expect(
+      ruleDropOff(mkInput({ name: "Squat (Barbell)", sets: [s0, s1, s2, s3], current: s3 })),
+    ).toBeNull();
+  });
+
+  it("does not re-fire on a fifth set either", () => {
+    const sets = [
+      mkSet({ set_index: 0, reps: 12 }),
+      mkSet({ set_index: 1, reps: 9 }),
+      mkSet({ set_index: 2, reps: 7 }),
+      mkSet({ set_index: 3, reps: 6 }),
+      mkSet({ set_index: 4, reps: 5 }),
+    ];
+    expect(
+      ruleDropOff(mkInput({ name: "Squat (Barbell)", sets, current: sets[4] })),
+    ).toBeNull();
+  });
+
+  it("fires on the first qualifying set even when an EARLIER set held up fine", () => {
+    // Only a set that would itself have fired suppresses later ones.
+    const s0 = mkSet({ set_index: 0, reps: 12 });
+    const s1 = mkSet({ set_index: 1, reps: 11 }); // holds up — no fire
+    const s2 = mkSet({ set_index: 2, reps: 10 }); // holds up (10 >= 9) — no fire
+    const s3 = mkSet({ set_index: 3, reps: 8 });  // 8 < 9 — first fire
+    expect(
+      ruleDropOff(mkInput({ name: "Squat (Barbell)", sets: [s0, s1, s2, s3], current: s3 })),
+    ).not.toBeNull();
+  });
 });
