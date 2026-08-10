@@ -656,15 +656,29 @@ export function LoggerSheet(props: Props) {
       const exercises = prev.exercises.map((ex, ei) =>
         ei !== set.exerciseIndex ? ex : {
           ...ex,
-          sets: ex.sets.map((s, si) =>
-            si !== set.setIndex ? s : { ...s, started_at: null, work_seconds: null },
-          ),
+          sets: ex.sets.map((s, si) => {
+            if (si !== set.setIndex) return s;
+            // Edit mode runs no live timer, so there is nothing to clear here
+            // — and blanking would be destructive: a hydrated set's
+            // started_at/work_seconds are the saved workout's GENUINE timing
+            // (Task 7), not timer scratch state. Un-committing during an edit
+            // must leave them intact so a re-commit doesn't write nulls over
+            // real recorded data.
+            if (props.editMode) return s;
+            return { ...s, started_at: null, work_seconds: null };
+          }),
         },
       );
       return withTimer({ ...prev, exercises }, timerReducer(timerOf(prev), { type: "clear_for_set", set }));
     });
     // The verdict was about a set that no longer counts as committed.
     setCoach((c) => (c && sameSet(c.set, set) ? null : c));
+    // `[]` deliberately: `props.editMode` is fixed for the lifetime of a
+    // mounted LoggerSheet (every caller either always passes it or never
+    // does — see EditSessionButton vs. the fresh-session callers), so a
+    // stale closure over it can never actually go stale. Keeping it out of
+    // the deps array preserves this callback's referential identity across
+    // re-renders, which ExerciseCard (memo-wrapped) depends on.
   }, []);
 
   /**
