@@ -33,6 +33,85 @@ export type PreviousSet = {
   fallback: boolean;
 };
 
+/** One workout row as the query below returns it. Exported so the pure
+ *  selector can be unit-tested without a Supabase client. */
+export type PreviousSetWorkoutRow = {
+  date: string;
+  exercises:
+    | Array<{
+        name: string;
+        /** Ordering of this exercise within the workout. Load-bearing: one
+         *  exercise can occupy several rows (see selectPreviousWorkingSet). */
+        position?: number | null;
+        exercise_sets: Array<{
+          set_index: number;
+          kg: number | null;
+          reps: number | null;
+          warmup: boolean;
+        }> | null;
+      }>
+    | null;
+};
+
+/**
+ * Pick the prior working set at `workingSetOrdinal` for `normalizedTarget`,
+ * scanning `workouts` newest-first.
+ *
+ * The subtlety this function exists for: ONE exercise can be stored as
+ * SEVERAL `exercises` rows sharing the same name. `augmentWarmups` in
+ * prescribe-week.ts emits each warmup as its own `PlannedExercise`, so a
+ * squat day persists three rows all called "Squat (Barbell)" — two
+ * warmup-only, then the working row.
+ *
+ * The original implementation used `.find()`, matched the FIRST such row (a
+ * warmup), saw no working sets in it, and skipped the whole workout — then
+ * repeated that for every session since warmups shipped, eventually
+ * surfacing a pre-warmup workout months old. The athlete squatted 80 × 7 × 3
+ * and the logger showed 65 × 10 from ten weeks earlier.
+ *
+ * So: gather the sets from EVERY row whose normalized name matches, ordered
+ * by (position, set_index), and only then drop warmups and index by ordinal.
+ */
+export function selectPreviousWorkingSet(
+  workouts: readonly PreviousSetWorkoutRow[],
+  normalizedTarget: string,
+  workingSetOrdinal: number,
+): PreviousSet | null {
+  for (const w of workouts) {
+    const matching = (w.exercises ?? []).filter(
+      (e) => normalizeExerciseName(e.name) === normalizedTarget,
+    );
+    if (matching.length === 0) continue;
+
+    const workingSets = matching
+      .flatMap((e, rowIdx) =>
+        (e.exercise_sets ?? []).map((s) => ({
+          ...s,
+          // Fall back to the array order when position is absent, so rows
+          // never collapse onto a single sort key.
+          rowOrder: e.position ?? rowIdx,
+        })),
+      )
+      .filter((s) => !s.warmup)
+      .sort((a, b) => a.rowOrder - b.rowOrder || a.set_index - b.set_index);
+
+    if (workingSets.length === 0) continue;
+
+    const exact = workingSets[workingSetOrdinal - 1];
+    if (exact) {
+      return { kg: exact.kg, reps: exact.reps, workout_date: w.date, fallback: false };
+    }
+
+    // Set-count overrun — today's ordinal is past the end of that session's
+    // working-set list. Return its last working set as a "here's your prior
+    // heavy effort" anchor, flagged so the UI can mark it.
+    const last = workingSets[workingSets.length - 1];
+    return { kg: last.kg, reps: last.reps, workout_date: w.date, fallback: true };
+  }
+
+  return null;
+}
+
 type PreviousSetArgs = {
   userId: string;
   exerciseName: string;
@@ -56,7 +135,7 @@ const previousSetFetcher = createFetcher(
     let workoutsQ = supabase
       .from("workouts")
       .select(
-        "id, date, external_id, exercises!inner(id, name, exercise_sets(set_index, kg, reps, warmup))",
+        "id, date, external_id, exercises!inner(id, name, position, exercise_sets(set_index, kg, reps, warmup))",
       )
       .eq("user_id", args.userId)
       .ilike("exercises.name", `%${normalizedTarget}%`)
@@ -70,51 +149,14 @@ const previousSetFetcher = createFetcher(
     const { data, error } = await workoutsQ;
     if (error) throw error;
 
-    for (const w of data ?? []) {
-      const exercises = w.exercises as Array<{
-        name: string;
-        exercise_sets: Array<{
-          set_index: number;
-          kg: number | null;
-          reps: number | null;
-          warmup: boolean;
-        }>;
-      }>;
-
-      // Exact normalized match — guards against the loose ILIKE catching
-      // unrelated lifts that happen to share a substring.
-      const ex = exercises?.find((e) => normalizeExerciseName(e.name) === normalizedTarget);
-      if (!ex?.exercise_sets?.length) continue;
-
-      const workingSets = [...ex.exercise_sets]
-        .sort((a, b) => a.set_index - b.set_index)
-        .filter((s) => !s.warmup);
-
-      if (workingSets.length === 0) continue;
-
-      const exact = workingSets[args.workingSetOrdinal - 1];
-      if (exact) {
-        return {
-          kg: exact.kg,
-          reps: exact.reps,
-          workout_date: w.date as string,
-          fallback: false,
-        };
-      }
-
-      // Set-count overrun — today's ordinal is past the end of last session's
-      // working-set list. Return the last available working set as a "here's
-      // your prior heavy effort" anchor, flagged so the UI can mark it.
-      const last = workingSets[workingSets.length - 1];
-      return {
-        kg: last.kg,
-        reps: last.reps,
-        workout_date: w.date as string,
-        fallback: true,
-      };
-    }
-
-    return null;
+    // Selection lives in a pure, unit-tested helper — the exact normalized
+    // match (which rejects the loose ILIKE's substring false-positives) and
+    // the multi-row gathering both happen there.
+    return selectPreviousWorkingSet(
+      (data ?? []) as unknown as PreviousSetWorkoutRow[],
+      normalizedTarget,
+      args.workingSetOrdinal,
+    );
   },
 );
 
