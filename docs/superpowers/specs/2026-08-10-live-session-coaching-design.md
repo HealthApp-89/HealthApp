@@ -256,6 +256,22 @@ weight.
 rather than nags. The over-resting case (padding on accessories) is dropped
 from v1 — it is real but not costly enough to spend a line on.
 
+**Warmups are excluded from the measurement on both sides.** Every lifting
+day's first exercise carries warmup sets in the same `exercise.sets[]` /
+`set_index` space as the working sets, and the warmup-to-first-working-set
+transition is legitimately short — it is not the inter-working-set rest that
+`restPrescription` describes. Counting a warmup as the "prior" set would
+false-flag that transition and, through the once-per-exercise gate, then
+suppress the rule for the remainder of the exercise. The accepted consequence
+is that the first working set of an exercise stays silent: there is nothing to
+judge until a second working set exists. The once-per-exercise scan skips
+warmups for the same reason.
+
+Rest is derived from `committed_at` deltas between working sets, NOT from
+`ExerciseSetDraft.rest_seconds_actual` — that field is undefined mid-session
+and only gets populated at commit time. Deriving it the same way keeps the
+live number consistent with the one eventually persisted.
+
 ## Surface
 
 A `CoachLine` component rendered inside `ExerciseCard`, in the row slot
