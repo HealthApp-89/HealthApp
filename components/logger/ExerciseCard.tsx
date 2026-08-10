@@ -30,6 +30,12 @@ type Props = {
   /** Athlete tapped START on a specific set row. Undefined in edit mode, where
    *  no live timer runs and the affordance must not be offered. */
   onTimerStart?: (set: SetRef) => void;
+  /** True inside a hydrated historical-workout edit. Edit mode has no dock and
+   *  no `onTimerStart`, so a time-based row's ONLY commit path is its own
+   *  hand-editable seconds field — see SetRow. Threaded explicitly rather than
+   *  inferred from `onTimerStart == null` so the intent reads at the call
+   *  site instead of being reconstructed from an unrelated prop's absence. */
+  editMode: boolean;
   /** Manual ○ commit. Owned by LoggerSheet so the between-sets coaching line
    *  has ONE evaluation site shared with the timer-driven commit paths. */
   onSetCommit: (exerciseIndex: number, setIndex: number) => void;
@@ -61,7 +67,7 @@ type Props = {
 
 function ExerciseCardInner({
   userId, externalId, exercise, exerciseIndex, allExercises, onExerciseChange, onReplace, onRemove, onReorderAll,
-  timer, onTimerStart, onSetCommit, onEntrySave, onSetCleared, onSetRemove, onRestOverrideChange,
+  timer, onTimerStart, editMode, onSetCommit, onEntrySave, onSetCleared, onSetRemove, onRestOverrideChange,
   onRestDialogOpenChange, coachLine, coachLineSetIndex, onCoachLineDismiss,
 }: Props) {
   // Tier + rest prescription from session-structure annotation.
@@ -137,6 +143,11 @@ function ExerciseCardInner({
   const liveHere = midSet && timer.activeSet?.exerciseIndex === exerciseIndex;
 
   const timeBased = exercise.prescribed.duration_seconds != null;
+  // Table has 6 columns for a time-based exercise (no RIR header) vs 7 for a
+  // rep-based one — see the <thead> above. Full-width rows spanning the whole
+  // table (the zoom, the coach line, "Start this set") need to match, or the
+  // browser silently clips/pads rather than erroring.
+  const columnCount = timeBased ? 6 : 7;
   /** The zoomed entry row, when the open one belongs to this exercise. */
   const pendingEntry =
     timer.pendingEntry && timer.pendingEntry.exerciseIndex === exerciseIndex
@@ -190,7 +201,12 @@ function ExerciseCardInner({
             <th className="text-left font-normal py-1">Set</th>
             <th className="text-left font-normal py-1">Target / prev</th>
             <th className="text-left font-normal py-1">
-              {exercise.prescribed.duration_seconds != null ? "Timer" : "kg"}
+              {/* Time-based: this column has no per-row control any more —
+                  the dock (live mode) or the seconds field itself (edit mode,
+                  one column over) drive it. Left blank rather than "Timer",
+                  which stopped being true when the inline play/stop button
+                  was removed. */}
+              {exercise.prescribed.duration_seconds != null ? "" : "kg"}
             </th>
             <th className="text-left font-normal py-1">
               {exercise.prescribed.duration_seconds != null ? "Seconds" : "Reps"}
@@ -210,7 +226,7 @@ function ExerciseCardInner({
             return (
             <Fragment key={i}>
               {pendingEntry && pendingEntry.setIndex === i ? (
-                <tr><td colSpan={7} className="p-0">
+                <tr><td colSpan={columnCount} className="p-0">
                   <SetEntryRow
                     set={s}
                     workingSetNumber={workingSetNumber}
@@ -232,6 +248,7 @@ function ExerciseCardInner({
                   set={s}
                   workingSetNumber={workingSetNumber}
                   isActive={isActiveRow}
+                  editMode={editMode}
                   targetDurationSeconds={exercise.prescribed.duration_seconds ?? null}
                   target={
                     timeBased
@@ -251,7 +268,7 @@ function ExerciseCardInner({
                 />
               )}
               {coachLineSetIndex === i && coachLine && (
-                <tr><td colSpan={7}>
+                <tr><td colSpan={columnCount}>
                   <CoachLineRow
                     line={coachLine}
                     onApply={(kg) => {
@@ -268,7 +285,7 @@ function ExerciseCardInner({
                 </td></tr>
               )}
               {onTimerStart && isActiveRow && !midSet && (
-                <tr><td colSpan={7} className="pb-1">
+                <tr><td colSpan={columnCount} className="pb-1">
                   <button
                     type="button"
                     onClick={() => onTimerStart({ exerciseIndex, setIndex: i })}

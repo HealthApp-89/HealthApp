@@ -1122,6 +1122,7 @@ export function LoggerSheet(props: Props) {
             // Edit mode replays a historical workout — no live timer runs, so
             // the per-row START affordance must not be offered at all.
             onTimerStart={props.editMode ? undefined : handleTimerStart}
+            editMode={!!props.editMode}
             onSetCommit={handleSetCommit}
             onEntrySave={handleEntrySave}
             onSetCleared={handleSetCleared}

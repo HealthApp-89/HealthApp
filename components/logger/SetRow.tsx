@@ -17,6 +17,14 @@ type Props = {
    *  followed by a normal set show the normal one as "1", not "3". */
   workingSetNumber: number;
   isActive: boolean;
+  /** True inside a hydrated historical-workout edit (EditSessionButton). Edit
+   *  mode runs no live timer at all, so a time-based row has no dock and no
+   *  "Start this set" affordance to reach — it needs its own hand-editable
+   *  seconds field, the same way rep-based rows stay hand-editable there.
+   *  Live (fresh-session) mode keeps the row dock-driven and commit-only via
+   *  Save/auto-save, which is what closes the corruption path where a manual
+   *  commit could stamp `committed_at` with `duration_seconds` still null. */
+  editMode: boolean;
   /** When present, renders a countdown-timer set row (foam rolls, planks,
    *  dead hangs, etc.) instead of the kg/reps inputs. Counts down to 0 then
    *  continues counting up so the user can stop early or run over. */
@@ -35,11 +43,18 @@ type Props = {
 
 export function SetRow({
   userId, exerciseName, excludeWorkoutExternalId, set, workingSetNumber,
-  isActive, targetDurationSeconds, target, canRemove, onChange, onCommit, onUncommit, onRemove, onUnparsedVoice,
+  isActive, editMode, targetDurationSeconds, target, canRemove, onChange, onCommit, onUncommit, onRemove, onUnparsedVoice,
 }: Props) {
   const [draftKg, setDraftKg] = useState<string>(set.kg !== null ? String(set.kg) : "");
   const [draftReps, setDraftReps] = useState<string>(set.reps !== null ? String(set.reps) : "");
   const [draftRir, setDraftRir] = useState<string>(set.rir !== null && set.rir !== undefined ? String(set.rir) : "");
+  // Edit-mode-only hand-editable seconds field. Mount-only local state, same
+  // shape as draftReps/draftRir (no external-write concern like draftKg's
+  // apply-tap case — nothing outside this row ever patches duration_seconds
+  // on it).
+  const [draftSeconds, setDraftSeconds] = useState<string>(
+    set.duration_seconds !== null ? String(set.duration_seconds) : "",
+  );
 
   // draftKg is otherwise mount-only local state, so an external write to
   // set.kg (the apply-tap in ExerciseCard calling patchSet directly) would
@@ -153,34 +168,74 @@ export function SetRow({
         )}
       </td>
       {timeBased ? (
-        // Time-based row: no per-row start/stop control anymore — the docked
-        // session-level circle drives it (see SetTimerDock / LoggerSheet's
-        // handleStart/handleStop). This row only ever shows the target and,
-        // once the dock's zoom (SetEntryRow) has saved a value, the result.
-        // There is deliberately no way to type a duration here: committing
-        // one requires going through the dock, the same as every other
-        // exercise type now that the old inline timer is gone.
+        // Time-based row. Live mode: no per-row start/stop control — the
+        // docked session-level circle drives it (see SetTimerDock /
+        // LoggerSheet's handleStart/handleStop), this row only shows the
+        // target and, once the dock's zoom (SetEntryRow) has saved a value,
+        // the result. Committing there deliberately requires going through
+        // the dock — typing straight into this row is not offered, which is
+        // what keeps a manual commit from ever stamping `committed_at` with
+        // `duration_seconds` still null.
+        //
+        // Edit mode: there IS no dock (edit mode runs no live timer at all —
+        // see LoggerSheet's `!props.editMode &&` guards around both the dock
+        // and onTimerStart), so that affordance does not exist to fall back
+        // to. This row is the only commit path a hydrated time-based set has,
+        // so it gets its own hand-editable seconds field here, matching how
+        // the rep-based row below stays hand-editable in edit mode too.
         <>
           <td className="py-1 text-[10.5px] text-zinc-600">
             {targetDurationSeconds}s target
           </td>
           <td className="py-1"></td>
           <td className="py-1">
-            <span className={`font-mono tabular-nums text-[12px] ${
-              committed ? "text-green-400" : "text-zinc-500"
-            }`}>
-              {committed ? `${set.duration_seconds ?? 0}s` : "—"}
-            </span>
+            {editMode ? (
+              // Same disabled-on-commit treatment as the kg/reps/rir inputs
+              // below, not a mount/unmount swap — consistent with how every
+              // other hand-editable field in this row behaves once committed.
+              <input
+                inputMode="numeric"
+                value={draftSeconds}
+                onChange={(e) => { setDraftSeconds(e.target.value); }}
+                onFocus={selectOnFocus}
+                onBlur={() => {
+                  const n = draftSeconds === "" ? null : parseInt(draftSeconds, 10);
+                  onChange({ duration_seconds: Number.isFinite(n as number) ? (n as number) : null });
+                }}
+                disabled={committed}
+                aria-label="Seconds held"
+                placeholder="secs"
+                className={`bg-zinc-800 border-none rounded-md px-1.5 py-1 w-14 text-center font-medium font-mono tabular-nums ${
+                  committed ? "text-green-400 bg-green-500/10" : "text-zinc-100"
+                }`}
+              />
+            ) : (
+              <span className={`font-mono tabular-nums text-[12px] ${
+                committed ? "text-green-400" : "text-zinc-500"
+              }`}>
+                {committed ? `${set.duration_seconds ?? 0}s` : "—"}
+              </span>
+            )}
           </td>
           <td className="py-1">
             <button
               type="button"
-              onClick={committed ? onUncommit : undefined}
-              disabled={!committed}
+              onClick={committed ? onUncommit : editMode ? onCommit : undefined}
+              disabled={committed ? false : editMode ? set.duration_seconds === null : true}
               className={`w-6 h-6 rounded-md flex items-center justify-center text-[12px] ${
-                committed ? "bg-green-500 text-green-950" : "bg-zinc-800 text-zinc-600"
+                committed
+                  ? "bg-green-500 text-green-950"
+                  : editMode && set.duration_seconds !== null
+                    ? "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
+                    : "bg-zinc-800 text-zinc-600"
               }`}
-              aria-label={committed ? "Uncommit set" : "Use the timer below to log this set"}
+              aria-label={
+                committed
+                  ? "Uncommit set"
+                  : editMode
+                    ? "Commit set"
+                    : "Use the timer below to log this set"
+              }
             >
               {committed ? "✓" : "○"}
             </button>
