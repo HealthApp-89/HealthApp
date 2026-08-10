@@ -7,7 +7,7 @@ import { StrengthByDateClient } from "@/components/strength/StrengthByDateClient
 import { StrengthByMuscleClient } from "@/components/strength/StrengthByMuscleClient";
 import { StrengthLogClient } from "@/components/strength/StrengthLogClient";
 import { StrengthBlocksClient } from "@/components/strength/StrengthBlocksClient";
-import { HydrationBoundary, dehydrate, type DehydratedState } from "@tanstack/react-query";
+import { HydrationBoundary, dehydrate } from "@tanstack/react-query";
 import { makeServerQueryClient } from "@/lib/query/queryClient";
 import { fetchBlockSummaryServer } from "@/lib/query/fetchers/blockSummary";
 import { fetchBlocksRepoServer } from "@/lib/query/fetchers/blocksRepo";
@@ -55,19 +55,27 @@ export default async function StrengthPage({
   const { tab: tabParam } = await searchParams;
   const tab = parseTab(tabParam);
 
-  // Prefetch block data server-side only when the blocks tab is requested.
-  let blocksBoundary: DehydratedState | null = null;
+  const queryClient = makeServerQueryClient();
+
+  // The profile is prefetched for EVERY tab, not just blocks. `useUserToday`
+  // returns undefined until the profile query resolves, and ChatPanel — which
+  // the default `coach` tab renders — coerces that to "" and feeds it to a
+  // date helper, producing an Invalid Date whose toISOString() throws during
+  // render. A cold load of /strength therefore used to fail into the error
+  // boundary; it only appeared intermittent because arriving from another
+  // route (the dashboard prefetches the profile) leaves the cache warm.
+  // Same shape as app/page.tsx: one query client, one boundary, profile always.
+  await queryClient.prefetchQuery({
+    queryKey: queryKeys.profile.one(user.id),
+    queryFn: () => fetchProfileServer(supabase, user.id),
+  });
+
+  // Block data stays conditional — it is only read by the blocks tab, and the
+  // blockSummary key is derived from the profile timezone prefetched above.
   if (tab === "blocks") {
-    const queryClient = makeServerQueryClient();
     const tz = await getUserTimezone(user.id);
     const todayIso = todayInUserTz(new Date(), tz);
     await Promise.all([
-      // Profile prefetch lets useUserToday resolve on the first client render,
-      // so the hydrated blockSummary key (keyed by todayIso) matches instantly.
-      queryClient.prefetchQuery({
-        queryKey: queryKeys.profile.one(user.id),
-        queryFn: () => fetchProfileServer(supabase, user.id),
-      }),
       queryClient.prefetchQuery({
         queryKey: queryKeys.blockSummary.today(user.id, todayIso),
         queryFn: () =>
@@ -79,28 +87,25 @@ export default async function StrengthPage({
           fetchBlocksRepoServer(supabase as unknown as SupabaseClient, user.id),
       }),
     ]);
-    blocksBoundary = dehydrate(queryClient);
   }
 
   return (
-    <div style={{ minHeight: "100dvh", paddingBottom: 100 }}>
-      <header style={{ padding: "16px 16px 4px 16px" }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>Strength</h1>
-        <p style={{ fontSize: 12, color: COLOR.textMuted, margin: "2px 0 0 0" }}>
-          Coach Carter
-        </p>
-      </header>
-      <SubPillNav pills={SUB_TABS} paramName="tab" defaultKey="coach" />
-      {tab === "coach" && <StrengthCoachClient userId={user.id} />}
-      {tab === "blocks" && (
-        <HydrationBoundary state={blocksBoundary}>
-          <StrengthBlocksClient userId={user.id} />
-        </HydrationBoundary>
-      )}
-      {tab === "schedule" && <StrengthScheduleClient userId={user.id} />}
-      {tab === "date" && <StrengthByDateClient userId={user.id} />}
-      {tab === "by_muscle" && <StrengthByMuscleClient userId={user.id} />}
-      {tab === "log" && <StrengthLogClient userId={user.id} />}
-    </div>
+    <HydrationBoundary state={dehydrate(queryClient)}>
+      <div style={{ minHeight: "100dvh", paddingBottom: 100 }}>
+        <header style={{ padding: "16px 16px 4px 16px" }}>
+          <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>Strength</h1>
+          <p style={{ fontSize: 12, color: COLOR.textMuted, margin: "2px 0 0 0" }}>
+            Coach Carter
+          </p>
+        </header>
+        <SubPillNav pills={SUB_TABS} paramName="tab" defaultKey="coach" />
+        {tab === "coach" && <StrengthCoachClient userId={user.id} />}
+        {tab === "blocks" && <StrengthBlocksClient userId={user.id} />}
+        {tab === "schedule" && <StrengthScheduleClient userId={user.id} />}
+        {tab === "date" && <StrengthByDateClient userId={user.id} />}
+        {tab === "by_muscle" && <StrengthByMuscleClient userId={user.id} />}
+        {tab === "log" && <StrengthLogClient userId={user.id} />}
+      </div>
+    </HydrationBoundary>
   );
 }
