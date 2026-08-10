@@ -100,3 +100,115 @@ describe("rulePr", () => {
     expect(rulePr(mkInput({ reps: null }))).toBeNull();
   });
 });
+
+/** Session-local high-water mark.
+ *
+ *  context.bestByExercise is frozen at logger open (`.lt("date", today)`,
+ *  staleTime Infinity), so nothing in it moves when a PR happens mid-session.
+ *  Without a session-local bar, the identical PR line — and a second audio cue
+ *  — fires on every subsequent set at the same load. */
+describe("rulePr — session high-water mark", () => {
+  const NAME2 = "Deadlift (Barbell)";
+
+  function mkSet(over: Partial<ExerciseSetDraft>): ExerciseSetDraft {
+    return {
+      set_index: 0,
+      kg: 100,
+      reps: 5,
+      duration_seconds: null,
+      warmup: false,
+      failure: false,
+      rir: 2,
+      committed_at: "2026-08-10T09:00:00.000Z",
+      ...over,
+    };
+  }
+
+  function mkSessionInput(args: {
+    sets: ExerciseSetDraft[];
+    current: ExerciseSetDraft;
+    best: number | null;
+  }): LiveSetInput {
+    return {
+      set: args.current,
+      exercise: {
+        name: NAME2,
+        position: 0,
+        prescribed: { name: NAME2, baseKg: 100, baseReps: 5, sets: 3, increment: { step: 5 } },
+        sets: args.sets,
+      },
+      sessionSets: args.sets.map((s) => ({ exerciseName: NAME2, set: s })),
+      context: {
+        historyByExercise: {},
+        bestByExercise: { [NAME2]: args.best },
+        blockPhase: "pre_target",
+        rirTarget: 2,
+      },
+    };
+  }
+
+  it("fires on the FIRST set that clears the stored best", () => {
+    const s0 = mkSet({ set_index: 0, kg: 100, reps: 5 }); // e1RM 112.5
+    const line = rulePr(mkSessionInput({ sets: [s0], current: s0, best: 110 }));
+    expect(line).not.toBeNull();
+    expect(line!.cue).toBe(true);
+  });
+
+  it("does NOT re-fire on an identical second set at the same load", () => {
+    // 110 stored best; 100x5 = 112.5 twice. Set 2 must be silent — no second
+    // celebration, and critically no second audio cue.
+    const s0 = mkSet({ set_index: 0, kg: 100, reps: 5 });
+    const s1 = mkSet({ set_index: 1, kg: 100, reps: 5 });
+    expect(rulePr(mkSessionInput({ sets: [s0, s1], current: s1, best: 110 }))).toBeNull();
+  });
+
+  it("stays silent on a third set that falls back below the session best", () => {
+    // 100x4 -> 109.09, under both the session best (112.5) and the old 110.
+    const s0 = mkSet({ set_index: 0, kg: 100, reps: 5 });
+    const s1 = mkSet({ set_index: 1, kg: 100, reps: 5 });
+    const s2 = mkSet({ set_index: 2, kg: 100, reps: 4 });
+    expect(rulePr(mkSessionInput({ sets: [s0, s1, s2], current: s2, best: 110 }))).toBeNull();
+  });
+
+  it("fires AGAIN when a later set genuinely beats the new session best", () => {
+    // 100x5 = 112.5, then 105x5 = 118.125 — a real second PR, so it speaks.
+    const s0 = mkSet({ set_index: 0, kg: 100, reps: 5 });
+    const s1 = mkSet({ set_index: 1, kg: 105, reps: 5 });
+    const line = rulePr(mkSessionInput({ sets: [s0, s1], current: s1, best: 110 }));
+    expect(line).not.toBeNull();
+    // Margin is measured against the SESSION best (112.5), not the stale 110.
+    expect(line!.text).toContain("past your best by 5.6");
+  });
+
+  it("excludes the just-committed set from its own bar", () => {
+    // If the current set counted toward the high-water mark, e1rm <= best
+    // would hold for every set and nothing would ever be a PR.
+    const s0 = mkSet({ set_index: 0, kg: 100, reps: 5 });
+    expect(rulePr(mkSessionInput({ sets: [s0], current: s0, best: 110 }))).not.toBeNull();
+  });
+
+  it("ignores earlier sets of OTHER exercises", () => {
+    const other: ExerciseSetDraft = mkSet({ set_index: 0, kg: 200, reps: 5 });
+    const s1 = mkSet({ set_index: 1, kg: 100, reps: 5 });
+    const input = mkSessionInput({ sets: [s1], current: s1, best: 110 });
+    input.sessionSets = [
+      { exerciseName: "Squat (Barbell)", set: other },
+      { exerciseName: NAME2, set: s1 },
+    ];
+    expect(rulePr(input)).not.toBeNull();
+  });
+
+  it("ignores earlier WARMUP sets when building the bar", () => {
+    const w = mkSet({ set_index: 0, kg: 140, reps: 5, warmup: true });
+    const s1 = mkSet({ set_index: 1, kg: 100, reps: 5 });
+    const input = mkSessionInput({ sets: [w, s1], current: s1, best: 110 });
+    expect(rulePr(input)).not.toBeNull();
+  });
+
+  it("still refuses to invent a PR when there is no stored history at all", () => {
+    // A within-session ramp on a brand-new exercise must not manufacture one.
+    const s0 = mkSet({ set_index: 0, kg: 50, reps: 5 });
+    const s1 = mkSet({ set_index: 1, kg: 60, reps: 5 });
+    expect(rulePr(mkSessionInput({ sets: [s0, s1], current: s1, best: null }))).toBeNull();
+  });
+});
