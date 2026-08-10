@@ -122,10 +122,9 @@ describe("ruleFailureBudget", () => {
 
   it("ignores failure sets that are warmups — they do not count toward the budget", () => {
     const w0 = mkSet({ set_index: 0, warmup: true, failure: true, rir: 0 });
-    const w1 = mkSet({ set_index: 1, warmup: true, rir: 0 });
-    const s0 = mkSet({ set_index: 2, rir: 2 });
+    const s0 = mkSet({ set_index: 1, warmup: false, failure: true, rir: 0 });
     const line = ruleFailureBudget(
-      mkInput({ name: "Squat (Barbell)", sets: [w0, w1, s0], current: s0 }),
+      mkInput({ name: "Squat (Barbell)", sets: [w0, s0], current: s0 }),
     );
     expect(line).toBeNull();
   });
