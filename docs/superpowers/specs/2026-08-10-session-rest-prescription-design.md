@@ -133,4 +133,4 @@ Verification: `npx vitest run` + `npm run typecheck`. Per the no-render-test-har
 
 ## Sequencing note
 
-This work touches `restPrescription`'s signature, which the in-flight live-session-coaching arc consumes (Task 5 of 8 complete, with Task 5's tests uncommitted at the time of writing). Recommendation: land the live-session arc first, then implement this on a branch off `main`, updating `ruleRestDiscipline` and its fixtures as part of it. Doing the signature change now would collide with uncommitted work in the same file.
+This work touches `restPrescription`'s signature, which the in-flight live-session-coaching arc consumes (Task 5 of 8 complete on `feat/live-session-coaching`). Recommendation: land the live-session arc first, then implement this on a branch off `main`, updating `ruleRestDiscipline` and its fixtures as part of it. Changing the signature mid-arc would put a breaking edit into a file whose remaining tasks (6–8) still have to build and test against it.
