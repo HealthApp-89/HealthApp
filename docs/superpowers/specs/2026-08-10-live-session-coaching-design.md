@@ -115,8 +115,10 @@ export type LiveSessionContext = {
   /** Per exercise name: 28 days of prior sets, in the exact shape the weekly
    *  prescription engine consumes. */
   historyByExercise: Record<string, WorkoutSetSample[]>;
-  /** Per exercise name: best comparison value from history, via
-   *  bestComparisonValue. Null when there is no usable history. */
+  /** Per exercise name: best Brzycki e1RM over a 180-day window, via
+   *  bestComparisonValue. Null when there is no usable history. The window is
+   *  long on purpose — a "best" computed over a short recency window silently
+   *  resets after any training gap, which would manufacture fake PRs. */
   bestByExercise: Record<string, number | null>;
   blockPhase: BlockPhase;
   /** training_weeks.rir_target for the current week. */
@@ -227,15 +229,21 @@ move a number mid-workout.
 
 `kind: "load_call"`.
 
-**Final-set reframing:** when the committed set is the last prescribed set of
-the exercise, the same rule emits a week-scope line instead of a next-set one:
-`3×10 @60, all clean → 62.5 Thursday.` The load arithmetic is identical; only
-the wording and time horizon change.
+**Final-set reframing:** when the committed set is the last working set of the
+exercise, the same rule swaps its horizon from "next set" to "next time":
+`Too easy at RIR 4. → 62.5 next time.` The load arithmetic is identical; only
+the wording changes. It says "next time" rather than naming a weekday because
+resolving the next occurrence of this session type needs calendar logic the
+rule has no business owning.
 
-**Block-phase gate:** when `blockPhase` is `consolidation` or `off_pace`, load
-is frozen by the weekly engine. The live rule must not contradict it — in those
-phases an upward call degrades to a rep-scope line (`Too easy at RIR 4 — add a
-rep next set, load is held this block.`) with no `apply_kg`.
+**Block-phase gate:** when `blockPhase` is `consolidation`, `off_pace`, or
+`deload_week`, load is frozen — the first two by the block-phase rule, deload
+by the accessory rule's deload branch, which holds load and halves sets. The
+live rule must not contradict any of them, so in those phases a call degrades
+to a rep-scope line (`Too easy at RIR 4. Add a rep next set — load's held this
+block.`) with no `apply_kg`, in **both** directions. An exercise with no
+`increment` grid (bodyweight work) is treated identically: advise, never name a
+weight.
 
 ### 5. Rest discipline — `rule-rest-discipline.ts`
 
