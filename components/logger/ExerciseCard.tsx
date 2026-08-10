@@ -10,7 +10,6 @@ import { evaluateSet, type CoachLine, type LiveSessionContext, type SessionSetRe
 import { CoachLineRow } from "@/components/logger/CoachLine";
 import { findApplyTargetSetIndex } from "@/lib/logger/apply-target";
 import { seedRir } from "@/lib/logger/seed-rir";
-import { fireCue } from "@/lib/logger/audio-cue";
 
 type Props = {
   userId: string;
@@ -95,7 +94,6 @@ function ExerciseCardInner({
     }
     setCoachLine(line);
     setCoachLineSetIndex(line ? setIndex : null);
-    if (line?.cue) fireCue();
   }, [exercise, exerciseIndex, onExerciseChange, effectiveRest, liveContext, allExercises]);
 
   const uncommitSet = useCallback((setIndex: number) => {

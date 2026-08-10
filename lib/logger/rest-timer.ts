@@ -76,10 +76,11 @@ export function useWakeLock(active: boolean) {
   }, [active]);
 }
 
-// The rest-done cue lives in lib/logger/audio-cue.ts. It cannot be built at
-// fire time: iOS requires the AudioContext to be created inside a user
-// gesture, so the logger unlocks it on first tap and timers only replay it.
-// Import { fireCue } from "@/lib/logger/audio-cue" at the call site.
+// Rest-end signalling is visual only. An audio cue was tried and removed: on
+// iOS it ducked background music indefinitely and it only fired when the phone
+// was already unlocked with the app foregrounded — precisely not the moment it
+// was needed. Waking a locked phone needs push infrastructure this app has not
+// got, so the dock goes red instead.
 
 // Minimal browser type for WakeLockSentinel.
 interface WakeLockSentinel {

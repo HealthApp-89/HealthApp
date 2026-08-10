@@ -10,7 +10,6 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { loadDraft, saveDraft, clearDraft } from "@/lib/logger/draft-store";
 import { useWakeLock } from "@/lib/logger/rest-timer";
 import { seedRir } from "@/lib/logger/seed-rir";
-import { unlockCue, releaseCue } from "@/lib/logger/audio-cue";
 import { useLiveSessionContext } from "@/lib/query/hooks/useLiveSessionContext";
 import { ExerciseCard } from "@/components/logger/ExerciseCard";
 import { ExercisePicker } from "@/components/logger/ExercisePicker";
@@ -210,10 +209,6 @@ export function LoggerSheet(props: Props) {
   const [resolvedSource, setResolvedSource] = useState<string | null>(null);
 
   useWakeLock(!!draft);
-
-  // Tear the session's AudioContext down when the sheet closes — a PWA that
-  // never reloads would otherwise accumulate one per workout.
-  useEffect(() => releaseCue, []);
 
   // 1) Mount: load existing draft or build from resolved plan.
   //    Resume prompt shows whenever the close path preserved a draft (it sets
@@ -522,13 +517,7 @@ export function LoggerSheet(props: Props) {
   }
 
   return (
-    <div
-      className="fixed inset-0 bg-black z-40 flex flex-col"
-      // iOS only lets audio start from a user gesture, and the rest cue fires
-      // from a timer minutes later. Any tap inside the sheet unlocks the cue
-      // for the whole session; unlockCue is idempotent, so this is ~free.
-      onPointerDown={unlockCue}
-    >
+    <div className="fixed inset-0 bg-black z-40 flex flex-col">
       <div className="flex items-center justify-between p-3 border-b border-zinc-900 pt-[env(safe-area-inset-top)]">
         <button onClick={requestClose} className="text-zinc-400 text-lg" aria-label="Close logger">‹</button>
         <div className="text-zinc-300 text-sm flex items-center gap-2">

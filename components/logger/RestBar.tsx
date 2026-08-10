@@ -2,7 +2,6 @@
 
 import { useEffect } from "react";
 import { useRestCountdown } from "@/lib/logger/rest-timer";
-import { fireCue } from "@/lib/logger/audio-cue";
 
 type Props = {
   duration_seconds: number;
@@ -15,7 +14,7 @@ export function RestBar({ duration_seconds, started_at, onDone, onSkip }: Props)
   const { remaining_seconds, elapsed_seconds, isRunning } = useRestCountdown({
     duration_seconds,
     started_at,
-    onDone: () => { fireCue(); onDone(); },
+    onDone,
   });
 
   // Component cleanup — no-op currently, kept for future safety.

@@ -6,7 +6,6 @@ import { usePreviousSet } from "@/lib/query/hooks/usePreviousSet";
 import { VoiceMicButton } from "@/components/logger/VoiceMicButton";
 import { fmtNum } from "@/lib/ui/score";
 import { selectOnFocus } from "@/lib/ui/inputs";
-import { fireCue } from "@/lib/logger/audio-cue";
 
 type Props = {
   userId: string;
@@ -68,7 +67,6 @@ export function SetRow({
   // Resets when the set is uncommitted.
   const [timerStartedAt, setTimerStartedAt] = useState<number | null>(null);
   const [tick, setTick] = useState(0);
-  const cueFiredRef = useRef(false);
   useEffect(() => {
     if (timerStartedAt == null) return;
     const id = setInterval(() => setTick((t) => t + 1), 250);
@@ -77,15 +75,8 @@ export function SetRow({
   const elapsedSeconds = timerStartedAt != null
     ? Math.floor((Date.now() - timerStartedAt) / 1000)
     : 0;
-  useEffect(() => {
-    if (timerStartedAt != null && targetDurationSeconds != null
-        && elapsedSeconds >= targetDurationSeconds && !cueFiredRef.current) {
-      cueFiredRef.current = true;
-      fireCue();
-    }
-  }, [timerStartedAt, elapsedSeconds, targetDurationSeconds]);
-  // tick is read by the effects above via Date.now(); reference it so the
-  // 250ms re-renders aren't dead-stripped.
+  // tick is read above via Date.now(); reference it so the 250ms re-renders
+  // aren't dead-stripped.
   void tick;
 
   // Warmup rows don't get a "previous" hint — the column would either be
@@ -143,7 +134,6 @@ export function SetRow({
       return fmtMmSs(targetDurationSeconds - elapsedSeconds);
     })();
     const onStart = () => {
-      cueFiredRef.current = false;
       setTimerStartedAt(Date.now());
     };
     const onStop = () => {
