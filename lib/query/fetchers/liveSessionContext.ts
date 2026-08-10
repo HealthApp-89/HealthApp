@@ -14,7 +14,8 @@ import { normalizeExerciseName } from "@/lib/coach/exercise-muscles";
 import { bestComparisonValue } from "@/lib/coach/e1rm";
 import { evaluateBlockPhase } from "@/lib/coach/prescription/block-phase-rule";
 import { computeOlsSlope } from "@/lib/coach/prescription/calibrate-target";
-import { mondayOfIso } from "@/lib/time/dates";
+import { PRIMARY_LIFT_NAME_PATTERNS } from "@/lib/coach/prescription/current-comparison-value";
+import { mondayOfIso, isoDaysAgo } from "@/lib/time/dates";
 import type { LiveSessionContext } from "@/lib/coach/live-session/types";
 import type { WorkoutSetSample, BlockPhase } from "@/lib/coach/prescription/types";
 import type { TrainingBlock, PrimaryLift } from "@/lib/data/types";
@@ -33,12 +34,6 @@ type Args = {
   exerciseNames: string[];
 };
 
-function daysBefore(iso: string, n: number): string {
-  const d = new Date(`${iso}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() - n);
-  return d.toISOString().slice(0, 10);
-}
-
 type SetRowShape = {
   kg: number | null;
   reps: number | null;
@@ -51,26 +46,32 @@ type SetRowShape = {
  *  OLS slope is derived from it. bestComparisonValue ignores the extra field. */
 type DatedSet = SetRowShape & { performed_on: string };
 
-/** Whether a (normalized) exercise name is an instance of the block's primary
- *  lift. Mirrors the switch in lib/query/fetchers/blockProgress.ts:liftMatches
- *  rather than a bare substring test — "ohp" as a PrimaryLift never appears as
- *  a substring of "overhead press" (the exercise library's actual name), so a
- *  naive `.includes(primary_lift)` silently fails to find the OHP block's lift
- *  and disables off_pace detection for every OHP-focused block. */
-function matchesPrimaryLift(normalizedName: string, lift: PrimaryLift): boolean {
-  switch (lift) {
-    case "squat":
-      return normalizedName.includes("squat");
-    case "bench":
-      return normalizedName.includes("bench") && normalizedName.includes("press");
-    case "deadlift":
-      return normalizedName.includes("deadlift");
-    case "ohp":
-      return (
-        (normalizedName.includes("overhead") || normalizedName.includes("ohp")) &&
-        normalizedName.includes("press")
-      );
+/** Resolve which of today's draft exercise names is the block's primary lift,
+ *  using the canonical exact-name table (PRIMARY_LIFT_NAME_PATTERNS) rather
+ *  than substring matching. Substring matching is a live bug here, not a
+ *  style nit: "Romanian Deadlift (Barbell)" normalizes to "romanian deadlift",
+ *  which CONTAINS "deadlift" — a naive substring test would pick the RDL
+ *  (Legs day's second hinge) for a deadlift-focused block and compute
+ *  currentWorkingKg / the OLS progression samples / blockPhase off the wrong
+ *  lift on every Legs day. Same failure mode for squat blocks when Front/
+ *  Hack/Goblet Squat is present, and bench blocks with incline/decline/
+ *  close-grip variants.
+ *
+ *  Both sides are compared through normalizeExerciseName so a stored name and
+ *  a plan name that differ only in case/spacing still line up. When more than
+ *  one of today's exercises matches (bench has three patterns), the earliest
+ *  entry in PRIMARY_LIFT_NAME_PATTERNS wins — that array is ordered by
+ *  primacy (see its doc comment in current-comparison-value.ts). */
+function resolvePrimaryLiftDraftName(
+  names: readonly string[],
+  lift: PrimaryLift,
+): string | undefined {
+  const patterns = PRIMARY_LIFT_NAME_PATTERNS[lift].map((p) => normalizeExerciseName(p));
+  for (const pattern of patterns) {
+    const match = names.find((n) => normalizeExerciseName(n) === pattern);
+    if (match) return match;
   }
+  return undefined;
 }
 
 const liveSessionContextFetcher = createFetcher(
@@ -84,8 +85,8 @@ const liveSessionContextFetcher = createFetcher(
     };
     if (names.length === 0) return empty;
 
-    const prFrom = daysBefore(args.today, PR_WINDOW_DAYS);
-    const historyFrom = daysBefore(args.today, HISTORY_WINDOW_DAYS);
+    const prFrom = isoDaysAgo(args.today, PR_WINDOW_DAYS);
+    const historyFrom = isoDaysAgo(args.today, HISTORY_WINDOW_DAYS);
 
     const { data: workouts, error } = await supabase
       .from("workouts")
@@ -161,9 +162,7 @@ const liveSessionContextFetcher = createFetcher(
     let blockPhase: BlockPhase = "pre_target";
     if (block) {
       const b = block as TrainingBlock;
-      const liftName = names.find(
-        (n) => b.primary_lift != null && matchesPrimaryLift(normalizeExerciseName(n), b.primary_lift),
-      );
+      const liftName = b.primary_lift != null ? resolvePrimaryLiftDraftName(names, b.primary_lift) : undefined;
       const liftSets = liftName ? prSetsByExercise[liftName] : [];
       const metric = b.target_metric ?? "working_weight";
       const currentWorkingKg = bestComparisonValue(liftSets, metric);
