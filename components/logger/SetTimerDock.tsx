@@ -153,7 +153,14 @@ export function SetTimerDock({
       </button>
 
       <div className="flex-1 min-w-0">
-        <div className="text-[11px] font-semibold truncate">{activeLabel}</div>
+        {/* Explicit colour is load-bearing: this dock is portaled to
+            document.body, so it sits OUTSIDE the logger sheet's subtree and
+            inherits the app's default (dark) text colour instead of the
+            sheet's light-on-dark. Without this the label rendered
+            rgb(15,20,48) on a near-black dock — a 1.16:1 contrast ratio,
+            effectively invisible. Every sibling line here already names its
+            own colour; this one was the only inheritor. */}
+        <div className="text-[11px] font-semibold truncate text-zinc-100">{activeLabel}</div>
         <div className="text-[9.5px] text-zinc-500 font-mono truncate">{targetLabel}</div>
         <div className="flex gap-2.5 mt-1.5">
           <div className="text-[8px] text-zinc-600 tracking-wide">
