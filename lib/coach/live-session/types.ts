@@ -16,7 +16,8 @@ export type CoachLine = {
    *  into the next pending set's kg field. Absent when the call is "same
    *  weight" or when the exercise has no equipment grid. */
   apply_kg?: number;
-  /** True only for PRs — the one line that also earns visual emphasis. */
+  /** True only for PRs. Not currently read by any UI consumer — PR tone
+   *  comes from `kind` in `CoachLine.tsx` instead. */
   cue: boolean;
   /** Which rule produced this line. For tests and future observability. */
   rule: string;

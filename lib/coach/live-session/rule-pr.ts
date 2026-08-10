@@ -3,8 +3,10 @@
 // Celebrate at the moment it happens, not three hours later in the debrief.
 // Celebration has a half-life.
 //
-// This is the only rule that returns cue: true. Emphasis is reserved for PRs
-// so that a highlighted line always means something genuinely happened.
+// This is the only rule that returns cue: true. No UI currently reads it —
+// PR tone comes from `kind` in CoachLine.tsx — but the field is reserved for
+// PRs alone so that if something does start consuming it, a cued line always
+// means something genuinely happened.
 
 import { brzycki } from "@/lib/coach/e1rm";
 import { fmtNum } from "@/lib/ui/score";
