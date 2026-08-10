@@ -10,6 +10,7 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { loadDraft, saveDraft, clearDraft } from "@/lib/logger/draft-store";
 import { useWakeLock } from "@/lib/logger/rest-timer";
 import { seedRir } from "@/lib/logger/seed-rir";
+import { seedReps } from "@/lib/logger/seed-reps";
 import { useLiveSessionContext } from "@/lib/query/hooks/useLiveSessionContext";
 import { annotateSession } from "@/lib/coach/session-structure/annotate";
 import { fmtNum } from "@/lib/ui/score";
@@ -20,6 +21,7 @@ import {
   workSecondsFor,
   getElapsedMs,
   sameSet,
+  restBetweenSets,
   type TimerState,
   type SetRef,
 } from "@/lib/logger/set-timer";
@@ -72,7 +74,11 @@ function makeDraftFromPlan(args: {
     sets: Array.from({ length: p.sets ?? 1 }, (_unused, j) => ({
       set_index: j,
       kg: p.duration_seconds != null ? null : (p.baseKg ?? null),
-      reps: null,
+      // Seeded like kg, and for a sharper reason since Task 6: the zoom's Save
+      // and the auto-save on START both commit without a rep count being
+      // typed, and a null-reps row drops silently out of e1RM, volume, the
+      // debrief and the prescription engine. See lib/logger/seed-reps.ts.
+      reps: seedReps(p),
       duration_seconds: null,
       warmup: !!p.warmup && j === 0,
       failure: false,
@@ -131,12 +137,23 @@ function commitPendingEntry(draft: LoggerDraft): LoggerDraft {
   const exercises = draft.exercises.map((ex, ei) =>
     ei !== entry.exerciseIndex ? ex : {
       ...ex,
-      sets: ex.sets.map((s, si) =>
-        si !== entry.setIndex || s.committed_at ? s : {
+      sets: ex.sets.map((s, si) => {
+        if (si !== entry.setIndex || s.committed_at) return s;
+        // A time-based set auto-saved by START never had its seconds field
+        // blurred, so it would commit `duration_seconds: null` alongside a
+        // perfectly good `work_seconds` — the plank the timer measured at 45s
+        // recorded as no plank at all. SetEntryRow.saveAll already flushes the
+        // field on the Save path; this makes the auto-save path agree, using
+        // the number the timer measured as the fallback.
+        const timeBased = ex.prescribed.duration_seconds != null;
+        return {
           ...s,
+          duration_seconds: timeBased && s.duration_seconds == null
+            ? entry.workSeconds
+            : s.duration_seconds,
           committed_at: new Date().toISOString(),
-        },
-      ),
+        };
+      }),
     },
   );
   return {
@@ -310,7 +327,7 @@ function resetDraft(draft: LoggerDraft, weekRirTarget: number | null): LoggerDra
       sets: Array.from({ length: ex.prescribed.sets ?? 1 }, (_unused, j) => ({
         set_index: j,
         kg: ex.prescribed.duration_seconds != null ? null : (ex.prescribed.baseKg ?? null),
-        reps: null,
+        reps: seedReps(ex.prescribed),
         duration_seconds: null,
         warmup: !!ex.prescribed.warmup && j === 0,
         failure: false,
@@ -891,8 +908,8 @@ export function LoggerSheet(props: Props) {
           .filter((s) => s.committed_at)
           .map((s, sIdx, arr) => {
             // Prefer the value already on the draft set (came from hydration of a
-            // saved workout). Falls through to the timestamp-derived value for
-            // fresh-logger sets where commit_at deltas are the source of truth.
+            // saved workout). Falls through to restBetweenSets for fresh-logger
+            // sets.
             let restActual: number | null;
             if (s.rest_seconds_actual !== undefined) {
               restActual = s.rest_seconds_actual;
@@ -902,12 +919,20 @@ export function LoggerSheet(props: Props) {
               // original workout's creation timestamp (possibly days ago).
               restActual = null;
             } else {
+              // NOT a commit-timestamp delta. Task 6 moved `committed_at` from
+              // the stop press to the Save tap, so that subtraction now means
+              // "the gap between two arbitrary Save taps" — and means something
+              // DIFFERENT per set depending on whether the athlete saved
+              // promptly or let START auto-save. The old proxy was at least
+              // consistently wrong; this would have been junk in a column the
+              // debrief and the rest-discipline rule both read.
+              //
+              // restBetweenSets measures from the previous set's true END
+              // (started_at + work_seconds) to the next set's true START, both
+              // already on the draft, and falls back to the old commit-delta
+              // proxy only for sets that carry no timer data at all.
               const prev = arr[sIdx - 1];
-              restActual = prev?.committed_at && s.committed_at
-                ? Math.round(
-                    (new Date(s.committed_at).getTime() - new Date(prev.committed_at).getTime()) / 1000,
-                  )
-                : null;
+              restActual = prev ? restBetweenSets(prev, s) : null;
             }
             return {
               set_index: s.set_index,
@@ -1028,7 +1053,23 @@ export function LoggerSheet(props: Props) {
             </>
           )}
         </div>
-        <button onClick={() => setFinishOpen(true)} className="bg-green-600 text-white text-xs font-semibold px-3 py-1.5 rounded-lg">
+        {/* Flush the open zoom BEFORE the summary opens. Splitting commit out
+            of stop created a window in which a finished set is not yet
+            committed, and every other exit flushes it (Save, START on the next
+            set) — Finish did not. The header button is never covered by the
+            zoom, so the reachable path is the most ordinary one there is:
+            last set of the session, STOP, then Finish. `commitNow` filters on
+            `committed_at`, so that set's kg / reps / rir / work_seconds /
+            started_at left with it, and FinishSummary's totals read one low.
+            Flushing here fixes both at once: the re-render hands the summary
+            and the commit payload the same, complete draft. */}
+        <button
+          onClick={() => {
+            setDraft((p) => (p ? commitPendingEntry(p) : p));
+            setFinishOpen(true);
+          }}
+          className="bg-green-600 text-white text-xs font-semibold px-3 py-1.5 rounded-lg"
+        >
           Finish
         </button>
       </div>
@@ -1114,12 +1155,13 @@ export function LoggerSheet(props: Props) {
           onClose={() => setPickerOpen(false)}
           onPick={(name) => {
             if (pickerMode === "add") {
+              const prescribed: PlannedExercise = { name, sets: 3, baseReps: 10 };
               const newEx: ExerciseDraft = {
                 name,
                 position: draft.exercises.length,
-                prescribed: { name, sets: 3, baseReps: 10 },
+                prescribed,
                 sets: Array.from({ length: 3 }, (_x, j) => ({
-                  set_index: j, kg: null, reps: null, duration_seconds: null, warmup: false, failure: false, rir: props.weekRirTarget ?? 2, committed_at: null,
+                  set_index: j, kg: null, reps: seedReps(prescribed), duration_seconds: null, warmup: false, failure: false, rir: props.weekRirTarget ?? 2, committed_at: null,
                 })),
               };
               setDraft({ ...draft, exercises: [...draft.exercises, newEx] });

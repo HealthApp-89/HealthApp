@@ -11,6 +11,7 @@ import type { CoachLine } from "@/lib/coach/live-session";
 import { CoachLineRow } from "@/components/logger/CoachLine";
 import { findApplyTargetSetIndex } from "@/lib/logger/apply-target";
 import { seedRir } from "@/lib/logger/seed-rir";
+import { seedReps } from "@/lib/logger/seed-reps";
 
 type Props = {
   userId: string;
@@ -110,7 +111,7 @@ function ExerciseCardInner({
     const next: ExerciseSetDraft = {
       set_index: exercise.sets.length,
       kg: isTimeBased ? null : (last?.kg ?? exercise.prescribed.baseKg ?? null),
-      reps: null,
+      reps: seedReps(exercise.prescribed),
       duration_seconds: null,
       warmup: false,
       failure: false,

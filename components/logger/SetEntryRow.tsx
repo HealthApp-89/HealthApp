@@ -85,6 +85,23 @@ export function SetEntryRow({
     onSave();
   };
 
+  /**
+   * The same commit guard SetRow puts on its ○ button, so the manual path and
+   * the zoom cannot disagree about what counts as a loggable set.
+   *
+   * Evaluated against the LOCAL field values rather than `set`, deliberately.
+   * The draft only catches up on blur, and a `disabled` button swallows the
+   * very tap that would have blurred the input — reading `set.reps` would leave
+   * Save dead under a rep count the athlete can plainly see. This asks the
+   * honest question instead: would saving right now write a null?
+   *
+   * Time-based work is measured in seconds and legitimately carries neither, so
+   * it is exempt. Warmups are exempt from the kg half, as in SetRow.
+   */
+  const missingKg = !timeBased && !set.warmup && num(draftKg, parseFloat) === null;
+  const missingReps = !timeBased && num(draftReps, (s) => parseInt(s, 10)) === null;
+  const cannotSave = missingKg || missingReps;
+
   return (
     <div className={`rounded-xl p-2.5 my-1.5 border ${
       failed ? "bg-stone-950 border-red-500/50" : "bg-stone-900 border-blue-500/50"
@@ -202,12 +219,19 @@ export function SetEntryRow({
       <button
         type="button"
         onClick={saveAll}
-        className={`mt-2 w-full rounded-lg py-2 text-[11.5px] font-bold ${
+        disabled={cannotSave}
+        className={`mt-2 w-full rounded-lg py-2 text-[11.5px] font-bold disabled:opacity-40 ${
           failed ? "bg-red-500/20 text-red-300" : "bg-green-500 text-green-950"
         }`}
       >
         ✓ {failed ? "Save as failure" : "Save"}
       </button>
+
+      {cannotSave && (
+        <p className="text-[9px] text-zinc-500 mt-1.5 text-center">
+          {missingReps ? "Enter reps to save" : "Enter a weight to save"}
+        </p>
+      )}
 
       {failed && (
         <p className="text-[9px] text-red-400 mt-1.5 text-center italic">
