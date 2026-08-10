@@ -7,6 +7,9 @@
 // derived from committed_at deltas at commit time. This rule derives it the
 // same way so the live number matches the one eventually persisted. Note that
 // both measure commit-to-commit (rest plus set execution), not pure rest.
+//
+// The "prior set" is always the nearest earlier NON-WARMUP committed set —
+// see restBefore for why.
 
 import { tierOf } from "@/lib/coach/session-structure/tiers";
 import { restPrescription, repsForExercise } from "@/lib/coach/session-structure/rules";
@@ -16,15 +19,26 @@ import type { ExerciseDraft, ExerciseSetDraft } from "@/lib/logger/types";
 /** Below this fraction of the prescribed minimum, the next set will suffer. */
 const UNDER_REST_RATIO = 0.6;
 
-/** Seconds between the previous committed set and this one, or null when
- *  there is no prior committed set to measure from. */
+/** Seconds between the previous committed WORKING set and this one, or null
+ *  when there is no prior committed working set to measure from.
+ *
+ *  Warmup sets are deliberately excluded from candidacy, on both sides of the
+ *  comparison. Every lifting day's first exercise carries warmup sets in the
+ *  SAME exercise.sets[] / set_index space as the working sets, and the
+ *  warmup-to-first-working-set transition is legitimately short — it is not
+ *  the inter-working-set rest that restPrescription describes. Counting a
+ *  warmup as the "prior" set would false-flag that transition and, via the
+ *  once-per-exercise gate below, permanently suppress the rule for the rest
+ *  of the exercise. The accepted consequence: the first working set of an
+ *  exercise has no prior working set yet, so the rule correctly stays silent
+ *  there — there is nothing to judge until a second working set exists. */
 function restBefore(
   exercise: ExerciseDraft,
   set: ExerciseSetDraft,
 ): number | null {
   if (set.committed_at == null) return null;
   const prior = exercise.sets
-    .filter((s) => s.committed_at != null && s.set_index < set.set_index)
+    .filter((s) => !s.warmup && s.committed_at != null && s.set_index < set.set_index)
     .sort((a, b) => b.set_index - a.set_index)[0];
   if (!prior?.committed_at) return null;
   const delta = Date.parse(set.committed_at) - Date.parse(prior.committed_at);
@@ -48,8 +62,10 @@ export function ruleRestDiscipline(input: LiveSetInput): CoachLine | null {
   if (actual == null) return null;
   if (actual >= threshold) return null;
 
-  // Once per exercise: inform, do not nag.
+  // Once per exercise: inform, do not nag. Only earlier WORKING sets count —
+  // a warmup can never itself be the flagged set.
   const alreadyFlagged = exercise.sets.some((s) => {
+    if (s.warmup) return false;
     if (s.set_index >= set.set_index) return false;
     const r = restBefore(exercise, s);
     return r != null && r < threshold;
