@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   countdownRemaining,
   elapsedWorkSeconds,
@@ -49,6 +50,15 @@ export function SetTimerDock({
   startedAt, pausedAt, pausedMsTotal, canStart,
   onStart, onCountdownElapsed, onStop,
 }: Props) {
+  // Portal to <body> so the dock escapes the LoggerSheet stacking context. The
+  // sheet is `fixed z-40`; BottomNav is ALSO body-level `fixed z-40` but is
+  // rendered after <main>, so an equal-z child of the sheet loses the tie and
+  // is painted over — and `--nav-h` is 120px, taller than this dock, so the
+  // whole 78px circle would sit under it and be un-tappable. Same lesson as
+  // ReorderDialog and DayEditSheet; `mounted` is the SSR guard those use.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
   // This component owns the tick. Nothing time-varying is passed down from
   // LoggerSheet, so the memoized ExerciseCards never re-render on it.
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -123,8 +133,10 @@ export function SetTimerDock({
 
   const restSecondsTotal = Math.max(0, Math.floor(sessionElapsedMs / 1000) - workSecondsTotal);
 
-  return (
-    <div className="absolute bottom-0 inset-x-0 border-t border-zinc-800 bg-zinc-950/95 backdrop-blur px-3 pt-3 pb-[max(0.875rem,env(safe-area-inset-bottom))] flex items-center gap-3">
+  if (!mounted) return null;
+
+  return createPortal(
+    <div className="fixed bottom-0 inset-x-0 z-50 border-t border-zinc-800 bg-zinc-950/95 backdrop-blur px-3 pt-3 pb-[max(0.875rem,env(safe-area-inset-bottom))] flex items-center gap-3">
       <button
         type="button"
         onClick={circle.onClick}
@@ -164,6 +176,7 @@ export function SetTimerDock({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

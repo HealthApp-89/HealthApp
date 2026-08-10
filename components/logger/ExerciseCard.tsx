@@ -123,13 +123,17 @@ function ExerciseCardInner({
   }, [exercise, exerciseIndex, onExerciseChange]);
 
   const removeSet = useCallback((setIndex: number) => {
+    // Clear FIRST, remove second. onExerciseChange re-indexes the surviving
+    // sets, so a clear dispatched after it would name the row that slid into
+    // this slot — blanking started_at/work_seconds on the wrong set and
+    // leaving the timer still pointed at the deleted one.
+    onSetCleared({ exerciseIndex, setIndex });
     // Re-index remaining sets so set_index stays contiguous (the RPC writes
     // the payload's set_index verbatim — gaps would persist in the DB).
     const nextSets = exercise.sets
       .filter((_, i) => i !== setIndex)
       .map((s, i) => ({ ...s, set_index: i }));
     onExerciseChange(exerciseIndex, { ...exercise, sets: nextSets });
-    onSetCleared({ exerciseIndex, setIndex });
   }, [exercise, exerciseIndex, onExerciseChange, onSetCleared]);
 
   const addSet = useCallback(() => {

@@ -117,6 +117,69 @@ function commitPendingEntry(draft: LoggerDraft): LoggerDraft {
   return draft;
 }
 
+/**
+ * Re-point the timer's stored refs after the exercise LIST changed under them.
+ *
+ * `SetRef.exerciseIndex` is positional, so removing or reordering an exercise
+ * silently re-aims every stored ref at whatever slid into that slot: STOP would
+ * stamp `committed_at` / `work_seconds` onto a different exercise's set. Both
+ * refs are remapped — `pendingEntry` carries the same shape (Task 6 reads it).
+ *
+ * `mapIndex` returns the exercise's new index, or null if it is gone.
+ */
+function remapTimerExercises(
+  state: TimerState,
+  mapIndex: (oldIndex: number) => number | null,
+): TimerState {
+  if (state.activeSet === null && state.pendingEntry === null) return state;
+  let next = state;
+
+  if (next.activeSet) {
+    const moved = mapIndex(next.activeSet.exerciseIndex);
+    // The exercise holding the set in play (or being rested after) is gone.
+    // There is nothing left to stop or save, so drop the timer entirely rather
+    // than let it advance to `rest` against a set that no longer exists.
+    if (moved === null) return IDLE_TIMER;
+    if (moved !== next.activeSet.exerciseIndex) {
+      next = { ...next, activeSet: { ...next.activeSet, exerciseIndex: moved } };
+    }
+  }
+
+  if (next.pendingEntry) {
+    const moved = mapIndex(next.pendingEntry.exerciseIndex);
+    if (moved === null) {
+      next = { ...next, pendingEntry: null };
+    } else if (moved !== next.pendingEntry.exerciseIndex) {
+      next = { ...next, pendingEntry: { ...next.pendingEntry, exerciseIndex: moved } };
+    }
+  }
+
+  return next;
+}
+
+/**
+ * Drop rest overrides for every exercise whose index moved.
+ *
+ * `restOverrides` is the LIFTED half of a value ExerciseCard also holds
+ * locally. The card's `key` embeds its index, so any index change remounts it
+ * and resets the local copy to "no override". Remapping the lifted copy instead
+ * of dropping it would leave the two disagreeing — the "+ Add set (m:ss)" label
+ * showing the prescription while `press_stop` seeds rest from the override.
+ * Keeping only the entries whose card did NOT remount makes them agree by
+ * construction. (Keying by exercise name would not: the card still remounts.)
+ */
+function keepUnmovedRestOverrides(
+  overrides: Record<number, number>,
+  mapIndex: (oldIndex: number) => number | null,
+): Record<number, number> {
+  const next: Record<number, number> = {};
+  for (const [k, v] of Object.entries(overrides)) {
+    const i = Number(k);
+    if (mapIndex(i) === i) next[i] = v;
+  }
+  return next;
+}
+
 /** Prescribed rest for an exercise, from the same session-structure annotation
  *  ExerciseCard shows. Read at `press_stop` time so an override applied
  *  mid-session is picked up. */
@@ -353,9 +416,17 @@ export function LoggerSheet(props: Props) {
   }, []);
 
   const handleExerciseRemove = useCallback((index: number) => {
+    // Everything after the removed exercise shifts down one slot, so the
+    // timer's refs and the lifted rest overrides have to move with it.
+    const mapIndex = (i: number) => (i === index ? null : i > index ? i - 1 : i);
+    setRestOverrides((prev) => keepUnmovedRestOverrides(prev, mapIndex));
     setDraft((prev) => {
       if (!prev) return prev;
-      return { ...prev, exercises: prev.exercises.filter((_, j) => j !== index) };
+      return {
+        ...prev,
+        exercises: prev.exercises.filter((_, j) => j !== index),
+        timer: remapTimerExercises(timerOf(prev), mapIndex),
+      };
     });
   }, []);
 
@@ -531,6 +602,9 @@ export function LoggerSheet(props: Props) {
   // What START dispatches. During `rest`, timer.activeSet is the set just
   // FINISHED, so the next set always comes from the pending scan.
   const nextSetRef = firstPendingSet(draft);
+  const anyDialogOpen =
+    pickerOpen || reorderOpen || saveDefaultOpen || finishOpen
+    || closeConfirmOpen || resetConfirmOpen;
   // What the caption describes: the set in play mid-set, otherwise the next one.
   const { activeLabel, targetLabel } = describeSet(draft, midSet ? timer.activeSet : nextSetRef);
 
@@ -563,9 +637,22 @@ export function LoggerSheet(props: Props) {
 
   function pauseAndClose() {
     if (!draft) { props.onClose(); return; }
-    if (!draft.paused_at) {
-      setDraft({ ...draft, paused_at: new Date().toISOString() });
-    }
+    const cur = timerOf(draft);
+    // An in-flight set must NOT survive the close. Pause is disabled mid-set,
+    // but Close is one tap and auto-pauses here; the draft would persist
+    // phase:"running" with its original absolute anchorMs, and resuming hours
+    // later (within the 12h TTL) would let STOP stamp the entire gap as
+    // work_seconds — which Task 7 writes to the DB, poisoning restBetweenSets,
+    // the debrief, and rest-discipline math. The set was never committed, so
+    // abandoning it is correct: the athlete restarts it on resume.
+    const nextTimer = cur.phase === "countdown" || cur.phase === "running"
+      ? timerReducer(cur, { type: "reset" })
+      : cur;
+    setDraft({
+      ...draft,
+      timer: nextTimer,
+      paused_at: draft.paused_at ?? new Date().toISOString(),
+    });
     setCloseConfirmOpen(false);
     props.onClose();
   }
@@ -799,7 +886,11 @@ export function LoggerSheet(props: Props) {
         </button>
       </div>
 
-      {!props.editMode && (
+      {/* The dock portals to <body>, so it paints ABOVE the sheet's own z-50
+          dialogs (ExercisePicker is a bottom sheet — exactly the dock's strip).
+          Unmounting while one is open is free: every value the dock shows is
+          derived from absolute anchors on the draft, so it comes back exact. */}
+      {!props.editMode && !anyDialogOpen && (
         <SetTimerDock
           state={timer}
           activeLabel={activeLabel}
@@ -848,7 +939,24 @@ export function LoggerSheet(props: Props) {
           exercises={draft.exercises}
           onCancel={() => setReorderOpen(false)}
           onConfirm={(next) => {
-            setDraft({ ...draft, exercises: next });
+            // ReorderDialog splices the SAME ExerciseDraft objects, so identity
+            // gives an exact old→new index map even when two exercises share a
+            // name. Computed out here, not inside the setDraft updater, so the
+            // updater stays a pure function of prev.
+            const before = draft.exercises;
+            const mapIndex = (i: number) => {
+              const moved = next.indexOf(before[i]);
+              return moved === -1 ? null : moved;
+            };
+            setRestOverrides((o) => keepUnmovedRestOverrides(o, mapIndex));
+            setDraft((prev) => {
+              if (!prev) return prev;
+              return {
+                ...prev,
+                exercises: next,
+                timer: remapTimerExercises(timerOf(prev), mapIndex),
+              };
+            });
             setReorderOpen(false);
           }}
         />
