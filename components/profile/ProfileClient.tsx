@@ -25,7 +25,6 @@ import { EnduranceSetupSection } from "@/components/profile/EnduranceSetupSectio
 import { TimezoneSection } from "@/components/profile/TimezoneSection";
 import { useAthleteProfile } from "@/lib/query/hooks/useAthleteProfile";
 import { RecurringActivitySection } from "@/components/profile/RecurringActivitySection";
-import { SoundCheckSection } from "@/components/profile/SoundCheckSection";
 
 export function ProfileClient({
   userId,
@@ -191,11 +190,6 @@ export function ProfileClient({
           initial={profile?.recurring_activities ?? []}
         />
         {showLabCard && <LabPromptCard userId={userId} />}
-      </div>
-
-      <SectionLabel>Workout logger</SectionLabel>
-      <div style={{ padding: "0 8px 14px" }}>
-        <SoundCheckSection />
       </div>
 
       <SectionLabel>Connected sources</SectionLabel>

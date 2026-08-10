@@ -6,7 +6,6 @@ import { usePreviousSet } from "@/lib/query/hooks/usePreviousSet";
 import { VoiceMicButton } from "@/components/logger/VoiceMicButton";
 import { fmtNum } from "@/lib/ui/score";
 import { selectOnFocus } from "@/lib/ui/inputs";
-import { fireCue } from "@/lib/logger/audio-cue";
 
 type Props = {
   userId: string;
@@ -18,6 +17,14 @@ type Props = {
    *  followed by a normal set show the normal one as "1", not "3". */
   workingSetNumber: number;
   isActive: boolean;
+  /** True inside a hydrated historical-workout edit (EditSessionButton). Edit
+   *  mode runs no live timer at all, so a time-based row has no dock and no
+   *  "Start this set" affordance to reach — it needs its own hand-editable
+   *  seconds field, the same way rep-based rows stay hand-editable there.
+   *  Live (fresh-session) mode keeps the row dock-driven and commit-only via
+   *  Save/auto-save, which is what closes the corruption path where a manual
+   *  commit could stamp `committed_at` with `duration_seconds` still null. */
+  editMode: boolean;
   /** When present, renders a countdown-timer set row (foam rolls, planks,
    *  dead hangs, etc.) instead of the kg/reps inputs. Counts down to 0 then
    *  continues counting up so the user can stop early or run over. */
@@ -34,20 +41,30 @@ type Props = {
   onUnparsedVoice: (transcript: string) => void;
 };
 
-function fmtMmSs(totalSeconds: number): string {
-  const s = Math.max(0, Math.floor(totalSeconds));
-  const m = Math.floor(s / 60);
-  const r = s % 60;
+/** m:ss for the committed-row work stamp. Same shape SetEntryRow's `◷ 0:33
+ *  work` chip uses — that chip lives inside the zoom and unmounts on Save, so
+ *  without this the athlete could never see an individual set's work time
+ *  again, only the Finish summary's aggregate. */
+function mmss(total: number): string {
+  const m = Math.floor(total / 60);
+  const r = total % 60;
   return `${m}:${r.toString().padStart(2, "0")}`;
 }
 
 export function SetRow({
   userId, exerciseName, excludeWorkoutExternalId, set, workingSetNumber,
-  isActive, targetDurationSeconds, target, canRemove, onChange, onCommit, onUncommit, onRemove, onUnparsedVoice,
+  isActive, editMode, targetDurationSeconds, target, canRemove, onChange, onCommit, onUncommit, onRemove, onUnparsedVoice,
 }: Props) {
   const [draftKg, setDraftKg] = useState<string>(set.kg !== null ? String(set.kg) : "");
   const [draftReps, setDraftReps] = useState<string>(set.reps !== null ? String(set.reps) : "");
   const [draftRir, setDraftRir] = useState<string>(set.rir !== null && set.rir !== undefined ? String(set.rir) : "");
+  // Edit-mode-only hand-editable seconds field. Mount-only local state, same
+  // shape as draftReps/draftRir (no external-write concern like draftKg's
+  // apply-tap case — nothing outside this row ever patches duration_seconds
+  // on it).
+  const [draftSeconds, setDraftSeconds] = useState<string>(
+    set.duration_seconds !== null ? String(set.duration_seconds) : "",
+  );
 
   // draftKg is otherwise mount-only local state, so an external write to
   // set.kg (the apply-tap in ExerciseCard calling patchSet directly) would
@@ -64,42 +81,32 @@ export function SetRow({
     }
   }, [set.kg]);
 
-  // Timer mode: local started_at (ms). Ticks every 250ms while running.
-  // Resets when the set is uncommitted.
-  const [timerStartedAt, setTimerStartedAt] = useState<number | null>(null);
-  const [tick, setTick] = useState(0);
-  const cueFiredRef = useRef(false);
-  useEffect(() => {
-    if (timerStartedAt == null) return;
-    const id = setInterval(() => setTick((t) => t + 1), 250);
-    return () => clearInterval(id);
-  }, [timerStartedAt]);
-  const elapsedSeconds = timerStartedAt != null
-    ? Math.floor((Date.now() - timerStartedAt) / 1000)
-    : 0;
-  useEffect(() => {
-    if (timerStartedAt != null && targetDurationSeconds != null
-        && elapsedSeconds >= targetDurationSeconds && !cueFiredRef.current) {
-      cueFiredRef.current = true;
-      fireCue();
-    }
-  }, [timerStartedAt, elapsedSeconds, targetDurationSeconds]);
-  // tick is read by the effects above via Date.now(); reference it so the
-  // 250ms re-renders aren't dead-stripped.
-  void tick;
+  const timeBased = targetDurationSeconds != null;
 
   // Warmup rows don't get a "previous" hint — the column would either be
   // blank or, worse, surface last week's heavy working set as the comparison.
+  // Time-based rows never show it either (their "target" cell carries the
+  // held-seconds goal instead — see below), so skip the fetch entirely.
   const prev = usePreviousSet({
     userId,
     exerciseName,
     workingSetOrdinal: workingSetNumber,
     excludeWorkoutExternalId,
-    enabled: !set.committed_at && !set.warmup,
+    enabled: !set.committed_at && !set.warmup && !timeBased,
   });
 
   const committed = !!set.committed_at;
   const [badgeOpen, setBadgeOpen] = useState(false);
+
+  // Per-row work stamp for a committed, TIMED set. Rendered inside the
+  // existing Target/prev cell — no extra <td>, so both the 6-column
+  // (time-based) and 7-column (rep-based) variants still match their headers.
+  // Null `work_seconds` renders NOTHING at all: hand-logged sets, Strong CSV
+  // imports and pre-0056 rows are legitimately untimed, and a "0s" or a dashed
+  // chip would assert a measurement that was never taken.
+  const workStamp = committed && set.work_seconds != null
+    ? `◷ ${mmss(set.work_seconds)}`
+    : null;
 
   // Badge selection owns the failure⇄RIR coupling: F means 0 reps in reserve
   // by definition, so it auto-fills rir=0 (draft synced — it's local state).
@@ -123,109 +130,6 @@ export function SetRow({
     : set.failure
       ? "bg-red-500/15 text-red-400"
       : "bg-zinc-800 text-zinc-200";
-
-  // Time-based mode: replace the kg/reps inputs (and mic) with a countdown
-  // timer + stop button. Tap ▶ to start, tap ⏹ to commit the elapsed time.
-  // Counts down to 0 then keeps counting up so the user can run over the
-  // prescribed seconds.
-  if (targetDurationSeconds != null) {
-    const isRunning = timerStartedAt != null && !committed;
-    const targetReached = targetDurationSeconds != null
-      && (isRunning ? elapsedSeconds >= targetDurationSeconds : false);
-    const display = (() => {
-      if (committed) {
-        return `${set.duration_seconds ?? 0}s`;
-      }
-      if (!isRunning) return `${targetDurationSeconds}s`;
-      if (targetReached) {
-        return `+${fmtMmSs(elapsedSeconds - targetDurationSeconds)}`;
-      }
-      return fmtMmSs(targetDurationSeconds - elapsedSeconds);
-    })();
-    const onStart = () => {
-      cueFiredRef.current = false;
-      setTimerStartedAt(Date.now());
-    };
-    const onStop = () => {
-      if (timerStartedAt == null) return;
-      const actual = Math.max(0, Math.floor((Date.now() - timerStartedAt) / 1000));
-      setTimerStartedAt(null);
-      onChange({ duration_seconds: actual });
-      // commitSet on parent reads the latest set; defer by a microtask so the
-      // patch above is applied first.
-      queueMicrotask(onCommit);
-    };
-    return (
-      <tr>
-        <td className="py-1 relative">
-          <button
-            type="button"
-            onClick={() => setBadgeOpen((v) => !v)}
-            className={`w-6 h-6 rounded-md text-[11px] font-semibold ${setBadgeClass}`}
-            aria-label="Change set type"
-          >
-            {setLabel}
-          </button>
-          {badgeOpen && (
-            <>
-              <div className="fixed inset-0 z-10" onClick={() => setBadgeOpen(false)} aria-hidden />
-              <div className="absolute left-0 top-7 z-20 bg-zinc-800 border border-zinc-700 rounded-lg p-1 flex flex-col gap-0.5 min-w-[44px]" role="menu">
-                <button type="button" onClick={() => selectBadge({ warmup: false, failure: false })} className="w-9 h-7 rounded text-[11px] font-semibold bg-zinc-800 text-zinc-200 hover:bg-zinc-700">{workingSetNumber}</button>
-                <button type="button" onClick={() => selectBadge({ warmup: true, failure: false })} className="w-9 h-7 rounded text-[11px] font-semibold bg-yellow-500/15 text-yellow-300 hover:bg-yellow-500/25">W</button>
-                <button type="button" onClick={() => selectBadge({ warmup: false, failure: true })} className="w-9 h-7 rounded text-[11px] font-semibold bg-red-500/15 text-red-400 hover:bg-red-500/25">F</button>
-              </div>
-            </>
-          )}
-        </td>
-        <td className="py-1 text-[10.5px] text-zinc-600">
-          {targetDurationSeconds}s target
-        </td>
-        <td className="py-1">
-          {!committed && (
-            <button
-              type="button"
-              onClick={isRunning ? onStop : onStart}
-              className={`w-9 h-7 rounded-md text-[11px] font-semibold ${
-                isRunning
-                  ? "bg-red-500/20 text-red-300 hover:bg-red-500/30"
-                  : "bg-indigo-500/20 text-indigo-300 hover:bg-indigo-500/30"
-              }`}
-              aria-label={isRunning ? "Stop timer" : "Start timer"}
-            >
-              {isRunning ? "⏹" : "▶"}
-            </button>
-          )}
-        </td>
-        <td className="py-1">
-          <span className={`font-mono tabular-nums text-[12px] ${
-            committed
-              ? "text-green-400"
-              : targetReached
-                ? "text-amber-300"
-                : isRunning
-                  ? "text-zinc-100"
-                  : "text-zinc-500"
-          }`}>
-            {display}
-          </span>
-        </td>
-        <td className="py-1">
-          <button
-            type="button"
-            onClick={committed ? onUncommit : undefined}
-            disabled={!committed}
-            className={`w-6 h-6 rounded-md flex items-center justify-center text-[12px] ${
-              committed ? "bg-green-500 text-green-950" : "bg-zinc-800 text-zinc-600"
-            }`}
-            aria-label={committed ? "Uncommit set" : "Stop the timer first"}
-          >
-            {committed ? "✓" : "○"}
-          </button>
-        </td>
-        <td className="py-1"></td>
-      </tr>
-    );
-  }
 
   return (
     <tr>
@@ -283,103 +187,193 @@ export function SetRow({
           </>
         )}
       </td>
-      <td className="py-1 text-[10.5px] leading-tight">
-        {target && (target.kg != null || target.reps != null) && (
-          <div className="text-zinc-300 font-mono tabular-nums">
-            {target.kg != null ? fmtNum(target.kg) : "BW"}
-            {target.reps != null ? ` × ${target.reps}` : ""}
-            {target.rir != null ? ` @${target.rir}` : ""}
-          </div>
-        )}
-        <div className="text-zinc-600">
-          {prev.data ? (
-            <span title={prev.data.fallback ? `Last available set on ${prev.data.workout_date}` : prev.data.workout_date}>
-              {prev.data.kg === null ? "BW" : fmtNum(prev.data.kg)} × {prev.data.reps ?? "—"}
-              {prev.data.fallback && <span className="text-zinc-700">·</span>}
-            </span>
-          ) : "—"}
-        </div>
-      </td>
-      <td className="py-1">
-        <input
-          inputMode="decimal"
-          value={draftKg}
-          onChange={(e) => { setDraftKg(e.target.value); }}
-          onFocus={selectOnFocus}
-          onBlur={() => {
-            const n = draftKg === "" ? null : parseFloat(draftKg);
-            onChange({ kg: Number.isFinite(n as number) ? (n as number) : null });
-          }}
-          disabled={committed}
-          className={`bg-zinc-800 border-none rounded-md px-1.5 py-1 w-14 text-center font-medium font-mono tabular-nums ${
-            committed ? "text-green-400 bg-green-500/10" : "text-zinc-100"
-          }`}
-        />
-      </td>
-      <td className="py-1">
-        <input
-          inputMode="numeric"
-          value={draftReps}
-          onChange={(e) => { setDraftReps(e.target.value); }}
-          onFocus={selectOnFocus}
-          onBlur={() => {
-            const n = draftReps === "" ? null : parseInt(draftReps, 10);
-            onChange({ reps: Number.isFinite(n as number) ? (n as number) : null });
-          }}
-          disabled={committed}
-          className={`bg-zinc-800 border-none rounded-md px-1.5 py-1 w-12 text-center font-medium font-mono tabular-nums ${
-            committed ? "text-green-400 bg-green-500/10" : "text-zinc-100"
-          }`}
-        />
-      </td>
-      <td className="py-1">
-        <input
-          inputMode="numeric"
-          value={draftRir}
-          onChange={(e) => { setDraftRir(e.target.value); }}
-          onFocus={selectOnFocus}
-          onBlur={() => {
-            const n = draftRir === "" ? null : parseInt(draftRir, 10);
-            const clamped = n === null || !Number.isFinite(n) ? null : Math.max(0, Math.min(10, n));
-            onChange({ rir: clamped });
-          }}
-          disabled={committed}
-          aria-label="Reps in reserve"
-          placeholder="RIR"
-          className={`bg-zinc-800 border-none rounded-md px-1.5 py-1 w-12 text-center font-medium font-mono tabular-nums ${
-            committed ? "text-green-400 bg-green-500/10" : "text-zinc-100"
-          }`}
-        />
-      </td>
-      <td className="py-1">
-        <button
-          type="button"
-          onClick={committed ? onUncommit : onCommit}
-          disabled={(!committed && (set.kg === null && !set.warmup)) || (!committed && set.reps === null)}
-          className={`w-6 h-6 rounded-md flex items-center justify-center text-[12px] ${
-            committed
-              ? "bg-green-500 text-green-950"
-              : isActive
-                ? "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
-                : "bg-zinc-800 text-zinc-500"
-          }`}
-          aria-label={committed ? "Uncommit set" : "Commit set"}
-        >
-          {committed ? "✓" : "○"}
-        </button>
-      </td>
-      <td className="py-1">
-        <VoiceMicButton
-          disabled={committed}
-          onParsed={(p) => {
-            setDraftKg(p.kg !== null ? String(p.kg) : "");
-            setDraftReps(String(p.reps));
-            onChange({ kg: p.kg, reps: p.reps });
-            onCommit();
-          }}
-          onUnparsed={onUnparsedVoice}
-        />
-      </td>
+      {timeBased ? (
+        // Time-based row. Live mode: no per-row start/stop control — the
+        // docked session-level circle drives it (see SetTimerDock /
+        // LoggerSheet's handleStart/handleStop), this row only shows the
+        // target and, once the dock's zoom (SetEntryRow) has saved a value,
+        // the result. Committing there deliberately requires going through
+        // the dock — typing straight into this row is not offered, which is
+        // what keeps a manual commit from ever stamping `committed_at` with
+        // `duration_seconds` still null.
+        //
+        // Edit mode: there IS no dock (edit mode runs no live timer at all —
+        // see LoggerSheet's `!props.editMode &&` guards around both the dock
+        // and onTimerStart), so that affordance does not exist to fall back
+        // to. This row is the only commit path a hydrated time-based set has,
+        // so it gets its own hand-editable seconds field here, matching how
+        // the rep-based row below stays hand-editable in edit mode too.
+        <>
+          <td className="py-1 text-[10.5px] text-zinc-600 leading-tight">
+            <div>{targetDurationSeconds}s target</div>
+            {workStamp && (
+              <div className="font-mono tabular-nums" title="Time under load">{workStamp}</div>
+            )}
+          </td>
+          <td className="py-1"></td>
+          <td className="py-1">
+            {editMode ? (
+              // Same disabled-on-commit treatment as the kg/reps/rir inputs
+              // below, not a mount/unmount swap — consistent with how every
+              // other hand-editable field in this row behaves once committed.
+              <input
+                inputMode="numeric"
+                value={draftSeconds}
+                onChange={(e) => { setDraftSeconds(e.target.value); }}
+                onFocus={selectOnFocus}
+                onBlur={() => {
+                  const n = draftSeconds === "" ? null : parseInt(draftSeconds, 10);
+                  onChange({ duration_seconds: Number.isFinite(n as number) ? (n as number) : null });
+                }}
+                disabled={committed}
+                aria-label="Seconds held"
+                placeholder="secs"
+                className={`bg-zinc-800 border-none rounded-md px-1.5 py-1 w-14 text-center font-medium font-mono tabular-nums ${
+                  committed ? "text-green-400 bg-green-500/10" : "text-zinc-100"
+                }`}
+              />
+            ) : (
+              <span className={`font-mono tabular-nums text-[12px] ${
+                committed ? "text-green-400" : "text-zinc-500"
+              }`}>
+                {committed ? `${set.duration_seconds ?? 0}s` : "—"}
+              </span>
+            )}
+          </td>
+          <td className="py-1">
+            <button
+              type="button"
+              onClick={committed ? onUncommit : editMode ? onCommit : undefined}
+              disabled={committed ? false : editMode ? set.duration_seconds === null : true}
+              className={`w-6 h-6 rounded-md flex items-center justify-center text-[12px] ${
+                committed
+                  ? "bg-green-500 text-green-950"
+                  : editMode && set.duration_seconds !== null
+                    ? "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
+                    : "bg-zinc-800 text-zinc-600"
+              }`}
+              aria-label={
+                committed
+                  ? "Uncommit set"
+                  : editMode
+                    ? "Commit set"
+                    : "Use the timer below to log this set"
+              }
+            >
+              {committed ? "✓" : "○"}
+            </button>
+          </td>
+          <td className="py-1"></td>
+        </>
+      ) : (
+        <>
+          <td className="py-1 text-[10.5px] leading-tight">
+            {target && (target.kg != null || target.reps != null) && (
+              <div className="text-zinc-300 font-mono tabular-nums">
+                {target.kg != null ? fmtNum(target.kg) : "BW"}
+                {target.reps != null ? ` × ${target.reps}` : ""}
+                {target.rir != null ? ` @${target.rir}` : ""}
+              </div>
+            )}
+            <div className="text-zinc-600">
+              {/* Second line of the cell, one thing at a time. The previous-set
+                  hint is a pre-set aid — `usePreviousSet` is disabled once the
+                  row commits — so on a committed timed row the work stamp
+                  takes the slot rather than adding a third line and breaking
+                  the table's density. A committed UNTIMED row keeps whatever
+                  it showed before. */}
+              {workStamp ? (
+                <span className="font-mono tabular-nums" title="Time under load">{workStamp}</span>
+              ) : prev.data ? (
+                <span title={prev.data.fallback ? `Last available set on ${prev.data.workout_date}` : prev.data.workout_date}>
+                  {prev.data.kg === null ? "BW" : fmtNum(prev.data.kg)} × {prev.data.reps ?? "—"}
+                  {prev.data.fallback && <span className="text-zinc-700">·</span>}
+                </span>
+              ) : "—"}
+            </div>
+          </td>
+          <td className="py-1">
+            <input
+              inputMode="decimal"
+              value={draftKg}
+              onChange={(e) => { setDraftKg(e.target.value); }}
+              onFocus={selectOnFocus}
+              onBlur={() => {
+                const n = draftKg === "" ? null : parseFloat(draftKg);
+                onChange({ kg: Number.isFinite(n as number) ? (n as number) : null });
+              }}
+              disabled={committed}
+              className={`bg-zinc-800 border-none rounded-md px-1.5 py-1 w-14 text-center font-medium font-mono tabular-nums ${
+                committed ? "text-green-400 bg-green-500/10" : "text-zinc-100"
+              }`}
+            />
+          </td>
+          <td className="py-1">
+            <input
+              inputMode="numeric"
+              value={draftReps}
+              onChange={(e) => { setDraftReps(e.target.value); }}
+              onFocus={selectOnFocus}
+              onBlur={() => {
+                const n = draftReps === "" ? null : parseInt(draftReps, 10);
+                onChange({ reps: Number.isFinite(n as number) ? (n as number) : null });
+              }}
+              disabled={committed}
+              className={`bg-zinc-800 border-none rounded-md px-1.5 py-1 w-12 text-center font-medium font-mono tabular-nums ${
+                committed ? "text-green-400 bg-green-500/10" : "text-zinc-100"
+              }`}
+            />
+          </td>
+          <td className="py-1">
+            <input
+              inputMode="numeric"
+              value={draftRir}
+              onChange={(e) => { setDraftRir(e.target.value); }}
+              onFocus={selectOnFocus}
+              onBlur={() => {
+                const n = draftRir === "" ? null : parseInt(draftRir, 10);
+                const clamped = n === null || !Number.isFinite(n) ? null : Math.max(0, Math.min(10, n));
+                onChange({ rir: clamped });
+              }}
+              disabled={committed}
+              aria-label="Reps in reserve"
+              placeholder="RIR"
+              className={`bg-zinc-800 border-none rounded-md px-1.5 py-1 w-12 text-center font-medium font-mono tabular-nums ${
+                committed ? "text-green-400 bg-green-500/10" : "text-zinc-100"
+              }`}
+            />
+          </td>
+          <td className="py-1">
+            <button
+              type="button"
+              onClick={committed ? onUncommit : onCommit}
+              disabled={(!committed && (set.kg === null && !set.warmup)) || (!committed && set.reps === null)}
+              className={`w-6 h-6 rounded-md flex items-center justify-center text-[12px] ${
+                committed
+                  ? "bg-green-500 text-green-950"
+                  : isActive
+                    ? "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
+                    : "bg-zinc-800 text-zinc-500"
+              }`}
+              aria-label={committed ? "Uncommit set" : "Commit set"}
+            >
+              {committed ? "✓" : "○"}
+            </button>
+          </td>
+          <td className="py-1">
+            <VoiceMicButton
+              disabled={committed}
+              onParsed={(p) => {
+                setDraftKg(p.kg !== null ? String(p.kg) : "");
+                setDraftReps(String(p.reps));
+                onChange({ kg: p.kg, reps: p.reps });
+                onCommit();
+              }}
+              onUnparsed={onUnparsedVoice}
+            />
+          </td>
+        </>
+      )}
     </tr>
   );
 }

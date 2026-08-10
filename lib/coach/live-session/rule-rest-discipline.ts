@@ -3,16 +3,38 @@
 // Under-resting a heavy compound guarantees the next set underperforms, and
 // the athlete then reads that as a strength problem rather than a pacing one.
 //
-// ExerciseSetDraft.rest_seconds_actual is undefined mid-session — it is
-// derived from committed_at deltas at commit time. This rule derives it the
-// same way so the live number matches the one eventually persisted. Note that
-// both measure commit-to-commit (rest plus set execution), not pure rest.
+// ExerciseSetDraft.rest_seconds_actual is undefined mid-session, so this rule
+// derives rest itself — through the SAME helper that LoggerSheet writes to the
+// column, so the MEASUREMENT cannot drift.
+//
+// The two callers do NOT agree on which set to measure from, and that is
+// deliberate: LoggerSheet's commitNow takes the previous COMMITTED set
+// (`arr[sIdx - 1]`, warmups included) because rest_seconds_actual is a
+// per-row record of the real gap that preceded that row, whatever came
+// before it. This rule takes the previous committed NON-WARMUP set, because
+// it judges rest against restPrescription, which describes inter-WORKING-set
+// rest only. They therefore differ on the first working set after a warmup —
+// the first exercise of every lifting day. See restBefore for why counting a
+// warmup there would false-flag and then, via the once-per-exercise gate,
+// permanently silence the rule for that exercise.
+//
+// That shared helper is restBetweenSets. It measures true rest: from the prior
+// set's real end (started_at + work_seconds) to this set's real start. The
+// commit-delta it falls back to — for hand-logged sets, Strong imports and any
+// row without timer anchors — measures rest PLUS set execution, and since the
+// zoomed entry row landed it measures the gap between two arbitrary Save taps,
+// which is why it is a fallback and no longer the primary path.
+//
+// Consequence, and intended: on timed sets this rule now fires on genuinely
+// short rests it used to miss, because its input was previously inflated by the
+// next set's execution time. UNDER_REST_RATIO is unchanged.
 //
 // The "prior set" is always the nearest earlier NON-WARMUP committed set —
 // see restBefore for why.
 
 import { tierOf } from "@/lib/coach/session-structure/tiers";
 import { restPrescription, repsForExercise } from "@/lib/coach/session-structure/rules";
+import { restBetweenSets } from "@/lib/logger/set-timer";
 import type { CoachLine, LiveSetInput } from "./types";
 import type { ExerciseDraft, ExerciseSetDraft } from "@/lib/logger/types";
 
@@ -41,9 +63,7 @@ function restBefore(
     .filter((s) => !s.warmup && s.committed_at != null && s.set_index < set.set_index)
     .sort((a, b) => b.set_index - a.set_index)[0];
   if (!prior?.committed_at) return null;
-  const delta = Date.parse(set.committed_at) - Date.parse(prior.committed_at);
-  if (!Number.isFinite(delta) || delta < 0) return null;
-  return Math.round(delta / 1000);
+  return restBetweenSets(prior, set);
 }
 
 export function ruleRestDiscipline(input: LiveSetInput): CoachLine | null {

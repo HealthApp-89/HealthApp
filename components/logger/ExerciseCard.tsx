@@ -3,14 +3,15 @@
 import { Fragment, memo, useCallback, useMemo, useState } from "react";
 import type { ExerciseDraft, ExerciseSetDraft } from "@/lib/logger/types";
 import { SetRow } from "@/components/logger/SetRow";
-import { RestBar } from "@/components/logger/RestBar";
+import { SetEntryRow } from "@/components/logger/SetEntryRow";
 import { RestTimeDialog } from "@/components/logger/RestTimeDialog";
+import type { TimerState, SetRef } from "@/lib/logger/set-timer";
 import { annotateSession } from "@/lib/coach/session-structure/annotate";
-import { evaluateSet, type CoachLine, type LiveSessionContext, type SessionSetRef } from "@/lib/coach/live-session";
+import type { CoachLine } from "@/lib/coach/live-session";
 import { CoachLineRow } from "@/components/logger/CoachLine";
 import { findApplyTargetSetIndex } from "@/lib/logger/apply-target";
 import { seedRir } from "@/lib/logger/seed-rir";
-import { fireCue } from "@/lib/logger/audio-cue";
+import { seedReps } from "@/lib/logger/seed-reps";
 
 type Props = {
   userId: string;
@@ -23,13 +24,51 @@ type Props = {
   onReplace: (index: number) => void;
   onRemove: (index: number) => void;
   onReorderAll: () => void;
-  /** Snapshot fetched at logger open. Undefined while loading or on fetch
-   *  failure — the coaching line then degrades to silence. */
-  liveContext?: LiveSessionContext;
+  /** Session-wide timer state, read-only here. Only ever changes on a phase
+   *  transition — no ticking value is passed down, so memo still pays. */
+  timer: TimerState;
+  /** Athlete tapped START on a specific set row. Undefined in edit mode, where
+   *  no live timer runs and the affordance must not be offered. */
+  onTimerStart?: (set: SetRef) => void;
+  /** True inside a hydrated historical-workout edit. Edit mode has no dock and
+   *  no `onTimerStart`, so a time-based row's ONLY commit path is its own
+   *  hand-editable seconds field — see SetRow. Threaded explicitly rather than
+   *  inferred from `onTimerStart == null` so the intent reads at the call
+   *  site instead of being reconstructed from an unrelated prop's absence. */
+  editMode: boolean;
+  /** Manual ○ commit. Owned by LoggerSheet so the between-sets coaching line
+   *  has ONE evaluation site shared with the timer-driven commit paths. */
+  onSetCommit: (exerciseIndex: number, setIndex: number) => void;
+  /** Save the zoomed entry row's values and close it. Touches no clock —
+   *  rest keeps running underneath. */
+  onEntrySave: (set: SetRef) => void;
+  /** A set was uncommitted — clears timer state pointing at it. */
+  onSetCleared: (set: SetRef) => void;
+  /** Delete a set. Owned by LoggerSheet, NOT applied locally: the filter, the
+   *  `set_index` re-index and the timer-ref remap have to land in one atomic
+   *  draft update or the timer ends up naming the row that slid up into the
+   *  deleted slot. See remapTimerSets. */
+  onSetRemove: (exerciseIndex: number, setIndex: number) => void;
+  /** Rest override chosen in this card's dialog, lifted so LoggerSheet can seed
+   *  the rest countdown when it dispatches `press_stop`. */
+  onRestOverrideChange: (exerciseIndex: number, seconds: number) => void;
+  /** RestTimeDialog is rendered by this card but is a full-screen modal, so
+   *  LoggerSheet has to know it is up: the SetTimerDock portals to <body> and
+   *  would otherwise paint — and stay tappable — above the dialog's backdrop.
+   *  Same lifting pattern as onRestOverrideChange. */
+  onRestDialogOpenChange: (exerciseIndex: number, open: boolean) => void;
+  /** Between-sets coaching line for THIS exercise, already filtered by
+   *  LoggerSheet. Held there, not here, so both commit paths feed one state. */
+  coachLine: CoachLine | null;
+  coachLineSetIndex: number | null;
+  /** Take the line down — applied a load, or dismissed it. */
+  onCoachLineDismiss: () => void;
 };
 
 function ExerciseCardInner({
-  userId, externalId, exercise, exerciseIndex, allExercises, onExerciseChange, onReplace, onRemove, onReorderAll, liveContext,
+  userId, externalId, exercise, exerciseIndex, allExercises, onExerciseChange, onReplace, onRemove, onReorderAll,
+  timer, onTimerStart, editMode, onSetCommit, onEntrySave, onSetCleared, onSetRemove, onRestOverrideChange,
+  onRestDialogOpenChange, coachLine, coachLineSetIndex, onCoachLineDismiss,
 }: Props) {
   // Tier + rest prescription from session-structure annotation.
   const annotated = useMemo(() => {
@@ -41,79 +80,27 @@ function ExerciseCardInner({
   const prescribedRestMin = annotated?.rest_seconds.min ?? 120;
   const [restOverrideSeconds, setRestOverrideSeconds] = useState<number | null>(null);
   const effectiveRest = restOverrideSeconds ?? prescribedRestMin;
-  const [activeRestStartedAt, setActiveRestStartedAt] = useState<number | null>(null);
-  const [activeRestSeconds, setActiveRestSeconds] = useState<number>(effectiveRest);
-  const [restAfterSetIndex, setRestAfterSetIndex] = useState<number | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [restDialogOpen, setRestDialogOpen] = useState(false);
   const [unparsedBanner, setUnparsedBanner] = useState<string | null>(null);
-  const [coachLine, setCoachLine] = useState<CoachLine | null>(null);
-  // Tracked separately from restAfterSetIndex so that skipping the rest timer
-  // takes down the timer and NOT the verdict — the load call is still
-  // actionable after the athlete decides to start the next set early.
-  const [coachLineSetIndex, setCoachLineSetIndex] = useState<number | null>(null);
 
+  // Commit is LoggerSheet's job on both paths — the manual ○ here and the
+  // timer's Save / auto-save-on-START. It owns the draft, so it is the only
+  // place that can hand the between-sets rules a post-commit session view
+  // without a second copy of the set-collection logic.
   const commitSet = useCallback((setIndex: number) => {
-    const nowIso = new Date().toISOString();
-    const now = Date.now();
-    const nextSets = exercise.sets.map((s, i) => {
-      if (i !== setIndex) return s;
-      return { ...s, committed_at: nowIso };
-    });
-    const nextExercise = { ...exercise, sets: nextSets };
-
-    // rest_seconds_actual on the NEXT pending set is captured at its own commit time.
-    onExerciseChange(exerciseIndex, nextExercise);
-    setRestAfterSetIndex(setIndex);
-    setActiveRestSeconds(effectiveRest);
-    setActiveRestStartedAt(now);
-
-    // Between-sets coaching. Silent by design on an on-plan set, and silent
-    // whenever the context snapshot is unavailable. Runs against nextSets
-    // (post-commit) so the just-committed set is visible to the rules, and
-    // sessionSets spans ALL exercises so the failure budget counts session-wide.
-    //
-    // The line is ALWAYS replaced, never merely overwritten-when-present: with
-    // no `else`, a set committed while liveContext was undefined (the query key
-    // hashes the exercise-name list, so Add/Remove/Replace mints a new key and
-    // `data` goes undefined until the refetch lands — permanently, if offline)
-    // left the PREVIOUS set's line on screen underneath the new one.
-    let line: CoachLine | null = null;
-    if (liveContext) {
-      const committedSet = nextSets[setIndex];
-      const sessionSets: SessionSetRef[] = allExercises.flatMap((ex, i) =>
-        (i === exerciseIndex ? nextSets : ex.sets)
-          .filter((s) => !s.warmup && s.committed_at != null)
-          .map((s) => ({ exerciseName: ex.name, set: s })),
-      );
-      line = evaluateSet({
-        set: committedSet,
-        exercise: nextExercise,
-        sessionSets,
-        context: liveContext,
-      });
-    }
-    setCoachLine(line);
-    setCoachLineSetIndex(line ? setIndex : null);
-    if (line?.cue) fireCue();
-  }, [exercise, exerciseIndex, onExerciseChange, effectiveRest, liveContext, allExercises]);
+    onSetCommit(exerciseIndex, setIndex);
+  }, [exerciseIndex, onSetCommit]);
 
   const uncommitSet = useCallback((setIndex: number) => {
     const nextSets = exercise.sets.map((s, i) =>
       i === setIndex ? { ...s, committed_at: null } : s,
     );
     onExerciseChange(exerciseIndex, { ...exercise, sets: nextSets });
-    // The verdict was about a set that no longer counts as committed. Take it
-    // down, along with the rest timer it triggered.
-    if (coachLineSetIndex === setIndex) {
-      setCoachLine(null);
-      setCoachLineSetIndex(null);
-    }
-    if (restAfterSetIndex === setIndex) {
-      setRestAfterSetIndex(null);
-      setActiveRestStartedAt(null);
-    }
-  }, [exercise, exerciseIndex, onExerciseChange, coachLineSetIndex, restAfterSetIndex]);
+    // The verdict was about a set that no longer counts as committed, and the
+    // rest timer it triggered points at it too. LoggerSheet takes down both.
+    onSetCleared({ exerciseIndex, setIndex });
+  }, [exercise, exerciseIndex, onExerciseChange, onSetCleared]);
 
   const patchSet = useCallback((setIndex: number, patch: Partial<ExerciseSetDraft>) => {
     const nextSets = exercise.sets.map((s, i) => (i === setIndex ? { ...s, ...patch } : s));
@@ -121,13 +108,8 @@ function ExerciseCardInner({
   }, [exercise, exerciseIndex, onExerciseChange]);
 
   const removeSet = useCallback((setIndex: number) => {
-    // Re-index remaining sets so set_index stays contiguous (the RPC writes
-    // the payload's set_index verbatim — gaps would persist in the DB).
-    const nextSets = exercise.sets
-      .filter((_, i) => i !== setIndex)
-      .map((s, i) => ({ ...s, set_index: i }));
-    onExerciseChange(exerciseIndex, { ...exercise, sets: nextSets });
-  }, [exercise, exerciseIndex, onExerciseChange]);
+    onSetRemove(exerciseIndex, setIndex);
+  }, [exerciseIndex, onSetRemove]);
 
   const addSet = useCallback(() => {
     const last = exercise.sets[exercise.sets.length - 1];
@@ -135,7 +117,7 @@ function ExerciseCardInner({
     const next: ExerciseSetDraft = {
       set_index: exercise.sets.length,
       kg: isTimeBased ? null : (last?.kg ?? exercise.prescribed.baseKg ?? null),
-      reps: null,
+      reps: seedReps(exercise.prescribed),
       duration_seconds: null,
       warmup: false,
       failure: false,
@@ -151,11 +133,44 @@ function ExerciseCardInner({
     onExerciseChange(exerciseIndex, { ...exercise, sets: [...exercise.sets, next] });
   }, [exercise, exerciseIndex, onExerciseChange]);
 
+  const setRestDialog = useCallback((open: boolean) => {
+    setRestDialogOpen(open);
+    onRestDialogOpenChange(exerciseIndex, open);
+  }, [exerciseIndex, onRestDialogOpenChange]);
+
+  // A set of THIS exercise is counting down or under load right now.
+  const midSet = timer.phase === "countdown" || timer.phase === "running";
+  const liveHere = midSet && timer.activeSet?.exerciseIndex === exerciseIndex;
+
+  const timeBased = exercise.prescribed.duration_seconds != null;
+  // Table has 6 columns for a time-based exercise (no RIR header) vs 7 for a
+  // rep-based one — see the <thead> above. Full-width rows spanning the whole
+  // table (the zoom, the coach line, "Start this set") need to match, or the
+  // browser silently clips/pads rather than erroring.
+  const columnCount = timeBased ? 6 : 7;
+  /** The zoomed entry row, when the open one belongs to this exercise. */
+  const pendingEntry =
+    timer.pendingEntry && timer.pendingEntry.exerciseIndex === exerciseIndex
+      ? timer.pendingEntry
+      : null;
+  // The set with the zoom open is still uncommitted — commit now happens on
+  // Save, not on stop. It must NOT also read as the row awaiting entry, or
+  // "Start this set" would appear beneath the zoom and offer to re-run the set
+  // just finished. Skipping it hands the affordance to the genuine next set.
+  const activeSetIndex = exercise.sets.findIndex(
+    (x, i) => !x.committed_at && i !== (pendingEntry?.setIndex ?? -1),
+  );
+
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-3 mb-3">
       <div className="flex items-center justify-between mb-1">
         <h4 className="text-sm font-semibold text-zinc-50">{exercise.name}</h4>
         <div className="flex gap-1.5 items-center relative">
+          {liveHere && (
+            <span className="text-[9px] px-1.5 py-0.5 bg-green-500/15 text-green-400 rounded uppercase tracking-wider">
+              Live
+            </span>
+          )}
           {annotated && (
             <span className="text-[9px] px-1.5 py-0.5 bg-zinc-800 text-zinc-400 rounded uppercase tracking-wider">
               T{annotated.fatigue_tier} · RPE {annotated.rpe_target}
@@ -166,7 +181,7 @@ function ExerciseCardInner({
             <div className="absolute right-0 top-6 bg-zinc-800 border border-zinc-700 rounded-lg p-1 text-xs z-10 min-w-[160px]">
               <button onClick={() => { setMenuOpen(false); onReplace(exerciseIndex); }} className="block w-full text-left px-2 py-1.5 hover:bg-zinc-700 rounded text-zinc-200">Replace</button>
               <button onClick={() => { setMenuOpen(false); onReorderAll(); }} className="block w-full text-left px-2 py-1.5 hover:bg-zinc-700 rounded text-zinc-200">Reorder exercises</button>
-              <button onClick={() => { setMenuOpen(false); setRestDialogOpen(true); }} className="block w-full text-left px-2 py-1.5 hover:bg-zinc-700 rounded text-zinc-200">Edit rest time</button>
+              <button onClick={() => { setMenuOpen(false); setRestDialog(true); }} className="block w-full text-left px-2 py-1.5 hover:bg-zinc-700 rounded text-zinc-200">Edit rest time</button>
               <button onClick={() => { setMenuOpen(false); onRemove(exerciseIndex); }} className="block w-full text-left px-2 py-1.5 hover:bg-zinc-700 rounded text-red-400">Remove</button>
             </div>
           )}
@@ -186,7 +201,12 @@ function ExerciseCardInner({
             <th className="text-left font-normal py-1">Set</th>
             <th className="text-left font-normal py-1">Target / prev</th>
             <th className="text-left font-normal py-1">
-              {exercise.prescribed.duration_seconds != null ? "Timer" : "kg"}
+              {/* Time-based: this column has no per-row control any more —
+                  the dock (live mode) or the seconds field itself (edit mode,
+                  one column over) drive it. Left blank rather than "Timer",
+                  which stopped being true when the inline play/stop button
+                  was removed. */}
+              {exercise.prescribed.duration_seconds != null ? "" : "kg"}
             </th>
             <th className="text-left font-normal py-1">
               {exercise.prescribed.duration_seconds != null ? "Seconds" : "Reps"}
@@ -199,36 +219,56 @@ function ExerciseCardInner({
           </tr>
         </thead>
         <tbody>
-          {exercise.sets.map((s, i) => (
+          {exercise.sets.map((s, i) => {
+            const isActiveRow = activeSetIndex === i;
+            const workingSetNumber =
+              exercise.sets.slice(0, i).filter((x) => !x.warmup).length + 1;
+            return (
             <Fragment key={i}>
-              <SetRow
-                userId={userId}
-                exerciseName={exercise.name}
-                excludeWorkoutExternalId={externalId}
-                set={s}
-                workingSetNumber={
-                  exercise.sets.slice(0, i).filter((x) => !x.warmup).length + 1
-                }
-                isActive={!s.committed_at && exercise.sets.findIndex((x) => !x.committed_at) === i}
-                targetDurationSeconds={exercise.prescribed.duration_seconds ?? null}
-                target={
-                  exercise.prescribed.duration_seconds != null
-                    ? null
-                    : {
-                        kg: exercise.prescribed.baseKg ?? null,
-                        reps: exercise.prescribed.baseReps ?? null,
-                        rir: exercise.prescribed.rir ?? null,
-                      }
-                }
-                canRemove={exercise.sets.length > 1}
-                onChange={(patch) => patchSet(i, patch)}
-                onCommit={() => commitSet(i)}
-                onUncommit={() => uncommitSet(i)}
-                onRemove={() => removeSet(i)}
-                onUnparsedVoice={setUnparsedBanner}
-              />
+              {pendingEntry && pendingEntry.setIndex === i ? (
+                <tr><td colSpan={columnCount} className="p-0">
+                  <SetEntryRow
+                    set={s}
+                    workingSetNumber={workingSetNumber}
+                    workSeconds={pendingEntry.workSeconds}
+                    timeBased={timeBased}
+                    prescribedKg={exercise.prescribed.baseKg ?? null}
+                    prescribedReps={exercise.prescribed.baseReps ?? null}
+                    canRemove={exercise.sets.length > 1}
+                    onChange={(patch) => patchSet(i, patch)}
+                    onSave={() => onEntrySave({ exerciseIndex, setIndex: i })}
+                    onRemove={() => removeSet(i)}
+                  />
+                </td></tr>
+              ) : (
+                <SetRow
+                  userId={userId}
+                  exerciseName={exercise.name}
+                  excludeWorkoutExternalId={externalId}
+                  set={s}
+                  workingSetNumber={workingSetNumber}
+                  isActive={isActiveRow}
+                  editMode={editMode}
+                  targetDurationSeconds={exercise.prescribed.duration_seconds ?? null}
+                  target={
+                    timeBased
+                      ? null
+                      : {
+                          kg: exercise.prescribed.baseKg ?? null,
+                          reps: exercise.prescribed.baseReps ?? null,
+                          rir: exercise.prescribed.rir ?? null,
+                        }
+                  }
+                  canRemove={exercise.sets.length > 1}
+                  onChange={(patch) => patchSet(i, patch)}
+                  onCommit={() => commitSet(i)}
+                  onUncommit={() => uncommitSet(i)}
+                  onRemove={() => removeSet(i)}
+                  onUnparsedVoice={setUnparsedBanner}
+                />
+              )}
               {coachLineSetIndex === i && coachLine && (
-                <tr><td colSpan={7}>
+                <tr><td colSpan={columnCount}>
                   <CoachLineRow
                     line={coachLine}
                     onApply={(kg) => {
@@ -239,24 +279,25 @@ function ExerciseCardInner({
                       // pre-filled with the prescribed baseKg.
                       const target = findApplyTargetSetIndex(exercise.sets, i);
                       if (target >= 0) patchSet(target, { kg });
-                      setCoachLine(null);
-                      setCoachLineSetIndex(null);
+                      onCoachLineDismiss();
                     }}
                   />
                 </td></tr>
               )}
-              {restAfterSetIndex === i && (
-                <tr><td colSpan={7}>
-                  <RestBar
-                    duration_seconds={activeRestSeconds}
-                    started_at={activeRestStartedAt}
-                    onDone={() => { /* visual cue only — bar stays until next set commit */ }}
-                    onSkip={() => { setActiveRestStartedAt(null); setRestAfterSetIndex(null); }}
-                  />
+              {onTimerStart && isActiveRow && !midSet && (
+                <tr><td colSpan={columnCount} className="pb-1">
+                  <button
+                    type="button"
+                    onClick={() => onTimerStart({ exerciseIndex, setIndex: i })}
+                    className="w-full text-[9px] font-bold uppercase tracking-widest text-green-400 bg-green-500/10 border border-green-500/25 rounded-md py-1"
+                  >
+                    Start this set
+                  </button>
                 </td></tr>
               )}
             </Fragment>
-          ))}
+            );
+          })}
         </tbody>
       </table>
 
@@ -272,8 +313,15 @@ function ExerciseCardInner({
         <RestTimeDialog
           initialSeconds={effectiveRest}
           exerciseName={exercise.name}
-          onConfirm={(seconds) => { setRestOverrideSeconds(seconds); setRestDialogOpen(false); }}
-          onCancel={() => setRestDialogOpen(false)}
+          onConfirm={(seconds) => {
+            // Both halves: the local copy drives this card's "+ Add set" label,
+            // the lifted copy is what LoggerSheet reads when it seeds rest on
+            // `press_stop`. Dropping either one desyncs the two.
+            setRestOverrideSeconds(seconds);
+            onRestOverrideChange(exerciseIndex, seconds);
+            setRestDialog(false);
+          }}
+          onCancel={() => setRestDialog(false)}
         />
       )}
     </div>

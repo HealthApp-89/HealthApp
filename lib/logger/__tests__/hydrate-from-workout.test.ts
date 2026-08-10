@@ -28,6 +28,8 @@ function workoutFixture(overrides: Partial<WorkoutForEdit> = {}): WorkoutForEdit
             failure: false,
             rir: 2,
             rest_seconds_actual: 150,
+            started_at: "2026-08-10T09:15:00.000Z",
+            work_seconds: 33,
           },
         ],
       },
@@ -58,5 +60,13 @@ describe("hydrateWorkoutAsDraft — session_started_at preservation", () => {
     // hydrated draft is never undefined.
     const draft = hydrateWorkoutAsDraft(workoutFixture(), []);
     expect(draft.session_started_at).not.toBeUndefined();
+  });
+});
+
+describe("hydrateWorkoutAsDraft — per-set timing preservation", () => {
+  it("carries started_at and work_seconds from the saved set onto the draft", () => {
+    const draft = hydrateWorkoutAsDraft(workoutFixture(), []);
+    expect(draft.exercises[0].sets[0].started_at).toBe("2026-08-10T09:15:00.000Z");
+    expect(draft.exercises[0].sets[0].work_seconds).toBe(33);
   });
 });

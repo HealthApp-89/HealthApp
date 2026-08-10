@@ -1,42 +1,9 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect } from "react";
 
-/**
- * Countdown timer. Calls onDone exactly once when elapsed ≥ duration_seconds.
- * Returns { remaining_seconds, elapsed_seconds, isRunning, skip, extend }.
- */
-export function useRestCountdown(opts: {
-  duration_seconds: number;
-  started_at: number | null; // ms since epoch; null = not running
-  onDone: () => void;
-}) {
-  const { duration_seconds, started_at, onDone } = opts;
-  const [now, setNow] = useState(() => Date.now());
-  const doneFiredRef = useRef(false);
-
-  useEffect(() => {
-    if (!started_at) return;
-    doneFiredRef.current = false;
-    const id = setInterval(() => setNow(Date.now()), 250);
-    return () => clearInterval(id);
-  }, [started_at]);
-
-  const elapsed_seconds = started_at ? Math.floor((now - started_at) / 1000) : 0;
-  const remaining_seconds = Math.max(0, duration_seconds - elapsed_seconds);
-
-  useEffect(() => {
-    if (started_at && remaining_seconds === 0 && !doneFiredRef.current) {
-      doneFiredRef.current = true;
-      onDone();
-    }
-  }, [started_at, remaining_seconds, onDone]);
-
-  const skip = useCallback(() => {
-    doneFiredRef.current = true;
-    onDone();
-  }, [onDone]);
-
-  return { remaining_seconds, elapsed_seconds, isRunning: !!started_at, skip };
-}
+// `useRestCountdown` used to live here. Its only consumer was RestBar, the
+// per-ExerciseCard rest strip the docked session timer replaced; rest is now
+// derived from an absolute anchor in lib/logger/set-timer.ts and ticked by
+// SetTimerDock, so the hook went with the component.
 
 /**
  * Acquire a screen Wake Lock on mount; release on unmount or visibility hide.
@@ -76,10 +43,11 @@ export function useWakeLock(active: boolean) {
   }, [active]);
 }
 
-// The rest-done cue lives in lib/logger/audio-cue.ts. It cannot be built at
-// fire time: iOS requires the AudioContext to be created inside a user
-// gesture, so the logger unlocks it on first tap and timers only replay it.
-// Import { fireCue } from "@/lib/logger/audio-cue" at the call site.
+// Rest-end signalling is visual only. An audio cue was tried and removed: on
+// iOS it ducked background music indefinitely and it only fired when the phone
+// was already unlocked with the app foregrounded — precisely not the moment it
+// was needed. Waking a locked phone needs push infrastructure this app has not
+// got, so the dock goes red instead.
 
 // Minimal browser type for WakeLockSentinel.
 interface WakeLockSentinel {

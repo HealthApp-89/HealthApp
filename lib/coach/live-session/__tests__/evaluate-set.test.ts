@@ -84,6 +84,47 @@ describe("ruleRestDiscipline", () => {
     expect(ruleRestDiscipline(mkInput({ sets: [s0, s1, s2], current: s2 }))).toBeNull();
   });
 
+  it("measures true rest from the timer anchors, not the gap between Save taps", () => {
+    // Squat at 5 reps -> prescribed min 180s, threshold 108s.
+    //
+    // The set ran 09:00:00 -> 09:00:40 and was saved at 09:00:45; the next set
+    // began at 09:02:00 and was saved at 09:02:45. True rest is 80s and the
+    // athlete is genuinely under-rested. The commit-to-commit delta says 120s
+    // and would have stayed silent — it counts the next set's execution time as
+    // if it were rest, and since Task 6 it counts an arbitrary gap between two
+    // Save taps. This is the behaviour change the arc's spec anticipated: the
+    // rule now catches short rests its inflated input used to hide.
+    const s0 = mkSet({
+      set_index: 0,
+      started_at: at("2026-08-10T09:00:00.000Z"),
+      work_seconds: 40,
+      committed_at: at("2026-08-10T09:00:45.000Z"),
+    });
+    const s1 = mkSet({
+      set_index: 1,
+      started_at: at("2026-08-10T09:02:00.000Z"),
+      work_seconds: 40,
+      committed_at: at("2026-08-10T09:02:45.000Z"),
+    });
+    const line = ruleRestDiscipline(mkInput({ sets: [s0, s1], current: s1 }));
+    expect(line).not.toBeNull();
+    expect(line!.text).toContain("80s");
+  });
+
+  it("falls back to the commit delta when a set carries no timer anchors", () => {
+    // Hand-logged rows, Strong imports and pre-0056 sets have no started_at /
+    // work_seconds. They must keep their old measure rather than go silent.
+    const s0 = mkSet({ set_index: 0, committed_at: at("2026-08-10T09:00:00.000Z") });
+    const s1 = mkSet({
+      set_index: 1,
+      started_at: at("2026-08-10T09:00:55.000Z"),
+      committed_at: at("2026-08-10T09:00:55.000Z"),
+    });
+    const line = ruleRestDiscipline(mkInput({ sets: [s0, s1], current: s1 }));
+    expect(line).not.toBeNull();
+    expect(line!.text).toContain("55s");
+  });
+
   it("does not police rest on isolation work", () => {
     const s0 = mkSet({ set_index: 0, committed_at: at("2026-08-10T09:00:00.000Z") });
     const s1 = mkSet({ set_index: 1, committed_at: at("2026-08-10T09:00:20.000Z") });

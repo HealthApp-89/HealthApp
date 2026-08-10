@@ -22,6 +22,11 @@ export type ExerciseSetDraft = {
    *  when re-committing an edited workout. Undefined on fresh logger sessions
    *  (computed from committed_at deltas at commit time). */
   rest_seconds_actual?: number | null;
+  /** True set start (logger countdown end), ISO. Undefined/null when the set
+   *  was not timed — hand-logged sets and pre-0056 hydrated rows. */
+  started_at?: string | null;
+  /** Honest time under load in seconds, phone lag already deducted. */
+  work_seconds?: number | null;
 };
 
 /**
@@ -59,6 +64,10 @@ export type LoggerDraft = {
   resolved_plan: PlannedExercise[];
   /** Client-generated UUID; reused across commit retries for idempotency. */
   external_id: string;
+  /** Docked timer state, mirrored to IndexedDB so a reload mid-set resumes the
+   *  running clock. Anchors are absolute epoch ms, so resume is exact.
+   *  Optional so drafts written before the docked timer still load. */
+  timer?: import("@/lib/logger/set-timer").TimerState | null;
 };
 
 /**
@@ -85,6 +94,8 @@ export type CommitSessionPayload = {
       failure: boolean;
       rir: number | null;
       rest_seconds_actual: number | null;
+      started_at: string | null;
+      work_seconds: number | null;
     }[];
   }[];
 };

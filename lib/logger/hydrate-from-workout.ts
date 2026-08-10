@@ -38,6 +38,8 @@ export function hydrateWorkoutAsDraft(
       rir: s.rir ?? null,
       committed_at: committedAt,
       rest_seconds_actual: s.rest_seconds_actual,
+      started_at: s.started_at,
+      work_seconds: s.work_seconds,
     }));
     return { name: e.name, position: i, prescribed, sets };
   });

@@ -10,6 +10,12 @@ export type WorkoutForEditSet = {
   failure: boolean;
   rir?: number | null;
   rest_seconds_actual: number | null;
+  /** True set start (logger countdown end), ISO. Null when the set was not
+   *  timed — hand-logged sets and pre-0056 rows. */
+  started_at: string | null;
+  /** Honest time under load in seconds, phone lag already deducted. Null
+   *  when the set was not timed. */
+  work_seconds: number | null;
 };
 
 export type WorkoutForEditExercise = {
@@ -33,7 +39,7 @@ export type WorkoutForEdit = {
 };
 
 const QUERY_COLS =
-  "id, user_id, date, type, duration_min, started_at, external_id, source, created_at, exercises(id, name, position, exercise_sets(set_index, kg, reps, duration_seconds, warmup, failure, rest_seconds_actual, rir))";
+  "id, user_id, date, type, duration_min, started_at, external_id, source, created_at, exercises(id, name, position, exercise_sets(set_index, kg, reps, duration_seconds, warmup, failure, rest_seconds_actual, rir, started_at, work_seconds))";
 
 type RawSet = WorkoutForEditSet;
 type RawExercise = { id: string; name: string; position: number | null; exercise_sets: RawSet[] | null };
