@@ -12,18 +12,20 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createFetcher } from "@/lib/query/fetchers/create-fetcher";
 import { normalizeExerciseName } from "@/lib/coach/exercise-muscles";
 import { bestComparisonValue } from "@/lib/coach/e1rm";
-import { evaluateBlockPhase } from "@/lib/coach/prescription/block-phase-rule";
-import { computeOlsSlope } from "@/lib/coach/prescription/calibrate-target";
-import { PRIMARY_LIFT_NAME_PATTERNS } from "@/lib/coach/prescription/current-comparison-value";
+import { computeWholeBlockPhase } from "@/lib/coach/prescription/whole-block-phase";
 import { mondayOfIso, isoDaysAgo } from "@/lib/time/dates";
 import type { LiveSessionContext } from "@/lib/coach/live-session/types";
 import type { WorkoutSetSample, BlockPhase } from "@/lib/coach/prescription/types";
-import type { TrainingBlock, PrimaryLift } from "@/lib/data/types";
+import type { TrainingBlock, TrainingWeek } from "@/lib/data/types";
 
 /** PR comparison window. Long on purpose: a "best" computed over a short
- *  recency window silently resets after any training gap. */
+ *  recency window silently resets after any training gap, which would
+ *  manufacture fake PRs. Used for bestByExercise and NOTHING else — the block
+ *  phase deliberately does not see this window (see below). */
 const PR_WINDOW_DAYS = 180;
-/** Rule-history window — matches the weekly prescription engine's. */
+/** Rule-history window — matches the weekly prescription engine's. Both
+ *  historyByExercise and every input to the block-phase computation are cut
+ *  to it. */
 const HISTORY_WINDOW_DAYS = 28;
 
 type Args = {
@@ -42,37 +44,9 @@ type SetRowShape = {
   rir: number | null;
 };
 
-/** A history set carrying the date it was performed — the week index for the
- *  OLS slope is derived from it. bestComparisonValue ignores the extra field. */
+/** A history set carrying the date it was performed. bestComparisonValue
+ *  ignores the extra field. */
 type DatedSet = SetRowShape & { performed_on: string };
-
-/** Resolve which of today's draft exercise names is the block's primary lift,
- *  using the canonical exact-name table (PRIMARY_LIFT_NAME_PATTERNS) rather
- *  than substring matching. Substring matching is a live bug here, not a
- *  style nit: "Romanian Deadlift (Barbell)" normalizes to "romanian deadlift",
- *  which CONTAINS "deadlift" — a naive substring test would pick the RDL
- *  (Legs day's second hinge) for a deadlift-focused block and compute
- *  currentWorkingKg / the OLS progression samples / blockPhase off the wrong
- *  lift on every Legs day. Same failure mode for squat blocks when Front/
- *  Hack/Goblet Squat is present, and bench blocks with incline/decline/
- *  close-grip variants.
- *
- *  Both sides are compared through normalizeExerciseName so a stored name and
- *  a plan name that differ only in case/spacing still line up. When more than
- *  one of today's exercises matches (bench has three patterns), the earliest
- *  entry in PRIMARY_LIFT_NAME_PATTERNS wins — that array is ordered by
- *  primacy (see its doc comment in current-comparison-value.ts). */
-function resolvePrimaryLiftDraftName(
-  names: readonly string[],
-  lift: PrimaryLift,
-): string | undefined {
-  const patterns = PRIMARY_LIFT_NAME_PATTERNS[lift].map((p) => normalizeExerciseName(p));
-  for (const pattern of patterns) {
-    const match = names.find((n) => normalizeExerciseName(n) === pattern);
-    if (match) return match;
-  }
-  return undefined;
-}
 
 const liveSessionContextFetcher = createFetcher(
   async (supabase: SupabaseClient, args: Args): Promise<LiveSessionContext> => {
@@ -91,12 +65,16 @@ const liveSessionContextFetcher = createFetcher(
     const { data: workouts, error } = await supabase
       .from("workouts")
       .select(
-        "date, exercises(name, exercise_sets(kg, reps, warmup, failure, rir))",
+        "date, exercises(name, exercise_sets(kg, reps, warmup, failure, rir, set_index))",
       )
       .eq("user_id", args.userId)
       .gte("date", prFrom)
       .lt("date", args.today)
-      .order("date", { ascending: false });
+      .order("date", { ascending: false })
+      // Same contractual ordering prescribeWeek's fetchRecentSets declares.
+      // The 28d stream below is handed to the same engine helpers, and
+      // estimateProgressionRate reads samples[0] as the newest.
+      .order("set_index", { referencedTable: "exercises.exercise_sets", ascending: true });
     if (error) throw error;
 
     // Map normalized name -> draft name, so "Bench Press" in history resolves
@@ -114,20 +92,40 @@ const liveSessionContextFetcher = createFetcher(
       prSetsByExercise[n] = [];
     }
 
+    // Every set in the 28-day window, across ALL exercises — not only the ones
+    // in today's draft. This is the stream the block-phase computation
+    // consumes, and it resolves the focus lift from the WEEK's session_plan,
+    // which may well name a lift today's session does not contain. Newest
+    // first, matching the query order and prescribeWeek's fetchRecentSets.
+    const recentSets28: WorkoutSetSample[] = [];
+
     for (const w of workouts ?? []) {
       const date = w.date as string;
       const exercises = (w.exercises ?? []) as Array<{
         name: string;
         exercise_sets: SetRowShape[] | null;
       }>;
+      const within28d = date >= historyFrom;
       for (const ex of exercises) {
         const draftName = byNormalized.get(normalizeExerciseName(ex.name));
-        if (!draftName) continue;
         for (const s of ex.exercise_sets ?? []) {
-          if (s.warmup) continue;
           if (s.kg == null || s.reps == null) continue;
+          if (within28d) {
+            recentSets28.push({
+              exercise_name: ex.name,
+              exercise_key: null,
+              kg: s.kg,
+              reps: s.reps,
+              warmup: !!s.warmup,
+              failure: !!s.failure,
+              performed_on: date,
+              rir: s.rir ?? null,
+            });
+          }
+          if (s.warmup) continue;
+          if (!draftName) continue;
           prSetsByExercise[draftName].push({ ...s, performed_on: date });
-          if (date >= historyFrom) {
+          if (within28d) {
             historyByExercise[draftName].push({
               exercise_name: ex.name,
               exercise_key: null,
@@ -148,9 +146,18 @@ const liveSessionContextFetcher = createFetcher(
       bestByExercise[n] = bestComparisonValue(prSetsByExercise[n], "e1rm");
     }
 
-    // Block phase. recentProgressionRatePerWeek is derived from the same
-    // 180d set stream via the engine's own OLS helper, so the off_pace branch
-    // is live rather than silently skipped.
+    // rir_target + session_plan for the current week. `?? 2` is the SAME
+    // fallback expression prescribeWeek uses — that is what keeps the two from
+    // disagreeing.
+    const { data: week, error: weekErr } = await supabase
+      .from("training_weeks")
+      .select("rir_target, session_plan")
+      .eq("user_id", args.userId)
+      .eq("week_start", mondayOfIso(args.today))
+      .maybeSingle();
+    if (weekErr) throw weekErr;
+    const rirTarget = (week?.rir_target as number | null) ?? 2;
+
     const { data: block, error: blockErr } = await supabase
       .from("training_blocks")
       .select("*")
@@ -159,57 +166,32 @@ const liveSessionContextFetcher = createFetcher(
       .maybeSingle();
     if (blockErr) throw blockErr;
 
-    let blockPhase: BlockPhase = "pre_target";
-    if (block) {
-      const b = block as TrainingBlock;
-      const liftName = b.primary_lift != null ? resolvePrimaryLiftDraftName(names, b.primary_lift) : undefined;
-      const liftSets = liftName ? prSetsByExercise[liftName] : [];
-      const metric = b.target_metric ?? "working_weight";
-      const currentWorkingKg = bestComparisonValue(liftSets, metric);
-
-      // Per-week max comparison value, week index measured from the window
-      // start so it increases with time (computeOlsSlope requires 0-indexed,
-      // monotonically increasing indices and >= 3 samples).
-      const windowStartMs = Date.parse(`${prFrom}T00:00:00Z`);
-      const perWeek = new Map<number, number>();
-      for (const s of liftSets) {
-        if (s.kg == null || s.reps == null) continue;
-        const v = bestComparisonValue([s], metric);
-        if (v == null) continue;
-        const idx = Math.floor(
-          (Date.parse(`${s.performed_on}T00:00:00Z`) - windowStartMs) / (7 * 86_400_000),
-        );
-        if (!Number.isFinite(idx)) continue;
-        const prior = perWeek.get(idx);
-        if (prior == null || v > prior) perWeek.set(idx, v);
-      }
-      const samples = [...perWeek.entries()]
-        .map(([weekIndex, e1rm]) => ({ weekIndex, e1rm }))
-        .sort((a, z) => a.weekIndex - z.weekIndex);
-
-      blockPhase = evaluateBlockPhase({
-        block: b,
-        currentWorkingKg,
-        recentProgressionRatePerWeek: computeOlsSlope(samples),
-        todayIso: args.today,
-      });
-    }
-
-    // rir_target for the current week. `?? 2` is the SAME fallback expression
-    // prescribeWeek uses — that is what keeps the two from disagreeing.
-    const { data: week, error: weekErr } = await supabase
-      .from("training_weeks")
-      .select("rir_target")
-      .eq("user_id", args.userId)
-      .eq("week_start", mondayOfIso(args.today))
-      .maybeSingle();
-    if (weekErr) throw weekErr;
+    // Block phase comes from the engine's own function, not a local
+    // re-derivation. The live rule gates load calls on this value, so any
+    // divergence means the coach offers a load increase on a set the weekly
+    // engine froze. computeWholeBlockPhase resolves the focus lift from the
+    // week's session_plan and reads BOTH currentWorkingKg and the progression
+    // rate off the 28-day stream. The 180-day window above is for PR
+    // comparison only and is deliberately not visible here — a 180d max reads
+    // a lift the athlete has since detrained away from as current.
+    const b = block as TrainingBlock | null;
+    const blockPhase: BlockPhase =
+      b != null && b.primary_lift != null
+        ? computeWholeBlockPhase({
+            block: b,
+            focusLift: b.primary_lift,
+            week: { session_plan: (week?.session_plan ?? null) as TrainingWeek["session_plan"] },
+            recentSets: recentSets28,
+            rirTarget,
+            todayIso: args.today,
+          })
+        : "pre_target";
 
     return {
       historyByExercise,
       bestByExercise,
       blockPhase,
-      rirTarget: (week?.rir_target as number | null) ?? 2,
+      rirTarget,
     };
   },
 );

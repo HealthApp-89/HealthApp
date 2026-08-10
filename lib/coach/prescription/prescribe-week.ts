@@ -13,14 +13,13 @@ import type {
   TrainingWeek,
   SessionPrescriptions,
   PrimaryLift,
-  TargetMetric,
   WeekdayLong,
   Weekday,
 } from "@/lib/data/types";
 import type { PlannedExercise } from "@/lib/coach/sessionPlans";
 import { SESSION_PLANS } from "@/lib/coach/sessionPlans";
 import { evaluateBlockPhase, prescribePrimaryFromPhase } from "@/lib/coach/prescription/block-phase-rule";
-import { currentComparisonValueForLift } from "@/lib/coach/prescription/current-comparison-value";
+import { computeWholeBlockPhase, inferPrimaryLiftFromName } from "@/lib/coach/prescription/whole-block-phase";
 import { prescribeSecondaryAutoregulated } from "@/lib/coach/prescription/autoregulation-rule";
 import { prescribeAccessoryDoubleProgression } from "@/lib/coach/prescription/double-progression-rule";
 import { prescribeAccessoryFromVolumeBand, classifyVolumeBand, type VolumeBandPosition } from "@/lib/coach/prescription/volume-balance-rule";
@@ -33,7 +32,6 @@ import { recentEffortQuality } from "@/lib/coach/prescription/effort-quality";
 import { setAdherenceFor, IGNORED_EXPOSURES_LIMIT } from "@/lib/coach/prescription/volume-adherence";
 import type { VolumeFrequencySignal } from "@/lib/data/types";
 import { maintenanceLoadFor } from "@/lib/coach/prescription/maintenance-baseline";
-import { bestComparisonValue } from "@/lib/coach/e1rm";
 import { discoverEffectiveExercises } from "@/lib/coach/prescription/recent-workouts-discovery";
 import type { BlockPhase, WorkoutSetSample } from "@/lib/coach/prescription/types";
 import { fetchMuscleVolumeServer } from "@/lib/query/fetchers/muscleVolume";
@@ -162,25 +160,6 @@ export function lightenExercise(
     return { ...ex, sets: trim(ex.sets, 2, 1), baseReps: trim(ex.baseReps, 2, 1), rir: Math.min(5, baseRir + 2) };
   }
   return { ...ex, sets: trim(ex.sets, 1, 1), baseReps: trim(ex.baseReps, 1, 1), rir: Math.min(5, baseRir + 1) };
-}
-
-/** Exercise-name patterns that identify a primary-lift instance. DB stores
- *  free-form exercise names ("Deadlift (Barbell)"), not keys — we use case-
- *  insensitive substring match. List ordering doesn't matter; first match wins. */
-const PRIMARY_LIFT_NAME_PATTERNS: Record<PrimaryLift, string[]> = {
-  squat:    ["Squat (Barbell)"],
-  bench:    ["Decline Bench Press (Barbell)", "Incline Bench Press (Dumbbell)", "Bench Press (Barbell)"],
-  deadlift: ["Deadlift (Barbell)"],
-  ohp:      ["Overhead Press (Barbell)"],
-};
-
-/** Reverse map: case-insensitive lookup from exercise name → primary lift. */
-function inferPrimaryLiftFromName(name: string): PrimaryLift | null {
-  const n = name.toLowerCase();
-  for (const [lift, patterns] of Object.entries(PRIMARY_LIFT_NAME_PATTERNS) as Array<[PrimaryLift, string[]]>) {
-    if (patterns.some((p) => n === p.toLowerCase())) return lift;
-  }
-  return null;
 }
 
 export async function prescribeWeek(opts: {
@@ -581,63 +560,6 @@ function roundDownToStep(kg: number, step: number): number {
  *  sets, then evaluate the block phase once. Phases not requiring exercise
  *  data (deload_week from calendar, consolidation from target_hit_at_week)
  *  fall through correctly even when the focus lift isn't in this week's plan. */
-function computeWholeBlockPhase(opts: {
-  block: TrainingBlock;
-  focusLift: PrimaryLift;
-  week: TrainingWeek;
-  recentSets: WorkoutSetSample[];
-  rirTarget: number;
-  todayIso: string;
-}): BlockPhase {
-  const { block, focusLift, week, recentSets, rirTarget, todayIso } = opts;
-
-  // Find the first occurrence of the focus lift across the week's session plan.
-  const sessionTypes = Object.values(week.session_plan ?? {});
-  let focusEx: PlannedExercise | null = null;
-  for (const sessionType of sessionTypes) {
-    if (sessionType === "REST" || sessionType === "Mobility") continue;
-    const exs = SESSION_PLANS[sessionType] ?? [];
-    for (const ex of exs) {
-      if (inferPrimaryLiftFromName(ex.name) === focusLift) {
-        focusEx = ex;
-        break;
-      }
-    }
-    if (focusEx) break;
-  }
-
-  // If the focus lift isn't in this week's plan, calendar/target signals still
-  // determine deload_week and consolidation. off_pace requires the exercise
-  // signals so it cannot fire here — that's the safe failure mode.
-  if (!focusEx) {
-    return evaluateBlockPhase({
-      block,
-      currentWorkingKg: null,
-      recentProgressionRatePerWeek: null,
-      todayIso,
-    });
-  }
-
-  // Comparison value is metric-aware: working_weight blocks compare max kg;
-  // e1rm blocks compare max Brzycki e1RM. The same value also drives the
-  // progression-rate estimate so the off_pace check is internally consistent.
-  const metric: TargetMetric = (block.target_metric as TargetMetric | null) ?? "working_weight";
-  const currentValue =
-    currentComparisonValueForLift({
-      lift: focusLift,
-      metric,
-      recentSets,
-      rirTarget,
-      todayIso,
-    }) ?? focusEx.baseKg ?? 0;
-  return evaluateBlockPhase({
-    block,
-    currentWorkingKg: currentValue,
-    recentProgressionRatePerWeek: estimateProgressionRate(recentSets, focusEx, metric),
-    todayIso,
-  });
-}
-
 // ── data adapter ──────────────────────────────────────────────────────────
 
 async function fetchRecentSets(
@@ -777,45 +699,6 @@ export function consecutiveMisses(
   return misses;
 }
 
-/** Estimate weekly progression rate (kg/week OR e1RM/week, depending on
- *  metric) from the user's recent non-warmup sets for this exercise. Used by
- *  evaluateBlockPhase to detect off_pace. Returns 0 when fewer than 2 sets
- *  exist. For e1rm metric, sets whose reps fall outside the 1..12 Brzycki
- *  window are skipped — the slope is computed in the same value-space as
- *  the target comparison so the "required vs observed" math is consistent. */
-function estimateProgressionRate(
-  sets: WorkoutSetSample[],
-  ex: PlannedExercise,
-  metric: TargetMetric,
-): number {
-  const matching = setsForExercise(sets, ex).slice(0, 8);
-  if (matching.length < 2) return 0;
-  // Convert each candidate set to its comparison value; skip sets that
-  // produce null (rep out of e1RM window).
-  const samples = matching
-    .map((s) => {
-      const v =
-        metric === "e1rm"
-          ? bestComparisonValue([{ kg: s.kg, reps: s.reps, warmup: false }], "e1rm")
-          : s.kg;
-      return v == null ? null : { v, performed_on: s.performed_on };
-    })
-    .filter((x): x is { v: number; performed_on: string } => x != null);
-  if (samples.length < 2) return 0;
-  const newest = samples[0].v;
-  const oldest = samples[samples.length - 1].v;
-  const weeks = Math.max(
-    1,
-    Math.round(dateDiffDays(samples[samples.length - 1].performed_on, samples[0].performed_on) / 7),
-  );
-  return (newest - oldest) / weeks;
-}
-
-function setsForExercise(sets: WorkoutSetSample[], ex: PlannedExercise): WorkoutSetSample[] {
-  const target = ex.name.toLowerCase();
-  return sets.filter((s) => !s.warmup && s.exercise_name.toLowerCase() === target);
-}
-
 // ── volume-band classification ─────────────────────────────────────────────
 
 /** Resolve the accessory's primary targeted-muscle group from its name.
@@ -869,8 +752,3 @@ function subtractDaysIso(iso: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-function dateDiffDays(a: string, b: string): number {
-  const da = new Date(a + "T00:00:00Z").getTime();
-  const db = new Date(b + "T00:00:00Z").getTime();
-  return Math.abs(db - da) / (24 * 60 * 60 * 1000);
-}
