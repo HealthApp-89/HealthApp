@@ -55,11 +55,14 @@ export async function loadDraft(
     return null;
   }
 
-  // Backfill pause fields for drafts written before the pause/resume feature.
+  // Backfill fields added after drafts started being written: pause/resume,
+  // and the docked set timer. Without this, a draft persisted before either
+  // feature loads with the field simply absent.
   const draft: LoggerDraft = {
     ...raw,
     paused_at: raw.paused_at ?? null,
     paused_ms_total: raw.paused_ms_total ?? 0,
+    timer: raw.timer ?? null,
   };
   return draft;
 }

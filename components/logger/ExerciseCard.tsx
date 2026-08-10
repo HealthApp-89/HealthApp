@@ -3,8 +3,8 @@
 import { Fragment, memo, useCallback, useMemo, useState } from "react";
 import type { ExerciseDraft, ExerciseSetDraft } from "@/lib/logger/types";
 import { SetRow } from "@/components/logger/SetRow";
-import { RestBar } from "@/components/logger/RestBar";
 import { RestTimeDialog } from "@/components/logger/RestTimeDialog";
+import type { TimerState, SetRef } from "@/lib/logger/set-timer";
 import { annotateSession } from "@/lib/coach/session-structure/annotate";
 import { evaluateSet, type CoachLine, type LiveSessionContext, type SessionSetRef } from "@/lib/coach/live-session";
 import { CoachLineRow } from "@/components/logger/CoachLine";
@@ -25,10 +25,22 @@ type Props = {
   /** Snapshot fetched at logger open. Undefined while loading or on fetch
    *  failure — the coaching line then degrades to silence. */
   liveContext?: LiveSessionContext;
+  /** Session-wide timer state, read-only here. Only ever changes on a phase
+   *  transition — no ticking value is passed down, so memo still pays. */
+  timer: TimerState;
+  /** Athlete tapped START on a specific set row. Undefined in edit mode, where
+   *  no live timer runs and the affordance must not be offered. */
+  onTimerStart?: (set: SetRef) => void;
+  /** A set was uncommitted or deleted — clears timer state pointing at it. */
+  onSetCleared: (set: SetRef) => void;
+  /** Rest override chosen in this card's dialog, lifted so LoggerSheet can seed
+   *  the rest countdown when it dispatches `press_stop`. */
+  onRestOverrideChange: (exerciseIndex: number, seconds: number) => void;
 };
 
 function ExerciseCardInner({
   userId, externalId, exercise, exerciseIndex, allExercises, onExerciseChange, onReplace, onRemove, onReorderAll, liveContext,
+  timer, onTimerStart, onSetCleared, onRestOverrideChange,
 }: Props) {
   // Tier + rest prescription from session-structure annotation.
   const annotated = useMemo(() => {
@@ -40,9 +52,6 @@ function ExerciseCardInner({
   const prescribedRestMin = annotated?.rest_seconds.min ?? 120;
   const [restOverrideSeconds, setRestOverrideSeconds] = useState<number | null>(null);
   const effectiveRest = restOverrideSeconds ?? prescribedRestMin;
-  const [activeRestStartedAt, setActiveRestStartedAt] = useState<number | null>(null);
-  const [activeRestSeconds, setActiveRestSeconds] = useState<number>(effectiveRest);
-  const [restAfterSetIndex, setRestAfterSetIndex] = useState<number | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [restDialogOpen, setRestDialogOpen] = useState(false);
   const [unparsedBanner, setUnparsedBanner] = useState<string | null>(null);
@@ -54,7 +63,6 @@ function ExerciseCardInner({
 
   const commitSet = useCallback((setIndex: number) => {
     const nowIso = new Date().toISOString();
-    const now = Date.now();
     const nextSets = exercise.sets.map((s, i) => {
       if (i !== setIndex) return s;
       return { ...s, committed_at: nowIso };
@@ -62,10 +70,8 @@ function ExerciseCardInner({
     const nextExercise = { ...exercise, sets: nextSets };
 
     // rest_seconds_actual on the NEXT pending set is captured at its own commit time.
+    // Rest itself is session-level now — LoggerSheet owns it (see SetTimerDock).
     onExerciseChange(exerciseIndex, nextExercise);
-    setRestAfterSetIndex(setIndex);
-    setActiveRestSeconds(effectiveRest);
-    setActiveRestStartedAt(now);
 
     // Between-sets coaching. Silent by design on an on-plan set, and silent
     // whenever the context snapshot is unavailable. Runs against nextSets
@@ -94,7 +100,7 @@ function ExerciseCardInner({
     }
     setCoachLine(line);
     setCoachLineSetIndex(line ? setIndex : null);
-  }, [exercise, exerciseIndex, onExerciseChange, effectiveRest, liveContext, allExercises]);
+  }, [exercise, exerciseIndex, onExerciseChange, liveContext, allExercises]);
 
   const uncommitSet = useCallback((setIndex: number) => {
     const nextSets = exercise.sets.map((s, i) =>
@@ -102,16 +108,14 @@ function ExerciseCardInner({
     );
     onExerciseChange(exerciseIndex, { ...exercise, sets: nextSets });
     // The verdict was about a set that no longer counts as committed. Take it
-    // down, along with the rest timer it triggered.
+    // down. The rest timer it triggered is session-level now, so LoggerSheet
+    // clears that half via onSetCleared.
     if (coachLineSetIndex === setIndex) {
       setCoachLine(null);
       setCoachLineSetIndex(null);
     }
-    if (restAfterSetIndex === setIndex) {
-      setRestAfterSetIndex(null);
-      setActiveRestStartedAt(null);
-    }
-  }, [exercise, exerciseIndex, onExerciseChange, coachLineSetIndex, restAfterSetIndex]);
+    onSetCleared({ exerciseIndex, setIndex });
+  }, [exercise, exerciseIndex, onExerciseChange, coachLineSetIndex, onSetCleared]);
 
   const patchSet = useCallback((setIndex: number, patch: Partial<ExerciseSetDraft>) => {
     const nextSets = exercise.sets.map((s, i) => (i === setIndex ? { ...s, ...patch } : s));
@@ -125,7 +129,8 @@ function ExerciseCardInner({
       .filter((_, i) => i !== setIndex)
       .map((s, i) => ({ ...s, set_index: i }));
     onExerciseChange(exerciseIndex, { ...exercise, sets: nextSets });
-  }, [exercise, exerciseIndex, onExerciseChange]);
+    onSetCleared({ exerciseIndex, setIndex });
+  }, [exercise, exerciseIndex, onExerciseChange, onSetCleared]);
 
   const addSet = useCallback(() => {
     const last = exercise.sets[exercise.sets.length - 1];
@@ -149,11 +154,20 @@ function ExerciseCardInner({
     onExerciseChange(exerciseIndex, { ...exercise, sets: [...exercise.sets, next] });
   }, [exercise, exerciseIndex, onExerciseChange]);
 
+  // A set of THIS exercise is counting down or under load right now.
+  const midSet = timer.phase === "countdown" || timer.phase === "running";
+  const liveHere = midSet && timer.activeSet?.exerciseIndex === exerciseIndex;
+
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-3 mb-3">
       <div className="flex items-center justify-between mb-1">
         <h4 className="text-sm font-semibold text-zinc-50">{exercise.name}</h4>
         <div className="flex gap-1.5 items-center relative">
+          {liveHere && (
+            <span className="text-[9px] px-1.5 py-0.5 bg-green-500/15 text-green-400 rounded uppercase tracking-wider">
+              Live
+            </span>
+          )}
           {annotated && (
             <span className="text-[9px] px-1.5 py-0.5 bg-zinc-800 text-zinc-400 rounded uppercase tracking-wider">
               T{annotated.fatigue_tier} · RPE {annotated.rpe_target}
@@ -197,7 +211,10 @@ function ExerciseCardInner({
           </tr>
         </thead>
         <tbody>
-          {exercise.sets.map((s, i) => (
+          {exercise.sets.map((s, i) => {
+            const isActiveRow =
+              !s.committed_at && exercise.sets.findIndex((x) => !x.committed_at) === i;
+            return (
             <Fragment key={i}>
               <SetRow
                 userId={userId}
@@ -207,7 +224,7 @@ function ExerciseCardInner({
                 workingSetNumber={
                   exercise.sets.slice(0, i).filter((x) => !x.warmup).length + 1
                 }
-                isActive={!s.committed_at && exercise.sets.findIndex((x) => !x.committed_at) === i}
+                isActive={isActiveRow}
                 targetDurationSeconds={exercise.prescribed.duration_seconds ?? null}
                 target={
                   exercise.prescribed.duration_seconds != null
@@ -243,18 +260,20 @@ function ExerciseCardInner({
                   />
                 </td></tr>
               )}
-              {restAfterSetIndex === i && (
-                <tr><td colSpan={7}>
-                  <RestBar
-                    duration_seconds={activeRestSeconds}
-                    started_at={activeRestStartedAt}
-                    onDone={() => { /* visual cue only — bar stays until next set commit */ }}
-                    onSkip={() => { setActiveRestStartedAt(null); setRestAfterSetIndex(null); }}
-                  />
+              {onTimerStart && isActiveRow && !midSet && (
+                <tr><td colSpan={7} className="pb-1">
+                  <button
+                    type="button"
+                    onClick={() => onTimerStart({ exerciseIndex, setIndex: i })}
+                    className="w-full text-[9px] font-bold uppercase tracking-widest text-green-400 bg-green-500/10 border border-green-500/25 rounded-md py-1"
+                  >
+                    Start this set
+                  </button>
                 </td></tr>
               )}
             </Fragment>
-          ))}
+            );
+          })}
         </tbody>
       </table>
 
@@ -270,7 +289,14 @@ function ExerciseCardInner({
         <RestTimeDialog
           initialSeconds={effectiveRest}
           exerciseName={exercise.name}
-          onConfirm={(seconds) => { setRestOverrideSeconds(seconds); setRestDialogOpen(false); }}
+          onConfirm={(seconds) => {
+            // Both halves: the local copy drives this card's "+ Add set" label,
+            // the lifted copy is what LoggerSheet reads when it seeds rest on
+            // `press_stop`. Dropping either one desyncs the two.
+            setRestOverrideSeconds(seconds);
+            onRestOverrideChange(exerciseIndex, seconds);
+            setRestDialogOpen(false);
+          }}
           onCancel={() => setRestDialogOpen(false)}
         />
       )}

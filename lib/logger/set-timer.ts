@@ -129,6 +129,24 @@ export function timerReducer(state: TimerState, action: TimerAction): TimerState
   }
 }
 
+/**
+ * Session wall clock in ms: time since `started_at`, minus every completed
+ * pause interval, frozen while `paused_at` is set.
+ *
+ * Lives here rather than in LoggerSheet because two components need it and it
+ * is pure — `now` is a parameter. LoggerSheet's header clock and SetTimerDock's
+ * SESSION counter each own their own tick and call this, so they can never
+ * disagree, and no live-computed number has to cross a component boundary.
+ */
+export function getElapsedMs(
+  clock: { started_at: string; paused_at: string | null; paused_ms_total: number },
+  now: number,
+): number {
+  const start = new Date(clock.started_at).getTime();
+  const end = clock.paused_at ? new Date(clock.paused_at).getTime() : now;
+  return Math.max(0, end - start - clock.paused_ms_total);
+}
+
 function elapsedSecondsSinceAnchor(state: TimerState, nowMs: number): number {
   if (state.anchorMs === null) return 0;
   return Math.floor((nowMs - state.anchorMs) / 1000);

@@ -11,6 +11,17 @@ import { loadDraft, saveDraft, clearDraft } from "@/lib/logger/draft-store";
 import { useWakeLock } from "@/lib/logger/rest-timer";
 import { seedRir } from "@/lib/logger/seed-rir";
 import { useLiveSessionContext } from "@/lib/query/hooks/useLiveSessionContext";
+import { annotateSession } from "@/lib/coach/session-structure/annotate";
+import { fmtNum } from "@/lib/ui/score";
+import {
+  IDLE_TIMER,
+  timerReducer,
+  workSecondsFor,
+  getElapsedMs,
+  type TimerState,
+  type SetRef,
+} from "@/lib/logger/set-timer";
+import { SetTimerDock } from "@/components/logger/SetTimerDock";
 import { ExerciseCard } from "@/components/logger/ExerciseCard";
 import { ExercisePicker } from "@/components/logger/ExercisePicker";
 import { ResumeDraftPrompt } from "@/components/logger/ResumeDraftPrompt";
@@ -75,16 +86,80 @@ function makeDraftFromPlan(args: {
     exercises,
     resolved_plan: args.plan,
     external_id: externalId,
+    timer: null,
   };
 }
 
-function getElapsedMs(
-  draft: Pick<LoggerDraft, "started_at" | "paused_at" | "paused_ms_total">,
-  now: number,
-): number {
-  const start = new Date(draft.started_at).getTime();
-  const end = draft.paused_at ? new Date(draft.paused_at).getTime() : now;
-  return Math.max(0, end - start - draft.paused_ms_total);
+// ---------------------------------------------------------------------------
+// Session timer helpers
+//
+// Timer state lives ON THE DRAFT, not in component state, so it is mirrored to
+// IndexedDB with everything else and a reload mid-set resumes exactly (the
+// anchors are absolute epoch ms). Nothing that ticks is ever passed into the
+// memoized ExerciseCards — only the phase-transition state and stable
+// callbacks. SetTimerDock owns the tick and reads the wall clock itself.
+// ---------------------------------------------------------------------------
+
+function timerOf(draft: LoggerDraft | null): TimerState {
+  return draft?.timer ?? IDLE_TIMER;
+}
+
+/** Apply a timer action and persist it with the draft. */
+function withTimer(draft: LoggerDraft, next: TimerState): LoggerDraft {
+  return { ...draft, timer: next, updated_at: new Date().toISOString() };
+}
+
+/**
+ * Persist the zoomed entry row's in-flight values onto the draft before the
+ * next set starts. Task 6 fills this in.
+ */
+function commitPendingEntry(draft: LoggerDraft): LoggerDraft {
+  return draft;
+}
+
+/** Prescribed rest for an exercise, from the same session-structure annotation
+ *  ExerciseCard shows. Read at `press_stop` time so an override applied
+ *  mid-session is picked up. */
+function annotatedRestFor(draft: LoggerDraft, exerciseIndex: number): number {
+  const list = draft.exercises.map((e) => e.prescribed);
+  const s = annotateSession(list);
+  return s.exercises[exerciseIndex]?.rest_seconds.min ?? 120;
+}
+
+/** First set in draft order with no `committed_at`. Null once every set is
+ *  committed — the dock then disables its START affordance rather than
+ *  dispatching a start for a set that does not exist. */
+function firstPendingSet(draft: LoggerDraft): SetRef | null {
+  for (let ei = 0; ei < draft.exercises.length; ei++) {
+    const sets = draft.exercises[ei].sets;
+    for (let si = 0; si < sets.length; si++) {
+      if (!sets[si].committed_at) return { exerciseIndex: ei, setIndex: si };
+    }
+  }
+  return null;
+}
+
+/** Dock captions for a set ref: which set is in play and what it asks for. */
+function describeSet(
+  draft: LoggerDraft,
+  ref: SetRef | null,
+): { activeLabel: string; targetLabel: string } {
+  if (!ref) return { activeLabel: "All sets committed", targetLabel: "tap Finish when done" };
+  const ex = draft.exercises[ref.exerciseIndex];
+  const set = ex?.sets[ref.setIndex];
+  if (!ex || !set) return { activeLabel: draft.session_type, targetLabel: "" };
+  const which = set.warmup
+    ? "warm-up"
+    : `set ${ex.sets.slice(0, ref.setIndex).filter((s) => !s.warmup).length + 1}`;
+  const p = ex.prescribed;
+  const targetLabel = p.duration_seconds != null
+    ? `${p.duration_seconds}s`
+    : [
+        p.baseKg != null ? `${fmtNum(p.baseKg)} kg` : "BW",
+        p.baseReps != null ? `× ${p.baseReps}` : null,
+        p.rir != null ? `@ RIR ${p.rir}` : null,
+      ].filter(Boolean).join(" ");
+  return { activeLabel: `${ex.name} · ${which}`, targetLabel };
 }
 
 /** Wipe all entered sets + timer state, keep the current exercise list. */
@@ -96,6 +171,7 @@ function resetDraft(draft: LoggerDraft, weekRirTarget: number | null): LoggerDra
     updated_at: nowIso,
     paused_at: null,
     paused_ms_total: 0,
+    timer: null,
     exercises: draft.exercises.map((ex) => ({
       ...ex,
       sets: Array.from({ length: ex.prescribed.sets ?? 1 }, (_unused, j) => ({
@@ -207,6 +283,9 @@ export function LoggerSheet(props: Props) {
   const [reorderOpen, setReorderOpen] = useState(false);
   const [committing, setCommitting] = useState(false);
   const [resolvedSource, setResolvedSource] = useState<string | null>(null);
+  /** Per-exercise rest override, lifted out of ExerciseCard so `press_stop`
+   *  can seed the session-level rest countdown with it. */
+  const [restOverrides, setRestOverrides] = useState<Record<number, number>>({});
 
   useWakeLock(!!draft);
 
@@ -289,6 +368,105 @@ export function LoggerSheet(props: Props) {
     setReorderOpen(true);
   }, []);
 
+  // --- Timer handlers. All use functional setDraft so they stay reference-
+  // stable and the memo on ExerciseCard is not defeated. They also live above
+  // the `!draft` early return, same hook-order rule as the callbacks above.
+
+  const handleTimerStart = useCallback((set: SetRef) => {
+    setDraft((prev) => {
+      if (!prev) return prev;
+      // Auto-save any open entry first: the fields are pre-filled from the
+      // prescription, so the athlete can start the next set without ever
+      // touching them and nothing is lost.
+      const withEntrySaved = commitPendingEntry(prev);
+      return withTimer(
+        withEntrySaved,
+        timerReducer(timerOf(withEntrySaved), { type: "press_start", set, nowMs: Date.now() }),
+      );
+    });
+  }, []);
+
+  const handleCountdownElapsed = useCallback(() => {
+    setDraft((prev) => {
+      if (!prev) return prev;
+      const nowMs = Date.now();
+      const next = timerReducer(timerOf(prev), { type: "countdown_elapsed", nowMs });
+      if (next === timerOf(prev)) return prev;
+      // Stamp the true set start on the draft set itself.
+      const ref = next.activeSet;
+      if (!ref) return withTimer(prev, next);
+      const exercises = prev.exercises.map((ex, ei) =>
+        ei !== ref.exerciseIndex ? ex : {
+          ...ex,
+          sets: ex.sets.map((s, si) =>
+            si !== ref.setIndex ? s : { ...s, started_at: new Date(nowMs).toISOString() },
+          ),
+        },
+      );
+      return withTimer({ ...prev, exercises }, next);
+    });
+  }, []);
+
+  const handleStop = useCallback(() => {
+    setDraft((prev) => {
+      if (!prev) return prev;
+      const cur = timerOf(prev);
+      const ref = cur.activeSet;
+      if (cur.phase !== "running" || !ref || cur.anchorMs === null) return prev;
+      const nowMs = Date.now();
+      const workSeconds = workSecondsFor(cur.anchorMs, nowMs);
+      const prescribedRest =
+        restOverrides[ref.exerciseIndex]
+        ?? annotatedRestFor(prev, ref.exerciseIndex);
+      const next = timerReducer(cur, { type: "press_stop", nowMs, prescribedRestSeconds: prescribedRest });
+      // Task 5 commits straight away; Task 6 moves this into the zoom's Save.
+      const exercises = prev.exercises.map((ex, ei) =>
+        ei !== ref.exerciseIndex ? ex : {
+          ...ex,
+          sets: ex.sets.map((s, si) =>
+            si !== ref.setIndex ? s : {
+              ...s,
+              work_seconds: workSeconds,
+              committed_at: new Date(nowMs).toISOString(),
+            },
+          ),
+        },
+      );
+      return withTimer({ ...prev, exercises }, timerReducer(next, { type: "save_entry" }));
+    });
+  }, [restOverrides]);
+
+  const handleSetCleared = useCallback((set: SetRef) => {
+    setDraft((prev) => {
+      if (!prev) return prev;
+      const exercises = prev.exercises.map((ex, ei) =>
+        ei !== set.exerciseIndex ? ex : {
+          ...ex,
+          sets: ex.sets.map((s, si) =>
+            si !== set.setIndex ? s : { ...s, started_at: null, work_seconds: null },
+          ),
+        },
+      );
+      return withTimer({ ...prev, exercises }, timerReducer(timerOf(prev), { type: "clear_for_set", set }));
+    });
+  }, []);
+
+  const handleRestOverrideChange = useCallback((exerciseIndex: number, seconds: number) => {
+    setRestOverrides((prev) => ({ ...prev, [exerciseIndex]: seconds }));
+  }, []);
+
+  /** Total honest time under load so far — the dock's WORK counter. */
+  const workSecondsTotal = useMemo(() => {
+    if (!draft) return 0;
+    let total = 0;
+    for (const ex of draft.exercises) {
+      for (const s of ex.sets) {
+        if (s.committed_at && s.work_seconds != null) total += s.work_seconds;
+      }
+    }
+    return total;
+  }, [draft]);
+
   // Between-sets coaching context. Fetched once (staleTime: Infinity) as soon
   // as we know which exercises are in play. Must stay above the early
   // `!draft` return below — draft starts null and loads async, so the first
@@ -348,6 +526,13 @@ export function LoggerSheet(props: Props) {
   }
 
   const diverged = exerciseListDiverged(draft);
+  const timer = timerOf(draft);
+  const midSet = timer.phase === "countdown" || timer.phase === "running";
+  // What START dispatches. During `rest`, timer.activeSet is the set just
+  // FINISHED, so the next set always comes from the pending scan.
+  const nextSetRef = firstPendingSet(draft);
+  // What the caption describes: the set in play mid-set, otherwise the next one.
+  const { activeLabel, targetLabel } = describeSet(draft, midSet ? timer.activeSet : nextSetRef);
 
   function togglePause() {
     if (!draft) return;
@@ -443,6 +628,10 @@ export function LoggerSheet(props: Props) {
               failure: s.failure,
               rir: s.rir,
               rest_seconds_actual: restActual,
+              // Carried on the wire from here; the RPC starts persisting them
+              // in Task 7. Null for hand-logged and hydrated-historical sets.
+              started_at: s.started_at ?? null,
+              work_seconds: s.work_seconds ?? null,
             };
           }),
       })),
@@ -533,7 +722,8 @@ export function LoggerSheet(props: Props) {
               />
               <button
                 onClick={togglePause}
-                className="text-[11px] font-semibold uppercase tracking-wide text-zinc-300 bg-zinc-800 hover:bg-zinc-700 px-2 py-1 rounded-md"
+                disabled={midSet}
+                className="text-[11px] font-semibold uppercase tracking-wide text-zinc-300 bg-zinc-800 hover:bg-zinc-700 px-2 py-1 rounded-md disabled:opacity-40"
                 aria-label={isPaused ? "Resume timer" : "Pause timer"}
               >
                 {isPaused ? "Resume" : "Pause"}
@@ -553,7 +743,7 @@ export function LoggerSheet(props: Props) {
         </button>
       </div>
 
-      <div className="overflow-y-auto p-3 pb-32 flex-1">
+      <div className="overflow-y-auto p-3 pb-44 flex-1">
         {!props.editMode && resolvedSource === "manual_edit" && (
           <div className="flex items-center gap-1.5 mb-3">
             <span className="text-[11px] font-semibold uppercase tracking-wide text-amber-400 bg-amber-400/10 border border-amber-400/30 px-2 py-0.5 rounded-md">
@@ -592,6 +782,12 @@ export function LoggerSheet(props: Props) {
             // render-test harness in this repo it would pass typecheck and the
             // whole unit suite and break only in the production build.
             liveContext={props.editMode ? undefined : liveContext.data}
+            timer={timer}
+            // Edit mode replays a historical workout — no live timer runs, so
+            // the per-row START affordance must not be offered at all.
+            onTimerStart={props.editMode ? undefined : handleTimerStart}
+            onSetCleared={handleSetCleared}
+            onRestOverrideChange={handleRestOverrideChange}
           />
         ))}
 
@@ -602,6 +798,24 @@ export function LoggerSheet(props: Props) {
           + Add exercise
         </button>
       </div>
+
+      {!props.editMode && (
+        <SetTimerDock
+          state={timer}
+          activeLabel={activeLabel}
+          targetLabel={targetLabel}
+          workSecondsTotal={workSecondsTotal}
+          // Raw clock inputs, never a precomputed elapsed number — the dock
+          // recomputes on its own tick so this parent never re-renders 4x/s.
+          startedAt={draft.started_at}
+          pausedAt={draft.paused_at}
+          pausedMsTotal={draft.paused_ms_total}
+          canStart={nextSetRef !== null}
+          onStart={() => { if (nextSetRef) handleTimerStart(nextSetRef); }}
+          onCountdownElapsed={handleCountdownElapsed}
+          onStop={handleStop}
+        />
+      )}
 
       {pickerOpen && (
         <ExercisePicker
