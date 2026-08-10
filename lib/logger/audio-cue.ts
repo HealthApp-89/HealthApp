@@ -5,21 +5,28 @@
 // Why this module exists: the original cue (rest-timer.ts, commit 5111bf0)
 // constructed a new AudioContext at fire time, inside the countdown's 250ms
 // interval. iOS only permits audio from a context created or resumed
-// synchronously inside a user-gesture handler, so a context born in a timer
-// starts `suspended` and emits silence — the cue never worked on iPhone.
+// synchronously within a user-gesture handler, so a context born in a timer
+// starts `suspended` and emits silence. The cue never worked on iPhone.
 //
 // The fix splits the cue in two:
-//   unlockCue()  — called from a real tap (Start session / set commit / timer
-//                  start). Builds ONE AudioContext and ONE primed <audio>
-//                  element for the whole session.
+//   unlockCue()  — called from a real tap (any pointerdown inside the logger
+//                  sheet, or the Test button on /profile). Builds ONE
+//                  AudioContext and ONE primed <audio> element per session.
 //   fireCue()    — called from timers. Constructs nothing; it only replays
 //                  what unlockCue already built.
 //
-// The <audio> element is the primary output on purpose. WebAudio on iOS is
-// routed to the RINGER channel, so the phone's physical mute switch silences
-// it — the default state for most people in a gym. A media element plays on
-// the media channel and survives the switch. WebAudio remains the fallback
-// for browsers where the element fails to play.
+// Two details that are load-bearing on iOS:
+//
+//  1. The <audio> element is the PRIMARY output. WebAudio on iOS routes to
+//     the RINGER channel, so the phone's physical mute switch silences it —
+//     the default state for most people in a gym. A media element plays on
+//     the media channel. WebAudio remains the fallback.
+//
+//  2. Priming plays the element UNMUTED. iOS permits muted playback without
+//     a gesture, so a muted play() may never register as the user-initiated
+//     unlock this whole module depends on. Instead the beep opens with
+//     LEAD_SILENCE_MS of digital silence: priming plays that silence and
+//     pauses before the tone starts, so the unlock is real and inaudible.
 //
 // Vibration is best-effort: iOS Safari has never implemented the Vibration
 // API, so `navigator.vibrate` is simply absent there and the call is skipped.
@@ -27,6 +34,9 @@
 const BEEP_HZ = 880;
 const BEEP_MS = 250;
 const SAMPLE_RATE = 8000;
+/** Digital silence prepended to the beep so priming can play-then-pause
+ *  without anything audible escaping. */
+const LEAD_SILENCE_MS = 60;
 
 type MinimalAudioContext = {
   state: string;
@@ -47,6 +57,12 @@ type MinimalAudioContext = {
     };
     connect: (dest: unknown) => void;
   };
+  createBuffer: (channels: number, length: number, sampleRate: number) => unknown;
+  createBufferSource: () => {
+    buffer: unknown;
+    connect: (dest: unknown) => void;
+    start: (when: number) => void;
+  };
 };
 
 type MinimalAudioEl = {
@@ -64,8 +80,44 @@ let ctx: MinimalAudioContext | null = null;
 let el: MinimalAudioEl | null = null;
 let objectUrl: string | null = null;
 
+/** Which output actually carried the last fireCue, and why it failed if it
+ *  did. Surfaced by the Test button on /profile so a silent phone produces a
+ *  readable report instead of a mystery. */
+let lastPath: "media" | "oscillator" | "none" = "none";
+let lastError: string | null = null;
+
+export type CueDiagnostics = {
+  unlocked: boolean;
+  /** AudioContext.state, or null when no context could be built. */
+  contextState: string | null;
+  /** True when the media element was created and primed. */
+  mediaReady: boolean;
+  vibrateSupported: boolean;
+  lastPath: "media" | "oscillator" | "none";
+  lastError: string | null;
+};
+
+export function cueDiagnostics(): CueDiagnostics {
+  let vibrateSupported = false;
+  try {
+    vibrateSupported =
+      typeof navigator !== "undefined" && typeof navigator.vibrate === "function";
+  } catch {
+    vibrateSupported = false;
+  }
+  return {
+    unlocked: isCueUnlocked(),
+    contextState: ctx?.state ?? null,
+    mediaReady: el !== null,
+    vibrateSupported,
+    lastPath,
+    lastError,
+  };
+}
+
 /**
- * Render a short sine beep as a 16-bit mono PCM WAV.
+ * Render a short sine beep as a 16-bit mono PCM WAV, preceded by
+ * `leadSilenceMs` of digital silence.
  *
  * Built in JS rather than shipped as a base64 literal so the tone stays
  * tweakable and the bundle stays small. An exponential envelope mirrors the
@@ -75,8 +127,11 @@ export function buildBeepWav(
   freqHz: number,
   ms: number,
   sampleRate: number = SAMPLE_RATE,
+  leadSilenceMs: number = LEAD_SILENCE_MS,
 ): Uint8Array {
-  const numSamples = Math.round((sampleRate * ms) / 1000);
+  const leadSamples = Math.round((sampleRate * leadSilenceMs) / 1000);
+  const toneSamples = Math.round((sampleRate * ms) / 1000);
+  const numSamples = leadSamples + toneSamples;
   const dataBytes = numSamples * 2;
   const buf = new Uint8Array(44 + dataBytes);
   const view = new DataView(buf.buffer);
@@ -99,11 +154,12 @@ export function buildBeepWav(
   ascii(36, "data");
   view.setUint32(40, dataBytes, true);
 
-  const decay = 5 / numSamples;
-  for (let i = 0; i < numSamples; i++) {
+  // Lead-in stays at zero — the DataView is already zero-filled.
+  const decay = 5 / Math.max(1, toneSamples);
+  for (let i = 0; i < toneSamples; i++) {
     const envelope = Math.exp(-decay * i);
     const sample = Math.sin((2 * Math.PI * freqHz * i) / sampleRate) * envelope;
-    view.setInt16(44 + i * 2, Math.round(sample * 0x6000), true);
+    view.setInt16(44 + (leadSamples + i) * 2, Math.round(sample * 0x6000), true);
   }
   return buf;
 }
@@ -111,6 +167,20 @@ export function buildBeepWav(
 /** True once a gesture has built the session's audio objects. */
 export function isCueUnlocked(): boolean {
   return ctx !== null || el !== null;
+}
+
+/** The canonical iOS WebAudio unlock: play one silent sample through the
+ *  context inside the gesture. resume() alone is not always sufficient. */
+function playSilentBuffer(context: MinimalAudioContext): void {
+  try {
+    const buffer = context.createBuffer(1, 1, 22050);
+    const source = context.createBufferSource();
+    source.buffer = buffer;
+    source.connect(context.destination);
+    source.start(0);
+  } catch {
+    /* older engines without createBuffer — resume() is the best we can do */
+  }
 }
 
 /**
@@ -139,9 +209,11 @@ export function unlockCue(): void {
     if (Ctor) {
       ctx = new Ctor();
       void ctx.resume();
+      playSilentBuffer(ctx);
     }
-  } catch {
+  } catch (e) {
     ctx = null;
+    lastError = e instanceof Error ? e.message : String(e);
   }
 
   try {
@@ -153,32 +225,36 @@ export function unlockCue(): void {
     const audio = new Audio(objectUrl) as unknown as MinimalAudioEl;
     audio.playsInline = true;
     audio.preload = "auto";
+    // NOTE: iOS ignores assignment to HTMLMediaElement.volume. The lead-in
+    // silence, not the volume, is what keeps priming inaudible.
     audio.volume = 1;
-    // Prime inside the gesture: a muted play() satisfies the autoplay gate so
-    // later gesture-less plays are permitted. Unmute once primed.
-    audio.muted = true;
     el = audio;
+
+    // Prime UNMUTED inside the gesture, then stop before the tone begins.
     const primed = audio.play();
     const settle = () => {
       audio.pause();
       audio.currentTime = 0;
-      audio.muted = false;
     };
     if (primed && typeof primed.then === "function") {
-      void primed.then(settle).catch(() => {
-        audio.muted = false;
+      void primed.then(settle).catch((e: unknown) => {
+        lastError = e instanceof Error ? e.message : String(e);
       });
     } else {
       settle();
     }
-  } catch {
+  } catch (e) {
     el = null;
+    lastError = e instanceof Error ? e.message : String(e);
   }
 }
 
 /** WebAudio fallback for browsers where the media element cannot play. */
 function oscillatorBeep(): void {
-  if (!ctx) return;
+  if (!ctx) {
+    lastPath = "none";
+    return;
+  }
   try {
     if (ctx.state === "suspended") void ctx.resume();
     const osc = ctx.createOscillator();
@@ -190,8 +266,10 @@ function oscillatorBeep(): void {
     gain.connect(ctx.destination as never);
     osc.start();
     osc.stop(ctx.currentTime + BEEP_MS / 1000);
-  } catch {
-    /* nothing further to try */
+    lastPath = "oscillator";
+  } catch (e) {
+    lastPath = "none";
+    lastError = e instanceof Error ? e.message : String(e);
   }
 }
 
@@ -222,11 +300,16 @@ export function fireCue(): void {
       el.currentTime = 0;
       el.muted = false;
       const played = el.play();
+      lastPath = "media";
       if (played && typeof played.catch === "function") {
-        void played.catch(() => oscillatorBeep());
+        void played.catch((e: unknown) => {
+          lastError = e instanceof Error ? e.message : String(e);
+          oscillatorBeep();
+        });
       }
       return;
-    } catch {
+    } catch (e) {
+      lastError = e instanceof Error ? e.message : String(e);
       /* fall through to the oscillator */
     }
   }
@@ -254,4 +337,6 @@ export function releaseCue(): void {
   ctx = null;
   el = null;
   objectUrl = null;
+  lastPath = "none";
+  lastError = null;
 }

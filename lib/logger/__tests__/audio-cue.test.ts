@@ -17,6 +17,7 @@ import {
   fireCue,
   releaseCue,
   isCueUnlocked,
+  cueDiagnostics,
 } from "@/lib/logger/audio-cue";
 
 class FakeGain {
@@ -49,6 +50,12 @@ class FakeCtx {
   });
   createOscillator = vi.fn(() => new FakeOsc());
   createGain = vi.fn(() => new FakeGain());
+  createBuffer = vi.fn(() => ({}));
+  createBufferSource = vi.fn(() => ({
+    buffer: null as unknown,
+    connect: vi.fn(),
+    start: vi.fn(),
+  }));
   constructor() {
     FakeCtx.instances.push(this);
   }
@@ -94,7 +101,7 @@ afterEach(() => {
 
 describe("buildBeepWav", () => {
   it("emits a valid 16-bit mono PCM RIFF/WAVE container", () => {
-    const wav = buildBeepWav(880, 250, 8000);
+    const wav = buildBeepWav(880, 250, 8000, 60);
     const ascii = (o: number, n: number) =>
       String.fromCharCode(...wav.slice(o, o + n));
     const u32 = (o: number) =>
@@ -111,16 +118,27 @@ describe("buildBeepWav", () => {
     expect(u32(24)).toBe(8000); // sample rate
     expect(u16(34)).toBe(16); // bits per sample
 
-    // 250ms @ 8kHz mono 16-bit = 2000 samples = 4000 data bytes + 44 header.
-    const dataBytes = 2000 * 2;
+    // (60ms lead + 250ms tone) @ 8kHz mono 16-bit = 480 + 2000 samples.
+    const dataBytes = (480 + 2000) * 2;
     expect(u32(40)).toBe(dataBytes);
     expect(u32(4)).toBe(36 + dataBytes);
     expect(wav.length).toBe(44 + dataBytes);
   });
 
-  it("produces an audible (non-silent) waveform", () => {
-    const wav = buildBeepWav(880, 250, 8000);
-    const peak = Math.max(...Array.from(wav.slice(44, 244)));
+  it("opens with digital silence so priming can play-then-pause inaudibly", () => {
+    // This lead-in is what lets unlockCue prime UNMUTED. iOS permits muted
+    // playback without a gesture, so a muted prime may never register as the
+    // user-initiated unlock the whole module depends on.
+    const wav = buildBeepWav(880, 250, 8000, 60);
+    const leadBytes = 480 * 2;
+    const lead = Array.from(wav.slice(44, 44 + leadBytes));
+    expect(Math.max(...lead)).toBe(0);
+  });
+
+  it("produces an audible waveform once the lead-in ends", () => {
+    const wav = buildBeepWav(880, 250, 8000, 60);
+    const toneStart = 44 + 480 * 2;
+    const peak = Math.max(...Array.from(wav.slice(toneStart, toneStart + 400)));
     expect(peak).toBeGreaterThan(0);
   });
 });
@@ -139,13 +157,25 @@ describe("unlockCue", () => {
     expect(isCueUnlocked()).toBe(true);
   });
 
-  it("primes a playsinline media element muted, so later plays need no gesture", () => {
+  it("primes a playsinline media element so later plays need no gesture", () => {
     unlockCue();
     expect(FakeAudio.instances).toHaveLength(1);
     const el = FakeAudio.instances[0];
     expect(el.src).toBe("blob:beep");
     expect(el.playsInline).toBe(true);
     expect(el.play).toHaveBeenCalledTimes(1);
+  });
+
+  it("primes UNMUTED — a muted play may not count as the iOS unlock", () => {
+    unlockCue();
+    expect(FakeAudio.instances[0].muted).toBe(false);
+  });
+
+  it("plays a silent buffer through the context — resume() alone is not enough on iOS", () => {
+    unlockCue();
+    const ctx = FakeCtx.instances[0];
+    expect(ctx.createBuffer).toHaveBeenCalledWith(1, 1, 22050);
+    expect(ctx.createBufferSource).toHaveBeenCalled();
   });
 
   it("is idempotent — repeat gestures never stack contexts or elements", () => {
@@ -184,6 +214,26 @@ describe("fireCue", () => {
     await Promise.resolve();
     fireCue();
     expect(el.muted).toBe(false);
+  });
+
+  it("reports which output carried the cue", async () => {
+    unlockCue();
+    await Promise.resolve();
+    fireCue();
+    expect(cueDiagnostics().lastPath).toBe("media");
+  });
+
+  it("falls back to the oscillator when the media element rejects", async () => {
+    unlockCue();
+    const el = FakeAudio.instances[0];
+    await Promise.resolve();
+    el.play.mockImplementationOnce(() => Promise.reject(new Error("NotAllowedError")));
+    fireCue();
+    await Promise.resolve();
+    await Promise.resolve();
+    const ctx = FakeCtx.instances[0];
+    expect(ctx.createOscillator).toHaveBeenCalled();
+    expect(cueDiagnostics().lastError).toContain("NotAllowedError");
   });
 
   it("resumes a context the OS suspended while backgrounded", async () => {
