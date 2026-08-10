@@ -279,7 +279,7 @@ export function ordinal(n: number): string {
 - [ ] **Step 5: Run test to verify it passes**
 
 Run: `npx vitest run lib/coach/live-session/__tests__/helpers.test.ts`
-Expected: PASS, 12 tests.
+Expected: PASS (every test in the file; the implementer reports the actual count).
 
 - [ ] **Step 6: Typecheck and commit**
 
@@ -574,7 +574,7 @@ export function ruleLoadCall(input: LiveSetInput): CoachLine | null {
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `npx vitest run lib/coach/live-session/__tests__/rule-load-call.test.ts`
-Expected: PASS, 17 tests.
+Expected: PASS (every test in the file; the implementer reports the actual count).
 
 - [ ] **Step 5: Typecheck and commit**
 
@@ -750,7 +750,7 @@ export function rulePr(input: LiveSetInput): CoachLine | null {
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `npx vitest run lib/coach/live-session/__tests__/rule-pr.test.ts`
-Expected: PASS, 9 tests.
+Expected: PASS (every test in the file; the implementer reports the actual count).
 
 - [ ] **Step 5: Typecheck and commit**
 
@@ -1042,7 +1042,7 @@ export function ruleDropOff(input: LiveSetInput): CoachLine | null {
 - [ ] **Step 5: Run test to verify it passes**
 
 Run: `npx vitest run lib/coach/live-session/__tests__/rule-guardrails.test.ts`
-Expected: PASS, 11 tests.
+Expected: PASS (every test in the file; the implementer reports the actual count).
 
 - [ ] **Step 6: Typecheck and commit**
 
@@ -1345,7 +1345,7 @@ export function evaluateSet(input: LiveSetInput): CoachLine | null {
 - [ ] **Step 5: Run test to verify it passes**
 
 Run: `npx vitest run lib/coach/live-session/`
-Expected: PASS — all four test files, 47 tests total.
+Expected: PASS — all four live-session test files green.
 
 - [ ] **Step 6: Typecheck and commit**
 
