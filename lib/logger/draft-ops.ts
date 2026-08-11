@@ -27,6 +27,7 @@ import {
   type SetRef,
 } from "@/lib/logger/set-timer";
 import { annotateSession } from "@/lib/coach/session-structure/annotate";
+import { TRANSITION_BUFFER_SECONDS } from "@/lib/coach/session-structure/rules";
 
 /** The single-set timer shape this module still has to read. Not exported and
  *  deliberately not part of `TimerState` any more — it only exists on drafts
@@ -164,6 +165,60 @@ export function annotatedRestFor(draft: LoggerDraft, exerciseIndex: number): num
   const list = draft.exercises.map((e) => e.prescribed);
   const s = annotateSession(list);
   return s.exercises[exerciseIndex]?.rest_seconds ?? 120;
+}
+
+/**
+ * Rest to take BEFORE starting the exercise at `exerciseIndex` — the walk
+ * between two exercises, not the gap between two sets of one.
+ *
+ * Null when no transition applies: the session's first exercise has nothing
+ * before it, a warm-up ramp IS the transition, and an out-of-range index has
+ * no prescription to read. The annotation decides that, so an override can
+ * never resurrect a transition that does not apply.
+ *
+ * When the athlete has overridden rest on the INCOMING exercise, that choice
+ * wins and the setup buffer is added to it. Deriving the walk from a
+ * prescription the athlete has explicitly overruled would contradict them: a
+ * lifter who cuts rest to 60s to get through a session is not asking for a
+ * five-minute stroll to the next rack.
+ */
+export function transitionRestFor(
+  draft: LoggerDraft,
+  exerciseIndex: number,
+): number | null {
+  const list = draft.exercises.map((e) => e.prescribed);
+  const annotated = annotateSession(list).exercises[exerciseIndex];
+  if (!annotated || annotated.transition_seconds == null) return null;
+  const override = draft.exercises[exerciseIndex]?.rest_override_seconds;
+  return override != null
+    ? override + TRANSITION_BUFFER_SECONDS
+    : annotated.transition_seconds;
+}
+
+/**
+ * The rest to seed when the round named by `activeSets` is stopped, IF that
+ * round finishes its exercise and another exercise follows. Null otherwise —
+ * the caller then falls back to ordinary inter-set rest.
+ *
+ * A round ends an exercise only when EVERY member is on its exercise's final
+ * set. For a superset pair that means both members: stopping a round where one
+ * partner still has sets left is mid-exercise, however finished the other is.
+ *
+ * The next exercise is the one after the round's LAST member, so a pair hands
+ * off to whatever follows the pair rather than to its own second member.
+ */
+export function transitionAfterRound(
+  draft: LoggerDraft,
+  activeSets: SetRef[],
+): number | null {
+  if (activeSets.length === 0) return null;
+  const endsExercise = activeSets.every((r) => {
+    const ex = draft.exercises[r.exerciseIndex];
+    return ex != null && r.setIndex === ex.sets.length - 1;
+  });
+  if (!endsExercise) return null;
+  const nextIndex = Math.max(...activeSets.map((r) => r.exerciseIndex)) + 1;
+  return transitionRestFor(draft, nextIndex);
 }
 
 /**

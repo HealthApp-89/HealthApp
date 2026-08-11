@@ -13,6 +13,8 @@ import {
   commitPendingEntries,
   firstPendingSet,
   annotatedRestFor,
+  transitionRestFor,
+  transitionAfterRound,
 } from "@/lib/logger/draft-ops";
 import { IDLE_TIMER, type TimerState } from "@/lib/logger/set-timer";
 
@@ -292,5 +294,99 @@ describe("annotatedRestFor", () => {
   it("falls back rather than throwing for an index that does not exist", () => {
     const d = mkDraft([{ name: "Squat (Barbell)", sets: [mkSet()] }]);
     expect(annotatedRestFor(d, 99)).toBe(120);
+  });
+
+  it("ignores the athlete's override — callers apply that themselves", () => {
+    const d = mkDraft([{ name: "Squat (Barbell)", sets: [mkSet()] }]);
+    d.exercises[0].rest_override_seconds = 30;
+    expect(annotatedRestFor(d, 0)).toBe(240);
+  });
+});
+
+describe("transitionRestFor", () => {
+  /** Squat (tier 1, 240s) then Lateral Raise (tier 3 small, 60s). */
+  const twoExercises = () => mkDraft([
+    { name: "Squat (Barbell)", sets: [mkSet()] },
+    { name: "Lateral Raise (Dumbbell)", sets: [mkSet()] },
+  ]);
+
+  it("is the incoming exercise's rest plus the setup buffer", () => {
+    // Into the lateral raise: 60 + 60. Sized by what is COMING, not by the
+    // squat that was just finished.
+    expect(transitionRestFor(twoExercises(), 1)).toBe(120);
+  });
+
+  it("is null for the first exercise — nothing precedes it", () => {
+    expect(transitionRestFor(twoExercises(), 0)).toBeNull();
+  });
+
+  it("is null for an index that does not exist", () => {
+    expect(transitionRestFor(twoExercises(), 99)).toBeNull();
+  });
+
+  it("is null when the incoming exercise is a warm-up", () => {
+    const d = mkDraft([
+      { name: "Squat (Barbell)", sets: [mkSet()] },
+      { name: "Squat (Barbell)", prescribed: { warmup: true }, sets: [mkSet()] },
+    ]);
+    expect(transitionRestFor(d, 1)).toBeNull();
+  });
+
+  it("honours a manual override on the incoming exercise", () => {
+    // The athlete asked for 180s between sets of the lateral raise, so the
+    // walk into it is 180 + 60 — not the prescription's 120.
+    const d = twoExercises();
+    d.exercises[1].rest_override_seconds = 180;
+    expect(transitionRestFor(d, 1)).toBe(240);
+  });
+
+  it("does not let an override resurrect a transition that does not apply", () => {
+    const d = twoExercises();
+    d.exercises[0].rest_override_seconds = 300;
+    expect(transitionRestFor(d, 0)).toBeNull();
+  });
+});
+
+describe("transitionAfterRound", () => {
+  /** Lateral Raise (tier 3 small, 60s) then Squat (tier 1, 240s), so the
+   *  transition (300s) is unmistakably the NEXT exercise's number and not the
+   *  finished one's. */
+  const twoUp = () => mkDraft([
+    { name: "Lateral Raise (Dumbbell)", sets: [mkSet(), mkSet()] },
+    { name: "Squat (Barbell)", sets: [mkSet()] },
+  ]);
+
+  it("returns the next exercise's transition when the round ends the exercise", () => {
+    expect(transitionAfterRound(twoUp(), [{ exerciseIndex: 0, setIndex: 1 }])).toBe(300);
+  });
+
+  it("returns null mid-exercise", () => {
+    expect(transitionAfterRound(twoUp(), [{ exerciseIndex: 0, setIndex: 0 }])).toBeNull();
+  });
+
+  it("returns null after the session's last exercise", () => {
+    expect(transitionAfterRound(twoUp(), [{ exerciseIndex: 1, setIndex: 0 }])).toBeNull();
+  });
+
+  it("returns null with no active sets", () => {
+    expect(transitionAfterRound(twoUp(), [])).toBeNull();
+  });
+
+  it("needs BOTH superset members finished, not just one", () => {
+    const d = mkDraft([
+      { name: "Bicep Curl (Dumbbell)", sets: [mkSet(), mkSet()] },
+      { name: "Triceps Pushdown", sets: [mkSet(), mkSet()] },
+      { name: "Squat (Barbell)", sets: [mkSet()] },
+    ]);
+    // Curl on its last set, pushdown still has one to go.
+    expect(transitionAfterRound(d, [
+      { exerciseIndex: 0, setIndex: 1 },
+      { exerciseIndex: 1, setIndex: 0 },
+    ])).toBeNull();
+    // Both on their last set — hands off to the exercise after the PAIR.
+    expect(transitionAfterRound(d, [
+      { exerciseIndex: 0, setIndex: 1 },
+      { exerciseIndex: 1, setIndex: 1 },
+    ])).toBe(300);
   });
 });

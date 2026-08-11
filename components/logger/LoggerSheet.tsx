@@ -32,6 +32,7 @@ import {
   commitPendingEntry,
   commitPendingEntries,
   annotatedRestFor,
+  transitionAfterRound,
 } from "@/lib/logger/draft-ops";
 import {
   groupsOf,
@@ -644,12 +645,17 @@ export function LoggerSheet(props: Props) {
       const roundStartMs = cur.anchorMs;
       // Group rest, not per-exercise rest: the pair is one unit, so the longer
       // of the members' prescriptions is what the athlete owes.
-      const prescribedRest = Math.max(
-        ...cur.activeSets.map((r) =>
-          prev.exercises[r.exerciseIndex]?.rest_override_seconds
-            ?? annotatedRestFor(prev, r.exerciseIndex),
-        ),
-      );
+      //
+      // Unless this round FINISHED the exercise and another follows, in which
+      // case the athlete owes the walk into the next one instead — sized by
+      // what is coming (plus a setup buffer), not by what was just put down.
+      const prescribedRest = transitionAfterRound(prev, cur.activeSets)
+        ?? Math.max(
+          ...cur.activeSets.map((r) =>
+            prev.exercises[r.exerciseIndex]?.rest_override_seconds
+              ?? annotatedRestFor(prev, r.exerciseIndex),
+          ),
+        );
       const next = timerReducer(cur, { type: "press_stop", nowMs, prescribedRestSeconds: prescribedRest });
       // Read the shares OFF the new state rather than recomputing them — one
       // split, one source of truth for both the entry rows and the DB stamps.
