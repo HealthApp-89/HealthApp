@@ -10,6 +10,7 @@ import type {
   Weekday,
 } from "@/lib/data/types";
 import { ScheduleDayRow, type DayClass } from "@/components/strength/ScheduleDayRow";
+import type { TodaySessionWorkout } from "@/lib/query/fetchers/todaySession";
 
 export type WeekDayEntry = {
   weekdayShort: Weekday;
@@ -20,6 +21,7 @@ export type WeekDayEntry = {
   /** Engine-resolved plan WITHOUT the manual-edit layer (DayEditSheet baseline). */
   baselineExercises: PlannedExercise[];
   dayClass: DayClass;
+  loggedWorkout?: TodaySessionWorkout | null;
 };
 
 type Props = {
@@ -54,7 +56,12 @@ export function WeekScheduleAccordion({
 
   // Auto-expand today on first paint of a given week (re-keyed by weekStart).
   useEffect(() => {
-    const today = days.find((d) => d.dayClass === "today");
+    // Both today-classes count: a day already trained is still the day to
+    // open on, and matching only "today" would collapse the accordion the
+    // moment the athlete finishes a session.
+    const today = days.find(
+      (d) => d.dayClass === "today" || d.dayClass === "today_logged",
+    );
     setExpanded(new Set(today ? [today.weekdayShort] : []));
   }, [weekStart, days]);
 
@@ -81,6 +88,7 @@ export function WeekScheduleAccordion({
           exercises={d.exercises}
           baselineExercises={d.baselineExercises}
           dayClass={d.dayClass}
+          loggedWorkout={d.loggedWorkout ?? null}
           isExpanded={expanded.has(d.weekdayShort)}
           onToggle={() => toggle(d.weekdayShort)}
           weekOverrides={weekOverrides}

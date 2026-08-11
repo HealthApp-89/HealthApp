@@ -18,7 +18,8 @@ import { todayInUserTz } from "@/lib/time";
 import { useProfile } from "@/lib/query/hooks/useProfile";
 import { COLOR } from "@/lib/ui/theme";
 import { fmtNum } from "@/lib/ui/score";
-import type { DayClass } from "@/components/strength/ScheduleDayRow";
+import { classifyScheduleDay, type DayClass } from "@/lib/coach/schedule/classify-day";
+import type { TodaySessionWorkout } from "@/lib/query/fetchers/todaySession";
 import type { Weekday, SessionPlan, ManualSessionEdits, PrimaryLift } from "@/lib/data/types";
 import type { BlockPhase } from "@/lib/coach/prescription/types";
 
@@ -122,12 +123,33 @@ export function StrengthScheduleClient({ userId }: Props) {
       const isPast = date < todayIso;
       const isLogged = loggedDates.has(date);
 
-      let dayClass: DayClass;
-      if (sessionType === "REST") dayClass = "rest";
-      else if (isToday) dayClass = "today";
-      else if (isPast && isLogged) dayClass = "past_logged";
-      else if (isPast) dayClass = "past_unlogged";
-      else dayClass = "future";
+      // Branch order matters and lives in lib/ so it can be tested — see
+      // lib/coach/schedule/classify-day.ts for why it was wrong inline.
+      const dayClass: DayClass = classifyScheduleDay({
+        date,
+        todayIso,
+        sessionType,
+        isLogged,
+      });
+
+      // Only today's row needs the workout itself (for the done state's
+      // Modify / Restart / debrief link). Built from the list already in hand
+      // — the row must not open its own query.
+      const loggedWorkout: TodaySessionWorkout | null =
+        dayClass === "today_logged"
+          ? (() => {
+              const w = workouts.find((x) => x.date === date);
+              return w
+                ? {
+                    id: w.id,
+                    type: w.type,
+                    duration_min: w.duration_min,
+                    source: w.source,
+                    exercise_count: w.exercises.length,
+                  }
+                : null;
+            })()
+          : null;
 
       return {
         weekdayShort: wd,
@@ -137,6 +159,7 @@ export function StrengthScheduleClient({ userId }: Props) {
         exercises,
         baselineExercises,
         dayClass,
+        loggedWorkout,
       };
     });
   }, [trainingWeek, workouts, templatesMap, weekStart, todayIso]);
