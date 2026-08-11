@@ -38,6 +38,15 @@ export type PlannedExercise = {
    *  etc. — anything where "did you hit the prescribed seconds" is the
    *  unit of progress. */
   duration_seconds?: number;
+  /** Superset tag. ADJACENT exercises sharing a tag are performed back-to-back
+   *  as one round, with rest only after the last member — see
+   *  lib/logger/superset-groups.ts, which defines a group as the maximal
+   *  contiguous run of equal tags. Absent = performed alone.
+   *
+   *  Contiguity is the whole rule: a reorder that separates two members
+   *  dissolves the group, and removing a member leaves the survivor solo, so
+   *  there is no invalid state to validate against. */
+  superset?: string;
 };
 
 // NOTE: `intermediate` on Chest Fly (2.3kg) and Seated Leg Curl (2.3kg) is a
@@ -77,12 +86,12 @@ export const SESSION_PLANS: Record<string, PlannedExercise[]> = {
     { name: "Back Extension", reps: "10×3", key: "back_ext" },
   ],
   Arms: [
-    { name: "Arnold Press (Dumbbell)", baseKg: 24, baseReps: 15, sets: 3, key: "arnold_press", increment: { step: 4 } },
-    { name: "Bicep Curl (Dumbbell)", baseKg: 20, baseReps: 15, sets: 3, key: "bicep_curl", increment: { step: 4 } },
-    { name: "Front Raise (Dumbbell)", baseKg: 16, baseReps: 15, sets: 3, key: "front_raise", increment: { step: 4 } },
-    { name: "Hammer Curl (Dumbbell)", baseKg: 20, baseReps: 15, sets: 3, key: "hammer_curl", increment: { step: 4 } },
-    { name: "Lateral Raise (Dumbbell)", baseKg: 12, baseReps: 15, sets: 3, key: "lateral_raise", increment: { step: 4 } },
-    { name: "Triceps Pushdown (Cable - Straight Bar)", baseKg: 22.5, baseReps: 12, sets: 3, key: "triceps_pushdown", increment: { step: 2.5 } },
+    { name: "Arnold Press (Dumbbell)", baseKg: 24, baseReps: 15, sets: 3, key: "arnold_press", increment: { step: 4 }, superset: "A" },
+    { name: "Bicep Curl (Dumbbell)", baseKg: 20, baseReps: 15, sets: 3, key: "bicep_curl", increment: { step: 4 }, superset: "A" },
+    { name: "Front Raise (Dumbbell)", baseKg: 16, baseReps: 15, sets: 3, key: "front_raise", increment: { step: 4 }, superset: "B" },
+    { name: "Hammer Curl (Dumbbell)", baseKg: 20, baseReps: 15, sets: 3, key: "hammer_curl", increment: { step: 4 }, superset: "B" },
+    { name: "Lateral Raise (Dumbbell)", baseKg: 12, baseReps: 15, sets: 3, key: "lateral_raise", increment: { step: 4 }, superset: "C" },
+    { name: "Triceps Pushdown (Cable - Straight Bar)", baseKg: 22.5, baseReps: 12, sets: 3, key: "triceps_pushdown", increment: { step: 2.5 }, superset: "C" },
     { name: "Cable External Rotation", baseKg: 9, baseReps: 28, sets: 3, key: "cable_ext_rot", increment: { step: 4.5 } },
     { name: "Cable Internal Rotation", baseKg: 18, baseReps: 30, sets: 3, key: "cable_int_rot", increment: { step: 4.5 } },
     { name: "Rear Delt Fly", baseKg: 25, baseReps: 15, sets: 3, key: "rear_delt_fly", increment: { step: 5, intermediate: 2.3 } },

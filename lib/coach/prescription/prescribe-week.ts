@@ -505,8 +505,13 @@ export async function computeActivityLayoutProposal(opts: {
  *
  *  No-ops when the day has no loaded compound (e.g. Mobility days, where the
  *  first exercise is a foam-roll without baseKg) or when the first non-
- *  warmup entry already lacks baseKg. */
-function augmentFirstLoadedCompoundWithWarmups(
+ *  warmup entry already lacks baseKg.
+ *
+ *  The warmup entries are built by spreading the working compound, so they
+ *  must drop `superset`: a warmup inheriting the tag would be pulled into the
+ *  pair by the logger's contiguous-run grouping and the athlete would be told
+ *  to superset his ramp-up sets. */
+export function augmentFirstLoadedCompoundWithWarmups(
   exercises: PlannedExercise[],
 ): PlannedExercise[] {
   const idx = exercises.findIndex(
@@ -526,8 +531,11 @@ function augmentFirstLoadedCompoundWithWarmups(
   // working set IS the warmup at that point.
   if (w1Kg <= 0 || w2Kg <= 0) return exercises;
 
+  // Drop the superset tag: warmups are performed alone, before the round.
+  const { superset: _supersetDropped, ...soloCompound } = compound;
+
   const warmup1: PlannedExercise = {
-    ...compound,
+    ...soloCompound,
     warmup: true,
     baseKg: w1Kg,
     baseReps: 5,
@@ -535,7 +543,7 @@ function augmentFirstLoadedCompoundWithWarmups(
     note: "Warmup 1 — ramp to working set",
   };
   const warmup2: PlannedExercise = {
-    ...compound,
+    ...soloCompound,
     warmup: true,
     baseKg: w2Kg,
     baseReps: 3,
