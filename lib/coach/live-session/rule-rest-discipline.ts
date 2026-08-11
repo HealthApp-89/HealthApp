@@ -31,6 +31,8 @@
 //
 // The "prior set" is always the nearest earlier NON-WARMUP committed set —
 // see restBefore for why.
+//
+// Exercises performed in a superset are excluded outright — see the guard below.
 
 import { tierOf } from "@/lib/coach/session-structure/tiers";
 import { restPrescription, repsForExercise } from "@/lib/coach/session-structure/rules";
@@ -70,6 +72,12 @@ export function ruleRestDiscipline(input: LiveSetInput): CoachLine | null {
   const { set, exercise } = input;
 
   if (set.warmup) return null;
+
+  // A superset member's rest is not the quantity restPrescription describes.
+  // Its gap is measured from the previous set of the SAME exercise, which in a
+  // superset spans the other member's work as well — comparing that against an
+  // inter-working-set prescription judges a number the athlete never chose.
+  if (exercise.prescribed.superset) return null;
 
   // Only heavy compounds. Isolation pacing is the athlete's business.
   const tier = tierOf(exercise.prescribed);

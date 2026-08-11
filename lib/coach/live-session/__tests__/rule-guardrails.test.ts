@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { ruleFailureBudget } from "@/lib/coach/live-session/rule-failure-budget";
 import { ruleDropOff } from "@/lib/coach/live-session/rule-drop-off";
+import { ruleRestDiscipline } from "@/lib/coach/live-session/rule-rest-discipline";
 import type { LiveSetInput, SessionSetRef } from "@/lib/coach/live-session/types";
 import type { ExerciseSetDraft, ExerciseDraft } from "@/lib/logger/types";
 
@@ -249,5 +250,37 @@ describe("ruleDropOff", () => {
     expect(
       ruleDropOff(mkInput({ name: "Squat (Barbell)", sets: [s0, s1, s2, s3], current: s3 })),
     ).not.toBeNull();
+  });
+});
+
+describe("ruleRestDiscipline — supersets", () => {
+  const s1 = mkSet({
+    set_index: 0,
+    started_at: "2026-08-10T09:00:00.000Z",
+    work_seconds: 40,
+    committed_at: "2026-08-10T09:00:45.000Z",
+  });
+  const s2 = mkSet({
+    set_index: 1,
+    started_at: "2026-08-10T09:01:30.000Z",
+    work_seconds: 38,
+    committed_at: "2026-08-10T09:02:15.000Z",
+  });
+
+  it("fires on a 50s gap for a solo tier-1 lift", () => {
+    const input = mkInput({ name: "Squat", sets: [s1, s2], current: s2 });
+    expect(ruleRestDiscipline(input)).not.toBeNull();
+  });
+
+  it("stays silent when the same lift is performed in a superset", () => {
+    const input = mkInput({ name: "Squat", sets: [s1, s2], current: s2 });
+    const grouped = {
+      ...input,
+      exercise: {
+        ...input.exercise,
+        prescribed: { ...input.exercise.prescribed, superset: "A" },
+      },
+    };
+    expect(ruleRestDiscipline(grouped)).toBeNull();
   });
 });
