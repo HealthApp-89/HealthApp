@@ -4,7 +4,7 @@
 // it needs and returns a typed record — no I/O, no side effects.
 
 import type { PlannedExercise } from "@/lib/coach/sessionPlans";
-import { getExerciseMuscles } from "@/lib/coach/exercise-muscles";
+import { getExerciseMuscles, MUSCLE_ID } from "@/lib/coach/exercise-muscles";
 import { categorize } from "@/lib/coach/exercise-categories";
 import { tierOf, BIG_FOUR_SET, type FatigueTier } from "./tiers";
 
@@ -33,6 +33,77 @@ function parseReps(spec: string | number | undefined): number | null {
   if (!m) return null;
   const reps = parseInt(m[1], 10);
   return Number.isFinite(reps) ? reps : null;
+}
+
+/** Single-value rest prescription per bucket, in seconds.
+ *
+ *  Rest length matters because it protects volume-load: anything that costs
+ *  reps on sets 2-4 costs the stimulus set 1 bought (Schoenfeld 2016; Grgic
+ *  2017/2018 meta-analyses). These are the values the athlete is expected to
+ *  actually take, not the floor of a range. */
+export const REST_SECONDS = {
+  warmup: 45,
+  /** The ramp set immediately before the first working exercise. 45s here
+   *  compromises the heaviest set of the day. */
+  lastWarmup: 120,
+  heavyCompound: 240,
+  secondaryCompound: 180,
+  isolationLarge: 120,
+  isolationSmall: 60,
+  finisher: 45,
+} as const;
+
+/** Added to the incoming exercise's rest to produce the between-exercise
+ *  transition: station change, plate loading, set-up. */
+export const TRANSITION_BUFFER_SECONDS = 60;
+
+/** Primary muscles expensive enough that an isolation taken near failure
+ *  needs compound-like recovery. */
+const LARGE_MUSCLE_IDS: ReadonlySet<number> = new Set([
+  MUSCLE_ID.Chest,
+  MUSCLE_ID.Lats,
+  MUSCLE_ID.Quads,
+  MUSCLE_ID.Hams,
+  MUSCLE_ID.Glutes,
+  MUSCLE_ID.Traps,
+]);
+
+/** Large- vs small-muscle isolation. A leg extension to failure imposes local
+ *  and systemic fatigue on a par with a light compound; a lateral raise
+ *  recovers in about a minute.
+ *
+ *  Any large muscle in the primary set makes the exercise expensive, so mixed
+ *  primaries resolve to "large". An unmapped name resolves to "small"
+ *  deliberately: that yields the shortest timer, and the athlete can lengthen
+ *  it from the logger's rest dialog in one tap. A wrong-but-long default costs
+ *  four minutes of standing around before anyone notices. */
+export function isolationSize(name: string): "large" | "small" {
+  const mapping = getExerciseMuscles(name);
+  if (!mapping || mapping.primary.length === 0) return "small";
+  return mapping.primary.some((id) => LARGE_MUSCLE_IDS.has(id)) ? "large" : "small";
+}
+
+/** Rest in seconds for one exercise, given its fatigue tier.
+ *
+ *  Reps are deliberately not an input. The old range-based table branched on
+ *  rep count; these values are set by how expensive the movement is, and a
+ *  5-rep and a 10-rep squat both need a full recovery before the next set.
+ *
+ *  Tier 0 returns the plain warm-up value. The last-warm-up bump to
+ *  REST_SECONDS.lastWarmup depends on the NEXT exercise and so belongs to
+ *  annotateSession, not here — keeping this a pure (ex, tier) lookup is what
+ *  makes it directly testable. */
+export function restSecondsFor(ex: PlannedExercise, tier: FatigueTier): number {
+  switch (tier) {
+    case 0: return REST_SECONDS.warmup;
+    case 1: return REST_SECONDS.heavyCompound;
+    case 2: return REST_SECONDS.secondaryCompound;
+    case 3:
+      return isolationSize(ex.name) === "large"
+        ? REST_SECONDS.isolationLarge
+        : REST_SECONDS.isolationSmall;
+    case 4: return REST_SECONDS.finisher;
+  }
 }
 
 /** Rest prescription per fatigue tier and rep target.
