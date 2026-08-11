@@ -206,7 +206,10 @@ export function BlockOutcomeCard({ outcome }: Props) {
               </Link>
             </div>
             <Link
-              href="/coach/trends?section=performance#block-history"
+              // /coach/trends does not exist — app/coach has only page, reviews,
+              // sessions and weeks — so this link 404'd. Block history lives on
+              // the Blocks tab, rendered by BlockHistoryList.
+              href="/strength?tab=blocks"
               style={{
                 alignSelf: "flex-end",
                 fontSize: 11,
