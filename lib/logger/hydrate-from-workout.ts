@@ -23,11 +23,16 @@ export function hydrateWorkoutAsDraft(
 
   const exercises: ExerciseDraft[] = workout.exercises.map((e, i) => {
     const fromPlan = resolvedPlan.find((p) => p.name === e.name);
-    const prescribed: PlannedExercise = fromPlan ?? {
+    const base: PlannedExercise = fromPlan ?? {
       name: e.name,
       sets: e.sets.length,
       baseReps: e.sets[0]?.reps ?? 10,
     };
+    // The saved grouping wins over whatever today's plan says: this is a
+    // record of what was performed, not a fresh prescription.
+    const prescribed: PlannedExercise = e.superset_group
+      ? { ...base, superset: e.superset_group }
+      : base;
     const sets: ExerciseSetDraft[] = e.sets.map((s) => ({
       set_index: s.set_index,
       kg: s.kg,

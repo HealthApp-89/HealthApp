@@ -85,6 +85,10 @@ export type CommitSessionPayload = {
   exercises: {
     name: string;
     position: number;
+    /** Superset tag when this exercise was performed back-to-back with its
+     *  neighbours; null when performed alone. See migration 0057 for what it
+     *  tells a reader about work_seconds and rest_seconds_actual. */
+    superset_group: string | null;
     sets: {
       set_index: number;
       kg: number | null;

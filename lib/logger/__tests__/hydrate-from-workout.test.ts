@@ -18,6 +18,7 @@ function workoutFixture(overrides: Partial<WorkoutForEdit> = {}): WorkoutForEdit
         id: "e-1",
         name: "Decline Bench",
         position: 0,
+        superset_group: null,
         sets: [
           {
             set_index: 1,
@@ -68,5 +69,29 @@ describe("hydrateWorkoutAsDraft — per-set timing preservation", () => {
     const draft = hydrateWorkoutAsDraft(workoutFixture(), []);
     expect(draft.exercises[0].sets[0].started_at).toBe("2026-08-10T09:15:00.000Z");
     expect(draft.exercises[0].sets[0].work_seconds).toBe(33);
+  });
+});
+
+describe("hydrateWorkoutAsDraft — superset grouping", () => {
+  it("restores the saved tag onto prescribed", () => {
+    const w = workoutFixture();
+    w.exercises[0].superset_group = "A";
+    const draft = hydrateWorkoutAsDraft(w, []);
+    expect(draft.exercises[0].prescribed.superset).toBe("A");
+  });
+
+  it("leaves prescribed untagged for an exercise performed alone", () => {
+    const draft = hydrateWorkoutAsDraft(workoutFixture(), []);
+    expect(draft.exercises[0].prescribed.superset).toBeUndefined();
+  });
+
+  it("prefers the saved tag over today's plan entry", () => {
+    // The plan may have been re-paired since; this row records what happened.
+    const w = workoutFixture();
+    w.exercises[0].superset_group = "A";
+    const draft = hydrateWorkoutAsDraft(w, [
+      { name: "Decline Bench", sets: 3, baseReps: 8, superset: "C" },
+    ]);
+    expect(draft.exercises[0].prescribed.superset).toBe("A");
   });
 });

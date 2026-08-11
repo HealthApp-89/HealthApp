@@ -939,6 +939,7 @@ export function LoggerSheet(props: Props) {
       exercises: draft.exercises.map((ex, i) => ({
         name: ex.name,
         position: i,
+        superset_group: ex.prescribed.superset ?? null,
         sets: ex.sets
           .filter((s) => s.committed_at)
           .map((s, sIdx, arr) => {
