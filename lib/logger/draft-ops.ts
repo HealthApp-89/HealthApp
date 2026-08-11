@@ -212,6 +212,14 @@ export function transitionAfterRound(
   activeSets: SetRef[],
 ): number | null {
   if (activeSets.length === 0) return null;
+  // A finished warm-up ramp hands off to its own working sets — same bar, same
+  // rack, nothing to walk to. The last warm-up's own rest (bumped to
+  // REST_SECONDS.lastWarmup by annotateSession) is the number that governs
+  // that hand-off; charging a full walk-in here would override it and stand
+  // the athlete around for five minutes before the set the ramp just prepared.
+  if (activeSets.every((r) => draft.exercises[r.exerciseIndex]?.sets[r.setIndex]?.warmup)) {
+    return null;
+  }
   const endsExercise = activeSets.every((r) => {
     const ex = draft.exercises[r.exerciseIndex];
     return ex != null && r.setIndex === ex.sets.length - 1;

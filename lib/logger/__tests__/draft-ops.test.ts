@@ -382,6 +382,18 @@ describe("transitionAfterRound", () => {
     expect(transitionAfterRound(twoUp(), [])).toBeNull();
   });
 
+  it("returns null after a warm-up ramp — the hand-off is its own bumped rest", () => {
+    // The engine inserts two warm-up ENTRIES before the first loaded compound,
+    // so the ramp and its working sets are separate exercises in the same bar.
+    // Treating that as an exercise change charged a five-minute walk-in into
+    // the set the ramp exists to prepare, overriding the 2:00 last-warm-up bump.
+    const d = mkDraft([
+      { name: "Squat (Barbell)", prescribed: { warmup: true }, sets: [mkSet({ warmup: true })] },
+      { name: "Squat (Barbell)", sets: [mkSet()] },
+    ]);
+    expect(transitionAfterRound(d, [{ exerciseIndex: 0, setIndex: 0 }])).toBeNull();
+  });
+
   it("needs BOTH superset members finished, not just one", () => {
     const d = mkDraft([
       { name: "Bicep Curl (Dumbbell)", sets: [mkSet(), mkSet()] },
