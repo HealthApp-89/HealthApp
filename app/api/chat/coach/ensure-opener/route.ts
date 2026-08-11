@@ -25,6 +25,7 @@ import {
   createSupabaseServiceRoleClient,
 } from "@/lib/supabase/server";
 import { fetchOpenerContext, generateOpener } from "@/lib/coach/opener";
+import { getUserTimezone } from "@/lib/time/get-user-tz";
 import { SPEAKERS, type Speaker } from "@/lib/data/types";
 
 export const dynamic = "force-dynamic";
@@ -84,7 +85,8 @@ export async function POST(req: Request) {
 
   let opener: string;
   try {
-    const ctx = await fetchOpenerContext(sr, user.id);
+    const tz = await getUserTimezone(user.id);
+    const ctx = await fetchOpenerContext(sr, user.id, tz);
     opener = await generateOpener(ctx);
     if (!opener || opener.length < 4) {
       throw new Error("empty_opener");

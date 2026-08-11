@@ -8,6 +8,7 @@ import type { TrainingBlock } from "@/lib/data/types";
 import type { PlannedExercise } from "@/lib/coach/sessionPlans";
 import type { BlockPhase } from "@/lib/coach/prescription/types";
 import { roundToStep } from "@/lib/coach/prescription/calibrate-target";
+import { blockWeekOf } from "@/lib/coach/prescription/block-week";
 
 const OFF_PACE_REQUIRED_RATIO = 1.5; // required-rate must exceed observed-rate × 1.5 to be off-pace
 
@@ -121,10 +122,7 @@ export function prescribePrimaryFromPhase(opts: {
 // ── helpers ──────────────────────────────────────────────────────────
 
 export function currentBlockWeek(block: TrainingBlock, todayIso: string): number {
-  const start = new Date(block.start_date + "T00:00:00Z");
-  const today = new Date(todayIso + "T00:00:00Z");
-  const days = Math.floor((today.getTime() - start.getTime()) / (24 * 60 * 60 * 1000));
-  return Math.max(1, Math.floor(days / 7) + 1);
+  return blockWeekOf(block.start_date, todayIso);
 }
 
 export function totalBlockWeeks(block: TrainingBlock): number {

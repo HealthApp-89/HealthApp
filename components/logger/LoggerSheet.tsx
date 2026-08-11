@@ -1061,6 +1061,7 @@ export function LoggerSheet(props: Props) {
       await clearDraft(draft.user_id, draft.session_type);
     }
     qc.invalidateQueries({ queryKey: queryKeys.workouts.all(draft.user_id) });
+    qc.invalidateQueries({ queryKey: queryKeys.todaySession.one(draft.user_id, draft.date) });
     router.refresh();
     props.onClose();
   }

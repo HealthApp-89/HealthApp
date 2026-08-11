@@ -12,6 +12,7 @@ import { makeServerQueryClient } from "@/lib/query/queryClient";
 import { fetchBlockSummaryServer } from "@/lib/query/fetchers/blockSummary";
 import { fetchBlocksRepoServer } from "@/lib/query/fetchers/blocksRepo";
 import { fetchProfileServer } from "@/lib/query/fetchers/profile";
+import { fetchTodaySessionServer } from "@/lib/query/fetchers/todaySession";
 import { getUserTimezone } from "@/lib/time/get-user-tz";
 import { todayInUserTz } from "@/lib/time";
 import { queryKeys } from "@/lib/query/keys";
@@ -87,6 +88,21 @@ export default async function StrengthPage({
           fetchBlocksRepoServer(supabase as unknown as SupabaseClient, user.id),
       }),
     ]);
+  }
+
+  // TodayPlanCard (coach tab) reads useTodaySessionStatus, which without a
+  // server prefetch has a cold-load window where `logged` is null and the
+  // full "Start session" CTA renders tappable before the truth is known —
+  // tapping it inside that window double-commits the day (see
+  // useTodaySessionStatus.ts). Gated to the coach tab only, same convention
+  // as the blocks-tab prefetch above.
+  if (tab === "coach") {
+    const tz = await getUserTimezone(user.id);
+    const todayIso = todayInUserTz(new Date(), tz);
+    await queryClient.prefetchQuery({
+      queryKey: queryKeys.todaySession.one(user.id, todayIso),
+      queryFn: () => fetchTodaySessionServer(supabase, user.id, todayIso),
+    });
   }
 
   return (

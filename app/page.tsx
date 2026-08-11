@@ -12,6 +12,7 @@ import { fetchLast7Server } from "@/lib/query/fetchers/last7";
 import { fetchWorkoutsRangeServer } from "@/lib/query/fetchers/workouts";
 import { fetchIntakeStateServer } from "@/lib/query/fetchers/intakeState";
 import { fetchTodayBriefServer } from "@/lib/query/fetchers/todayBrief";
+import { fetchTodaySessionServer } from "@/lib/query/fetchers/todaySession";
 import { TodayClient } from "@/components/dashboard/TodayClient";
 import { WeeklyRollups } from "@/components/dashboard/WeeklyRollups";
 import { BodyTile } from "@/components/dashboard/BodyTile";
@@ -84,6 +85,18 @@ export default async function Home(props: { searchParams: Promise<{ date?: strin
           queryClient.prefetchQuery({
             queryKey: queryKeys.morningBrief.today(user.id, selectedDate),
             queryFn: () => fetchTodayBriefServer(supabase, user.id, selectedDate),
+          }),
+          // TodayMorningBriefSlot's BriefSessionList reads
+          // useTodaySessionStatus for the same reason TodayPlanCard does
+          // (see app/strength/page.tsx) — without this, a cold dashboard
+          // load has a window where the "Log this session" CTA is tappable
+          // before the truth is known, and tapping it can double-commit the
+          // day. TodayMorningBriefSlot always shows *today*'s brief
+          // regardless of `?date=`, so this only needs the isToday-gated
+          // `selectedDate`, matching the morningBrief prefetch above.
+          queryClient.prefetchQuery({
+            queryKey: queryKeys.todaySession.one(user.id, selectedDate),
+            queryFn: () => fetchTodaySessionServer(supabase, user.id, selectedDate),
           }),
         ]
       : []),
