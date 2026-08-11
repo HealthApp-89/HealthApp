@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import type { LoggerDraft, ExerciseSetDraft } from "@/lib/logger/types";
 import type { PlannedExercise } from "@/lib/coach/sessionPlans";
-import { groupsOf, groupOfIndex, nextRound } from "@/lib/logger/superset-groups";
+import { groupsOf, groupOfIndex, nextRound, roundFromLead } from "@/lib/logger/superset-groups";
 
 const NOW = "2026-08-11T09:00:00.000Z";
 
@@ -78,6 +78,85 @@ describe("groupOfIndex", () => {
     const ex = mkDraft(ARMS).exercises;
     expect(groupOfIndex(ex, 1)).toEqual({ tag: "A", indices: [0, 1] });
     expect(groupOfIndex(ex, 4)).toEqual({ tag: null, indices: [4] });
+  });
+});
+
+// THE member-resolution rule, shared by the dock's START (via nextRound, which
+// scans for its own lead) and LoggerSheet's row-level "Start this set" (which
+// is handed one). The nextRound cases below are unchanged and are the proof
+// that routing them through this function preserved their behaviour.
+describe("roundFromLead", () => {
+  it("returns one set per member for a fresh pair, from either member as lead", () => {
+    const ex = mkDraft(ARMS).exercises;
+    const round = [{ exerciseIndex: 0, setIndex: 0 }, { exerciseIndex: 1, setIndex: 0 }];
+    expect(roundFromLead(ex, { exerciseIndex: 0, setIndex: 0 }, [])).toEqual(round);
+    // Leading with the SECOND member still returns the pair in GROUP order —
+    // the round is performed Arnold-then-curl however the athlete taps it.
+    expect(roundFromLead(ex, { exerciseIndex: 1, setIndex: 0 }, [])).toEqual(round);
+  });
+
+  it("honours a lead that is not the group's first uncommitted set", () => {
+    // Only the dock scans for a lead; a row-level tap names one, and the round
+    // must be built around THAT set rather than silently re-scanning to set 0.
+    const ex = mkDraft([["Arnold Press", "A", 3, 0], ["Bicep Curl", "A", 3, 0]]).exercises;
+    expect(roundFromLead(ex, { exerciseIndex: 0, setIndex: 2 }, [])).toEqual([
+      { exerciseIndex: 0, setIndex: 2 },
+      { exerciseIndex: 1, setIndex: 0 },
+    ]);
+  });
+
+  it("skips a partner whose entry row is still open and takes its next set", () => {
+    // The case LoggerSheet's roundForSet exists for: round 1 was stopped, the
+    // athlete saved Arnold's zoom but not the curl's, then tapped START on
+    // Arnold's set 2. The curl's set 0 is uncommitted but already performed.
+    const ex = mkDraft([["Arnold Press", "A", 3, 1], ["Bicep Curl", "A", 3, 0]]).exercises;
+    const skip = [{ exerciseIndex: 1, setIndex: 0 }];
+    expect(roundFromLead(ex, { exerciseIndex: 0, setIndex: 1 }, skip)).toEqual([
+      { exerciseIndex: 0, setIndex: 1 },
+      { exerciseIndex: 1, setIndex: 1 },
+    ]);
+  });
+
+  it("omits a partner with nothing left but a pending set, ending the round solo", () => {
+    const ex = mkDraft([["Arnold Press", "A", 3, 1], ["Bicep Curl", "A", 1, 0]]).exercises;
+    const skip = [{ exerciseIndex: 1, setIndex: 0 }];
+    expect(roundFromLead(ex, { exerciseIndex: 0, setIndex: 1 }, skip)).toEqual([
+      { exerciseIndex: 0, setIndex: 1 },
+    ]);
+  });
+
+  it("omits an exhausted partner in an unequal pair", () => {
+    const ex = mkDraft([["Arnold Press", "A", 3, 2], ["Bicep Curl", "A", 2, 2]]).exercises;
+    expect(roundFromLead(ex, { exerciseIndex: 0, setIndex: 2 }, [])).toEqual([
+      { exerciseIndex: 0, setIndex: 2 },
+    ]);
+  });
+
+  it("returns just the lead for a solo exercise", () => {
+    const ex = mkDraft(ARMS).exercises;
+    expect(roundFromLead(ex, { exerciseIndex: 4, setIndex: 1 }, [])).toEqual([
+      { exerciseIndex: 4, setIndex: 1 },
+    ]);
+  });
+
+  it("returns just the lead when a reorder has separated a tagged pair", () => {
+    const ex = mkDraft([
+      ["Arnold Press", "A", 3, 0],
+      ["Rear Delt Fly", null, 3, 0],
+      ["Bicep Curl", "A", 3, 0],
+    ]).exercises;
+    expect(roundFromLead(ex, { exerciseIndex: 0, setIndex: 0 }, [])).toEqual([
+      { exerciseIndex: 0, setIndex: 0 },
+    ]);
+  });
+
+  it("resolves all three members of a run of three", () => {
+    const ex = mkDraft([["A1", "A", 3, 1], ["A2", "A", 3, 1], ["A3", "A", 3, 1]]).exercises;
+    expect(roundFromLead(ex, { exerciseIndex: 1, setIndex: 1 }, [])).toEqual([
+      { exerciseIndex: 0, setIndex: 1 },
+      { exerciseIndex: 1, setIndex: 1 },
+      { exerciseIndex: 2, setIndex: 1 },
+    ]);
   });
 });
 

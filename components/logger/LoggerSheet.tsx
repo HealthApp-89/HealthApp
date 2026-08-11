@@ -35,7 +35,7 @@ import {
   keepUnmovedRestOverrides,
   annotatedRestFor,
 } from "@/lib/logger/draft-ops";
-import { groupOfIndex, nextRound } from "@/lib/logger/superset-groups";
+import { groupOfIndex, nextRound, roundFromLead } from "@/lib/logger/superset-groups";
 import {
   evaluateSet,
   type CoachLine,
@@ -482,31 +482,22 @@ export function LoggerSheet(props: Props) {
     if (autoSaved.length > 0) setPendingCoachEval(autoSaved);
   }, []);
 
-  /** The round a set belongs to: that set plus each other group member's first
-   *  uncommitted set, in group order. A row-level START must not begin half a
-   *  superset, and the dock's START goes through nextRound already.
+  /** The round a set belongs to. A row-level START must not begin half a
+   *  superset, and the dock's START goes through `nextRound` already — so this
+   *  is the same rule with the lead supplied instead of scanned for, which is
+   *  exactly `roundFromLead`. Written out here it would be a second copy of
+   *  that loop living in the one file this repo's vitest setup cannot reach.
    *
-   *  A member whose zoom is still open is skipped exactly as `nextRound` skips
-   *  it: that set is uncommitted but already PERFORMED, and START commits it on
-   *  the way, so including it would re-run — and re-stamp `work_seconds` /
-   *  `started_at` on — a set the athlete has just finished. Reachable by saving
-   *  one member's entry row and tapping "Start this set" on the partner, which
-   *  the card offers because it only knows about its OWN pending entry. */
+   *  `pendingEntryRefs` is what excludes a member whose zoom is still open: that
+   *  set is uncommitted but already PERFORMED, and START commits it on the way,
+   *  so including it would re-run — and re-stamp `work_seconds` / `started_at`
+   *  on — a set the athlete has just finished. Reachable by saving one member's
+   *  entry row and tapping "Start this set" on the partner, which the card
+   *  offers because it only knows about its OWN pending entry. */
   const roundForSet = useCallback((set: SetRef): SetRef[] => {
     const d = draftRef.current;
     if (!d) return [set];
-    const group = groupOfIndex(d.exercises, set.exerciseIndex);
-    if (group.indices.length === 1) return [set];
-    const skip = pendingEntryRefs.current;
-    const round: SetRef[] = [];
-    for (const ei of group.indices) {
-      if (ei === set.exerciseIndex) { round.push(set); continue; }
-      const si = d.exercises[ei].sets.findIndex(
-        (s, i) => !s.committed_at && !skip.some((k) => k.exerciseIndex === ei && k.setIndex === i),
-      );
-      if (si >= 0) round.push({ exerciseIndex: ei, setIndex: si });
-    }
-    return round;
+    return roundFromLead(d.exercises, set, pendingEntryRefs.current);
   }, []);
 
   const handleRowStart = useCallback((set: SetRef) => {
