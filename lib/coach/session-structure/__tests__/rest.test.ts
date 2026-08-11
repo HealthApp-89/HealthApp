@@ -139,17 +139,33 @@ describe("annotateSession — rest", () => {
 
   it("sets transition_seconds to the incoming exercise's rest plus a minute", () => {
     const s = annotateSession(liftingDay());
-    expect(s.exercises[3].transition_seconds).toBe(240); // into the row: 180 + 60
-    expect(s.exercises[4].transition_seconds).toBe(180); // into leg ext: 120 + 60
-    expect(s.exercises[5].transition_seconds).toBe(120); // into lateral: 60 + 60
-    expect(s.exercises[6].transition_seconds).toBe(105); // into plank: 45 + 60
+    expect(s.exercises[2].transition_seconds).toBe(300); // into the squat: 240 + 60
+    expect(s.exercises[3].transition_seconds).toBe(240); // into the row:   180 + 60
+  });
+
+  it("gives no transition into an isolation or a finisher", () => {
+    // The buffer buys plate loading and a fresh start on a lift where arriving
+    // tired costs load. Walking to a cable stack needs neither, and charging
+    // for it produced two minutes between consecutive foam rolls on Mobility.
+    const s = annotateSession(liftingDay());
+    expect(s.exercises[4].transition_seconds).toBeNull(); // leg extension
+    expect(s.exercises[5].transition_seconds).toBeNull(); // lateral raise
+    expect(s.exercises[6].transition_seconds).toBeNull(); // plank
+  });
+
+  it("gives a whole mobility session no transitions at all", () => {
+    const s = annotateSession([
+      ex("Cat-Cow"),
+      ex("Foam Roll: Quads"),
+      ex("Child's Pose"),
+    ]);
+    expect(s.exercises.map((e) => e.transition_seconds)).toEqual([null, null, null]);
   });
 
   it("leaves transition_seconds null on the first exercise and on every warm-up", () => {
     const s = annotateSession(liftingDay());
     expect(s.exercises[0].transition_seconds).toBeNull();
     expect(s.exercises[1].transition_seconds).toBeNull();
-    expect(s.exercises[2].transition_seconds).toBe(300); // into the squat: 240 + 60
   });
 
   it("derives the transition from the prescription, not from a bumped warm-up value", () => {

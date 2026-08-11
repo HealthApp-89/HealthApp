@@ -184,21 +184,32 @@ function attachSorenessCues(
  *  2. transition_seconds — rest before starting this exercise — is the
  *     incoming exercise's own prescription plus a setup buffer. It is set by
  *     the demand of what is COMING, not the fatigue of what just finished.
- *     Null on index 0 (nothing precedes it) and on warm-ups (the ramp is the
- *     transition).
+ *
+ *     Only into a tier 1 or 2 exercise. The buffer pays for plate loading and
+ *     rack set-up, and buys a fresh start on a lift where arriving fatigued
+ *     costs load — neither applies walking to a cable stack. Prescribing it
+ *     everywhere produced two minutes between consecutive foam-roll movements
+ *     on Mobility day and between curl variations on Arms; into an isolation
+ *     or a finisher, that exercise's own rest is already the answer.
+ *
+ *     Also null on index 0 (nothing precedes it) and on warm-ups (the ramp is
+ *     the transition).
  */
 function applyRestPasses(annotated: AnnotatedExercise[]): AnnotatedExercise[] {
   return annotated.map((ex, i) => {
     const isWarmup = ex.warmup === true;
     const next = annotated[i + 1];
     const isLastWarmup = isWarmup && next !== undefined && next.warmup !== true;
+    const earnsTransition =
+      i > 0 && !isWarmup && (ex.fatigue_tier === 1 || ex.fatigue_tier === 2);
 
     return {
       ...ex,
       rest_seconds: isLastWarmup ? REST_SECONDS.lastWarmup : ex.rest_seconds,
       // Derived from the untouched prescription, never from a bumped value.
-      transition_seconds:
-        i === 0 || isWarmup ? null : ex.rest_seconds + TRANSITION_BUFFER_SECONDS,
+      transition_seconds: earnsTransition
+        ? ex.rest_seconds + TRANSITION_BUFFER_SECONDS
+        : null,
     };
   });
 }

@@ -304,16 +304,25 @@ describe("annotatedRestFor", () => {
 });
 
 describe("transitionRestFor", () => {
-  /** Squat (tier 1, 240s) then Lateral Raise (tier 3 small, 60s). */
+  /** Lateral Raise (tier 3 small, 60s) then Squat (tier 1, 240s), so the
+   *  transition is unmistakably the INCOMING exercise's number. */
   const twoExercises = () => mkDraft([
-    { name: "Squat (Barbell)", sets: [mkSet()] },
     { name: "Lateral Raise (Dumbbell)", sets: [mkSet()] },
+    { name: "Squat (Barbell)", sets: [mkSet()] },
   ]);
 
   it("is the incoming exercise's rest plus the setup buffer", () => {
-    // Into the lateral raise: 60 + 60. Sized by what is COMING, not by the
-    // squat that was just finished.
-    expect(transitionRestFor(twoExercises(), 1)).toBe(120);
+    // Into the squat: 240 + 60. Sized by what is COMING, not by the lateral
+    // raise that was just finished.
+    expect(transitionRestFor(twoExercises(), 1)).toBe(300);
+  });
+
+  it("is null into an isolation — that exercise's own rest is enough", () => {
+    const d = mkDraft([
+      { name: "Squat (Barbell)", sets: [mkSet()] },
+      { name: "Lateral Raise (Dumbbell)", sets: [mkSet()] },
+    ]);
+    expect(transitionRestFor(d, 1)).toBeNull();
   });
 
   it("is null for the first exercise — nothing precedes it", () => {
@@ -333,11 +342,12 @@ describe("transitionRestFor", () => {
   });
 
   it("honours a manual override on the incoming exercise", () => {
-    // The athlete asked for 180s between sets of the lateral raise, so the
-    // walk into it is 180 + 60 — not the prescription's 120.
+    // The athlete asked for 90s between sets of the squat, so the walk into it
+    // is 90 + 60 — not the prescription's 300. A lifter who cut rest to get
+    // through the session is not asking for a five-minute stroll.
     const d = twoExercises();
-    d.exercises[1].rest_override_seconds = 180;
-    expect(transitionRestFor(d, 1)).toBe(240);
+    d.exercises[1].rest_override_seconds = 90;
+    expect(transitionRestFor(d, 1)).toBe(150);
   });
 
   it("does not let an override resurrect a transition that does not apply", () => {
