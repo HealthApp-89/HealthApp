@@ -40,6 +40,35 @@ import { prescribeWeek, computeActivityLayoutProposal } from "@/lib/coach/prescr
 import type { ActivityConflictFlag } from "@/lib/coach/activity/sequence-week";
 import type { MuscleRegion } from "@/lib/coach/activity/types";
 import { daysBetweenIso } from "@/lib/time/dates";
+import { WEEKLY_SESSIONS } from "@/lib/coach/sessionPlans";
+
+/**
+ * The day-of-week layout a BRAND-NEW week starts from.
+ *
+ * Always the firm schedule (WEEKLY_SESSIONS), never the prior week's stored
+ * plan. `prior` is accepted and deliberately ignored so the signature records
+ * what was rejected and a test can pin it.
+ *
+ * Why: the athlete moves sessions around inside a week constantly — padel, a
+ * work evening, a bad night's sleep — through the swap route, which rewrites
+ * session_plan. Seeding the next week from that rewrote the SCHEDULE, so a
+ * one-off move became permanent and compounded week over week (Chest and
+ * Mobility traded places and stayed traded; Back drifted off Thursday onto
+ * Saturday). A week-scoped edit must stay week-scoped.
+ *
+ * Deliberately NOT reset here: weekly_focus, rir_target, intensity_modifier,
+ * research_phase and the endurance plan still carry forward — those describe
+ * where the athlete is in a block, not which day is Chest day.
+ *
+ * If the firm split itself ever needs to change, WEEKLY_SESSIONS is the one
+ * place to change it; there is no per-user schedule column.
+ */
+export function seedSessionPlanForNewWeek(
+  prior: SessionPlan | null,
+): SessionPlan {
+  void prior;
+  return { ...WEEKLY_SESSIONS };
+}
 
 /** Summary of the activity-aware layout proposal for a week.
  *  When `hasMoves` is true, the athlete should be prompted to review
@@ -141,10 +170,11 @@ export async function upsertWeekPrescription(opts: {
     .maybeSingle();
   const existing = (existingRows as TrainingWeek | null) ?? null;
 
-  // When no existing row, seed session_plan from the most recent committed
-  // week — that gives the cron a reasonable starting point so prescribeWeek
-  // has weekday labels to walk. Carter can later overwrite via the regular
-  // propose_week_plan flow.
+  // When no existing row, seed the week from the FIRM schedule — see
+  // seedSessionPlanForNewWeek. Everything else (focus, RIR target, intensity
+  // modifiers, research phase, endurance plan) still carries forward from the
+  // prior week: those are block-level continuity, not day-of-week layout.
+  // Carter can still overwrite the labels via propose_week_plan.
   let workingRow: TrainingWeek;
   if (existing) {
     workingRow = existing;
@@ -165,7 +195,7 @@ export async function upsertWeekPrescription(opts: {
       user_id: userId,
       block_id: block?.id ?? null,
       week_start: weekStart,
-      session_plan: prior?.session_plan ?? {},
+      session_plan: seedSessionPlanForNewWeek(prior?.session_plan ?? null),
       original_session_plan: null,
       exercise_overrides: null,
       session_prescriptions: null,
