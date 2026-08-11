@@ -21,12 +21,19 @@
 //     own block week); a phantom one does not come back, because the clear
 //     already ran before the row that would have produced it was removed.
 //
-// Calling clear first and treating IT as the fatal step (not the delete) is
-// what removes the unrecoverable interleaving: the delete must never run
-// while a to-be-deleted session might still be the reason the block is
-// stamped. Re-evaluation failing afterward is safe — it leaves
-// target_hit_at_week null, which the evaluator's own "already stamped"
-// guard does not block, so the next ordinary commit repairs it.
+// Calling clear first and treating IT as the fatal step (not the delete)
+// closes the interleaving where the delete runs while the stamp still
+// reflects the row being deleted. Re-evaluation failing afterward is safe —
+// it leaves target_hit_at_week null, which the evaluator's own "already
+// stamped" guard does not block, so the next ordinary commit repairs it.
+//
+// Known, accepted gap: this does not close every race. A concurrent
+// POST /api/logger/session can run evaluateAndStampTargetHit between this
+// clear and the caller's delete, re-stamping from the about-to-be-deleted
+// workout; reevaluateTargetHit then early-returns on that non-null stamp
+// and the phantom survives until the next ordinary commit rescans the
+// block. The window is sub-second and this is a single-user app, so the
+// gap is left as-is rather than adding a lock.
 //
 // Unconditional by design: no "was the deleted session inside the block
 // window?" check. The evaluator rescans the whole block window either way,

@@ -34,7 +34,17 @@ export function RestartSessionButton({ workoutId, onDone, tone = "onAccent" }: P
   async function restart() {
     setBusy(true);
     try {
-      const res = await fetch(`/api/logger/session/${workoutId}`, { method: "DELETE" });
+      let res: Response;
+      try {
+        res = await fetch(`/api/logger/session/${workoutId}`, { method: "DELETE" });
+      } catch {
+        // fetch() itself rejected — offline, DNS failure, etc. Route it
+        // through the same alert path as an error response, otherwise the
+        // dialog just stops being busy with no explanation, looking like a
+        // silent revert on a destructive action.
+        alert("Couldn't restart: network error. Check your connection and try again.");
+        return;
+      }
       if (!res.ok) {
         const body = (await res.json().catch(() => null)) as { reason?: string } | null;
         alert(`Couldn't restart: ${body?.reason ?? "unknown error"}`);
