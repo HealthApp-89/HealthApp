@@ -5,7 +5,8 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { evaluateAndStampTargetHit } from "@/lib/coach/prescription/target-hit-evaluator";
 import { repatchRemainingWeek } from "@/lib/coach/prescription/repatch-week";
 import { getUserTimezone } from "@/lib/time/get-user-tz";
-import { todayInUserTz } from "@/lib/time";
+import { todayInUserTz, localDayRangeUtc } from "@/lib/time";
+import { clearStaleOpeners } from "@/lib/coach/opener-refresh";
 
 export async function POST(req: Request) {
   let payload: CommitSessionPayload;
@@ -55,6 +56,22 @@ export async function POST(req: Request) {
       });
     } catch (err) {
       console.error("[logger/session] repatchRemainingWeek failed:", err);
+    }
+
+    // Openers are written at dawn and never rewrite themselves. Clear the
+    // untouched ones so the next coach the athlete opens greets him about
+    // the session he just finished rather than a line written before it.
+    // Non-fatal: a failure costs a stale greeting, never the commit.
+    try {
+      const tz = await getUserTimezone(payload.user_id);
+      const { startUtc } = localDayRangeUtc(todayInUserTz(new Date(), tz), tz);
+      await clearStaleOpeners({
+        supabase,
+        userId: payload.user_id,
+        dayStartUtc: startUtc,
+      });
+    } catch (err) {
+      console.error("[logger/session] clearStaleOpeners failed:", err);
     }
 
     return NextResponse.json(result);
