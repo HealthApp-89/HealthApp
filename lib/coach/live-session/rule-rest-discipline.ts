@@ -12,7 +12,7 @@
 // (`arr[sIdx - 1]`, warmups included) because rest_seconds_actual is a
 // per-row record of the real gap that preceded that row, whatever came
 // before it. This rule takes the previous committed NON-WARMUP set, because
-// it judges rest against restPrescription, which describes inter-WORKING-set
+// it judges rest against restSecondsFor, which describes inter-WORKING-set
 // rest only. They therefore differ on the first working set after a warmup —
 // the first exercise of every lifting day. See restBefore for why counting a
 // warmup there would false-flag and then, via the once-per-exercise gate,
@@ -29,13 +29,18 @@
 // short rests it used to miss, because its input was previously inflated by the
 // next set's execution time. UNDER_REST_RATIO is unchanged.
 //
+// The prescription it compares against rose with the 2026-08-10 rest table
+// (heavy compound 180 -> 240, secondary 120 -> 180), so the 0.6 threshold now
+// sits at 144s and 108s respectively. Firing more often is the intended
+// consequence: the old floors were the bottom of a range nobody honoured.
+//
 // The "prior set" is always the nearest earlier NON-WARMUP committed set —
 // see restBefore for why.
 //
 // Exercises performed in a superset are excluded outright — see the guard below.
 
 import { tierOf } from "@/lib/coach/session-structure/tiers";
-import { restPrescription, repsForExercise } from "@/lib/coach/session-structure/rules";
+import { restSecondsFor } from "@/lib/coach/session-structure/rules";
 import { restBetweenSets } from "@/lib/logger/set-timer";
 import type { CoachLine, LiveSetInput } from "./types";
 import type { ExerciseDraft, ExerciseSetDraft } from "@/lib/logger/types";
@@ -50,7 +55,7 @@ const UNDER_REST_RATIO = 0.6;
  *  comparison. Every lifting day's first exercise carries warmup sets in the
  *  SAME exercise.sets[] / set_index space as the working sets, and the
  *  warmup-to-first-working-set transition is legitimately short — it is not
- *  the inter-working-set rest that restPrescription describes. Counting a
+ *  the inter-working-set rest that restSecondsFor describes. Counting a
  *  warmup as the "prior" set would false-flag that transition and, via the
  *  once-per-exercise gate below, permanently suppress the rule for the rest
  *  of the exercise. The accepted consequence: the first working set of an
@@ -73,7 +78,7 @@ export function ruleRestDiscipline(input: LiveSetInput): CoachLine | null {
 
   if (set.warmup) return null;
 
-  // A superset member's rest is not the quantity restPrescription describes.
+  // A superset member's rest is not the quantity restSecondsFor describes.
   // Its gap is measured from the previous set of the SAME exercise, which in a
   // superset spans the other member's work as well — comparing that against an
   // inter-working-set prescription judges a number the athlete never chose.
@@ -83,8 +88,8 @@ export function ruleRestDiscipline(input: LiveSetInput): CoachLine | null {
   const tier = tierOf(exercise.prescribed);
   if (tier !== 1 && tier !== 2) return null;
 
-  const reps = repsForExercise(exercise.prescribed);
-  const threshold = restPrescription(tier, reps).min * UNDER_REST_RATIO;
+  const prescribed = restSecondsFor(exercise.prescribed, tier);
+  const threshold = prescribed * UNDER_REST_RATIO;
 
   const actual = restBefore(exercise, set);
   if (actual == null) return null;
@@ -100,10 +105,9 @@ export function ruleRestDiscipline(input: LiveSetInput): CoachLine | null {
   });
   if (alreadyFlagged) return null;
 
-  const prescribedMin = restPrescription(tier, reps).min;
-  const label = prescribedMin % 60 === 0
-    ? `${prescribedMin / 60}-minute`
-    : `${prescribedMin}s`;
+  const label = prescribed % 60 === 0
+    ? `${prescribed / 60}-minute`
+    : `${prescribed}s`;
 
   return {
     kind: "guardrail",

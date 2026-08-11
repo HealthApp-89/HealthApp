@@ -56,7 +56,7 @@ function mkInput(args: {
 
 describe("ruleRestDiscipline", () => {
   it("fires when rest before a tier-1 set was under 60 percent of prescribed", () => {
-    // Squat at 5 reps -> restPrescription(tier 1, 5) = { min: 180 }. 60% = 108s.
+    // Squat -> restSecondsFor(tier 1) = 240. 60% = 144s, so a 55s gap fires.
     const s0 = mkSet({ set_index: 0, committed_at: at("2026-08-10T09:00:00.000Z") });
     const s1 = mkSet({ set_index: 1, committed_at: at("2026-08-10T09:00:55.000Z") });
     const line = ruleRestDiscipline(mkInput({ sets: [s0, s1], current: s1 }));

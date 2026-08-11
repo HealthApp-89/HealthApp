@@ -24,8 +24,10 @@ export type OrderingWarning = {
 };
 
 /** Parse a reps spec ("8", "8-12", "12×3", "5×2") to a single numeric reps
- *  count for rest-table lookup. Returns null when the spec encodes time or
- *  duration ("Hold 60s×2"). */
+ *  count. Returns null when the spec encodes time or duration ("Hold 60s×2").
+ *
+ *  Previously fed the rest table, which branched on rep count; rest no longer
+ *  does. The live remaining consumer is repsForExercise -> rule-load-call. */
 function parseReps(spec: string | number | undefined): number | null {
   if (spec === undefined) return null;
   if (typeof spec === "number") return spec;
@@ -104,31 +106,6 @@ export function restSecondsFor(ex: PlannedExercise, tier: FatigueTier): number {
         : REST_SECONDS.isolationSmall;
     case 4: return REST_SECONDS.finisher;
   }
-}
-
-/** Rest prescription per fatigue tier and rep target.
- *
- *  Rules:
- *   - Tier 1 + reps ≤ 5  (strength)              → 180–300 s
- *   - Tier 1 / 2 + reps 6–12 (hypertrophy comp)  → 120–180 s
- *   - Tier 3 + reps 8–15 (isolation)              → 60–120 s
- *   - Tier 4 / metabolic                         → 30–60 s
- *   - Tier 0 (warmup ramp)                       → 30–60 s
- *
- *  Boundary cases:
- *   - Tier 1 with reps > 12 (e.g. high-rep deadlift) → hypertrophy row.
- *   - Tier 2 with reps ≤ 5 → strength row.
- *   - Tier 3 with reps outside 8–15 → isolation row anyway. */
-export function restPrescription(
-  tier: FatigueTier,
-  reps: number | null,
-): { min: number; max: number } {
-  if (tier === 0) return { min: 30, max: 60 };
-  if (tier === 4) return { min: 30, max: 60 };
-  if (tier === 3) return { min: 60, max: 120 };
-  // Tiers 1 + 2
-  if (reps !== null && reps <= 5) return { min: 180, max: 300 };
-  return { min: 120, max: 180 };
 }
 
 /** RPE/RIR target string per fatigue tier. */
