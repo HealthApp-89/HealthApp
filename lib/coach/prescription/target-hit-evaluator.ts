@@ -14,6 +14,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { TargetMetric } from "@/lib/data/types";
 import { bestComparisonValue } from "@/lib/coach/e1rm";
+import { blockWeekOf } from "@/lib/coach/prescription/block-week";
 
 /** Exercise-name patterns that identify a primary-lift instance.
  *  Mirrors prescribe-week.ts. */
@@ -88,12 +89,7 @@ export async function evaluateAndStampTargetHit(opts: {
   if (qualifyingDate === null) return { stamped: false, week_n: null };
 
   // Block-week index (1-indexed) of the session that crossed the target.
-  const start = new Date(block.start_date + "T00:00:00Z");
-  const crossed = new Date(qualifyingDate + "T00:00:00Z");
-  const weekN = Math.max(
-    1,
-    Math.floor((crossed.getTime() - start.getTime()) / (7 * 24 * 60 * 60 * 1000)) + 1,
-  );
+  const weekN = blockWeekOf(block.start_date, qualifyingDate);
 
   // Optimistic stamp: only set if still null (idempotent against concurrent commits)
   await supabase
