@@ -666,7 +666,9 @@ export function LoggerSheet(props: Props) {
   // Mirror the open entry rows into a ref the stable timer callbacks can read.
   // See the declaration above for why they cannot read it from `draft`.
   useEffect(() => {
-    pendingEntryRefs.current = (draft?.timer?.pendingEntries ?? []).map((e) => ({
+    // Via timerOf, not `draft.timer` — a draft resumed from IndexedDB across
+    // the round refactor carries the old single-set shape and normalises here.
+    pendingEntryRefs.current = timerOf(draft).pendingEntries.map((e) => ({
       exerciseIndex: e.exerciseIndex,
       setIndex: e.setIndex,
     }));

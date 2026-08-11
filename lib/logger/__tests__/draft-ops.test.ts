@@ -74,6 +74,82 @@ describe("timerOf", () => {
     expect(timerOf(mkDraft([{ name: "Squat", sets: [mkSet()] }], null))).toBe(IDLE_TIMER);
     expect(timerOf(null)).toBe(IDLE_TIMER);
   });
+
+  it("hands back a round-shaped timer untouched, same reference", () => {
+    // Identity matters: LoggerSheet passes this object straight into the
+    // memoized ExerciseCards, so re-wrapping it would defeat the memo.
+    const t = restingOn(0, 0);
+    expect(timerOf(mkDraft([{ name: "Squat", sets: [mkSet()] }], t))).toBe(t);
+    expect(timerOf(mkDraft([{ name: "Squat", sets: [mkSet()] }], IDLE_TIMER))).toBe(IDLE_TIMER);
+  });
+
+  // A draft written by the build BEFORE the round refactor is still sitting in
+  // IndexedDB for up to 12h after the deploy. Reading `.length` off its absent
+  // `activeSets` would throw and crash the logger on resume.
+  it("normalises a legacy mid-set timer into a one-member round", () => {
+    const legacy = {
+      phase: "running",
+      anchorMs: 1_700_000_000_000,
+      activeSet: { exerciseIndex: 1, setIndex: 2 },
+      restSeconds: 0,
+      pendingEntry: null,
+    } as unknown as TimerState;
+    expect(timerOf(mkDraft([{ name: "Squat", sets: [mkSet()] }], legacy))).toEqual({
+      phase: "running",
+      anchorMs: 1_700_000_000_000,
+      activeSets: [{ exerciseIndex: 1, setIndex: 2 }],
+      restSeconds: 0,
+      pendingEntries: [],
+    });
+  });
+
+  it("normalises a legacy open entry row into a one-member pendingEntries", () => {
+    const legacy = {
+      phase: "rest",
+      anchorMs: 1_700_000_000_000,
+      activeSet: { exerciseIndex: 0, setIndex: 0 },
+      restSeconds: 175,
+      pendingEntry: { exerciseIndex: 0, setIndex: 0, workSeconds: 33 },
+    } as unknown as TimerState;
+    const out = timerOf(mkDraft([{ name: "Squat", sets: [mkSet()] }], legacy));
+    expect(out.activeSets).toEqual([{ exerciseIndex: 0, setIndex: 0 }]);
+    expect(out.pendingEntries).toEqual([{ exerciseIndex: 0, setIndex: 0, workSeconds: 33 }]);
+    expect(out.phase).toBe("rest");
+    expect(out.restSeconds).toBe(175);
+  });
+
+  it("falls back to idle for a timer matching neither shape", () => {
+    // Not worth guessing at: losing it costs at most the set in flight, and a
+    // half-understood timer stamps work_seconds onto the wrong row.
+    const junk = { phase: "sprinting", activeSet: null } as unknown as TimerState;
+    expect(timerOf(mkDraft([{ name: "Squat", sets: [mkSet()] }], junk))).toBe(IDLE_TIMER);
+    expect(timerOf(mkDraft([{ name: "Squat", sets: [mkSet()] }], {} as unknown as TimerState)))
+      .toBe(IDLE_TIMER);
+  });
+});
+
+describe("legacy timer shape reaching the commit helpers", () => {
+  const legacyResting = () => ({
+    phase: "rest",
+    anchorMs: 1_700_000_000_000,
+    activeSet: { exerciseIndex: 0, setIndex: 0 },
+    restSeconds: 175,
+    pendingEntry: { exerciseIndex: 0, setIndex: 0, workSeconds: 33 },
+  } as unknown as TimerState);
+
+  it("commitPendingEntries flushes a legacy open row instead of throwing", () => {
+    const d = mkDraft([{ name: "Squat", sets: [mkSet()] }], legacyResting());
+    const out = commitPendingEntries(d, NOW);
+    expect(out.exercises[0].sets[0].committed_at).toBe(NOW);
+    expect(out.timer!.pendingEntries).toEqual([]);
+  });
+
+  it("commitPendingEntry flushes a legacy open row instead of throwing", () => {
+    const d = mkDraft([{ name: "Squat", sets: [mkSet()] }], legacyResting());
+    const out = commitPendingEntry(d, REF_0_0, NOW);
+    expect(out.exercises[0].sets[0].committed_at).toBe(NOW);
+    expect(out.timer!.pendingEntries).toEqual([]);
+  });
 });
 
 describe("withTimer", () => {

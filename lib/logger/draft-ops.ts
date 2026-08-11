@@ -29,9 +29,50 @@ import {
 } from "@/lib/logger/set-timer";
 import { annotateSession } from "@/lib/coach/session-structure/annotate";
 
-/** The draft's timer, or the idle state for a draft written before timing. */
+/** The single-set timer shape this module still has to read. Not exported and
+ *  deliberately not part of `TimerState` any more — it only exists on drafts
+ *  written by a build that predates the round refactor. */
+type LegacyTimerState = {
+  phase?: unknown;
+  anchorMs?: unknown;
+  restSeconds?: unknown;
+  activeSet?: SetRef | null;
+  pendingEntry?: (SetRef & { workSeconds: number }) | null;
+};
+
+const TIMER_PHASES = new Set(["idle", "countdown", "running", "rest"]);
+
+/**
+ * The draft's timer, or the idle state for a draft written before timing.
+ *
+ * Also a READ-TIME SHIM for the pre-round timer shape. `LoggerDraft.timer` is
+ * persisted to IndexedDB with a 12h TTL, so it outlives a deploy: a draft
+ * written by the previous build carries `activeSet` / `pendingEntry`, while
+ * every reader now indexes `activeSets` / `pendingEntries`. Reading `.length`
+ * off `undefined` throws, so an athlete resuming a session across the deploy
+ * would crash the logger instead of resuming it.
+ *
+ * Narrow on purpose — one legacy shape, one target shape, and anything matching
+ * neither falls back to IDLE_TIMER rather than being guessed at. This is not a
+ * migration framework and must not grow into one; delete it once no draft
+ * written before the round refactor can still be within its TTL.
+ */
 export function timerOf(draft: LoggerDraft | null): TimerState {
-  return draft?.timer ?? IDLE_TIMER;
+  const t = draft?.timer;
+  if (!t) return IDLE_TIMER;
+  // Already the round shape: hand back the SAME object. Callers compare timer
+  // identity to decide whether a memoized ExerciseCard can skip a re-render.
+  if (Array.isArray(t.activeSets) && Array.isArray(t.pendingEntries)) return t;
+
+  const legacy = t as unknown as LegacyTimerState;
+  if (typeof legacy.phase !== "string" || !TIMER_PHASES.has(legacy.phase)) return IDLE_TIMER;
+  return {
+    phase: legacy.phase as TimerState["phase"],
+    anchorMs: typeof legacy.anchorMs === "number" ? legacy.anchorMs : null,
+    activeSets: legacy.activeSet ? [legacy.activeSet] : [],
+    restSeconds: typeof legacy.restSeconds === "number" ? legacy.restSeconds : 0,
+    pendingEntries: legacy.pendingEntry ? [legacy.pendingEntry] : [],
+  };
 }
 
 /** Apply a timer state to the draft and stamp it. `nowIso` is a parameter so
@@ -52,7 +93,7 @@ export function commitPendingEntry(
   ref: SetRef,
   nowIso: string,
 ): LoggerDraft {
-  const timer = draft.timer ?? IDLE_TIMER;
+  const timer = timerOf(draft);
   const entry = timer.pendingEntries.find((e) => sameSet(e, ref));
   if (!entry) return draft;
   return commitEntries(draft, [entry], nowIso);
@@ -62,7 +103,7 @@ export function commitPendingEntry(
  *  the next round, Finish, and Pause & close — because none of them may
  *  silently drop a set the athlete has already performed. */
 export function commitPendingEntries(draft: LoggerDraft, nowIso: string): LoggerDraft {
-  const timer = draft.timer ?? IDLE_TIMER;
+  const timer = timerOf(draft);
   if (timer.pendingEntries.length === 0) return draft;
   return commitEntries(draft, timer.pendingEntries, nowIso);
 }
@@ -107,7 +148,9 @@ function commitEntries(
       },
     );
   }
-  let timer = draft.timer ?? IDLE_TIMER;
+  // Via timerOf, not `draft.timer`, so a legacy-shaped timer is normalised
+  // before the reducer indexes its lists.
+  let timer = timerOf(draft);
   for (const entry of entries) {
     timer = timerReducer(timer, { type: "save_entry", set: entry });
   }
