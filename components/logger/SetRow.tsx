@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { ExerciseSetDraft } from "@/lib/logger/types";
 import { usePreviousSet } from "@/lib/query/hooks/usePreviousSet";
-import { VoiceMicButton } from "@/components/logger/VoiceMicButton";
 import { fmtNum } from "@/lib/ui/score";
 import { selectOnFocus } from "@/lib/ui/inputs";
 import { formatMmSs } from "@/lib/logger/set-timer";
@@ -39,7 +38,6 @@ type Props = {
   onCommit: () => void;
   onUncommit: () => void;
   onRemove: () => void;
-  onUnparsedVoice: (transcript: string) => void;
 };
 
 /**
@@ -72,7 +70,7 @@ function useSyncedDraft(propText: string) {
 
 export function SetRow({
   userId, exerciseName, excludeWorkoutExternalId, set, workingSetNumber,
-  isActive, editMode, targetDurationSeconds, target, canRemove, onChange, onCommit, onUncommit, onRemove, onUnparsedVoice,
+  isActive, editMode, targetDurationSeconds, target, canRemove, onChange, onCommit, onUncommit, onRemove,
 }: Props) {
   const [draftKg, setDraftKg] = useSyncedDraft(set.kg !== null ? String(set.kg) : "");
   const [draftReps, setDraftReps] = useSyncedDraft(set.reps !== null ? String(set.reps) : "");
@@ -101,8 +99,8 @@ export function SetRow({
   const [badgeOpen, setBadgeOpen] = useState(false);
 
   // Per-row work stamp for a committed, TIMED set. Rendered inside the
-  // existing Target/prev cell — no extra <td>, so both the 6-column
-  // (time-based) and 7-column (rep-based) variants still match their headers.
+  // existing Target/prev cell — no extra <td>, so both the 5-column
+  // (time-based) and 6-column (rep-based) variants still match their headers.
   // Null `work_seconds` renders NOTHING at all: hand-logged sets, Strong CSV
   // imports and pre-0056 rows are legitimately untimed, and a "0s" or a dashed
   // chip would assert a measurement that was never taken.
@@ -269,7 +267,6 @@ export function SetRow({
               {committed ? "✓" : "○"}
             </button>
           </td>
-          <td className="py-1"></td>
         </>
       ) : (
         <>
@@ -365,18 +362,6 @@ export function SetRow({
             >
               {committed ? "✓" : "○"}
             </button>
-          </td>
-          <td className="py-1">
-            <VoiceMicButton
-              disabled={committed}
-              onParsed={(p) => {
-                setDraftKg(p.kg !== null ? String(p.kg) : "");
-                setDraftReps(String(p.reps));
-                onChange({ kg: p.kg, reps: p.reps });
-                onCommit();
-              }}
-              onUnparsed={onUnparsedVoice}
-            />
           </td>
         </>
       )}

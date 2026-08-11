@@ -10,6 +10,7 @@ import { annotateSession } from "@/lib/coach/session-structure/annotate";
 import type { CoachLine } from "@/lib/coach/live-session";
 import { CoachLineRow } from "@/components/logger/CoachLine";
 import { findApplyTargetSetIndex } from "@/lib/logger/apply-target";
+import { propagateLoad } from "@/lib/logger/propagate-load";
 import { seedRir } from "@/lib/logger/seed-rir";
 import { seedReps } from "@/lib/logger/seed-reps";
 
@@ -88,7 +89,6 @@ function ExerciseCardInner({
   const effectiveRest = restOverrideSeconds ?? prescribedRestMin;
   const [menuOpen, setMenuOpen] = useState(false);
   const [restDialogOpen, setRestDialogOpen] = useState(false);
-  const [unparsedBanner, setUnparsedBanner] = useState<string | null>(null);
 
   // Commit is LoggerSheet's job on both paths — the manual ○ here and the
   // timer's Save / auto-save-on-START. It owns the draft, so it is the only
@@ -108,8 +108,20 @@ function ExerciseCardInner({
     onSetCleared({ exerciseIndex, setIndex });
   }, [exercise, exerciseIndex, onExerciseChange, onSetCleared]);
 
+  // THE kg write seam. Every load the athlete enters comes through here — the
+  // SetRow field's blur, the zoomed SetEntryRow's Save, and the coach line's
+  // one-tap apply — which is why load propagation hangs off it rather than off
+  // each surface: one call site, no chance of a surface being forgotten.
+  //
+  // `propagateLoad` runs against the PRE-patch sets, because it needs this
+  // set's previous kg to decide which sets below still agreed with it. The
+  // patch is then spread on top, so the edited set's other fields (reps, RIR,
+  // the failure/warmup badge) land exactly as before.
   const patchSet = useCallback((setIndex: number, patch: Partial<ExerciseSetDraft>) => {
-    const nextSets = exercise.sets.map((s, i) => (i === setIndex ? { ...s, ...patch } : s));
+    const base = "kg" in patch
+      ? propagateLoad(exercise.sets, setIndex, patch.kg ?? null)
+      : exercise.sets;
+    const nextSets = base.map((s, i) => (i === setIndex ? { ...s, ...patch } : s));
     onExerciseChange(exerciseIndex, { ...exercise, sets: nextSets });
   }, [exercise, exerciseIndex, onExerciseChange]);
 
@@ -149,11 +161,11 @@ function ExerciseCardInner({
   const liveHere = midSet && timer.activeSets.some((s) => s.exerciseIndex === exerciseIndex);
 
   const timeBased = exercise.prescribed.duration_seconds != null;
-  // Table has 6 columns for a time-based exercise (no RIR header) vs 7 for a
-  // rep-based one — see the <thead> above. Full-width rows spanning the whole
+  // Table has 5 columns for a time-based exercise (no RIR header) vs 6 for a
+  // rep-based one — see the <thead> below. Full-width rows spanning the whole
   // table (the zoom, the coach line, "Start this set") need to match, or the
   // browser silently clips/pads rather than erroring.
-  const columnCount = timeBased ? 6 : 7;
+  const columnCount = timeBased ? 5 : 6;
   /** The zoomed entry row, when an open one belongs to this exercise. */
   const pendingEntry =
     timer.pendingEntries.find((e) => e.exerciseIndex === exerciseIndex) ?? null;
@@ -195,13 +207,6 @@ function ExerciseCardInner({
         </div>
       </div>
 
-      {unparsedBanner && (
-        <div className="text-[11px] text-amber-400 bg-amber-500/10 rounded px-2 py-1 mb-2">
-          Heard &ldquo;{unparsedBanner}&rdquo; — type it instead?
-          <button onClick={() => setUnparsedBanner(null)} className="ml-2 text-amber-300 underline">dismiss</button>
-        </div>
-      )}
-
       <table className="w-full text-[11.5px]">
         <thead>
           <tr className="text-zinc-500 text-[10px]">
@@ -221,7 +226,9 @@ function ExerciseCardInner({
             {exercise.prescribed.duration_seconds == null && (
               <th className="text-left font-normal py-1">RIR</th>
             )}
-            <th></th>
+            {/* The ✓ / ○ commit button. There used to be a second blank header
+                here for the per-row 🎤 — removed with voice entry, along with
+                the matching <td> in both SetRow variants. */}
             <th></th>
           </tr>
         </thead>
@@ -271,7 +278,6 @@ function ExerciseCardInner({
                   onCommit={() => commitSet(i)}
                   onUncommit={() => uncommitSet(i)}
                   onRemove={() => removeSet(i)}
-                  onUnparsedVoice={setUnparsedBanner}
                 />
               )}
               {coachLineSetIndex === i && coachLine && (
