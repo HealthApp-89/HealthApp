@@ -223,9 +223,11 @@ delete-exercises-then-insert on retry. `CommitSessionPayload.exercises[]` gains
 
 `fetch-workout-for-edit` selects the column and `hydrate-from-workout` restores
 it onto `prescribed.superset`, so editing a saved Friday keeps the pairs instead
-of flattening the session into ten independent exercises. The `exercises` row
-mirror in [lib/data/types.ts](../../../lib/data/types.ts) gains the field, per
-the repo's keep-DB-columns-and-TS-types-in-sync rule.
+of flattening the session into ten independent exercises. The TS mirror of the
+`exercises` row lives in `WorkoutForEditExercise`
+([lib/data/fetch-workout-for-edit.ts](../../../lib/data/fetch-workout-for-edit.ts)),
+not in `lib/data/types.ts` — that is the type that gains the field, per the
+repo's keep-DB-columns-and-TS-types-in-sync rule.
 
 ## Consumers in this arc
 
