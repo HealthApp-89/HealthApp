@@ -2,9 +2,13 @@
 //
 // The opener is a dawn artifact — written on first chat open, hours before
 // training, and never rewritten. After a session commit we clear it so the
-// next greeting knows about the session. Only when it is still the newest
-// row in its thread: once the athlete has replied, the greeting is history
-// and deleting it would orphan the reply.
+// next greeting knows about the session. It is only clearable when the
+// thread has had no `kind='coach'` `role='user'` turn since local day
+// start — once the athlete has actually engaged the thread, the opener is
+// history and deleting it would orphan the reply. Morning-intake user rows
+// (`kind='morning_intake'`) are deliberately excluded from that engagement
+// test: they're the intake bot echoing the athlete's check-in answers, not
+// a reply to the opener, and every athlete produces one daily.
 
 import { describe, it, expect } from "vitest";
 import { selectStaleOpenerIds, type ThreadRow } from "@/lib/coach/opener-refresh";

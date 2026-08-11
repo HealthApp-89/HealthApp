@@ -21,12 +21,19 @@ export function useTodaySessionStatus(
   sessionType: string,
   epoch: number = 0,
 ): { logged: TodaySessionWorkout | null; hasDraft: boolean; isLoading: boolean } {
+  const enabled = !!userId && !!date;
   const { data, isLoading } = useQuery({
     queryKey: queryKeys.todaySession.one(userId, date),
     queryFn: () => fetchTodaySessionBrowser(userId, date),
-    enabled: !!userId && !!date,
+    enabled,
     staleTime: 30_000,
   });
   const hasDraft = useExistingLoggerDraft(userId, sessionType, epoch);
-  return { logged: data ?? null, hasDraft, isLoading };
+  // A disabled query has isFetching === false, so react-query's own
+  // isLoading reads "not loading" while we simply haven't asked yet (e.g.
+  // `date` is still "" during profile hydration). Fold the disabled window
+  // into isLoading so "I don't know yet" is never reported as "no session
+  // today" — see CLAUDE.md's Fix 1 note on the double-workout-row bug this
+  // caused.
+  return { logged: data ?? null, hasDraft, isLoading: !enabled || isLoading };
 }
