@@ -4,10 +4,18 @@ import { useState } from "react";
 import { createPortal } from "react-dom";
 import { COLOR, RADIUS } from "@/lib/ui/theme";
 
+type Tone = "onAccent" | "onSurface";
+
 type Props = {
   workoutId: string;
   /** Called after a successful unwind so the caller can invalidate. */
   onDone: () => void;
+  /** "onAccent" (default) is the original white-on-color styling for the
+   *  trigger button, used on TodayPlanCard's accent hero card. "onSurface"
+   *  is dark-on-white for BriefSessionList's white card. The confirm dialog
+   *  below always renders on COLOR.surface with dark tokens already, so it
+   *  is tone-independent and does not change. */
+  tone?: Tone;
 };
 
 /** Full unwind of a session saved by mistake. Confirmation names every
@@ -19,7 +27,7 @@ type Props = {
  *  z-40 and renders after <main>, so an un-portalled child at equal z loses
  *  the DOM-order tie and is painted over. This repo has hit that three
  *  times (ReorderDialog, DayEditSheet, SetTimerDock). */
-export function RestartSessionButton({ workoutId, onDone }: Props) {
+export function RestartSessionButton({ workoutId, onDone, tone = "onAccent" }: Props) {
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -46,9 +54,9 @@ export function RestartSessionButton({ workoutId, onDone }: Props) {
         style={{
           padding: "6px 10px",
           borderRadius: 8,
-          border: "1px solid rgba(255,255,255,0.35)",
+          border: tone === "onSurface" ? `1px solid ${COLOR.divider}` : "1px solid rgba(255,255,255,0.35)",
           background: "transparent",
-          color: "#fff",
+          color: tone === "onSurface" ? COLOR.textStrong : "#fff",
           fontSize: 12,
           fontWeight: 600,
           cursor: "pointer",

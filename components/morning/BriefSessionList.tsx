@@ -9,7 +9,8 @@ import type { SessionStructure } from "@/lib/coach/session-structure";
 import { SessionStructureBanner } from "@/components/strength/SessionStructureBanner";
 import { LoggerSheet } from "@/components/logger/LoggerSheet";
 import { MorningPatchChip } from "@/components/morning/MorningPatchChip";
-import { useExistingLoggerDraft } from "@/lib/logger/use-existing-draft";
+import { useTodaySessionStatus } from "@/lib/query/hooks/useTodaySessionStatus";
+import { SessionDoneBar } from "@/components/strength/SessionDoneBar";
 import { useUserToday } from "@/lib/query/hooks/useUserToday";
 import { SESSION_PLANS, type PlannedExercise } from "@/lib/coach/sessionPlans";
 import { fmtRest } from "@/lib/ui/rest-format";
@@ -73,8 +74,8 @@ export function BriefSessionList({
   const [loggerOpen, setLoggerOpen] = useState(false);
   const [draftEpoch, setDraftEpoch] = useState(0);
   const loggerSessionType = liveType ?? session.type;
-  const hasDraft = useExistingLoggerDraft(userId, loggerSessionType, draftEpoch);
   const today = useUserToday(userId);
+  const { logged, hasDraft } = useTodaySessionStatus(userId, today ?? "", loggerSessionType, draftEpoch);
   const liveExercises = resolveLiveExercises({
     weekOverrides,
     weekday,
@@ -287,22 +288,27 @@ export function BriefSessionList({
           for the new session.
         </p>
       )}
+      {logged && today && (
+        <SessionDoneBar userId={userId} date={today} workout={logged} tone="onSurface" />
+      )}
       <div style={{ display: "flex", gap: 16, marginTop: 8, flexWrap: "wrap" }}>
-        <button
-          onClick={() => setLoggerOpen(true)}
-          style={{
-            background: "transparent",
-            border: "none",
-            color: "#60a5fa",
-            fontSize: 12,
-            textDecoration: "underline",
-            textUnderlineOffset: 2,
-            cursor: "pointer",
-            padding: 0,
-          }}
-        >
-          {hasDraft ? "Resume this session" : "Log this session"}
-        </button>
+        {(!logged || hasDraft) && (
+          <button
+            onClick={() => setLoggerOpen(true)}
+            style={{
+              background: "transparent",
+              border: "none",
+              color: "#60a5fa",
+              fontSize: 12,
+              textDecoration: "underline",
+              textUnderlineOffset: 2,
+              cursor: "pointer",
+              padding: 0,
+            }}
+          >
+            {hasDraft ? "Resume this session" : "Log this session"}
+          </button>
+        )}
         <a
           href="/health?tab=log"
           style={{
