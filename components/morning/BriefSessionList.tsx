@@ -12,13 +12,7 @@ import { MorningPatchChip } from "@/components/morning/MorningPatchChip";
 import { useExistingLoggerDraft } from "@/lib/logger/use-existing-draft";
 import { useUserToday } from "@/lib/query/hooks/useUserToday";
 import { SESSION_PLANS, type PlannedExercise } from "@/lib/coach/sessionPlans";
-
-function fmtRestRange(r: { min: number; max: number }): string {
-  if (r.min >= 60 && r.max >= 90 && r.min % 60 === 0 && r.max % 60 === 0) {
-    return `${r.min / 60}–${r.max / 60} min`;
-  }
-  return `${r.min}–${r.max} s`;
-}
+import { fmtRest } from "@/lib/ui/rest-format";
 
 function findAnnotation(
   structure: SessionStructure | null | undefined,
@@ -247,9 +241,9 @@ export function BriefSessionList({
                         fontFamily: "var(--font-dm-mono), monospace",
                         marginTop: 1,
                       }}
-                      aria-label={`Rest ${fmtRestRange(ann.rest_seconds)}, ${ann.rpe_target}`}
+                      aria-label={`Rest ${fmtRest(ann.rest_seconds)}, ${ann.rpe_target}`}
                     >
-                      {fmtRestRange(ann.rest_seconds)} · {ann.rpe_target.replace(/across sets, top set .*/, "").trim()}
+                      {fmtRest(ann.rest_seconds)} · {ann.rpe_target.replace(/across sets, top set .*/, "").trim()}
                     </div>
                   );
                 })()}

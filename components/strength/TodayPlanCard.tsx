@@ -10,13 +10,7 @@ import { SessionStructureBanner } from "@/components/strength/SessionStructureBa
 import { LoggerSheet } from "@/components/logger/LoggerSheet";
 import { useExistingLoggerDraft } from "@/lib/logger/use-existing-draft";
 import { useUserToday } from "@/lib/query/hooks/useUserToday";
-
-function fmtRestRange(r: { min: number; max: number }): string {
-  if (r.min >= 60 && r.max >= 90 && r.min % 60 === 0 && r.max % 60 === 0) {
-    return `${r.min / 60}–${r.max / 60} min`;
-  }
-  return `${r.min}–${r.max} s`;
-}
+import { fmtRest } from "@/lib/ui/rest-format";
 
 type Props = {
   plan: DailyPlan;
@@ -183,7 +177,7 @@ export function TodayPlanCard({ plan, committedFromPlan, rirTarget, researchPhas
                       marginTop: 2,
                     }}
                   >
-                    {fmtRestRange(ann.rest_seconds)} · {ann.rpe_target}
+                    {fmtRest(ann.rest_seconds)} · {ann.rpe_target}
                   </div>
                 )}
                 {ann?.cue && (

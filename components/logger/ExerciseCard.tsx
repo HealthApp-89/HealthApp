@@ -84,7 +84,7 @@ function ExerciseCardInner({
     return s.exercises[exerciseIndex];
   }, [allExercises, exerciseIndex]);
 
-  const prescribedRestMin = annotated?.rest_seconds.min ?? 120;
+  const prescribedRestMin = annotated?.rest_seconds ?? 120;
   const [restOverrideSeconds, setRestOverrideSeconds] = useState<number | null>(null);
   const effectiveRest = restOverrideSeconds ?? prescribedRestMin;
   const [menuOpen, setMenuOpen] = useState(false);

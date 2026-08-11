@@ -192,7 +192,7 @@ export function keepUnmovedRestOverrides(
 export function annotatedRestFor(draft: LoggerDraft, exerciseIndex: number): number {
   const list = draft.exercises.map((e) => e.prescribed);
   const s = annotateSession(list);
-  return s.exercises[exerciseIndex]?.rest_seconds.min ?? 120;
+  return s.exercises[exerciseIndex]?.rest_seconds ?? 120;
 }
 
 /**

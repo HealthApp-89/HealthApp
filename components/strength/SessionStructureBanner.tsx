@@ -133,6 +133,13 @@ export function SessionStructureBanner({ structure, weekStart, weekday, userId }
 /** Strip the annotation fields before sending to the endpoint — server
  *  re-validates and persists only PlannedExercise fields. */
 function stripAnnotations(e: SessionStructure["exercises"][number]) {
-  const { fatigue_tier: _t, rest_seconds: _r, rpe_target: _rpe, cue: _c, ...rest } = e;
+  const {
+    fatigue_tier: _t,
+    rest_seconds: _r,
+    transition_seconds: _ts,
+    rpe_target: _rpe,
+    cue: _c,
+    ...rest
+  } = e;
   return rest;
 }

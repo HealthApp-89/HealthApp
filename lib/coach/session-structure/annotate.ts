@@ -17,9 +17,10 @@ import type { PlannedExercise } from "@/lib/coach/sessionPlans";
 import { tierOf, type FatigueTier } from "./tiers";
 import {
   findOrderingWarnings,
-  restPrescription,
+  restSecondsFor,
   rpePrescription,
-  repsForExercise,
+  REST_SECONDS,
+  TRANSITION_BUFFER_SECONDS,
   type OrderingWarning,
 } from "./rules";
 import { suggestReorder } from "./reorder";
@@ -28,7 +29,12 @@ import type { ReactiveRung } from "@/lib/coach/activity/reactive-ladder";
 
 export type AnnotatedExercise = PlannedExercise & {
   fatigue_tier: FatigueTier;
-  rest_seconds: { min: number; max: number };
+  /** Rest between sets of THIS exercise, in seconds. */
+  rest_seconds: number;
+  /** Rest to take BEFORE starting this exercise — i.e. after finishing the
+   *  previous one. Null on the session's first exercise and on every warm-up
+   *  entry. */
+  transition_seconds: number | null;
   rpe_target: string;
   /** Optional per-exercise cue derived from related warnings (e.g.,
    *  "Pre-fatigued from Triceps Pushdown — expect ~15% strength drop"). */
@@ -70,7 +76,6 @@ const EXERCISE_REGION_HINTS: Array<{ pattern: RegExp; regions: MuscleRegion[] }>
 
 function annotateOne(ex: PlannedExercise): AnnotatedExercise {
   const tier = tierOf(ex);
-  const reps = repsForExercise(ex);
   // Per-exercise rir override (e.g. from the activity-aware lighten) wins over
   // the tier-derived RPE band. RPE ≈ 10 − RIR; floor at 1 so a large RIR bump
   // never produces a nonsensical "RPE 0".
@@ -81,7 +86,9 @@ function annotateOne(ex: PlannedExercise): AnnotatedExercise {
   return {
     ...ex,
     fatigue_tier: tier,
-    rest_seconds: restPrescription(tier, reps),
+    rest_seconds: restSecondsFor(ex, tier),
+    // Filled in by applyRestPasses, the only place that can see neighbours.
+    transition_seconds: null,
     rpe_target,
   };
 }
@@ -165,6 +172,37 @@ function attachSorenessCues(
   });
 }
 
+/** Neighbour-dependent rest adjustments. Runs on the annotated array in
+ *  session order, after annotateOne has set each exercise's own prescription.
+ *
+ *  Two passes, both of which need to see an exercise's neighbours and so
+ *  cannot live in the pure (ex, tier) lookup:
+ *
+ *  1. The last warm-up before the first working exercise is bumped to
+ *     REST_SECONDS.lastWarmup. It is the only thing standing between the
+ *     athlete and the heaviest set of the day.
+ *  2. transition_seconds — rest before starting this exercise — is the
+ *     incoming exercise's own prescription plus a setup buffer. It is set by
+ *     the demand of what is COMING, not the fatigue of what just finished.
+ *     Null on index 0 (nothing precedes it) and on warm-ups (the ramp is the
+ *     transition).
+ */
+function applyRestPasses(annotated: AnnotatedExercise[]): AnnotatedExercise[] {
+  return annotated.map((ex, i) => {
+    const isWarmup = ex.warmup === true;
+    const next = annotated[i + 1];
+    const isLastWarmup = isWarmup && next !== undefined && next.warmup !== true;
+
+    return {
+      ...ex,
+      rest_seconds: isLastWarmup ? REST_SECONDS.lastWarmup : ex.rest_seconds,
+      // Derived from the untouched prescription, never from a bumped value.
+      transition_seconds:
+        i === 0 || isWarmup ? null : ex.rest_seconds + TRANSITION_BUFFER_SECONDS,
+    };
+  });
+}
+
 /**
  * Annotate a session's exercises with tier, rest seconds, RPE target, and
  * optional cues.
@@ -179,7 +217,7 @@ export function annotateSession(
   exercises: PlannedExercise[],
   context?: AnnotateContext,
 ): SessionStructure {
-  const annotated = exercises.map(annotateOne);
+  const annotated = applyRestPasses(exercises.map(annotateOne));
   const warnings = findOrderingWarnings(exercises);
   const withOrderCues = attachCues(annotated, warnings);
   // Apply soreness cues on top of (but not replacing) ordering-warning cues.
@@ -191,7 +229,9 @@ export function annotateSession(
     // Re-validate — if the proposal still violates, drop it.
     const stillBad = findOrderingWarnings(proposal);
     if (stillBad.length === 0) {
-      suggested = proposal.map(annotateOne);
+      // Reordering changes neighbours, so the proposal needs its own pass —
+      // otherwise a suggested order ships the original order's transitions.
+      suggested = applyRestPasses(proposal.map(annotateOne));
     }
   }
 
