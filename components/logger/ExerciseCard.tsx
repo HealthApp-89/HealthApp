@@ -10,6 +10,7 @@ import { annotateSession } from "@/lib/coach/session-structure/annotate";
 import type { CoachLine } from "@/lib/coach/live-session";
 import { CoachLineRow } from "@/components/logger/CoachLine";
 import { findApplyTargetSetIndex } from "@/lib/logger/apply-target";
+import { propagateLoad } from "@/lib/logger/propagate-load";
 import { seedRir } from "@/lib/logger/seed-rir";
 import { seedReps } from "@/lib/logger/seed-reps";
 
@@ -107,8 +108,20 @@ function ExerciseCardInner({
     onSetCleared({ exerciseIndex, setIndex });
   }, [exercise, exerciseIndex, onExerciseChange, onSetCleared]);
 
+  // THE kg write seam. Every load the athlete enters comes through here — the
+  // SetRow field's blur, the zoomed SetEntryRow's Save, and the coach line's
+  // one-tap apply — which is why load propagation hangs off it rather than off
+  // each surface: one call site, no chance of a surface being forgotten.
+  //
+  // `propagateLoad` runs against the PRE-patch sets, because it needs this
+  // set's previous kg to decide which sets below still agreed with it. The
+  // patch is then spread on top, so the edited set's other fields (reps, RIR,
+  // the failure/warmup badge) land exactly as before.
   const patchSet = useCallback((setIndex: number, patch: Partial<ExerciseSetDraft>) => {
-    const nextSets = exercise.sets.map((s, i) => (i === setIndex ? { ...s, ...patch } : s));
+    const base = "kg" in patch
+      ? propagateLoad(exercise.sets, setIndex, patch.kg ?? null)
+      : exercise.sets;
+    const nextSets = base.map((s, i) => (i === setIndex ? { ...s, ...patch } : s));
     onExerciseChange(exerciseIndex, { ...exercise, sets: nextSets });
   }, [exercise, exerciseIndex, onExerciseChange]);
 
