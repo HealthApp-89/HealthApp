@@ -155,21 +155,40 @@ Order of operations:
 
 1. Verify ownership and `source = 'logger'`. Strong CSV imports are not
    deletable through this path.
-2. Delete the `workouts` row. `exercises` and `exercise_sets` cascade
+2. Clear `target_hit_at_week` on the active block.
+3. Delete the `workouts` row. `exercises` and `exercise_sets` cascade
    (`schema.sql:60,67`).
-3. Delete the `chat_messages` row with `kind='workout_debrief'` and
+4. Delete the `chat_messages` row with `kind='workout_debrief'` and
    `ui->>workout_id` matching.
-4. If the deleted session falls inside the active block's window, clear
-   `target_hit_at_week`, then re-run `evaluateAndStampTargetHit`. Clearing
-   first is mandatory — the evaluator's early return makes the value
-   otherwise underivable. A genuine crossing from a surviving session
-   re-stamps; a phantom one does not.
-5. Re-run `repatchRemainingWeek` so the remaining days recompute without the
+5. Re-run `evaluateAndStampTargetHit`. A genuine crossing from a surviving
+   session re-stamps; a phantom one does not.
+6. Re-run `repatchRemainingWeek` so the remaining days recompute without the
    deleted session.
 
-Steps 4 and 5 are ordered as they are for the same reason the commit path
+Steps 5 and 6 are ordered as they are for the same reason the commit path
 orders them that way: a target-hit state change must settle before the week is
 recomputed against it.
+
+**Why the clear precedes the delete.** An earlier draft of this spec grouped
+the clear with the re-evaluation, after the delete. Review found that ordering
+leaves one unrecoverable state: if the request dies between the delete and the
+clear, the workout is gone but the phantom stamp survives, the evaluator
+early-returns on it forever, and the block stays locked in consolidation for
+the rest of its run. Retrying the DELETE cannot repair it — the workout row no
+longer exists, so the retry 404s before reaching the re-evaluation, and only a
+manual database edit would clear it.
+
+Clearing first removes the state rather than documenting it. The clear is safe
+and idempotent in isolation: if the delete then fails, the block is momentarily
+un-consolidated and the next ordinary commit re-stamps the identical value from
+the surviving data — `pickQualifyingDate` picks the earliest qualifying date
+and `blockWeekOf` derives the week from `start_date`, so the re-stamp is
+deterministic. The symmetric failure (cleared, delete succeeded, re-evaluation
+died) is likewise self-healing, because the evaluator's early return tests
+`target_hit_at_week != null` and so does not fire on a cleared block. Both
+surviving failure modes err toward an unlocked block rather than a falsely
+locked one, which is the right direction: a missing consolidation lock costs
+one session of load progression, a phantom one costs the rest of the block.
 
 Nothing else needs unwinding. The logger writes no `daily_logs` columns —
 strain is Garmin-owned — so day-level aggregates are unaffected.
@@ -184,8 +203,8 @@ components are not reachable. Coverage goes on the pure and server seams:
   instead of returning `null`.
 - The opener-clearing predicate: clears an untouched opener, preserves one the
   athlete has replied to.
-- Unwind ordering: `target_hit_at_week` is cleared before re-evaluation, and a
-  surviving qualifying session re-stamps it.
+- Unwind ordering: `target_hit_at_week` is cleared before the delete, and a
+  surviving qualifying session re-stamps it on re-evaluation.
 
 Card states are verified in the running app, per the standing constraint that
 this repo has no render-test harness.
