@@ -7,11 +7,16 @@ import { LoggerSheet } from "@/components/logger/LoggerSheet";
 import { DaySwapSheet } from "@/components/strength/DaySwapSheet";
 import { DayEditSheet } from "@/components/strength/schedule/DayEditSheet";
 import { useExistingLoggerDraft } from "@/lib/logger/use-existing-draft";
+import { SessionDoneBar } from "@/components/strength/SessionDoneBar";
+import type { TodaySessionWorkout } from "@/lib/query/fetchers/todaySession";
 import { COLOR } from "@/lib/ui/theme";
 import { CircleDot, CheckCircle2, XCircle, Clock, Minus, Pencil } from "lucide-react";
 
-/** Date-class discriminator — controls which footer CTAs render. */
-export type DayClass = "today" | "past_logged" | "past_unlogged" | "future" | "rest";
+/** Date-class discriminator — controls which footer CTAs render. Defined and
+ *  computed in lib/ so the branch order is testable; re-exported here because
+ *  this component and its callers are the consumers. */
+import type { DayClass } from "@/lib/coach/schedule/classify-day";
+export type { DayClass };
 
 type Props = {
   userId: string;
@@ -24,6 +29,11 @@ type Props = {
   /** Engine-resolved plan WITHOUT the manual-edit layer (DayEditSheet baseline). */
   baselineExercises: PlannedExercise[];
   dayClass: DayClass;
+  /** The committed workout for this date, when `dayClass === "today_logged"`.
+   *  Built by the caller from the workout list it already holds — this row
+   *  must not open its own query, or the week renders seven of them to learn
+   *  one thing. */
+  loggedWorkout?: TodaySessionWorkout | null;
   isExpanded: boolean;
   onToggle: () => void;
   weekOverrides: ExerciseOverrides | null;
@@ -63,6 +73,7 @@ export function ScheduleDayRow({
   exercises,
   baselineExercises,
   dayClass,
+  loggedWorkout,
   isExpanded,
   onToggle,
   weekOverrides,
@@ -84,6 +95,7 @@ export function ScheduleDayRow({
 
   const pillLabel =
     dayClass === "today"          ? "Today" :
+    dayClass === "today_logged"   ? "Logged" :
     dayClass === "past_logged"    ? "Logged" :
     dayClass === "past_unlogged"  ? "Not logged" :
     dayClass === "future"         ? "Upcoming" :
@@ -91,6 +103,7 @@ export function ScheduleDayRow({
     sessionType;
   const pillBg =
     dayClass === "today"          ? COLOR.warning :
+    dayClass === "today_logged"   ? COLOR.success :
     dayClass === "past_logged"    ? COLOR.success :
     dayClass === "past_unlogged"  ? COLOR.danger :
     dayClass === "future"         ? COLOR.accent :
@@ -99,6 +112,7 @@ export function ScheduleDayRow({
 
   const PillIcon =
     dayClass === "today"          ? CircleDot :
+    dayClass === "today_logged"   ? CheckCircle2 :
     dayClass === "past_logged"    ? CheckCircle2 :
     dayClass === "past_unlogged"  ? XCircle :
     dayClass === "future"         ? Clock :
@@ -109,6 +123,10 @@ export function ScheduleDayRow({
   const showFooterFuture = dayClass === "future" && !isRest;
   const showFooterPastLogged = dayClass === "past_logged";
   const showFooterPastUnlogged = dayClass === "past_unlogged" && !isRest;
+  // Today, already trained: the done state replaces the Start-session CTA.
+  // Swap is withheld too — a day you have already lifted is not swappable,
+  // and offering it would write a plan change against a completed session.
+  const showFooterTodayLogged = dayClass === "today_logged" && !!loggedWorkout;
 
   return (
     <>
@@ -318,6 +336,15 @@ export function ScheduleDayRow({
                   </button>
                 )}
               </div>
+            )}
+
+            {showFooterTodayLogged && loggedWorkout && (
+              <SessionDoneBar
+                userId={userId}
+                date={date}
+                workout={loggedWorkout}
+                tone="onSurface"
+              />
             )}
 
             {showFooterPastLogged && (
