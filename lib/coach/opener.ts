@@ -15,7 +15,6 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { callClaude } from "@/lib/anthropic/client";
 import { SHORT_FORM_MODEL } from "@/lib/anthropic/models";
 import { todayInUserTz } from "@/lib/time";
-import { getUserTimezone } from "@/lib/time/get-user-tz";
 import { mondayOf } from "@/lib/coach/weekly-review/date-utils";
 import type { DailyLog } from "@/lib/data/types";
 
@@ -51,8 +50,8 @@ export type OpenerContext = {
 export async function fetchOpenerContext(
   supabase: SupabaseClient,
   userId: string,
+  tz: string,
 ): Promise<OpenerContext> {
-  const tz = await getUserTimezone(userId);
   const today = todayInUserTz(new Date(), tz);
   const yesterday = (() => {
     const d = new Date(today + "T00:00:00Z");
@@ -88,13 +87,34 @@ export async function fetchOpenerContext(
       .maybeSingle(),
     supabase
       .from("workouts")
-      .select("session_type")
+      .select("type")
       .eq("user_id", userId)
       .eq("date", yesterday)
-      .order("started_at", { ascending: false })
+      // started_at is nullable (pre-0053 logger rows, Strong imports) and
+      // Postgres sorts NULLs FIRST under DESC — which would prefer an
+      // untimed row over a timed one on a two-session day.
+      .order("started_at", { ascending: false, nullsFirst: false })
       .limit(1)
       .maybeSingle(),
   ]);
+
+  // A failed query must never degrade into a behavioural claim. On
+  // 2026-08-11 a wrong column name (workouts.session_type) 400'd here,
+  // the error went unread, and `data: null` rendered as "no session
+  // logged" — which three coaches delivered as "you missed legs
+  // yesterday". Throwing surfaces the failure as a missing opener, which
+  // is honest; the route already maps it to a 500.
+  for (const [label, res] of [
+    ["daily_logs.today", todayLogRes],
+    ["daily_logs.yesterday", yesterdayLogRes],
+    ["training_blocks", blockRes],
+    ["training_weeks", weekRes],
+    ["workouts", yesterdayWorkoutRes],
+  ] as const) {
+    if (res.error) {
+      throw new Error(`[opener] ${label} query failed: ${res.error.message}`);
+    }
+  }
 
   let blockPhaseWeek: number | null = null;
   let blockGoal: string | null = null;
@@ -123,14 +143,14 @@ export async function fetchOpenerContext(
     yesterdayLog: yesterdayLogRes.data ?? null,
     yesterdayPlanned,
     yesterdayTrained: yesterdayWorkoutRes.data
-      ? (yesterdayWorkoutRes.data as { session_type: string }).session_type
+      ? (yesterdayWorkoutRes.data as { type: string }).type
       : null,
     activeBlockGoal: blockGoal,
     activeBlockPhaseWeek: blockPhaseWeek,
   };
 }
 
-function renderContextBlock(ctx: OpenerContext): string {
+export function renderContextBlock(ctx: OpenerContext): string {
   const lines: string[] = [];
   if (ctx.activeBlockGoal && ctx.activeBlockPhaseWeek != null) {
     lines.push(
