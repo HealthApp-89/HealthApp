@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ChatMessage } from "@/lib/chat/types";
+import { planOlderPage, mergeOlder } from "@/lib/chat/load-older";
 import type { ChatMode, MorningBriefCard, MorningUI, Speaker } from "@/lib/data/types";
 import { ChatThread } from "./ChatThread";
 import { ChatComposer } from "./ChatComposer";
@@ -169,8 +170,14 @@ function reducer(state: State, action: Action): State {
   switch (action.type) {
     case "loaded":
       return { ...state, loaded: true, messages: action.messages, hasMoreOlder: action.messages.length >= 50 };
-    case "prepend":
-      return { ...state, messages: [...action.messages, ...state.messages], hasMoreOlder: action.hasMore };
+    case "prepend": {
+      // De-duped: a page of rows already held must add nothing, so no cursor
+      // mistake anywhere upstream can grow this array without bound. This is
+      // the floor under the runaway loop in lib/chat/load-older.ts, which
+      // prepended 50 duplicates a second until the tab was unusable.
+      const { messages } = mergeOlder(state.messages, action.messages);
+      return { ...state, messages, hasMoreOlder: action.hasMore };
+    }
     case "append_user":
       return { ...state, messages: [...state.messages, action.message] };
     case "append_assistant_stub": {
@@ -426,19 +433,53 @@ export default function ChatPanel({
     };
   }, []);
 
-  const loadOlder = useCallback(async (beforeIso: string) => {
-    // Morning thread is one day at a time — older messages are yesterday's
-    // checkin (and would just be filtered out by scopeForMode anyway, leading
-    // to an empty-fetch loop with the IntersectionObserver).
-    if (currentMode === "morning_intake") return { added: 0 };
-    if (!state.hasMoreOlder) return { added: 0 };
-    const res = await fetch(`/api/chat/messages?limit=50&kind=${currentMode}&before=${encodeURIComponent(beforeIso)}`);
+  // The pagination cursor is taken from `state.messages` — the full loaded
+  // thread — never from `renderedMessages`. The rendered list is scope-filtered,
+  // and a page fetched from a filtered cursor lands outside the filter, leaving
+  // the cursor exactly where it was: the loop measured on 2026-08-11 (see
+  // lib/chat/load-older.ts). The morning lane's one-day scope hits the same
+  // wall, which is why its special case folds into the general rule rather than
+  // staying a mode check.
+  //
+  // Both live here, above `loadOlder`, rather than down in the render section:
+  // the pager has to know whether a render scope — rather than the fetch — is
+  // what is holding messages back.
+
+  // Render-time scope for the coach lane (today + yesterday by default).
+  // Computed inline so the toggle is instant — no refetch — and so
+  // morning_intake mode (already scoped at dispatch) is unaffected.
+  //
+  // useMemo'd to preserve array identity across keystrokes: ChatPanel
+  // re-renders on every composerText change (sibling chip visibility gating).
+  // Without memoization, scopeCoachForRender() returns a fresh array
+  // reference every render → ChatThread's messages prop changes → its
+  // children deep-re-render → with cards (MorningBriefCard, WeeklyReviewCard,
+  // etc.) this manifests as multi-second typing lag.
+  const renderedMessages = useMemo(
+    () =>
+      currentMode === "coach"
+        ? scopeCoachForRender(state.messages, today, showAllCoach, tz, scopeHours)
+        : state.messages,
+    [currentMode, state.messages, today, showAllCoach, scopeHours],
+  );
+  const hiddenEarlierCount = state.messages.length - renderedMessages.length;
+
+  const loadOlder = useCallback(async () => {
+    const plan = planOlderPage({
+      oldestLoadedIso: state.messages[0]?.created_at ?? null,
+      hasMoreOlder: state.hasMoreOlder,
+      scopeHidesMessages: currentMode === "morning_intake" || hiddenEarlierCount > 0,
+    });
+    if (!plan.run) return { added: 0 };
+    const res = await fetch(`/api/chat/messages?limit=50&kind=${currentMode}&before=${encodeURIComponent(plan.before)}`);
     const json = (await res.json()) as { ok: boolean; messages?: ChatMessage[] };
     if (!json.ok || !json.messages) return { added: 0 };
     const older = json.messages.slice().reverse();
     dispatch({ type: "prepend", messages: older, hasMore: older.length >= 50 });
-    return { added: older.length };
-  }, [state.hasMoreOlder, currentMode]);
+    // What the caller must stop on is what actually landed after de-duping, not
+    // what the server sent — a page of rows we already hold is no progress.
+    return { added: mergeOlder(state.messages, older).added };
+  }, [state.messages, state.hasMoreOlder, currentMode, hiddenEarlierCount]);
 
   const send = useCallback(
     async (content: string, imageIds: string[]) => {
@@ -1140,24 +1181,9 @@ export default function ChatPanel({
           ? "Talk through your plan…"
           : undefined);
 
-  // Render-time scope for the coach lane (today + yesterday by default).
-  // Computed inline so the toggle is instant — no refetch — and so
-  // morning_intake mode (already scoped at dispatch) is unaffected.
-  //
-  // useMemo'd to preserve array identity across keystrokes: ChatPanel
-  // re-renders on every composerText change (sibling chip visibility gating).
-  // Without memoization, scopeCoachForRender() returns a fresh array
-  // reference every render → ChatThread's messages prop changes → its
-  // children deep-re-render → with cards (MorningBriefCard, WeeklyReviewCard,
-  // etc.) this manifests as multi-second typing lag.
-  const renderedMessages = useMemo(
-    () =>
-      currentMode === "coach"
-        ? scopeCoachForRender(state.messages, today, showAllCoach, tz, scopeHours)
-        : state.messages,
-    [currentMode, state.messages, today, showAllCoach, scopeHours],
-  );
-  const hiddenEarlierCount = state.messages.length - renderedMessages.length;
+  // Render scope and the "N earlier hidden" count are computed up by
+  // `loadOlder` — the pager needs to know whether a scope, rather than the
+  // fetch, is what is holding messages back. See the declaration there.
 
   // Stable callbacks for the memoized ChatThread. Inline arrows here would
   // create a new ref every render and bypass React.memo entirely.

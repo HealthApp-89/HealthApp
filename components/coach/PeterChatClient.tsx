@@ -1,6 +1,7 @@
 'use client';
 
 import ChatPanel from '@/components/chat/ChatPanel';
+import { useIsImmersive } from "@/components/providers/ImmersiveProvider";
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useMarkThreadSeen } from '@/lib/chat/use-mark-thread-seen';
@@ -21,6 +22,8 @@ type Props = {
 };
 
 export function PeterChatClient({ userId }: Props) {
+  // Unmounted under a full-screen logger — see ImmersiveProvider.
+  const immersive = useIsImmersive();
   useMarkThreadSeen('peter');
   const searchParams = useSearchParams();
   const contextRaw = searchParams.get('context');
@@ -57,7 +60,10 @@ export function PeterChatClient({ userId }: Props) {
           </Link>
         </div>
       )}
-      <ChatPanel userId={userId} embedded={true} initialKind="coach" thread="peter" />
+      {/* Unmounted under a full-screen logger — see ImmersiveProvider. */}
+      {!immersive && (
+        <ChatPanel userId={userId} embedded={true} initialKind="coach" thread="peter" />
+      )}
     </div>
   );
 }

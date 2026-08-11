@@ -1,6 +1,7 @@
 "use client";
 
 import ChatPanel from "@/components/chat/ChatPanel";
+import { useIsImmersive } from "@/components/providers/ImmersiveProvider";
 import { useMarkThreadSeen } from "@/lib/chat/use-mark-thread-seen";
 import { useDailyLogs } from "@/lib/query/hooks/useDailyLogs";
 import { useCheckin } from "@/lib/query/hooks/useCheckin";
@@ -17,6 +18,8 @@ type Props = {
 };
 
 export function HealthCoachClient({ userId, hrvBaseline }: Props) {
+  // Unmounted under a full-screen logger — see ImmersiveProvider.
+  const immersive = useIsImmersive();
   useMarkThreadSeen("remi");
   const today = useUserToday(userId);
   // Always call hooks. Gate queries via `enabled` so they stay dormant until
@@ -180,12 +183,15 @@ export function HealthCoachClient({ userId, hrvBaseline }: Props) {
           minHeight: 320,
         }}
       >
-        <ChatPanel
-          userId={userId}
-          embedded={true}
-          initialKind="coach"
-          thread="remi"
-        />
+        {/* Unmounted under a full-screen logger — see ImmersiveProvider. */}
+        {!immersive && (
+          <ChatPanel
+            userId={userId}
+            embedded={true}
+            initialKind="coach"
+            thread="remi"
+          />
+        )}
       </div>
     </div>
   );

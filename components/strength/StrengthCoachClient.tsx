@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import ChatPanel from "@/components/chat/ChatPanel";
+import { useIsImmersive } from "@/components/providers/ImmersiveProvider";
 import { useMarkThreadSeen } from "@/lib/chat/use-mark-thread-seen";
 import { TodayPlanCard } from "@/components/strength/TodayPlanCard";
 import { DaySwapSheet } from "@/components/strength/DaySwapSheet";
@@ -85,6 +86,7 @@ export function StrengthCoachClient({ userId }: Props) {
   // region into view on mount so the mode banner + composer sit at the top
   // of the viewport instead of below the strength card.
   const chatRegionRef = useRef<HTMLDivElement>(null);
+  const immersive = useIsImmersive();
   useEffect(() => {
     if (initialMode === "default") return;
     chatRegionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -297,31 +299,39 @@ export function StrengthCoachClient({ userId }: Props) {
         )}
       </div>
 
-      {/* ── Carter's chat ── */}
-      <div
-        ref={chatRegionRef}
-        style={{
-          flex: "1 1 auto",
-          display: "flex",
-          flexDirection: "column",
-          minHeight: 320,
-          borderTop: `1px solid ${COLOR.divider}`,
-          marginTop: 12,
-        }}
-      >
-        <ChatPanel
-          userId={userId}
-          embedded={true}
-          initialKind="coach"
-          initialMode={initialMode}
-          initialModeContext={
-            initialMode === "plan_week"
-              ? `Planning week of ${currentWeekStart}`
-              : setupBlockContext
-          }
-          thread="carter"
-        />
-      </div>
+      {/* ── Carter's chat ──
+          Unmounted entirely while the workout logger is up. The logger covers
+          this page but does not replace it, so without the guard Carter's
+          thread keeps its message array, effects and queries alive on the same
+          main thread as the set timer — the athlete is mid-set and cannot see
+          the chat anyway. It remounts on close and refetches the last page.
+          See components/providers/ImmersiveProvider.tsx. */}
+      {!immersive && (
+        <div
+          ref={chatRegionRef}
+          style={{
+            flex: "1 1 auto",
+            display: "flex",
+            flexDirection: "column",
+            minHeight: 320,
+            borderTop: `1px solid ${COLOR.divider}`,
+            marginTop: 12,
+          }}
+        >
+          <ChatPanel
+            userId={userId}
+            embedded={true}
+            initialKind="coach"
+            initialMode={initialMode}
+            initialModeContext={
+              initialMode === "plan_week"
+                ? `Planning week of ${currentWeekStart}`
+                : setupBlockContext
+            }
+            thread="carter"
+          />
+        </div>
+      )}
 
       {/* DaySwapSheet — rendered portalled when open */}
       {swapOpen && committedWeek && (

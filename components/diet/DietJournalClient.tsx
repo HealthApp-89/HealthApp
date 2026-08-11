@@ -4,6 +4,7 @@
 import { useMemo, useState } from "react";
 import { NutritionView } from "./NutritionView";
 import ChatPanel from "@/components/chat/ChatPanel";
+import { useIsImmersive } from "@/components/providers/ImmersiveProvider";
 import { HealthClient } from "@/components/health/HealthClient";
 import { useRouter } from "next/navigation";
 import { useFoodEntries } from "@/lib/query/hooks/useFoodEntries";
@@ -33,6 +34,8 @@ type Props = {
 };
 
 export function DietJournalClient({ userId, initialDate, initialView, todayIso, trendFromIso }: Props) {
+  // Unmounted under a full-screen logger — see ImmersiveProvider.
+  const immersive = useIsImmersive();
   const router = useRouter();
   const [view, setView] = useState<DietView>(initialView ?? "journal");
   const [loggerOpen, setLoggerOpen] = useState<MealSlot | null>(null);
@@ -252,7 +255,8 @@ export function DietJournalClient({ userId, initialDate, initialView, todayIso, 
         />
       )}
 
-      {view === "coach" && (
+      {/* Unmounted under a full-screen logger — see ImmersiveProvider. */}
+      {view === "coach" && !immersive && (
         <div style={{ height: "calc(100dvh - 200px)", display: "flex", flexDirection: "column" }}>
           <ChatPanel
             userId={userId}
