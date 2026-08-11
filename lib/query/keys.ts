@@ -55,6 +55,9 @@ export const queryKeys = {
     range: (userId: string, from: string, to: string) =>
       ["workouts", userId, "range", from, to] as const,
   },
+  todaySession: {
+    one: (userId: string, date: string) => ["today-session", userId, date] as const,
+  },
   userSessionTemplates: {
     all: (userId: string) => ["user-session-templates", userId] as const,
     one: (userId: string, sessionType: string) =>
