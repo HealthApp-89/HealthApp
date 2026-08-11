@@ -31,7 +31,7 @@ export function WeeklyReviewTrends({
               : "—"
           }
           ok={trends.loss_rate_in_target_band}
-          href="/coach/progress?section=composition"
+          href="/health?tab=trends"
           speaker="nora"
         />
         <Cell
@@ -41,7 +41,7 @@ export function WeeklyReviewTrends({
               ? `${fmtNum(trends.strength_slope_pct_per_week * 100)}%/wk`
               : "—"
           }
-          href="/coach/progress?section=performance"
+          href="/strength?tab=blocks"
           speaker="carter"
         />
         <Cell
@@ -51,7 +51,7 @@ export function WeeklyReviewTrends({
               ? `${fmtNum(trends.lbm_slope_pct_per_week * 100)}%/wk`
               : "—"
           }
-          href="/coach/progress?section=composition"
+          href="/health?tab=trends"
           speaker="nora"
         />
         <Cell
@@ -64,12 +64,16 @@ export function WeeklyReviewTrends({
               : "none"
           }
           ok={trends.plateau_flags.length === 0 ? true : false}
-          href="/coach/progress?section=performance"
+          href="/strength?tab=blocks"
           speaker="carter"
         />
       </div>
+      {/* These used to deep-link into /coach/progress, which does not exist —
+          every one of them 404'd. Routed by each cell's own semantics instead:
+          composition (Nora) to the Health trends tab, performance (Carter) to
+          the Blocks tab, which is where strength progress and plateaus live. */}
       <Link
-        href="/coach/progress"
+        href="/health?tab=trends"
         style={{
           display: "inline-block",
           marginTop: 8,

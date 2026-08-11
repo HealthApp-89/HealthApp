@@ -11,8 +11,15 @@ import { useUserToday } from "@/lib/query/hooks/useUserToday";
 import { COLOR, RADIUS } from "@/lib/ui/theme";
 import type { FoodLogEntry, MealSlot } from "@/lib/food/types";
 
+/** Shift a YYYY-MM-DD by whole days. Returns "" for anything that is not a
+ *  real calendar date rather than constructing an Invalid Date, whose
+ *  toISOString() throws. `useUserToday` yields undefined until the profile
+ *  loads, and this sheet is mounted unconditionally by MealLoggerSheet, so it
+ *  renders during that window. */
 function offsetDate(iso: string, deltaDays: number): string {
+  if (!iso) return "";
   const d = new Date(`${iso}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return "";
   d.setUTCDate(d.getUTCDate() + deltaDays);
   return d.toISOString().slice(0, 10);
 }
@@ -37,7 +44,14 @@ export function HistoryPickerSheet({
   // silently hides days the server would happily return.
   const minDate = offsetDate(today, -365);
 
-  const [date, setDate] = useState(offsetDate(today, -1)); // yesterday by default
+  // Yesterday by default, but DERIVED rather than seeded into state. A
+  // useState initializer runs once at mount, and this sheet is mounted
+  // unconditionally by MealLoggerSheet — so mounting before the profile
+  // resolved used to freeze an empty default for the lifetime of the sheet.
+  // `picked` stays null until the athlete actually chooses a day.
+  const [picked, setPicked] = useState<string | null>(null);
+  const date = picked ?? offsetDate(today, -1);
+  const setDate = setPicked;
   const [selected, setSelected] = useState<SelectedItem[]>([]);
   const [destinationSlot, setDestinationSlot] = useState<MealSlot>(initialDestinationSlot);
   const [busy, setBusy] = useState(false);

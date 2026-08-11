@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { ExerciseSetDraft } from "@/lib/logger/types";
 import { selectOnFocus } from "@/lib/ui/inputs";
+import { formatMmSs } from "@/lib/logger/set-timer";
 
 type Props = {
   set: ExerciseSetDraft;
@@ -21,12 +22,6 @@ type Props = {
   onSave: () => void;
   onRemove: () => void;
 };
-
-function mmss(total: number): string {
-  const m = Math.floor(total / 60);
-  const r = total % 60;
-  return `${m}:${r.toString().padStart(2, "0")}`;
-}
 
 export function SetEntryRow({
   set, workingSetNumber, workSeconds, timeBased, prescribedKg, prescribedReps,
@@ -162,7 +157,7 @@ export function SetEntryRow({
         <span className={`font-mono text-[10.5px] px-2 py-0.5 rounded-full whitespace-nowrap ${
           failed ? "text-red-300 bg-red-500/15" : "text-blue-300 bg-blue-500/15"
         }`}>
-          ◷ {mmss(workSeconds)} work
+          ◷ {formatMmSs(workSeconds)} work
         </span>
       </div>
 

@@ -20,8 +20,16 @@ export function CoachLineRow({ line, onApply }: Props) {
   return (
     <div
       role="status"
-      aria-live="polite"
-      className={`flex items-center gap-2 rounded-lg border px-2 py-1.5 my-1 text-[11px] leading-snug ${TONE[line.kind]}`}
+      // A cued line is the one the rule engine says something genuinely
+      // happened on (today only PRs set it), so it announces itself instead of
+      // waiting for a quiet moment. Non-cued lines stay polite.
+      aria-live={line.cue ? "assertive" : "polite"}
+      // `cue` previously had no consumer at all: tone came solely from `kind`,
+      // so the flag was set, tested, documented — and read by nothing. Giving
+      // it the emphasis ring makes the field mean what it claims.
+      className={`flex items-center gap-2 rounded-lg border px-2 py-1.5 my-1 text-[11px] leading-snug ${TONE[line.kind]} ${
+        line.cue ? "ring-1 ring-current/40" : ""
+      }`}
     >
       <span className="flex-1">{line.text}</span>
       {line.apply_kg != null && onApply && (

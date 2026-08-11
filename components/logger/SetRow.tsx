@@ -6,6 +6,7 @@ import { usePreviousSet } from "@/lib/query/hooks/usePreviousSet";
 import { VoiceMicButton } from "@/components/logger/VoiceMicButton";
 import { fmtNum } from "@/lib/ui/score";
 import { selectOnFocus } from "@/lib/ui/inputs";
+import { formatMmSs } from "@/lib/logger/set-timer";
 
 type Props = {
   userId: string;
@@ -41,45 +42,46 @@ type Props = {
   onUnparsedVoice: (transcript: string) => void;
 };
 
-/** m:ss for the committed-row work stamp. Same shape SetEntryRow's `◷ 0:33
- *  work` chip uses — that chip lives inside the zoom and unmounts on Save, so
- *  without this the athlete could never see an individual set's work time
- *  again, only the Finish summary's aggregate. */
-function mmss(total: number): string {
-  const m = Math.floor(total / 60);
-  const r = total % 60;
-  return `${m}:${r.toString().padStart(2, "0")}`;
+/**
+ * Editable text for one numeric field, re-synced when the underlying value
+ * changes underneath it.
+ *
+ * Plain `useState(initial)` is mount-only, which breaks two ways here:
+ *  - an external write (ExerciseCard's coach-line apply-tap calling patchSet)
+ *    never reaches the input, and a stray focus+blur then writes the stale
+ *    text back over the applied value;
+ *  - rows are keyed by array index, so deleting a set re-indexes the
+ *    survivors and every row below it keeps the *previous* row's text while
+ *    displaying a different set — one blur away from committing another
+ *    set's numbers.
+ *
+ * The ref is what makes it safe: only a change to the PROP re-syncs, so
+ * in-progress typing (which moves `text` but not `propText`) is never fought.
+ */
+function useSyncedDraft(propText: string) {
+  const [text, setText] = useState(propText);
+  const lastProp = useRef(propText);
+  useEffect(() => {
+    if (propText !== lastProp.current) {
+      lastProp.current = propText;
+      setText(propText);
+    }
+  }, [propText]);
+  return [text, setText] as const;
 }
 
 export function SetRow({
   userId, exerciseName, excludeWorkoutExternalId, set, workingSetNumber,
   isActive, editMode, targetDurationSeconds, target, canRemove, onChange, onCommit, onUncommit, onRemove, onUnparsedVoice,
 }: Props) {
-  const [draftKg, setDraftKg] = useState<string>(set.kg !== null ? String(set.kg) : "");
-  const [draftReps, setDraftReps] = useState<string>(set.reps !== null ? String(set.reps) : "");
-  const [draftRir, setDraftRir] = useState<string>(set.rir !== null && set.rir !== undefined ? String(set.rir) : "");
-  // Edit-mode-only hand-editable seconds field. Mount-only local state, same
-  // shape as draftReps/draftRir (no external-write concern like draftKg's
-  // apply-tap case — nothing outside this row ever patches duration_seconds
-  // on it).
-  const [draftSeconds, setDraftSeconds] = useState<string>(
+  const [draftKg, setDraftKg] = useSyncedDraft(set.kg !== null ? String(set.kg) : "");
+  const [draftReps, setDraftReps] = useSyncedDraft(set.reps !== null ? String(set.reps) : "");
+  const [draftRir, setDraftRir] = useSyncedDraft(
+    set.rir !== null && set.rir !== undefined ? String(set.rir) : "",
+  );
+  const [draftSeconds, setDraftSeconds] = useSyncedDraft(
     set.duration_seconds !== null ? String(set.duration_seconds) : "",
   );
-
-  // draftKg is otherwise mount-only local state, so an external write to
-  // set.kg (the apply-tap in ExerciseCard calling patchSet directly) would
-  // never reach this input — the box would keep showing stale/blank text,
-  // and a stray focus+blur with no typing would then overwrite the applied
-  // value back to null via the onBlur handler below. Re-sync draftKg only
-  // when the PROP itself changes (tracked via a ref so in-progress typing,
-  // which changes draftKg but not set.kg, is never fought).
-  const lastKgProp = useRef(set.kg);
-  useEffect(() => {
-    if (set.kg !== lastKgProp.current) {
-      lastKgProp.current = set.kg;
-      setDraftKg(set.kg !== null ? String(set.kg) : "");
-    }
-  }, [set.kg]);
 
   const timeBased = targetDurationSeconds != null;
 
@@ -105,7 +107,7 @@ export function SetRow({
   // imports and pre-0056 rows are legitimately untimed, and a "0s" or a dashed
   // chip would assert a measurement that was never taken.
   const workStamp = committed && set.work_seconds != null
-    ? `◷ ${mmss(set.work_seconds)}`
+    ? `◷ ${formatMmSs(set.work_seconds)}`
     : null;
 
   // Badge selection owns the failure⇄RIR coupling: F means 0 reps in reserve
@@ -236,7 +238,11 @@ export function SetRow({
               <span className={`font-mono tabular-nums text-[12px] ${
                 committed ? "text-green-400" : "text-zinc-500"
               }`}>
-                {committed ? `${set.duration_seconds ?? 0}s` : "—"}
+                {/* An em dash, not "0s". A committed hold with no recorded
+                    duration (hand-logged, Strong CSV import, pre-0056 row)
+                    genuinely has no value — printing 0s asserts the athlete
+                    held it for zero seconds. */}
+                {committed ? (set.duration_seconds != null ? `${set.duration_seconds}s` : "—") : "—"}
               </span>
             )}
           </td>

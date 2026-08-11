@@ -12,12 +12,12 @@ import { useWakeLock } from "@/lib/logger/rest-timer";
 import { seedRir } from "@/lib/logger/seed-rir";
 import { seedReps } from "@/lib/logger/seed-reps";
 import { useLiveSessionContext } from "@/lib/query/hooks/useLiveSessionContext";
-import { annotateSession } from "@/lib/coach/session-structure/annotate";
 import { fmtNum } from "@/lib/ui/score";
 import {
   IDLE_TIMER,
   timerReducer,
   remapTimerSets,
+  remapTimerExercises,
   workSecondsFor,
   getElapsedMs,
   sameSet,
@@ -26,6 +26,14 @@ import {
   type TimerState,
   type SetRef,
 } from "@/lib/logger/set-timer";
+import {
+  timerOf,
+  withTimer,
+  commitPendingEntry,
+  keepUnmovedRestOverrides,
+  annotatedRestFor,
+  firstPendingSet,
+} from "@/lib/logger/draft-ops";
 import {
   evaluateSet,
   type CoachLine,
@@ -115,55 +123,6 @@ function makeDraftFromPlan(args: {
 // callbacks. SetTimerDock owns the tick and reads the wall clock itself.
 // ---------------------------------------------------------------------------
 
-function timerOf(draft: LoggerDraft | null): TimerState {
-  return draft?.timer ?? IDLE_TIMER;
-}
-
-/** Apply a timer action and persist it with the draft. */
-function withTimer(draft: LoggerDraft, next: TimerState): LoggerDraft {
-  return { ...draft, timer: next, updated_at: new Date().toISOString() };
-}
-
-/** Commit whatever is in the open entry row and close it. Called by the Save
- *  button and, implicitly, by pressing START on the next set — the fields are
- *  pre-filled from the prescription, so the flow never blocks on typing.
- *
- *  Touches no clock: `save_entry` clears `pendingEntry` and leaves the rest
- *  countdown running underneath, which is the whole point of splitting commit
- *  out of stop. */
-function commitPendingEntry(draft: LoggerDraft): LoggerDraft {
-  const timer = draft.timer ?? IDLE_TIMER;
-  const entry = timer.pendingEntry;
-  if (!entry) return draft;
-  const exercises = draft.exercises.map((ex, ei) =>
-    ei !== entry.exerciseIndex ? ex : {
-      ...ex,
-      sets: ex.sets.map((s, si) => {
-        if (si !== entry.setIndex || s.committed_at) return s;
-        // A time-based set auto-saved by START never had its seconds field
-        // blurred, so it would commit `duration_seconds: null` alongside a
-        // perfectly good `work_seconds` — the plank the timer measured at 45s
-        // recorded as no plank at all. SetEntryRow.saveAll already flushes the
-        // field on the Save path; this makes the auto-save path agree, using
-        // the number the timer measured as the fallback.
-        const timeBased = ex.prescribed.duration_seconds != null;
-        return {
-          ...s,
-          duration_seconds: timeBased && s.duration_seconds == null
-            ? entry.workSeconds
-            : s.duration_seconds,
-          committed_at: new Date().toISOString(),
-        };
-      }),
-    },
-  );
-  return {
-    ...draft,
-    exercises,
-    timer: timerReducer(timer, { type: "save_entry" }),
-  };
-}
-
 /**
  * Between-sets coaching for the set just committed. THE evaluation site —
  * every commit path (the manual ○, the zoom's Save, and the auto-save when
@@ -197,104 +156,6 @@ function evaluateCommittedSet(
       .map((s) => ({ exerciseName: e.name, set: s })),
   );
   return evaluateSet({ set, exercise: ex, sessionSets, context: liveContext });
-}
-
-/**
- * Re-point the timer's stored refs after the exercise LIST changed under them.
- *
- * `SetRef.exerciseIndex` is positional, so removing or reordering an exercise
- * silently re-aims every stored ref at whatever slid into that slot: STOP would
- * stamp `committed_at` / `work_seconds` onto a different exercise's set. Both
- * refs are remapped — `pendingEntry` carries the same shape (Task 6 reads it).
- *
- * `mapIndex` returns the exercise's new index, or null if it is gone.
- */
-function remapTimerExercises(
-  state: TimerState,
-  mapIndex: (oldIndex: number) => number | null,
-): TimerState {
-  if (state.activeSet === null && state.pendingEntry === null) return state;
-  let next = state;
-
-  if (next.activeSet) {
-    const moved = mapIndex(next.activeSet.exerciseIndex);
-    // The exercise holding the set in play (or being rested after) is gone.
-    // There is nothing left to stop or save, so drop the timer entirely rather
-    // than let it advance to `rest` against a set that no longer exists.
-    if (moved === null) return IDLE_TIMER;
-    if (moved !== next.activeSet.exerciseIndex) {
-      next = { ...next, activeSet: { ...next.activeSet, exerciseIndex: moved } };
-    }
-  }
-
-  if (next.pendingEntry) {
-    const moved = mapIndex(next.pendingEntry.exerciseIndex);
-    if (moved === null) {
-      next = { ...next, pendingEntry: null };
-    } else if (moved !== next.pendingEntry.exerciseIndex) {
-      next = { ...next, pendingEntry: { ...next.pendingEntry, exerciseIndex: moved } };
-    }
-  }
-
-  return next;
-}
-
-/**
- * Drop rest overrides for every exercise whose index moved.
- *
- * `restOverrides` is the LIFTED half of a value ExerciseCard also holds
- * locally. The card's `key` embeds its index, so any index change remounts it
- * and resets the local copy to "no override". Remapping the lifted copy instead
- * of dropping it would leave the two disagreeing — the "+ Add set (m:ss)" label
- * showing the prescription while `press_stop` seeds rest from the override.
- * Keeping only the entries whose card did NOT remount makes them agree by
- * construction. (Keying by exercise name would not: the card still remounts.)
- *
- * This helper covers the list edits that MOVE indices — Remove and Reorder.
- * Replace is the third remount trigger and cannot be expressed as an index map:
- * the index is unchanged, but the card's `key` embeds `ex.name`, so swapping
- * the name remounts it just the same — and the surviving override would then
- * belong to a DIFFERENT exercise. The replace branch therefore deletes its own
- * entry outright; see the ExercisePicker `onPick` handler below.
- */
-function keepUnmovedRestOverrides(
-  overrides: Record<number, number>,
-  mapIndex: (oldIndex: number) => number | null,
-): Record<number, number> {
-  const next: Record<number, number> = {};
-  for (const [k, v] of Object.entries(overrides)) {
-    const i = Number(k);
-    if (mapIndex(i) === i) next[i] = v;
-  }
-  return next;
-}
-
-/** Prescribed rest for an exercise, from the same session-structure annotation
- *  ExerciseCard shows. Read at `press_stop` time so an override applied
- *  mid-session is picked up. */
-function annotatedRestFor(draft: LoggerDraft, exerciseIndex: number): number {
-  const list = draft.exercises.map((e) => e.prescribed);
-  const s = annotateSession(list);
-  return s.exercises[exerciseIndex]?.rest_seconds.min ?? 120;
-}
-
-/** First set in draft order with no `committed_at`. Null once every set is
- *  committed — the dock then disables its START affordance rather than
- *  dispatching a start for a set that does not exist.
- *
- *  `skip` is the set with the zoomed entry row open. Since Task 6 that set is
- *  uncommitted until Save, so without skipping it START would offer to re-run
- *  the set the athlete just finished — and `handleTimerStart` commits the entry
- *  first, so it would count down to a set it had just committed. */
-function firstPendingSet(draft: LoggerDraft, skip: SetRef | null): SetRef | null {
-  for (let ei = 0; ei < draft.exercises.length; ei++) {
-    const sets = draft.exercises[ei].sets;
-    for (let si = 0; si < sets.length; si++) {
-      const ref = { exerciseIndex: ei, setIndex: si };
-      if (!sets[si].committed_at && !sameSet(ref, skip)) return ref;
-    }
-  }
-  return null;
 }
 
 /** Dock captions for a set ref: which set is in play and what it asks for. */
@@ -563,15 +424,22 @@ export function LoggerSheet(props: Props) {
 
   const handleTimerStart = useCallback((set: SetRef) => {
     const autoSaved = pendingEntryRef.current;
+    // Clock read hoisted OUT of the updater: React may invoke a setState
+    // updater more than once per commit (StrictMode double-invokes them), so
+    // reading the wall clock inside one is a Rules-of-React violation and can
+    // yield two different timestamps for one tap.
+    const nowMs = Date.now();
+    const nowIso = new Date(nowMs).toISOString();
     setDraft((prev) => {
       if (!prev) return prev;
       // Auto-save any open entry first: the fields are pre-filled from the
       // prescription, so the athlete can start the next set without ever
       // touching them and nothing is lost.
-      const withEntrySaved = commitPendingEntry(prev);
+      const withEntrySaved = commitPendingEntry(prev, nowIso);
       return withTimer(
         withEntrySaved,
-        timerReducer(timerOf(withEntrySaved), { type: "press_start", set, nowMs: Date.now() }),
+        timerReducer(timerOf(withEntrySaved), { type: "press_start", set, nowMs }),
+        nowIso,
       );
     });
     if (autoSaved) {
@@ -582,9 +450,9 @@ export function LoggerSheet(props: Props) {
   /** Manual ○ commit. Lives here, not in ExerciseCard, so both commit paths
    *  reach `evaluateCommittedSet` through the same signal. */
   const handleSetCommit = useCallback((exerciseIndex: number, setIndex: number) => {
+    const nowIso = new Date().toISOString();
     setDraft((prev) => {
       if (!prev) return prev;
-      const nowIso = new Date().toISOString();
       const exercises = prev.exercises.map((ex, ei) =>
         ei !== exerciseIndex ? ex : {
           ...ex,
@@ -620,40 +488,43 @@ export function LoggerSheet(props: Props) {
     // Guards a second tap landing before the re-render: the entry is already
     // saved, so re-committing (and re-coaching) it would be noise.
     if (!sameSet(pendingEntryRef.current, ref)) return;
-    setDraft((prev) => (prev ? commitPendingEntry(prev) : prev));
+    const nowIso = new Date().toISOString();
+    setDraft((prev) => (prev ? commitPendingEntry(prev, nowIso) : prev));
     setPendingCoachEval({ exerciseIndex: ref.exerciseIndex, setIndex: ref.setIndex });
   }, []);
 
   const handleCoachLineDismiss = useCallback(() => setCoach(null), []);
 
   const handleCountdownElapsed = useCallback(() => {
+    const nowMs = Date.now();
+    const nowIso = new Date(nowMs).toISOString();
     setDraft((prev) => {
       if (!prev) return prev;
-      const nowMs = Date.now();
       const next = timerReducer(timerOf(prev), { type: "countdown_elapsed", nowMs });
       if (next === timerOf(prev)) return prev;
       // Stamp the true set start on the draft set itself.
       const ref = next.activeSet;
-      if (!ref) return withTimer(prev, next);
+      if (!ref) return withTimer(prev, next, nowIso);
       const exercises = prev.exercises.map((ex, ei) =>
         ei !== ref.exerciseIndex ? ex : {
           ...ex,
           sets: ex.sets.map((s, si) =>
-            si !== ref.setIndex ? s : { ...s, started_at: new Date(nowMs).toISOString() },
+            si !== ref.setIndex ? s : { ...s, started_at: nowIso },
           ),
         },
       );
-      return withTimer({ ...prev, exercises }, next);
+      return withTimer({ ...prev, exercises }, next, nowIso);
     });
   }, []);
 
   const handleStop = useCallback(() => {
+    const nowMs = Date.now();
+    const nowIso = new Date(nowMs).toISOString();
     setDraft((prev) => {
       if (!prev) return prev;
       const cur = timerOf(prev);
       const ref = cur.activeSet;
       if (cur.phase !== "running" || !ref || cur.anchorMs === null) return prev;
-      const nowMs = Date.now();
       const workSeconds = workSecondsFor(cur.anchorMs, nowMs);
       const prescribedRest =
         restOverrides[ref.exerciseIndex]
@@ -670,11 +541,12 @@ export function LoggerSheet(props: Props) {
           ),
         },
       );
-      return withTimer({ ...prev, exercises }, next);
+      return withTimer({ ...prev, exercises }, next, nowIso);
     });
   }, [restOverrides]);
 
   const handleSetCleared = useCallback((set: SetRef) => {
+    const nowIso = new Date().toISOString();
     setDraft((prev) => {
       if (!prev) return prev;
       const exercises = prev.exercises.map((ex, ei) =>
@@ -693,7 +565,11 @@ export function LoggerSheet(props: Props) {
           }),
         },
       );
-      return withTimer({ ...prev, exercises }, timerReducer(timerOf(prev), { type: "clear_for_set", set }));
+      return withTimer(
+        { ...prev, exercises },
+        timerReducer(timerOf(prev), { type: "clear_for_set", set }),
+        nowIso,
+      );
     });
     // The verdict was about a set that no longer counts as committed.
     setCoach((c) => (c && sameSet(c.set, set) ? null : c));
@@ -721,6 +597,7 @@ export function LoggerSheet(props: Props) {
    */
   const handleSetRemove = useCallback((exerciseIndex: number, setIndex: number) => {
     const mapSetIndex = (i: number) => (i === setIndex ? null : i > setIndex ? i - 1 : i);
+    const nowIso = new Date().toISOString();
     setDraft((prev) => {
       if (!prev) return prev;
       const target = prev.exercises[exerciseIndex];
@@ -736,6 +613,7 @@ export function LoggerSheet(props: Props) {
       return withTimer(
         { ...prev, exercises },
         remapTimerSets(timerOf(prev), exerciseIndex, mapSetIndex),
+        nowIso,
       );
     });
     // The coach line is anchored to a positional ref too — same shift.
@@ -889,7 +767,6 @@ export function LoggerSheet(props: Props) {
 
   function pauseAndClose() {
     if (!draft) { props.onClose(); return; }
-    const cur = timerOf(draft);
     // An in-flight set must NOT survive the close. Pause is disabled mid-set,
     // but Close is one tap and auto-pauses here; the draft would persist
     // phase:"running" with its original absolute anchorMs, and resuming hours
@@ -897,13 +774,22 @@ export function LoggerSheet(props: Props) {
     // work_seconds — which Task 7 writes to the DB, poisoning restBetweenSets,
     // the debrief, and rest-discipline math. The set was never committed, so
     // abandoning it is correct: the athlete restarts it on resume.
-    const nextTimer = cur.phase === "countdown" || cur.phase === "running"
-      ? timerReducer(cur, { type: "reset" })
-      : cur;
+    //
+    // A `rest` phase must not survive either. Its anchor is absolute, so a
+    // draft closed mid-rest and resumed later reopens on a countdown that is
+    // hours negative — and rest genuinely did elapse, so there is nothing left
+    // to count. Reset covers every phase.
+    //
+    // Close is also an EXIT PATH, so like Finish it flushes the open entry row
+    // first: stopping a set, not tapping Save, then closing must not leave the
+    // set's kg/reps/work_seconds parked in a zoom that the reset then closes.
+    const nowIso = new Date().toISOString();
+    const flushed = commitPendingEntry(draft, nowIso);
     setDraft({
-      ...draft,
-      timer: nextTimer,
-      paused_at: draft.paused_at ?? new Date().toISOString(),
+      ...flushed,
+      timer: timerReducer(timerOf(flushed), { type: "reset" }),
+      updated_at: nowIso,
+      paused_at: draft.paused_at ?? nowIso,
     });
     setCloseConfirmOpen(false);
     props.onClose();
@@ -1097,7 +983,8 @@ export function LoggerSheet(props: Props) {
             and the commit payload the same, complete draft. */}
         <button
           onClick={() => {
-            setDraft((p) => (p ? commitPendingEntry(p) : p));
+            const nowIso = new Date().toISOString();
+            setDraft((p) => (p ? commitPendingEntry(p, nowIso) : p));
             setFinishOpen(true);
           }}
           className="bg-green-600 text-white text-xs font-semibold px-3 py-1.5 rounded-lg"
@@ -1106,7 +993,9 @@ export function LoggerSheet(props: Props) {
         </button>
       </div>
 
-      <div className="overflow-y-auto p-3 pb-44 flex-1">
+      {/* Bottom padding clears the docked timer. Edit mode renders no dock, so
+          reserving its height there is 176px of dead scroll. */}
+      <div className={`overflow-y-auto p-3 flex-1 ${props.editMode ? "pb-6" : "pb-44"}`}>
         {!props.editMode && resolvedSource === "manual_edit" && (
           <div className="flex items-center gap-1.5 mb-3">
             <span className="text-[11px] font-semibold uppercase tracking-wide text-amber-400 bg-amber-400/10 border border-amber-400/30 px-2 py-0.5 rounded-md">
