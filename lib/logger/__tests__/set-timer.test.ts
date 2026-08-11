@@ -6,6 +6,9 @@ import {
   timerReducer,
   workSecondsFor,
   restSeedSeconds,
+  SUPERSET_TRANSITION_SECONDS,
+  splitRoundWork,
+  roundMemberStartOffsets,
   countdownRemaining,
   elapsedWorkSeconds,
   restRemaining,
@@ -63,6 +66,46 @@ describe("restSeedSeconds", () => {
     expect(restSeedSeconds(5)).toBe(1);
     expect(restSeedSeconds(3)).toBe(1);
     expect(restSeedSeconds(0)).toBe(1);
+  });
+});
+
+describe("splitRoundWork", () => {
+  it("matches workSecondsFor exactly for a one-member round", () => {
+    expect(splitRoundWork(T0, T0 + 38_000, 1)).toEqual([workSecondsFor(T0, T0 + 38_000)]);
+  });
+
+  it("deducts one transition allowance for a pair and splits the rest", () => {
+    // 100s wall clock − 5s phone lag − 5s transition = 90s of work, 45 each.
+    expect(splitRoundWork(T0, T0 + 100_000, 2)).toEqual([45, 45]);
+  });
+
+  it("gives an odd remainder to the first member so the sum stays exact", () => {
+    // 101s − 5 − 5 = 91 → 46 + 45.
+    const shares = splitRoundWork(T0, T0 + 101_000, 2);
+    expect(shares).toEqual([46, 45]);
+    expect(shares[0] + shares[1]).toBe(91);
+  });
+
+  it("deducts two transitions for a three-member round", () => {
+    // 125s − 5 − 10 = 110 → 38 + 36 + 36.
+    const shares = splitRoundWork(T0, T0 + 125_000, 3);
+    expect(shares.reduce((a, b) => a + b, 0)).toBe(110);
+    expect(shares[0]).toBe(38);
+  });
+
+  it("floors every member at 1 second for an absurdly short round", () => {
+    expect(splitRoundWork(T0, T0 + 2_000, 2)).toEqual([1, 1]);
+  });
+});
+
+describe("roundMemberStartOffsets", () => {
+  it("starts the first member at zero", () => {
+    expect(roundMemberStartOffsets([45, 45])[0]).toBe(0);
+  });
+
+  it("offsets each later member by the earlier shares plus a transition", () => {
+    expect(roundMemberStartOffsets([45, 45])).toEqual([0, 50]);
+    expect(roundMemberStartOffsets([38, 36, 36])).toEqual([0, 43, 84]);
   });
 });
 

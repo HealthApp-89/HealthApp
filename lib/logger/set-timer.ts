@@ -73,6 +73,60 @@ export function restSeedSeconds(prescribedRestSeconds: number): number {
   return Math.max(1, prescribedRestSeconds - PHONE_LAG_SECONDS);
 }
 
+/** Dumbbell swap, or the walk from the rack to the cable station, between two
+ *  exercises of one superset. Deducted once per transition so it is not
+ *  credited as time under load. */
+export const SUPERSET_TRANSITION_SECONDS = 5;
+
+/**
+ * Time under load for each member of one superset round.
+ *
+ * A round is ONE continuous work interval covering N exercises — that
+ * continuity is the point of the technique, so the athlete is not asked to tap
+ * a hand-off. The per-member split is therefore an even estimate, not a
+ * measurement, and the honest part is the total: the shares sum exactly to the
+ * round's work time, which is what keeps the dock's WORK counter, the finish
+ * summary's work:rest ratio and rest-between-rounds true.
+ *
+ * The odd remainder goes to the FIRST member rather than being dropped, for
+ * that same reason. Each share is floored at 1 for the same reason
+ * `workSecondsFor` floors — a set never records zero seconds.
+ *
+ * A one-member round is exactly `workSecondsFor`, so a solo exercise runs this
+ * code path unchanged.
+ */
+export function splitRoundWork(
+  startAnchorMs: number,
+  stopPressMs: number,
+  memberCount: number,
+): number[] {
+  const n = Math.max(1, memberCount);
+  const raw =
+    Math.floor((stopPressMs - startAnchorMs) / 1000)
+    - PHONE_LAG_SECONDS
+    - SUPERSET_TRANSITION_SECONDS * (n - 1);
+  if (raw < n) return Array.from({ length: n }, () => 1);
+  const share = Math.floor(raw / n);
+  const remainder = raw - share * n;
+  return Array.from({ length: n }, (_unused, i) => (i === 0 ? share + remainder : share));
+}
+
+/**
+ * Seconds from the round's start to each member's start: the earlier members'
+ * work plus one transition allowance apiece. LoggerSheet turns these into the
+ * per-set `started_at` stamps, so `restBetweenSets` keeps measuring from a real
+ * anchor rather than guessing.
+ */
+export function roundMemberStartOffsets(shares: number[]): number[] {
+  const offsets: number[] = [];
+  let acc = 0;
+  for (let i = 0; i < shares.length; i++) {
+    offsets.push(acc);
+    acc += shares[i] + SUPERSET_TRANSITION_SECONDS;
+  }
+  return offsets;
+}
+
 export function timerReducer(state: TimerState, action: TimerAction): TimerState {
   switch (action.type) {
     case "press_start": {
