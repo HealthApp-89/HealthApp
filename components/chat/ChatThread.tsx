@@ -30,14 +30,19 @@ function ChatThreadInner({
 }: {
   userId: string;
   messages: ChatMessage[];
-  onLoadOlder: (beforeIso: string) => Promise<{ added: number }>;
+  /** "The athlete reached the top" — NOT "page from here". The pagination
+   *  cursor deliberately does not come from this component: `messages` is the
+   *  render-scoped view, and a cursor read off a filtered list cannot advance
+   *  when the fetched page lands outside the filter. That is precisely the
+   *  runaway loop documented in lib/chat/load-older.ts. The owner of the full
+   *  thread picks the cursor; this component only reports the gesture. */
+  onLoadOlder: () => Promise<{ added: number }>;
   onRetry: (messageId: string) => void;
   onSendUserMessage?: (text: string) => void;
   onFocusComposer?: (placeholder: string) => void;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
-  const [isLoadingOlder, setIsLoadingOlder] = useState(false);
   const previousScrollHeightRef = useRef<number | null>(null);
 
   // Hide noise from old broken chat turns. Two render-only filters (rows stay
@@ -147,6 +152,28 @@ function ChatThreadInner({
   }, [messages]);
 
   // Top sentinel triggers load-older.
+  //
+  // `exhaustedRef` latches once a page comes back with nothing new. The
+  // sentinel sits at the top of the scroll area and keeps intersecting, and
+  // this effect re-arms the observer on every `messages` change — so without a
+  // latch, a request that cannot make progress is retried at network speed
+  // forever. That is the 1.2-requests-per-second, 26-MB-per-200-seconds loop in
+  // lib/chat/load-older.ts. The latch clears whenever the caller reports fresh
+  // messages, so lifting the render scope (the "Show N earlier" pill) resumes
+  // paging normally.
+  //
+  // Re-entrancy is guarded by a ref rather than by `isLoadingOlder` state: the
+  // observer is re-created whenever that state flips, and the freshly-armed
+  // observer fires immediately against a still-intersecting sentinel — reading
+  // the in-flight flag from state meant reading it from a stale closure.
+  const loadingOlderRef = useRef(false);
+  const exhaustedRef = useRef(false);
+  // Un-latch when the pager itself changes. `onLoadOlder` is memoized by the
+  // panel on the state the plan depends on (mode, hasMoreOlder, render scope),
+  // so tapping "Show N earlier messages" mints a new callback and paging is
+  // live again — without this, one no-progress page would disable history for
+  // the lifetime of the mount.
+  useEffect(() => { exhaustedRef.current = false; }, [onLoadOlder]);
   useEffect(() => {
     const sentinel = sentinelRef.current;
     const sc = scrollRef.current;
@@ -154,22 +181,22 @@ function ChatThreadInner({
     const obs = new IntersectionObserver(
       async (entries) => {
         if (!entries[0].isIntersecting) return;
-        if (isLoadingOlder) return;
+        if (loadingOlderRef.current || exhaustedRef.current) return;
         if (messages.length === 0) return;
-        const oldest = messages[0];
-        setIsLoadingOlder(true);
+        loadingOlderRef.current = true;
         previousScrollHeightRef.current = sc.scrollHeight;
         try {
-          await onLoadOlder(oldest.created_at);
+          const { added } = await onLoadOlder();
+          if (added === 0) exhaustedRef.current = true;
         } finally {
-          setIsLoadingOlder(false);
+          loadingOlderRef.current = false;
         }
       },
       { root: sc, threshold: 0.1 },
     );
     obs.observe(sentinel);
     return () => obs.disconnect();
-  }, [messages, onLoadOlder, isLoadingOlder]);
+  }, [messages, onLoadOlder]);
 
   // Day dividers. Built from filteredMessages so hidden stale errors don't
   // produce orphan day dividers either.

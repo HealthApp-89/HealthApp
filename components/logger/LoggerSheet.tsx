@@ -9,6 +9,7 @@ import { resolveSessionPlan } from "@/lib/logger/resolve-plan";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { loadDraft, saveDraft, clearDraft } from "@/lib/logger/draft-store";
 import { useWakeLock } from "@/lib/logger/rest-timer";
+import { useImmersiveSurface } from "@/components/providers/ImmersiveProvider";
 import { seedRir } from "@/lib/logger/seed-rir";
 import { seedReps } from "@/lib/logger/seed-reps";
 import { useLiveSessionContext } from "@/lib/query/hooks/useLiveSessionContext";
@@ -362,6 +363,13 @@ export function LoggerSheet(props: Props) {
   const draftRef = useRef<LoggerDraft | null>(null);
 
   useWakeLock(!!draft);
+  // Everything behind this sheet stands down while it is mounted — most of all
+  // the coach ChatPanel the strength page keeps alive underneath, whose message
+  // array and effects otherwise compete with the set timer for the one main
+  // thread. Unconditional and mount-scoped: the resume prompt and the loading
+  // state are still the logger owning the screen, and it is the SHEET, not the
+  // draft, that covers the viewport.
+  useImmersiveSurface();
 
   // 1) Mount: load existing draft or build from resolved plan.
   //    Resume prompt shows whenever the close path preserved a draft (it sets

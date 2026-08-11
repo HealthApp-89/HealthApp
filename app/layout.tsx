@@ -4,6 +4,7 @@ import "./globals.css";
 import { BottomNav } from "@/components/layout/BottomNav";
 import { TopBar } from "@/components/layout/TopBar";
 import { QueryProvider } from "@/components/providers/QueryProvider";
+import { ImmersiveProvider } from "@/components/providers/ImmersiveProvider";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 // Self-hosted via next/font — removes the render-blocking Google CSS
@@ -60,14 +61,19 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           is set in globals.css. */}
       <body className="min-h-[100dvh] bg-bg">
         <QueryProvider>
-          {user ? (
-            <TopBar userId={user.id}>
+          {/* Inside QueryProvider: surfaces that stand down for a full-screen
+              logger (ChatPanel) are query consumers, so the immersive flag has
+              to be readable from within the query tree. */}
+          <ImmersiveProvider>
+            {user ? (
+              <TopBar userId={user.id}>
+                <main>{children}</main>
+              </TopBar>
+            ) : (
               <main>{children}</main>
-            </TopBar>
-          ) : (
-            <main>{children}</main>
-          )}
-          <BottomNav />
+            )}
+            <BottomNav />
+          </ImmersiveProvider>
         </QueryProvider>
       </body>
     </html>

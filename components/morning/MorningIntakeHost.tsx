@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { useIsImmersive } from "@/components/providers/ImmersiveProvider";
 import { useEffect, useState } from "react";
 import { MorningTrigger } from "@/components/morning/MorningTrigger";
 
@@ -31,6 +32,9 @@ type Props = { userId: string };
  *  the host's hidden state. */
 export function MorningIntakeHost({ userId }: Props) {
   const [open, setOpen] = useState(false);
+  // Stand down for a full-screen logger — see ImmersiveProvider. `open` is
+  // preserved, so closing the logger brings the intake straight back.
+  const immersive = useIsImmersive();
 
   useEffect(() => {
     const handler = () => setOpen(true);
@@ -41,7 +45,7 @@ export function MorningIntakeHost({ userId }: Props) {
   return (
     <>
       <MorningTrigger userId={userId} onShouldOpen={() => setOpen(true)} />
-      {open && (
+      {open && !immersive && (
         <ChatPanel
           userId={userId}
           initialKind="morning_intake"
