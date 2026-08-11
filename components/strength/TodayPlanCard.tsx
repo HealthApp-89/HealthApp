@@ -147,6 +147,11 @@ export function TodayPlanCard({ plan, committedFromPlan, rirTarget, researchPhas
                 <div style={{ display: "flex", justifyContent: "space-between" }}>
                   <span style={{ opacity: 0.85 }}>
                     {ex.name.split("(")[0].trim()}
+                    {ex.superset && (
+                      <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, opacity: 0.75 }}>
+                        SS {ex.superset}
+                      </span>
+                    )}
                     {ex.video_url && (
                       <a
                         href={ex.video_url}

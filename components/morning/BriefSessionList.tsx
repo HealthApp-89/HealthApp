@@ -153,6 +153,19 @@ export function BriefSessionList({
                   }}
                 >
                   {e.name}
+                  {e.superset && (
+                    <span
+                      style={{
+                        marginLeft: 6,
+                        fontSize: 10,
+                        fontWeight: 700,
+                        letterSpacing: "0.06em",
+                        color: COLOR.accent,
+                      }}
+                    >
+                      SS {e.superset}
+                    </span>
+                  )}
                   {e.video_url && (
                     <a
                       href={e.video_url}

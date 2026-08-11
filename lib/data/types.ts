@@ -1115,6 +1115,9 @@ export type MorningBriefExercise = {
    *  the SESSION_PLANS PlannedExercise; rendered as a "▶ video" link in the
    *  brief's session list when present. */
   video_url?: string;
+  /** Superset tag carried through from the PlannedExercise. Rendered as an
+   *  "SS A" chip so the session list groups visually the way the logger does. */
+  superset?: string;
 };
 
 export type MorningBriefRecap = {
