@@ -178,6 +178,48 @@ export function remapTimerSets(
 }
 
 /**
+ * Re-point the timer's stored refs after the exercise LIST changed under them.
+ * The exercise-axis twin of `remapTimerSets`, and it lives beside it for that
+ * reason — the two share a rule that is easy to get subtly different.
+ *
+ * `SetRef.exerciseIndex` is positional, so removing or reordering an exercise
+ * silently re-aims every stored ref at whatever slid into the slot: STOP would
+ * stamp `committed_at` / `work_seconds` onto a different exercise's set, and
+ * `pendingEntry` would route the athlete's typed kg/reps there too.
+ *
+ * `mapIndex` returns the exercise's new index, or null if it is gone.
+ */
+export function remapTimerExercises(
+  state: TimerState,
+  mapIndex: (oldIndex: number) => number | null,
+): TimerState {
+  if (state.activeSet === null && state.pendingEntry === null) return state;
+  let next = state;
+
+  if (next.activeSet) {
+    const moved = mapIndex(next.activeSet.exerciseIndex);
+    // The exercise holding the set in play (or being rested after) is gone.
+    // Nothing left to stop or save, so drop the timer rather than let it
+    // advance to `rest` against a set that no longer exists.
+    if (moved === null) return IDLE_TIMER;
+    if (moved !== next.activeSet.exerciseIndex) {
+      next = { ...next, activeSet: { ...next.activeSet, exerciseIndex: moved } };
+    }
+  }
+
+  if (next.pendingEntry) {
+    const moved = mapIndex(next.pendingEntry.exerciseIndex);
+    if (moved === null) {
+      next = { ...next, pendingEntry: null };
+    } else if (moved !== next.pendingEntry.exerciseIndex) {
+      next = { ...next, pendingEntry: { ...next.pendingEntry, exerciseIndex: moved } };
+    }
+  }
+
+  return next;
+}
+
+/**
  * Session wall clock in ms: time since `started_at`, minus every completed
  * pause interval, frozen while `paused_at` is set.
  *
@@ -293,4 +335,19 @@ export function restBetweenSets(prev: RestPrevSet, next: RestNextSet): number | 
   }
 
   return null;
+}
+
+/**
+ * m:ss for every timer display in the logger. Signed, because rest overtime is
+ * rendered as a negative counter — positives are unaffected, so this is safe
+ * for the committed-row stamps and the finish summary too.
+ *
+ * Four near-identical copies of this existed (SetTimerDock, SetRow,
+ * SetEntryRow, FinishSummary); only the dock's handled the minus sign, so the
+ * one place a negative could reach was also the only place it read correctly.
+ */
+export function formatMmSs(totalSeconds: number): string {
+  const neg = totalSeconds < 0;
+  const s = Math.abs(Math.floor(totalSeconds));
+  return `${neg ? "\u2212" : ""}${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
 }

@@ -1,7 +1,9 @@
 "use client";
 
 import type { LoggerDraft } from "@/lib/logger/types";
-import { totalWorkSeconds } from "@/lib/logger/set-timer";
+import { totalWorkSeconds,
+  formatMmSs,
+} from "@/lib/logger/set-timer";
 import { fmtNum } from "@/lib/ui/score";
 
 type Props = {
@@ -13,24 +15,20 @@ type Props = {
   confirmLabel?: string;          // default: "Finish & save"
 };
 
-/** m:ss for a non-negative second count. Matches the local formatter every
- *  other logger component keeps for clock strings (SetTimerDock, SetEntryRow,
- *  RestTimeDialog, ExerciseCard) — a repo-wide convention, not something to
- *  centralize here. */
-function formatClock(totalSeconds: number): string {
-  const s = Math.max(0, Math.round(totalSeconds));
-  return `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
-}
-
 export function FinishSummary({ draft, durationMin, onConfirm, onCancel, saving, confirmLabel }: Props) {
+  // Sets counts EVERY committed set; volume only the loaded ones. Counting
+  // sets with the volume filter meant a timed hold (plank, dead hang — no kg,
+  // no reps) was performed but not counted, so a mobility session could report
+  // "0 sets" while the work:rest line below it reported real work time. The
+  // two lines answering the same question differently is the bug; volume
+  // legitimately has nothing to add for a bodyweight hold.
   let totalSets = 0;
   let totalVolume = 0;
   for (const ex of draft.exercises) {
     for (const s of ex.sets) {
-      if (s.committed_at && s.kg !== null && s.reps !== null) {
-        totalSets++;
-        totalVolume += s.kg * s.reps;
-      }
+      if (!s.committed_at) continue;
+      totalSets++;
+      if (s.kg !== null && s.reps !== null) totalVolume += s.kg * s.reps;
     }
   }
 
@@ -65,9 +63,9 @@ export function FinishSummary({ draft, durationMin, onConfirm, onCancel, saving,
           // has zero work seconds, and a 1:Infinity ratio is worse than no
           // line at all.
           <div className="text-[11px] text-zinc-400 font-mono tabular-nums mb-4 -mt-2">
-            Work {formatClock(workSeconds)}
+            Work {formatMmSs(workSeconds)}
             {" · rest "}
-            {formatClock(restSeconds)}
+            {formatMmSs(restSeconds)}
             {" · ratio 1:"}
             {fmtNum(restSeconds / workSeconds)}
           </div>

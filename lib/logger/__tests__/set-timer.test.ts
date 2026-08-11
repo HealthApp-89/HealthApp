@@ -12,6 +12,7 @@ import {
   isRestOvertime,
   sameSet,
   restBetweenSets,
+  remapTimerExercises,
   remapTimerSets,
   totalWorkSeconds,
   type TimerState,
@@ -362,5 +363,81 @@ describe("totalWorkSeconds", () => {
 
   it("returns zero for an empty exercise list", () => {
     expect(totalWorkSeconds([])).toBe(0);
+  });
+});
+
+describe("remapTimerExercises", () => {
+  const resting = (exerciseIndex: number): TimerState => ({
+    phase: "rest",
+    anchorMs: T0,
+    activeSet: { exerciseIndex, setIndex: 1 },
+    restSeconds: 175,
+    pendingEntry: { exerciseIndex, setIndex: 1, workSeconds: 33 },
+  });
+
+  it("shifts both refs down when an earlier exercise is removed", () => {
+    const s = remapTimerExercises(resting(2), (i) => (i === 0 ? null : i - 1));
+    expect(s.activeSet).toEqual({ exerciseIndex: 1, setIndex: 1 });
+    expect(s.pendingEntry).toEqual({ exerciseIndex: 1, setIndex: 1, workSeconds: 33 });
+    expect(s.phase).toBe("rest");
+    expect(s.anchorMs).toBe(T0);
+    expect(s.restSeconds).toBe(175);
+  });
+
+  it("returns the same object when no index moved", () => {
+    const r = resting(1);
+    expect(remapTimerExercises(r, (i) => i)).toBe(r);
+  });
+
+  it("goes idle when the exercise holding the active set is gone", () => {
+    expect(remapTimerExercises(resting(1), (i) => (i === 1 ? null : i))).toEqual(IDLE_TIMER);
+  });
+
+  it("clears only pendingEntry when its exercise is gone but activeSet's survives", () => {
+    const mixed: TimerState = {
+      phase: "rest", anchorMs: T0, restSeconds: 175,
+      activeSet: { exerciseIndex: 0, setIndex: 0 },
+      pendingEntry: { exerciseIndex: 2, setIndex: 0, workSeconds: 12 },
+    };
+    const s = remapTimerExercises(mixed, (i) => (i === 2 ? null : i));
+    expect(s.activeSet).toEqual({ exerciseIndex: 0, setIndex: 0 });
+    expect(s.pendingEntry).toBeNull();
+  });
+
+  it("is a no-op on an idle timer regardless of the mapping", () => {
+    expect(remapTimerExercises(IDLE_TIMER, () => null)).toBe(IDLE_TIMER);
+  });
+});
+
+describe("regression guards", () => {
+  const iso = (ms: number) => new Date(ms).toISOString();
+
+  it("counts a zero-second work value rather than skipping it", () => {
+    // Pins `!= null` against a regression to a truthiness check. A skipped
+    // term and a zero term are arithmetically identical in a sum, so this
+    // asserts on the ROW COUNT reaching the sum via a non-zero sibling.
+    const zero = totalWorkSeconds([
+      { sets: [{ committed_at: iso(T0), work_seconds: 0 }, { committed_at: iso(T0), work_seconds: 7 }] },
+    ]);
+    const nulled = totalWorkSeconds([
+      { sets: [{ committed_at: iso(T0), work_seconds: null }, { committed_at: iso(T0), work_seconds: 7 }] },
+    ]);
+    expect(zero).toBe(7);
+    expect(nulled).toBe(7);
+  });
+
+  it("treats work_seconds 0 as a real measurement in restBetweenSets", () => {
+    // A truthiness check here would fall through to the commit-delta proxy and
+    // silently report a different number.
+    const prev = { started_at: iso(T0), work_seconds: 0, committed_at: iso(T0 + 90_000) };
+    const next = { started_at: iso(T0 + 60_000), committed_at: iso(T0 + 120_000) };
+    expect(restBetweenSets(prev, next)).toBe(60); // anchored path, not the 30s commit delta
+  });
+
+  it("returns null from the FALLBACK path on a negative commit delta", () => {
+    // Deliberately different from the anchored path, which clamps to 0.
+    const prev = { started_at: null, work_seconds: null, committed_at: iso(T0 + 60_000) };
+    const next = { started_at: null, committed_at: iso(T0) };
+    expect(restBetweenSets(prev, next)).toBeNull();
   });
 });

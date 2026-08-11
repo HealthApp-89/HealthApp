@@ -9,6 +9,7 @@ import {
   restRemaining,
   isRestOvertime,
   type TimerState,
+  formatMmSs,
 } from "@/lib/logger/set-timer";
 
 type Props = {
@@ -36,14 +37,6 @@ type Props = {
   onCountdownElapsed: () => void;
   onStop: () => void;
 };
-
-function mmss(totalSeconds: number): string {
-  const neg = totalSeconds < 0;
-  const s = Math.abs(Math.floor(totalSeconds));
-  const m = Math.floor(s / 60);
-  const r = s % 60;
-  return `${neg ? "−" : ""}${m}:${r.toString().padStart(2, "0")}`;
-}
 
 export function SetTimerDock({
   state, activeLabel, targetLabel, workSecondsTotal,
@@ -109,7 +102,7 @@ export function SetTimerDock({
           onClick: onStop,
           disabled: false,
           className: "bg-zinc-900 text-zinc-50 shadow-[0_0_0_4px_rgba(59,130,246,0.14)]",
-          big: mmss(elapsedWorkSeconds(state, nowMs)), bigClass: "text-2xl", sub: "stop",
+          big: formatMmSs(elapsedWorkSeconds(state, nowMs)), bigClass: "text-2xl", sub: "stop",
           aria: "Stop set",
         };
       case "rest":
@@ -118,14 +111,14 @@ export function SetTimerDock({
               onClick: onStart,
               disabled: !canStart,
               className: "bg-red-500 text-red-950 shadow-[0_0_0_4px_rgba(239,68,68,0.2)]",
-              big: mmss(restLeft), bigClass: "text-xl", sub: "start next",
+              big: formatMmSs(restLeft), bigClass: "text-xl", sub: "start next",
               aria: "Start next set",
             }
           : {
               onClick: onStart,
               disabled: !canStart,
               className: "bg-zinc-950 text-green-400 shadow-[0_0_0_4px_rgba(34,197,94,0.12)]",
-              big: mmss(restLeft), bigClass: "text-xl", sub: "start early",
+              big: formatMmSs(restLeft), bigClass: "text-xl", sub: "start early",
               aria: "Start next set early",
             };
     }
@@ -166,19 +159,19 @@ export function SetTimerDock({
           <div className="text-[8px] text-zinc-600 tracking-wide">
             SESSION
             <span className="block font-mono tabular-nums text-[11px] text-zinc-300">
-              {mmss(Math.floor(sessionElapsedMs / 1000))}
+              {formatMmSs(Math.floor(sessionElapsedMs / 1000))}
             </span>
           </div>
           <div className="text-[8px] text-zinc-600 tracking-wide">
             WORK
             <span className="block font-mono tabular-nums text-[11px] text-blue-400">
-              {mmss(workSecondsTotal)}
+              {formatMmSs(workSecondsTotal)}
             </span>
           </div>
           <div className="text-[8px] text-zinc-600 tracking-wide">
             REST
             <span className="block font-mono tabular-nums text-[11px] text-zinc-400">
-              {mmss(restSecondsTotal)}
+              {formatMmSs(restSecondsTotal)}
             </span>
           </div>
         </div>
