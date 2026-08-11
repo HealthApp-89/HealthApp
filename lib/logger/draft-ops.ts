@@ -3,11 +3,10 @@
 // Pure operations on a LoggerDraft. These used to live inside
 // components/logger/LoggerSheet.tsx, where vitest could not reach them — this
 // repo's test config is node-environment and scans `lib/**/__tests__` only, so
-// anything in a .tsx file is untestable by construction. Two of them carry
-// real rules (`commitEntries`, behind both commitPendingEntry/-Entries, decides
-// when a time-based set records its duration; `keepUnmovedRestOverrides` keeps
-// two copies of a value in sync),
-// and both produced bugs while they were unreachable by tests.
+// anything in a .tsx file is untestable by construction. `commitEntries`,
+// behind both commitPendingEntry/-Entries, carries a real rule — when a
+// time-based set records its duration — and produced bugs while it was
+// unreachable by tests.
 //
 // Every function here is pure: no React, no I/O, and no clock reads. Callers
 // that need a timestamp pass one in, which is also what makes them safe to run
@@ -157,38 +156,10 @@ function commitEntries(
   return { ...draft, exercises, timer };
 }
 
-/**
- * Drop rest overrides for every exercise whose index moved.
- *
- * `restOverrides` is the LIFTED half of a value ExerciseCard also holds
- * locally. The card's `key` embeds its index, so any index change remounts it
- * and resets the local copy to "no override". Remapping the lifted copy instead
- * of dropping it would leave the two disagreeing — the "+ Add set (m:ss)" label
- * showing the prescription while `press_stop` seeds rest from the override.
- * Keeping only the entries whose card did NOT remount makes them agree by
- * construction. (Keying by exercise name would not: the card still remounts.)
- *
- * Covers the list edits that MOVE indices — Remove and Reorder. Replace is the
- * third remount trigger and cannot be expressed as an index map: the index is
- * unchanged, but the card's `key` embeds `ex.name`, so swapping the name
- * remounts it just the same, and the surviving override would then belong to a
- * DIFFERENT exercise. The replace branch deletes its own entry outright.
- */
-export function keepUnmovedRestOverrides(
-  overrides: Record<number, number>,
-  mapIndex: (oldIndex: number) => number | null,
-): Record<number, number> {
-  const next: Record<number, number> = {};
-  for (const [k, v] of Object.entries(overrides)) {
-    const i = Number(k);
-    if (mapIndex(i) === i) next[i] = v;
-  }
-  return next;
-}
-
 /** Prescribed rest for an exercise, from the same session-structure annotation
- *  ExerciseCard shows. Read at `press_stop` time so an override applied
- *  mid-session is picked up. */
+ *  ExerciseCard shows. The athlete's manual override is NOT applied here —
+ *  callers check `exercise.rest_override_seconds` first, which is where the
+ *  single copy of that value lives. */
 export function annotatedRestFor(draft: LoggerDraft, exerciseIndex: number): number {
   const list = draft.exercises.map((e) => e.prescribed);
   const s = annotateSession(list);

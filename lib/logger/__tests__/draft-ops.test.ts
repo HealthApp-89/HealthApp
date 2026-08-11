@@ -1,8 +1,7 @@
 // Characterisation tests for the draft-level helpers extracted out of
 // LoggerSheet.tsx. They were unreachable by vitest while they lived in a .tsx
-// (node environment, `lib/**/__tests__` glob only) and two of them shipped
-// bugs during that time — commitPendingEntry's time-based fallback and
-// keepUnmovedRestOverrides' index handling.
+// (node environment, `lib/**/__tests__` glob only) and one of them shipped a
+// bug during that time — commitPendingEntry's time-based fallback.
 
 import { describe, it, expect } from "vitest";
 import type { LoggerDraft, ExerciseSetDraft } from "@/lib/logger/types";
@@ -12,7 +11,6 @@ import {
   withTimer,
   commitPendingEntry,
   commitPendingEntries,
-  keepUnmovedRestOverrides,
   firstPendingSet,
   annotatedRestFor,
 } from "@/lib/logger/draft-ops";
@@ -255,27 +253,6 @@ describe("commitPendingEntries", () => {
   it("is a no-op when nothing is pending", () => {
     const d = mkDraft([{ name: "Squat", sets: [mkSet()] }], IDLE_TIMER);
     expect(commitPendingEntries(d, NOW)).toBe(d);
-  });
-});
-
-describe("keepUnmovedRestOverrides", () => {
-  const identity = (i: number) => i;
-
-  it("keeps every override when nothing moved", () => {
-    expect(keepUnmovedRestOverrides({ 0: 90, 2: 150 }, identity)).toEqual({ 0: 90, 2: 150 });
-  });
-
-  it("drops overrides whose card remounted because its index shifted", () => {
-    // Exercise 0 removed: 1->0, 2->1. Neither survivor keeps its index, so
-    // both lifted overrides go, matching the local copies the remount reset.
-    const mapIndex = (i: number) => (i === 0 ? null : i - 1);
-    expect(keepUnmovedRestOverrides({ 1: 90, 2: 150 }, mapIndex)).toEqual({});
-  });
-
-  it("keeps entries above an edit that did not move them", () => {
-    // Removing index 3 leaves 0..2 in place.
-    const mapIndex = (i: number) => (i === 3 ? null : i < 3 ? i : i - 1);
-    expect(keepUnmovedRestOverrides({ 0: 90, 3: 120, 4: 150 }, mapIndex)).toEqual({ 0: 90 });
   });
 });
 

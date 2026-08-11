@@ -31,7 +31,6 @@ import {
   withTimer,
   commitPendingEntry,
   commitPendingEntries,
-  keepUnmovedRestOverrides,
   annotatedRestFor,
 } from "@/lib/logger/draft-ops";
 import {
@@ -335,9 +334,6 @@ export function LoggerSheet(props: Props) {
   const [reorderOpen, setReorderOpen] = useState(false);
   const [committing, setCommitting] = useState(false);
   const [resolvedSource, setResolvedSource] = useState<string | null>(null);
-  /** Per-exercise rest override, lifted out of ExerciseCard so `press_stop`
-   *  can seed the session-level rest countdown with it. */
-  const [restOverrides, setRestOverrides] = useState<Record<number, number>>({});
   /** Which card has its RestTimeDialog up, if any. Lifted for the same reason
    *  the sheet's own dialogs are tracked: the dock portals to <body> and must
    *  unmount while a modal is over the sheet. */
@@ -434,7 +430,6 @@ export function LoggerSheet(props: Props) {
     // Everything after the removed exercise shifts down one slot, so the
     // timer's refs and the lifted rest overrides have to move with it.
     const mapIndex = (i: number) => (i === index ? null : i > index ? i - 1 : i);
-    setRestOverrides((prev) => keepUnmovedRestOverrides(prev, mapIndex));
     // The line is transient UI anchored to a positional ref; the list edit
     // moves every ref below. Taking it down beats remapping it (and matches
     // what used to happen for free when the card remounted).
@@ -651,7 +646,8 @@ export function LoggerSheet(props: Props) {
       // of the members' prescriptions is what the athlete owes.
       const prescribedRest = Math.max(
         ...cur.activeSets.map((r) =>
-          restOverrides[r.exerciseIndex] ?? annotatedRestFor(prev, r.exerciseIndex),
+          prev.exercises[r.exerciseIndex]?.rest_override_seconds
+            ?? annotatedRestFor(prev, r.exerciseIndex),
         ),
       );
       const next = timerReducer(cur, { type: "press_stop", nowMs, prescribedRestSeconds: prescribedRest });
@@ -684,7 +680,7 @@ export function LoggerSheet(props: Props) {
       });
       return withTimer({ ...prev, exercises }, next, nowIso);
     });
-  }, [restOverrides]);
+  }, []);
 
   const handleSetCleared = useCallback((set: SetRef) => {
     const nowIso = new Date().toISOString();
@@ -763,10 +759,6 @@ export function LoggerSheet(props: Props) {
       const moved = mapSetIndex(c.set.setIndex);
       return moved === null ? null : { ...c, set: { ...c.set, setIndex: moved } };
     });
-  }, []);
-
-  const handleRestOverrideChange = useCallback((exerciseIndex: number, seconds: number) => {
-    setRestOverrides((prev) => ({ ...prev, [exerciseIndex]: seconds }));
   }, []);
 
   const handleRestDialogOpenChange = useCallback((exerciseIndex: number, open: boolean) => {
@@ -1196,7 +1188,6 @@ export function LoggerSheet(props: Props) {
                 onEntrySave={handleEntrySave}
                 onSetCleared={handleSetCleared}
                 onSetRemove={handleSetRemove}
-                onRestOverrideChange={handleRestOverrideChange}
                 onRestDialogOpenChange={handleRestDialogOpenChange}
                 coachLine={coach && coach.set.exerciseIndex === i ? coach.line : null}
                 coachLineSetIndex={coach && coach.set.exerciseIndex === i ? coach.set.setIndex : null}
@@ -1274,22 +1265,17 @@ export function LoggerSheet(props: Props) {
               const idx = pickerMode.replace_index;
               // The line named the exercise that just got replaced.
               setCoach(null);
-              // ExerciseCard's key embeds `ex.name`, so the rename remounts
-              // the card and resets its LOCAL restOverrideSeconds to null.
-              // The lifted copy has to go with it or `press_stop` would seed
-              // rest from an override belonging to the exercise that is no
-              // longer there, while the card's "+ Add set (m:ss)" label shows
-              // the new exercise's prescription. Same invariant
-              // keepUnmovedRestOverrides exists to hold, different trigger.
-              setRestOverrides((o) => {
-                if (!(idx in o)) return o;
-                const next = { ...o };
-                delete next[idx];
-                return next;
-              });
+              // Clearing the rest override is load-bearing, not tidiness. The
+              // entry keeps its identity across a Replace — only `name`
+              // changes — so an override chosen for the OLD exercise would be
+              // inherited by the new one, which carries a different
+              // prescription. Remove and Reorder need no such clearing: there
+              // the override rides along with the exercise it belongs to.
               setDraft({
                 ...draft,
-                exercises: draft.exercises.map((e, j) => j === idx ? { ...e, name } : e),
+                exercises: draft.exercises.map((e, j) =>
+                  j === idx ? { ...e, name, rest_override_seconds: null } : e,
+                ),
               });
             }
             setPickerOpen(false);
@@ -1311,7 +1297,6 @@ export function LoggerSheet(props: Props) {
               const moved = next.indexOf(before[i]);
               return moved === -1 ? null : moved;
             };
-            setRestOverrides((o) => keepUnmovedRestOverrides(o, mapIndex));
             setCoach(null);
             setDraft((prev) => {
               if (!prev) return prev;

@@ -38,6 +38,22 @@ export type ExerciseDraft = {
   /** Snapshot of the prescribed plan for this exercise (for "did it diverge?" check). */
   prescribed: PlannedExercise;
   sets: ExerciseSetDraft[];
+  /** Athlete's manual rest override for this exercise, in seconds. Applies to
+   *  every set of the exercise for the rest of the session. Null/undefined =
+   *  use the tier prescription from annotateSession.
+   *
+   *  Lives on the draft rather than in ExerciseCard state because two places
+   *  need it: the card's "+ Add set (m:ss)" label and LoggerSheet's
+   *  `press_stop`, which seeds the rest countdown. Holding it in both meant
+   *  keeping two copies agreeing across every list edit — a card's `key`
+   *  embeds its index AND its name, so Remove, Reorder and Replace all remount
+   *  it and silently reset the local half. Carrying the value on the exercise
+   *  entry makes the two agree by construction, and lets an override survive a
+   *  reorder instead of being dropped to stay consistent.
+   *
+   *  Draft-only: not sent to commit_logger_session and not persisted past the
+   *  session, so it can never shadow a future change to the engine's values. */
+  rest_override_seconds?: number | null;
 };
 
 export type LoggerDraft = {

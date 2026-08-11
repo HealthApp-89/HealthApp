@@ -53,13 +53,9 @@ type Props = {
    *  draft update or the timer ends up naming the row that slid up into the
    *  deleted slot. See remapTimerSets. */
   onSetRemove: (exerciseIndex: number, setIndex: number) => void;
-  /** Rest override chosen in this card's dialog, lifted so LoggerSheet can seed
-   *  the rest countdown when it dispatches `press_stop`. */
-  onRestOverrideChange: (exerciseIndex: number, seconds: number) => void;
   /** RestTimeDialog is rendered by this card but is a full-screen modal, so
    *  LoggerSheet has to know it is up: the SetTimerDock portals to <body> and
-   *  would otherwise paint — and stay tappable — above the dialog's backdrop.
-   *  Same lifting pattern as onRestOverrideChange. */
+   *  would otherwise paint — and stay tappable — above the dialog's backdrop. */
   onRestDialogOpenChange: (exerciseIndex: number, open: boolean) => void;
   /** Between-sets coaching line for THIS exercise, already filtered by
    *  LoggerSheet. Held there, not here, so both commit paths feed one state. */
@@ -74,7 +70,7 @@ type Props = {
 
 function ExerciseCardInner({
   userId, externalId, exercise, exerciseIndex, allExercises, onExerciseChange, onReplace, onRemove, onReorderAll,
-  timer, onTimerStart, editMode, onSetCommit, onEntrySave, onSetCleared, onSetRemove, onRestOverrideChange,
+  timer, onTimerStart, editMode, onSetCommit, onEntrySave, onSetCleared, onSetRemove,
   onRestDialogOpenChange, coachLine, coachLineSetIndex, onCoachLineDismiss, onUngroup,
 }: Props) {
   // Tier + rest prescription from session-structure annotation.
@@ -84,9 +80,10 @@ function ExerciseCardInner({
     return s.exercises[exerciseIndex];
   }, [allExercises, exerciseIndex]);
 
-  const prescribedRestMin = annotated?.rest_seconds ?? 120;
-  const [restOverrideSeconds, setRestOverrideSeconds] = useState<number | null>(null);
-  const effectiveRest = restOverrideSeconds ?? prescribedRestMin;
+  const prescribedRest = annotated?.rest_seconds ?? 120;
+  // Read off the draft, not local state: the card remounts on any list edit
+  // that changes its index or name, which would reset a local copy.
+  const effectiveRest = exercise.rest_override_seconds ?? prescribedRest;
   const [menuOpen, setMenuOpen] = useState(false);
   const [restDialogOpen, setRestDialogOpen] = useState(false);
 
@@ -327,11 +324,10 @@ function ExerciseCardInner({
           initialSeconds={effectiveRest}
           exerciseName={exercise.name}
           onConfirm={(seconds) => {
-            // Both halves: the local copy drives this card's "+ Add set" label,
-            // the lifted copy is what LoggerSheet reads when it seeds rest on
-            // `press_stop`. Dropping either one desyncs the two.
-            setRestOverrideSeconds(seconds);
-            onRestOverrideChange(exerciseIndex, seconds);
+            // One copy, on the draft. Routes through LoggerSheet's normal
+            // persist path, so it survives resume and every list edit, and
+            // `press_stop` reads the same value this card's label shows.
+            onExerciseChange(exerciseIndex, { ...exercise, rest_override_seconds: seconds });
             setRestDialog(false);
           }}
           onCancel={() => setRestDialog(false)}
