@@ -48,6 +48,7 @@ import type { MuscleRegion } from "@/lib/coach/activity/types";
 import { readSessionForDay } from "@/lib/coach/session-plan-reader";
 import { BIG_FOUR_SET } from "@/lib/coach/session-structure/tiers";
 import { applyStructureOverrides } from "@/lib/coach/prescription/structure-overrides";
+import { equalizeSupersetSets } from "@/lib/coach/prescription/superset-sets";
 
 const FOCUS_BLOCK_CLAMP = 0.92;
 
@@ -380,13 +381,15 @@ export async function prescribeWeek(opts: {
     const weekdayShort = LONG_TO_SHORT[weekday];
     const affectedRegions = weekdayShort ? lightenDays[weekdayShort] : undefined;
 
-    if (affectedRegions && affectedRegions.length > 0) {
-      out[weekday] = augmented.map((ex) =>
-        lightenExercise(ex, sessionType, affectedRegions),
-      );
-    } else {
-      out[weekday] = augmented;
-    }
+    const lightened = affectedRegions && affectedRegions.length > 0
+      ? augmented.map((ex) => lightenExercise(ex, sessionType, affectedRegions))
+      : augmented;
+
+    // Superset members are performed as rounds, so their set counts must match.
+    // LAST in the pipeline because both of the steps above can desync a pair:
+    // a structure override caps one member, and lighten trims by muscle region
+    // — exactly the axis a mixed-muscle pair straddles.
+    out[weekday] = equalizeSupersetSets(lightened);
   }
 
   // Build one frequency signal per suppressed muscle. weekly_exposures counts
