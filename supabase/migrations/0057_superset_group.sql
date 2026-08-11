@@ -3,7 +3,7 @@
 -- Records that an exercise was performed as part of a superset — two or more
 -- exercises back-to-back with rest only after the last.
 --
--- Two facts about a grouped exercise's stored numbers that no consumer can
+-- Three facts about a grouped exercise's stored numbers that no consumer can
 -- reconstruct without this column:
 --
 --   1. work_seconds is a SPLIT, not a measurement. One START/STOP covers the
@@ -28,7 +28,9 @@ comment on column public.exercises.superset_group is
   'Superset tag ("A"/"B"/"C") when this exercise was performed back-to-back with its neighbours. NULL = performed alone. When set: work_seconds is an even split of the round rather than a measurement, rest_seconds_actual includes the other members'' work, and started_at on every member after the first is derived from the split rather than measured. NULL for Strong imports and pre-0057 rows.';
 
 -- Re-declare commit_logger_session to persist it. Body is identical to 0056
--- except the exercises INSERT column list and VALUES list.
+-- except the exercises INSERT column list and VALUES list — this file is now
+-- the canonical definition of the function, so 0056's body comments are
+-- carried over verbatim rather than dropped.
 create or replace function public.commit_logger_session(payload jsonb)
 returns uuid
 language plpgsql
@@ -44,14 +46,17 @@ declare
 begin
   payload_user_id := (payload->>'user_id')::uuid;
 
+  -- Defence: caller must match the authenticated user.
   if auth.uid() is null or auth.uid() <> payload_user_id then
     raise exception 'commit_logger_session: auth.uid() mismatch';
   end if;
 
+  -- Defensive shape checks.
   if jsonb_array_length(payload->'exercises') > 30 then
     raise exception 'commit_logger_session: too many exercises (>30)';
   end if;
 
+  -- workouts row.
   insert into workouts (
     user_id, external_id, date, type, duration_min, started_at, source, created_at
   ) values (
@@ -70,8 +75,10 @@ begin
         started_at = excluded.started_at
   returning id into new_workout_id;
 
+  -- Clear any pre-existing exercises for this workout (idempotent retry).
   delete from exercises where workout_id = new_workout_id;
 
+  -- Exercises + sets.
   for ex in select * from jsonb_array_elements(payload->'exercises') loop
     if jsonb_array_length(ex->'sets') > 30 then
       raise exception 'commit_logger_session: too many sets for one exercise (>30)';
