@@ -75,7 +75,12 @@ export function BriefSessionList({
   const [draftEpoch, setDraftEpoch] = useState(0);
   const loggerSessionType = liveType ?? session.type;
   const today = useUserToday(userId);
-  const { logged, hasDraft } = useTodaySessionStatus(userId, today ?? "", loggerSessionType, draftEpoch);
+  const { logged, hasDraft, isLoading } = useTodaySessionStatus(
+    userId,
+    today ?? "",
+    loggerSessionType,
+    draftEpoch,
+  );
   const liveExercises = resolveLiveExercises({
     weekOverrides,
     weekday,
@@ -292,7 +297,7 @@ export function BriefSessionList({
         <SessionDoneBar userId={userId} date={today} workout={logged} tone="onSurface" />
       )}
       <div style={{ display: "flex", gap: 16, marginTop: 8, flexWrap: "wrap" }}>
-        {(!logged || hasDraft) && (
+        {!isLoading && (!logged || hasDraft) && (
           <button
             onClick={() => setLoggerOpen(true)}
             style={{

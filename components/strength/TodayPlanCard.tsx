@@ -36,7 +36,7 @@ export function TodayPlanCard({ plan, committedFromPlan, rirTarget, researchPhas
   const [draftEpoch, setDraftEpoch] = useState(0);
   const canStartSession = plan.sessionType !== "REST";
   const today = useUserToday(userId);
-  const { logged, hasDraft } = useTodaySessionStatus(userId, today ?? "", plan.sessionType, draftEpoch);
+  const { logged, hasDraft, isLoading } = useTodaySessionStatus(userId, today ?? "", plan.sessionType, draftEpoch);
 
   // Pill text: prefer committed plan info if present.
   const pillText = committedFromPlan
@@ -203,7 +203,7 @@ export function TodayPlanCard({ plan, committedFromPlan, rirTarget, researchPhas
         <SessionDoneBar userId={userId} date={today} workout={logged} />
       )}
 
-      {canStartSession && (!logged || hasDraft) && (
+      {canStartSession && !isLoading && (!logged || hasDraft) && (
         <button
           onClick={() => setLoggerOpen(true)}
           style={{
