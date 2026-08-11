@@ -27,9 +27,10 @@ type Props = {
   /** Session-wide timer state, read-only here. Only ever changes on a phase
    *  transition — no ticking value is passed down, so memo still pays. */
   timer: TimerState;
-  /** Athlete tapped START on a specific set row. Undefined in edit mode, where
-   *  no live timer runs and the affordance must not be offered. */
-  onTimerStart?: (set: SetRef) => void;
+  /** Athlete tapped START on a specific set row. Takes the whole ROUND the set
+   *  belongs to — one member for an ordinary exercise. Undefined in edit mode,
+   *  where no live timer runs and the affordance must not be offered. */
+  onTimerStart?: (sets: SetRef[]) => void;
   /** True inside a hydrated historical-workout edit. Edit mode has no dock and
    *  no `onTimerStart`, so a time-based row's ONLY commit path is its own
    *  hand-editable seconds field — see SetRow. Threaded explicitly rather than
@@ -140,7 +141,7 @@ function ExerciseCardInner({
 
   // A set of THIS exercise is counting down or under load right now.
   const midSet = timer.phase === "countdown" || timer.phase === "running";
-  const liveHere = midSet && timer.activeSet?.exerciseIndex === exerciseIndex;
+  const liveHere = midSet && timer.activeSets.some((s) => s.exerciseIndex === exerciseIndex);
 
   const timeBased = exercise.prescribed.duration_seconds != null;
   // Table has 6 columns for a time-based exercise (no RIR header) vs 7 for a
@@ -148,11 +149,9 @@ function ExerciseCardInner({
   // table (the zoom, the coach line, "Start this set") need to match, or the
   // browser silently clips/pads rather than erroring.
   const columnCount = timeBased ? 6 : 7;
-  /** The zoomed entry row, when the open one belongs to this exercise. */
+  /** The zoomed entry row, when an open one belongs to this exercise. */
   const pendingEntry =
-    timer.pendingEntry && timer.pendingEntry.exerciseIndex === exerciseIndex
-      ? timer.pendingEntry
-      : null;
+    timer.pendingEntries.find((e) => e.exerciseIndex === exerciseIndex) ?? null;
   // The set with the zoom open is still uncommitted — commit now happens on
   // Save, not on stop. It must NOT also read as the row awaiting entry, or
   // "Start this set" would appear beneath the zoom and offer to re-run the set
@@ -288,7 +287,7 @@ function ExerciseCardInner({
                 <tr><td colSpan={columnCount} className="pb-1">
                   <button
                     type="button"
-                    onClick={() => onTimerStart({ exerciseIndex, setIndex: i })}
+                    onClick={() => onTimerStart([{ exerciseIndex, setIndex: i }])}
                     className="w-full text-[9px] font-bold uppercase tracking-widest text-green-400 bg-green-500/10 border border-green-500/25 rounded-md py-1"
                   >
                     Start this set

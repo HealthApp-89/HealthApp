@@ -18,9 +18,9 @@ import {
   timerReducer,
   remapTimerSets,
   remapTimerExercises,
-  workSecondsFor,
   getElapsedMs,
   sameSet,
+  includesSet,
   restBetweenSets,
   totalWorkSeconds,
   type TimerState,
@@ -30,6 +30,7 @@ import {
   timerOf,
   withTimer,
   commitPendingEntry,
+  commitPendingEntries,
   keepUnmovedRestOverrides,
   annotatedRestFor,
   firstPendingSet,
@@ -317,13 +318,13 @@ export function LoggerSheet(props: Props) {
    *  commit has rendered. Keeping evaluateSet out of the setDraft updaters is
    *  what lets those updaters stay pure functions of `prev`. */
   const [pendingCoachEval, setPendingCoachEval] = useState<SetRef | null>(null);
-  /** Latest open entry row, readable from the stable timer callbacks. They use
+  /** Latest open entry rows, readable from the stable timer callbacks. They use
    *  functional setDraft (so they never close over a draft snapshot) and so
-   *  cannot see `pendingEntry` — but the auto-save on START has to know which
-   *  set it just committed in order to coach on it. Written only from the
+   *  cannot see `pendingEntries` — but the auto-save on START has to know which
+   *  sets it just committed in order to coach on them. Written only from the
    *  effect below, read only from event handlers, which run after that effect
    *  has flushed. */
-  const pendingEntryRef = useRef<SetRef | null>(null);
+  const pendingEntryRefs = useRef<SetRef[]>([]);
 
   useWakeLock(!!draft);
 
@@ -422,8 +423,8 @@ export function LoggerSheet(props: Props) {
   // stable and the memo on ExerciseCard is not defeated. They also live above
   // the `!draft` early return, same hook-order rule as the callbacks above.
 
-  const handleTimerStart = useCallback((set: SetRef) => {
-    const autoSaved = pendingEntryRef.current;
+  const handleTimerStart = useCallback((sets: SetRef[]) => {
+    const autoSaved = pendingEntryRefs.current;
     // Clock read hoisted OUT of the updater: React may invoke a setState
     // updater more than once per commit (StrictMode double-invokes them), so
     // reading the wall clock inside one is a Rules-of-React violation and can
@@ -432,18 +433,22 @@ export function LoggerSheet(props: Props) {
     const nowIso = new Date(nowMs).toISOString();
     setDraft((prev) => {
       if (!prev) return prev;
-      // Auto-save any open entry first: the fields are pre-filled from the
-      // prescription, so the athlete can start the next set without ever
+      // Auto-save every open entry first: the fields are pre-filled from the
+      // prescription, so the athlete can start the next round without ever
       // touching them and nothing is lost.
-      const withEntrySaved = commitPendingEntry(prev, nowIso);
+      const withEntrySaved = commitPendingEntries(prev, nowIso);
       return withTimer(
         withEntrySaved,
-        timerReducer(timerOf(withEntrySaved), { type: "press_start", set, nowMs }),
+        timerReducer(timerOf(withEntrySaved), { type: "press_start", sets, nowMs }),
         nowIso,
       );
     });
-    if (autoSaved) {
-      setPendingCoachEval({ exerciseIndex: autoSaved.exerciseIndex, setIndex: autoSaved.setIndex });
+    // A round holds exactly one member until Task 5 wires the grouping in, so
+    // the lead entry is the only entry. Task 5 generalises the evaluation to
+    // every member it auto-saved.
+    const lead = autoSaved[0];
+    if (lead) {
+      setPendingCoachEval({ exerciseIndex: lead.exerciseIndex, setIndex: lead.setIndex });
     }
   }, []);
 
@@ -474,7 +479,7 @@ export function LoggerSheet(props: Props) {
       // "not timed".
       const cur = timerOf(prev);
       const midSet = cur.phase === "countdown" || cur.phase === "running";
-      const timer = midSet && sameSet(cur.activeSet, { exerciseIndex, setIndex })
+      const timer = midSet && includesSet(cur.activeSets, { exerciseIndex, setIndex })
         ? timerReducer(cur, { type: "reset" })
         : prev.timer ?? null;
       return { ...prev, exercises, timer, updated_at: nowIso };
@@ -487,9 +492,9 @@ export function LoggerSheet(props: Props) {
   const handleEntrySave = useCallback((ref: SetRef) => {
     // Guards a second tap landing before the re-render: the entry is already
     // saved, so re-committing (and re-coaching) it would be noise.
-    if (!sameSet(pendingEntryRef.current, ref)) return;
+    if (!pendingEntryRefs.current.some((r) => sameSet(r, ref))) return;
     const nowIso = new Date().toISOString();
-    setDraft((prev) => (prev ? commitPendingEntry(prev, nowIso) : prev));
+    setDraft((prev) => (prev ? commitPendingEntry(prev, ref, nowIso) : prev));
     setPendingCoachEval({ exerciseIndex: ref.exerciseIndex, setIndex: ref.setIndex });
   }, []);
 
@@ -502,8 +507,11 @@ export function LoggerSheet(props: Props) {
       if (!prev) return prev;
       const next = timerReducer(timerOf(prev), { type: "countdown_elapsed", nowMs });
       if (next === timerOf(prev)) return prev;
-      // Stamp the true set start on the draft set itself.
-      const ref = next.activeSet;
+      // Stamp the true set start on the draft set itself. Only the FIRST
+      // member of the round starts at countdown end; later members start after
+      // the earlier ones' work plus a transition, so Task 5 stamps those at
+      // stop from roundMemberStartOffsets. A round is one member long here.
+      const ref = next.activeSets[0];
       if (!ref) return withTimer(prev, next, nowIso);
       const exercises = prev.exercises.map((ex, ei) =>
         ei !== ref.exerciseIndex ? ex : {
@@ -523,13 +531,17 @@ export function LoggerSheet(props: Props) {
     setDraft((prev) => {
       if (!prev) return prev;
       const cur = timerOf(prev);
-      const ref = cur.activeSet;
+      const ref = cur.activeSets[0];
       if (cur.phase !== "running" || !ref || cur.anchorMs === null) return prev;
-      const workSeconds = workSecondsFor(cur.anchorMs, nowMs);
       const prescribedRest =
         restOverrides[ref.exerciseIndex]
         ?? annotatedRestFor(prev, ref.exerciseIndex);
       const next = timerReducer(cur, { type: "press_stop", nowMs, prescribedRestSeconds: prescribedRest });
+      // The reducer already split the round's work across its members, so read
+      // the share back rather than recomputing it — a second copy of that
+      // arithmetic is exactly how the dock and the DB would drift. One member
+      // per round here; Task 5 turns this into a loop over pendingEntries.
+      const workSeconds = next.pendingEntries[0].workSeconds;
       // Stop records the honest work time and opens the zoom; it does NOT
       // commit. Commit is the Save tap (or the auto-save when START is pressed
       // on the next set), which is what lets entry and rest run concurrently.
@@ -589,7 +601,7 @@ export function LoggerSheet(props: Props) {
    * it verbatim, so gaps would persist in the DB), and re-point the timer's
    * refs — have to be ONE atomic draft update. Split across two callbacks it
    * was not: `clear_for_set` only matches an exact ref, so deleting a set
-   * BELOW the one in play left `activeSet` / `pendingEntry` one index too
+   * BELOW the one in play left `activeSets` / `pendingEntries` one index too
    * high, silently naming the row that slid up into the deleted slot.
    *
    * The deleted row's own `started_at` / `work_seconds` need no blanking —
@@ -651,13 +663,13 @@ export function LoggerSheet(props: Props) {
   );
   const liveContext = useLiveSessionContext(props.userId, props.date, exerciseNames);
 
-  // Mirror the open entry row into a ref the stable timer callbacks can read.
+  // Mirror the open entry rows into a ref the stable timer callbacks can read.
   // See the declaration above for why they cannot read it from `draft`.
   useEffect(() => {
-    const entry = draft?.timer?.pendingEntry ?? null;
-    pendingEntryRef.current = entry
-      ? { exerciseIndex: entry.exerciseIndex, setIndex: entry.setIndex }
-      : null;
+    pendingEntryRefs.current = (draft?.timer?.pendingEntries ?? []).map((e) => ({
+      exerciseIndex: e.exerciseIndex,
+      setIndex: e.setIndex,
+    }));
   }, [draft]);
 
   // THE between-sets evaluation. Runs once per committed set, after the draft
@@ -728,15 +740,18 @@ export function LoggerSheet(props: Props) {
   const diverged = exerciseListDiverged(draft);
   const timer = timerOf(draft);
   const midSet = timer.phase === "countdown" || timer.phase === "running";
-  // What START dispatches. During `rest`, timer.activeSet is the set just
-  // FINISHED, so the next set always comes from the pending scan — and the set
-  // with the zoom still open is excluded, because START commits it on the way.
-  const nextSetRef = firstPendingSet(draft, timer.pendingEntry ? [timer.pendingEntry] : []);
+  // What START dispatches. During `rest`, timer.activeSets holds the sets just
+  // FINISHED, so the next set always comes from the pending scan — and the sets
+  // with a zoom still open are excluded, because START commits them on the way.
+  const nextSetRef = firstPendingSet(draft, timer.pendingEntries);
   const anyDialogOpen =
     pickerOpen || reorderOpen || saveDefaultOpen || finishOpen
     || closeConfirmOpen || resetConfirmOpen || restDialogOpenIndex !== null;
   // What the caption describes: the set in play mid-set, otherwise the next one.
-  const { activeLabel, targetLabel } = describeSet(draft, midSet ? timer.activeSet : nextSetRef);
+  const { activeLabel, targetLabel } = describeSet(
+    draft,
+    midSet ? timer.activeSets[0] ?? null : nextSetRef,
+  );
 
   function togglePause() {
     if (!draft) return;
@@ -780,11 +795,12 @@ export function LoggerSheet(props: Props) {
     // hours negative — and rest genuinely did elapse, so there is nothing left
     // to count. Reset covers every phase.
     //
-    // Close is also an EXIT PATH, so like Finish it flushes the open entry row
-    // first: stopping a set, not tapping Save, then closing must not leave the
-    // set's kg/reps/work_seconds parked in a zoom that the reset then closes.
+    // Close is also an EXIT PATH, so like Finish it flushes every open entry
+    // row first: stopping a set, not tapping Save, then closing must not leave
+    // the set's kg/reps/work_seconds parked in a zoom that the reset then
+    // closes.
     const nowIso = new Date().toISOString();
-    const flushed = commitPendingEntry(draft, nowIso);
+    const flushed = commitPendingEntries(draft, nowIso);
     setDraft({
       ...flushed,
       timer: timerReducer(timerOf(flushed), { type: "reset" }),
@@ -971,7 +987,7 @@ export function LoggerSheet(props: Props) {
             </>
           )}
         </div>
-        {/* Flush the open zoom BEFORE the summary opens. Splitting commit out
+        {/* Flush every open zoom BEFORE the summary opens. Splitting commit out
             of stop created a window in which a finished set is not yet
             committed, and every other exit flushes it (Save, START on the next
             set) — Finish did not. The header button is never covered by the
@@ -984,7 +1000,7 @@ export function LoggerSheet(props: Props) {
         <button
           onClick={() => {
             const nowIso = new Date().toISOString();
-            setDraft((p) => (p ? commitPendingEntry(p, nowIso) : p));
+            setDraft((p) => (p ? commitPendingEntries(p, nowIso) : p));
             setFinishOpen(true);
           }}
           className="bg-green-600 text-white text-xs font-semibold px-3 py-1.5 rounded-lg"
@@ -1066,7 +1082,7 @@ export function LoggerSheet(props: Props) {
           pausedAt={draft.paused_at}
           pausedMsTotal={draft.paused_ms_total}
           canStart={nextSetRef !== null}
-          onStart={() => { if (nextSetRef) handleTimerStart(nextSetRef); }}
+          onStart={() => { if (nextSetRef) handleTimerStart([nextSetRef]); }}
           onCountdownElapsed={handleCountdownElapsed}
           onStop={handleStop}
         />

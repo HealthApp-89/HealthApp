@@ -11,6 +11,7 @@ import {
   timerOf,
   withTimer,
   commitPendingEntry,
+  commitPendingEntries,
   keepUnmovedRestOverrides,
   firstPendingSet,
   annotatedRestFor,
@@ -18,6 +19,7 @@ import {
 import { IDLE_TIMER, type TimerState } from "@/lib/logger/set-timer";
 
 const NOW = "2026-08-11T09:00:00.000Z";
+const REF_0_0 = { exerciseIndex: 0, setIndex: 0 };
 
 function mkSet(over: Partial<ExerciseSetDraft> = {}): ExerciseSetDraft {
   return {
@@ -48,9 +50,23 @@ function mkDraft(
 const restingOn = (exerciseIndex: number, setIndex: number, workSeconds = 33): TimerState => ({
   phase: "rest",
   anchorMs: 1_700_000_000_000,
-  activeSet: { exerciseIndex, setIndex },
+  activeSets: [{ exerciseIndex, setIndex }],
   restSeconds: 175,
-  pendingEntry: { exerciseIndex, setIndex, workSeconds },
+  pendingEntries: [{ exerciseIndex, setIndex, workSeconds }],
+});
+
+/** A two-member round mid-rest, both entry rows still open. Not producible by
+ *  the reducer until the grouping lands, but the commit helpers are pure
+ *  functions of TimerState and the multi-entry path has to be pinned now. */
+const restingOnPair = (): TimerState => ({
+  phase: "rest",
+  anchorMs: 1_700_000_000_000,
+  activeSets: [{ exerciseIndex: 0, setIndex: 0 }, { exerciseIndex: 1, setIndex: 0 }],
+  restSeconds: 175,
+  pendingEntries: [
+    { exerciseIndex: 0, setIndex: 0, workSeconds: 45 },
+    { exerciseIndex: 1, setIndex: 0, workSeconds: 45 },
+  ],
 });
 
 describe("timerOf", () => {
@@ -73,10 +89,10 @@ describe("withTimer", () => {
 describe("commitPendingEntry", () => {
   it("commits the pending set and clears the entry without touching the rest clock", () => {
     const d = mkDraft([{ name: "Squat", sets: [mkSet(), mkSet()] }], restingOn(0, 0));
-    const out = commitPendingEntry(d, NOW);
+    const out = commitPendingEntry(d, REF_0_0, NOW);
     expect(out.exercises[0].sets[0].committed_at).toBe(NOW);
     expect(out.exercises[0].sets[1].committed_at).toBeNull();
-    expect(out.timer!.pendingEntry).toBeNull();
+    expect(out.timer!.pendingEntries).toEqual([]);
     // The whole point of splitting commit out of stop.
     expect(out.timer!.phase).toBe("rest");
     expect(out.timer!.anchorMs).toBe(d.timer!.anchorMs);
@@ -85,7 +101,7 @@ describe("commitPendingEntry", () => {
 
   it("is a no-op when nothing is pending", () => {
     const d = mkDraft([{ name: "Squat", sets: [mkSet()] }], IDLE_TIMER);
-    expect(commitPendingEntry(d, NOW)).toBe(d);
+    expect(commitPendingEntry(d, REF_0_0, NOW)).toBe(d);
   });
 
   it("never re-stamps an already-committed set", () => {
@@ -93,7 +109,7 @@ describe("commitPendingEntry", () => {
       [{ name: "Squat", sets: [mkSet({ committed_at: "2020-01-01T00:00:00.000Z" })] }],
       restingOn(0, 0),
     );
-    expect(commitPendingEntry(d, NOW).exercises[0].sets[0].committed_at)
+    expect(commitPendingEntry(d, REF_0_0, NOW).exercises[0].sets[0].committed_at)
       .toBe("2020-01-01T00:00:00.000Z");
   });
 
@@ -104,7 +120,7 @@ describe("commitPendingEntry", () => {
       [{ name: "Plank", prescribed: { duration_seconds: 60 }, sets: [mkSet({ kg: null, reps: null })] }],
       restingOn(0, 0, 45),
     );
-    const s = commitPendingEntry(d, NOW).exercises[0].sets[0];
+    const s = commitPendingEntry(d, REF_0_0, NOW).exercises[0].sets[0];
     expect(s.duration_seconds).toBe(45);
   });
 
@@ -113,7 +129,7 @@ describe("commitPendingEntry", () => {
       [{ name: "Plank", prescribed: { duration_seconds: 60 }, sets: [mkSet({ duration_seconds: 52 })] }],
       restingOn(0, 0, 45),
     );
-    expect(commitPendingEntry(d, NOW).exercises[0].sets[0].duration_seconds).toBe(52);
+    expect(commitPendingEntry(d, REF_0_0, NOW).exercises[0].sets[0].duration_seconds).toBe(52);
   });
 
   it("leaves duration_seconds null on a REP-based set", () => {
@@ -121,7 +137,48 @@ describe("commitPendingEntry", () => {
     // lib/coach/snapshot.ts renders it to the coach as "45s hold". A rep set
     // writing it produces a 33-second bench press.
     const d = mkDraft([{ name: "Squat", sets: [mkSet()] }], restingOn(0, 0, 33));
-    expect(commitPendingEntry(d, NOW).exercises[0].sets[0].duration_seconds).toBeNull();
+    expect(commitPendingEntry(d, REF_0_0, NOW).exercises[0].sets[0].duration_seconds).toBeNull();
+  });
+
+  it("commits only the named member and leaves the other's row open", () => {
+    const d = mkDraft(
+      [{ name: "Curl", sets: [mkSet()] }, { name: "Pushdown", sets: [mkSet()] }],
+      restingOnPair(),
+    );
+    const out = commitPendingEntry(d, { exerciseIndex: 1, setIndex: 0 }, NOW);
+    expect(out.exercises[0].sets[0].committed_at).toBeNull();
+    expect(out.exercises[1].sets[0].committed_at).toBe(NOW);
+    expect(out.timer!.pendingEntries).toEqual([{ exerciseIndex: 0, setIndex: 0, workSeconds: 45 }]);
+    expect(out.timer!.phase).toBe("rest");
+  });
+
+  it("is a no-op for a ref that is not one of the open rows", () => {
+    const d = mkDraft([{ name: "Squat", sets: [mkSet(), mkSet()] }], restingOn(0, 0));
+    expect(commitPendingEntry(d, { exerciseIndex: 0, setIndex: 1 }, NOW)).toBe(d);
+  });
+});
+
+describe("commitPendingEntries", () => {
+  it("commits every open row of a round and empties pendingEntries", () => {
+    // The exit paths (START on the next round, Finish, Pause & close) may not
+    // silently drop a set the athlete has already performed.
+    const d = mkDraft(
+      [{ name: "Curl", sets: [mkSet()] }, { name: "Pushdown", sets: [mkSet()] }],
+      restingOnPair(),
+    );
+    const out = commitPendingEntries(d, NOW);
+    expect(out.exercises[0].sets[0].committed_at).toBe(NOW);
+    expect(out.exercises[1].sets[0].committed_at).toBe(NOW);
+    expect(out.timer!.pendingEntries).toEqual([]);
+    // Rest keeps running underneath — commit is still split out of stop.
+    expect(out.timer!.phase).toBe("rest");
+    expect(out.timer!.anchorMs).toBe(d.timer!.anchorMs);
+    expect(out.timer!.restSeconds).toBe(175);
+  });
+
+  it("is a no-op when nothing is pending", () => {
+    const d = mkDraft([{ name: "Squat", sets: [mkSet()] }], IDLE_TIMER);
+    expect(commitPendingEntries(d, NOW)).toBe(d);
   });
 });
 

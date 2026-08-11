@@ -4,8 +4,9 @@
 // components/logger/LoggerSheet.tsx, where vitest could not reach them — this
 // repo's test config is node-environment and scans `lib/**/__tests__` only, so
 // anything in a .tsx file is untestable by construction. Two of them carry
-// real rules (`commitPendingEntry` decides when a time-based set records its
-// duration; `keepUnmovedRestOverrides` keeps two copies of a value in sync),
+// real rules (`commitEntries`, behind both commitPendingEntry/-Entries, decides
+// when a time-based set records its duration; `keepUnmovedRestOverrides` keeps
+// two copies of a value in sync),
 // and both produced bugs while they were unreachable by tests.
 //
 // Every function here is pure: no React, no I/O, and no clock reads. Callers
@@ -43,49 +44,74 @@ export function withTimer(
   return { ...draft, timer: next, updated_at: nowIso };
 }
 
+/** Commit the entry row for ONE member of the open round. Called by that
+ *  row's Save button; the other members' rows stay open and rest keeps
+ *  running underneath. */
+export function commitPendingEntry(
+  draft: LoggerDraft,
+  ref: SetRef,
+  nowIso: string,
+): LoggerDraft {
+  const timer = draft.timer ?? IDLE_TIMER;
+  const entry = timer.pendingEntries.find((e) => sameSet(e, ref));
+  if (!entry) return draft;
+  return commitEntries(draft, [entry], nowIso);
+}
+
+/** Commit EVERY open entry row. The exit paths use this — pressing START on
+ *  the next round, Finish, and Pause & close — because none of them may
+ *  silently drop a set the athlete has already performed. */
+export function commitPendingEntries(draft: LoggerDraft, nowIso: string): LoggerDraft {
+  const timer = draft.timer ?? IDLE_TIMER;
+  if (timer.pendingEntries.length === 0) return draft;
+  return commitEntries(draft, timer.pendingEntries, nowIso);
+}
+
 /**
- * Commit whatever is in the open entry row and close it. Called by the Save
- * button and, implicitly, by pressing START on the next set and by Finish —
- * the fields are pre-filled from the prescription, so the flow never blocks on
- * typing, and no exit path may silently drop the set.
+ * Commit the given entry rows and close them. Reached from the Save button and,
+ * implicitly, by pressing START on the next round and by Finish — the fields
+ * are pre-filled from the prescription, so the flow never blocks on typing, and
+ * no exit path may silently drop the set.
  *
- * Touches no clock beyond the `nowIso` handed in: `save_entry` clears
- * `pendingEntry` and leaves the rest countdown running underneath, which is
+ * Touches no clock beyond the `nowIso` handed in: `save_entry` clears only the
+ * entries named here and leaves the rest countdown running underneath, which is
  * the whole point of splitting commit out of stop.
  */
-export function commitPendingEntry(draft: LoggerDraft, nowIso: string): LoggerDraft {
-  const timer = draft.timer ?? IDLE_TIMER;
-  const entry = timer.pendingEntry;
-  if (!entry) return draft;
-
-  const exercises = draft.exercises.map((ex, ei) =>
-    ei !== entry.exerciseIndex ? ex : {
-      ...ex,
-      sets: ex.sets.map((s, si): ExerciseSetDraft => {
-        if (si !== entry.setIndex || s.committed_at) return s;
-        // A time-based set auto-saved by START never had its seconds field
-        // blurred, so it would commit `duration_seconds: null` alongside a
-        // perfectly good `work_seconds` — the plank the timer measured at 45s
-        // recorded as no plank at all. SetEntryRow's saveAll already flushes
-        // the field on the Save path; this makes the auto-save path agree,
-        // using the number the timer measured as the fallback.
-        const timeBased = ex.prescribed.duration_seconds != null;
-        return {
-          ...s,
-          duration_seconds: timeBased && s.duration_seconds == null
-            ? entry.workSeconds
-            : s.duration_seconds,
-          committed_at: nowIso,
-        };
-      }),
-    },
-  );
-
-  return {
-    ...draft,
-    exercises,
-    timer: timerReducer(timer, { type: "save_entry" }),
-  };
+function commitEntries(
+  draft: LoggerDraft,
+  entries: (SetRef & { workSeconds: number })[],
+  nowIso: string,
+): LoggerDraft {
+  let exercises = draft.exercises;
+  for (const entry of entries) {
+    exercises = exercises.map((ex, ei) =>
+      ei !== entry.exerciseIndex ? ex : {
+        ...ex,
+        sets: ex.sets.map((s, si): ExerciseSetDraft => {
+          if (si !== entry.setIndex || s.committed_at) return s;
+          // A time-based set auto-saved by START never had its seconds field
+          // blurred, so it would commit `duration_seconds: null` alongside a
+          // perfectly good `work_seconds` — the plank the timer measured at 45s
+          // recorded as no plank at all. SetEntryRow's saveAll already flushes
+          // the field on the Save path; this makes the auto-save path agree,
+          // using the number the timer measured as the fallback.
+          const timeBased = ex.prescribed.duration_seconds != null;
+          return {
+            ...s,
+            duration_seconds: timeBased && s.duration_seconds == null
+              ? entry.workSeconds
+              : s.duration_seconds,
+            committed_at: nowIso,
+          };
+        }),
+      },
+    );
+  }
+  let timer = draft.timer ?? IDLE_TIMER;
+  for (const entry of entries) {
+    timer = timerReducer(timer, { type: "save_entry", set: entry });
+  }
+  return { ...draft, exercises, timer };
 }
 
 /**

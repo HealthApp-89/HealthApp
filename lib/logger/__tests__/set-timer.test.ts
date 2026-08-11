@@ -14,6 +14,7 @@ import {
   restRemaining,
   isRestOvertime,
   sameSet,
+  includesSet,
   restBetweenSets,
   remapTimerExercises,
   remapTimerSets,
@@ -27,7 +28,7 @@ const SET_B = { exerciseIndex: 0, setIndex: 2 };
 
 /** Drive the machine to `running` with the set start anchored at `startMs`. */
 function running(startMs: number): TimerState {
-  const s1 = timerReducer(IDLE_TIMER, { type: "press_start", set: SET_A, nowMs: startMs - COUNTDOWN_SECONDS * 1000 });
+  const s1 = timerReducer(IDLE_TIMER, { type: "press_start", sets: [SET_A], nowMs: startMs - COUNTDOWN_SECONDS * 1000 });
   return timerReducer(s1, { type: "countdown_elapsed", nowMs: startMs });
 }
 
@@ -111,30 +112,34 @@ describe("roundMemberStartOffsets", () => {
 
 describe("timerReducer — press_start", () => {
   it("moves idle to countdown and records the set", () => {
-    const s = timerReducer(IDLE_TIMER, { type: "press_start", set: SET_A, nowMs: T0 });
+    const s = timerReducer(IDLE_TIMER, { type: "press_start", sets: [SET_A], nowMs: T0 });
     expect(s.phase).toBe("countdown");
     expect(s.anchorMs).toBe(T0);
-    expect(s.activeSet).toEqual(SET_A);
+    expect(s.activeSets).toEqual([SET_A]);
   });
 
   it("clears a pending entry (the caller persists it first)", () => {
     const stopped = timerReducer(running(T0), {
       type: "press_stop", nowMs: T0 + 38_000, prescribedRestSeconds: 180,
     });
-    expect(stopped.pendingEntry).not.toBeNull();
-    const restarted = timerReducer(stopped, { type: "press_start", set: SET_B, nowMs: T0 + 60_000 });
-    expect(restarted.pendingEntry).toBeNull();
+    expect(stopped.pendingEntries).toHaveLength(1);
+    const restarted = timerReducer(stopped, { type: "press_start", sets: [SET_B], nowMs: T0 + 60_000 });
+    expect(restarted.pendingEntries).toEqual([]);
   });
 
   it("is ignored while a set is already running", () => {
     const r = running(T0);
-    expect(timerReducer(r, { type: "press_start", set: SET_B, nowMs: T0 + 1_000 })).toBe(r);
+    expect(timerReducer(r, { type: "press_start", sets: [SET_B], nowMs: T0 + 1_000 })).toBe(r);
+  });
+
+  it("press_start with an empty round is a no-op", () => {
+    expect(timerReducer(IDLE_TIMER, { type: "press_start", sets: [], nowMs: T0 })).toBe(IDLE_TIMER);
   });
 });
 
 describe("timerReducer — countdown_elapsed", () => {
   it("anchors the work clock at countdown end, not at the START tap", () => {
-    const s1 = timerReducer(IDLE_TIMER, { type: "press_start", set: SET_A, nowMs: T0 });
+    const s1 = timerReducer(IDLE_TIMER, { type: "press_start", sets: [SET_A], nowMs: T0 });
     const s2 = timerReducer(s1, { type: "countdown_elapsed", nowMs: T0 + 5_000 });
     expect(s2.phase).toBe("running");
     expect(s2.anchorMs).toBe(T0 + 5_000);
@@ -161,7 +166,7 @@ describe("timerReducer — press_stop", () => {
     const s = timerReducer(running(T0), {
       type: "press_stop", nowMs: T0 + 38_000, prescribedRestSeconds: 180,
     });
-    expect(s.pendingEntry).toEqual({ ...SET_A, workSeconds: 33 });
+    expect(s.pendingEntries).toEqual([{ ...SET_A, workSeconds: 33 }]);
   });
 
   it("is ignored when no set is running", () => {
@@ -176,11 +181,21 @@ describe("timerReducer — save_entry", () => {
     const rest = timerReducer(running(T0), {
       type: "press_stop", nowMs: T0 + 38_000, prescribedRestSeconds: 180,
     });
-    const saved = timerReducer(rest, { type: "save_entry" });
-    expect(saved.pendingEntry).toBeNull();
+    const saved = timerReducer(rest, { type: "save_entry", set: SET_A });
+    expect(saved.pendingEntries).toEqual([]);
     expect(saved.phase).toBe("rest");
     expect(saved.anchorMs).toBe(rest.anchorMs);
     expect(saved.restSeconds).toBe(rest.restSeconds);
+  });
+
+  it("save_entry for one member leaves the other member's row open", () => {
+    const started = timerReducer(IDLE_TIMER, { type: "press_start", sets: [SET_A, SET_B], nowMs: T0 - 5000 });
+    const running = timerReducer(started, { type: "countdown_elapsed", nowMs: T0 });
+    const stopped = timerReducer(running, { type: "press_stop", nowMs: T0 + 100_000, prescribedRestSeconds: 120 });
+    expect(stopped.pendingEntries).toHaveLength(2);
+    const saved = timerReducer(stopped, { type: "save_entry", set: SET_A });
+    expect(saved.pendingEntries).toEqual([{ ...SET_B, workSeconds: 45 }]);
+    expect(saved.phase).toBe("rest");
   });
 });
 
@@ -204,7 +219,7 @@ describe("timerReducer — reset", () => {
 
 describe("derivations", () => {
   it("counts the countdown down and clamps at zero", () => {
-    const s = timerReducer(IDLE_TIMER, { type: "press_start", set: SET_A, nowMs: T0 });
+    const s = timerReducer(IDLE_TIMER, { type: "press_start", sets: [SET_A], nowMs: T0 });
     expect(countdownRemaining(s, T0)).toBe(5);
     expect(countdownRemaining(s, T0 + 2_400)).toBe(3);
     expect(countdownRemaining(s, T0 + 9_000)).toBe(0);
@@ -255,6 +270,18 @@ describe("sameSet", () => {
   });
 });
 
+describe("includesSet", () => {
+  it("matches by value anywhere in the round", () => {
+    expect(includesSet([SET_A, SET_B], { exerciseIndex: 0, setIndex: 2 })).toBe(true);
+    expect(includesSet([SET_A], SET_B)).toBe(false);
+  });
+
+  it("is false for a null ref and for an empty round", () => {
+    expect(includesSet([SET_A], null)).toBe(false);
+    expect(includesSet([], SET_A)).toBe(false);
+  });
+});
+
 describe("remapTimerSets", () => {
   /** Index map for "the set at `removed` was deleted and the survivors
    *  re-indexed" — exactly what ExerciseCard's delete does to `set_index`. */
@@ -272,7 +299,7 @@ describe("remapTimerSets", () => {
   it("shifts the in-play ref down when a set BELOW it is removed", () => {
     // The reachable case: a warmup at index 0 is deleted while set 1 is live.
     const next = remapTimerSets(running(T0), 0, removeAt(0));
-    expect(next.activeSet).toEqual({ exerciseIndex: 0, setIndex: 0 });
+    expect(next.activeSets).toEqual([{ exerciseIndex: 0, setIndex: 0 }]);
     expect(next.phase).toBe("running");
     expect(next.anchorMs).toBe(T0);
   });
@@ -286,10 +313,10 @@ describe("remapTimerSets", () => {
     expect(remapTimerSets(running(T0), 0, removeAt(1))).toEqual(IDLE_TIMER);
   });
 
-  it("remaps pendingEntry alongside activeSet, preserving its workSeconds", () => {
+  it("remaps pendingEntries alongside activeSets, preserving their workSeconds", () => {
     const next = remapTimerSets(resting(), 0, removeAt(0));
-    expect(next.activeSet).toEqual({ exerciseIndex: 0, setIndex: 0 });
-    expect(next.pendingEntry).toEqual({ exerciseIndex: 0, setIndex: 0, workSeconds: 33 });
+    expect(next.activeSets).toEqual([{ exerciseIndex: 0, setIndex: 0 }]);
+    expect(next.pendingEntries).toEqual([{ exerciseIndex: 0, setIndex: 0, workSeconds: 33 }]);
     // Rest keeps running underneath — a delete elsewhere must not touch it.
     expect(next.phase).toBe("rest");
     expect(next.restSeconds).toBe(175);
@@ -301,19 +328,19 @@ describe("remapTimerSets", () => {
     expect(remapTimerSets(r, 7, removeAt(1))).toBe(r);
   });
 
-  it("drops only pendingEntry when the two refs sit in different exercises", () => {
+  it("drops only the pending entry when the two refs sit in different exercises", () => {
     // Not producible by the reducer, but remapTimerSets is a pure function of
-    // TimerState and must not assume the two refs agree.
+    // TimerState and must not assume the two lists agree.
     const mixed: TimerState = {
       phase: "rest",
       anchorMs: T0,
-      activeSet: { exerciseIndex: 1, setIndex: 0 },
+      activeSets: [{ exerciseIndex: 1, setIndex: 0 }],
       restSeconds: 175,
-      pendingEntry: { exerciseIndex: 0, setIndex: 2, workSeconds: 33 },
+      pendingEntries: [{ exerciseIndex: 0, setIndex: 2, workSeconds: 33 }],
     };
     const next = remapTimerSets(mixed, 0, removeAt(2));
-    expect(next.pendingEntry).toBeNull();
-    expect(next.activeSet).toEqual({ exerciseIndex: 1, setIndex: 0 });
+    expect(next.pendingEntries).toEqual([]);
+    expect(next.activeSets).toEqual([{ exerciseIndex: 1, setIndex: 0 }]);
   });
 
   it("is a no-op on an idle timer", () => {
@@ -413,15 +440,15 @@ describe("remapTimerExercises", () => {
   const resting = (exerciseIndex: number): TimerState => ({
     phase: "rest",
     anchorMs: T0,
-    activeSet: { exerciseIndex, setIndex: 1 },
+    activeSets: [{ exerciseIndex, setIndex: 1 }],
     restSeconds: 175,
-    pendingEntry: { exerciseIndex, setIndex: 1, workSeconds: 33 },
+    pendingEntries: [{ exerciseIndex, setIndex: 1, workSeconds: 33 }],
   });
 
   it("shifts both refs down when an earlier exercise is removed", () => {
     const s = remapTimerExercises(resting(2), (i) => (i === 0 ? null : i - 1));
-    expect(s.activeSet).toEqual({ exerciseIndex: 1, setIndex: 1 });
-    expect(s.pendingEntry).toEqual({ exerciseIndex: 1, setIndex: 1, workSeconds: 33 });
+    expect(s.activeSets).toEqual([{ exerciseIndex: 1, setIndex: 1 }]);
+    expect(s.pendingEntries).toEqual([{ exerciseIndex: 1, setIndex: 1, workSeconds: 33 }]);
     expect(s.phase).toBe("rest");
     expect(s.anchorMs).toBe(T0);
     expect(s.restSeconds).toBe(175);
@@ -436,15 +463,15 @@ describe("remapTimerExercises", () => {
     expect(remapTimerExercises(resting(1), (i) => (i === 1 ? null : i))).toEqual(IDLE_TIMER);
   });
 
-  it("clears only pendingEntry when its exercise is gone but activeSet's survives", () => {
+  it("clears only the pending entry when its exercise is gone but the active set's survives", () => {
     const mixed: TimerState = {
       phase: "rest", anchorMs: T0, restSeconds: 175,
-      activeSet: { exerciseIndex: 0, setIndex: 0 },
-      pendingEntry: { exerciseIndex: 2, setIndex: 0, workSeconds: 12 },
+      activeSets: [{ exerciseIndex: 0, setIndex: 0 }],
+      pendingEntries: [{ exerciseIndex: 2, setIndex: 0, workSeconds: 12 }],
     };
     const s = remapTimerExercises(mixed, (i) => (i === 2 ? null : i));
-    expect(s.activeSet).toEqual({ exerciseIndex: 0, setIndex: 0 });
-    expect(s.pendingEntry).toBeNull();
+    expect(s.activeSets).toEqual([{ exerciseIndex: 0, setIndex: 0 }]);
+    expect(s.pendingEntries).toEqual([]);
   });
 
   it("is a no-op on an idle timer regardless of the mapping", () => {

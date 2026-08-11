@@ -26,31 +26,36 @@ export type TimerState = {
   /** Absolute epoch ms the current phase started. Null only when idle.
    *  For `rest` this is the RACK time, already back-dated by the phone lag. */
   anchorMs: number | null;
-  /** The set the phase concerns: counting down to it, lifting it, or resting
-   *  after it. */
-  activeSet: SetRef | null;
+  /** The sets the phase concerns, in group order: counting down to them,
+   *  under load, or being rested after. A superset round holds more than one;
+   *  an ordinary exercise holds exactly one; idle holds none. One list rather
+   *  than a separate superset path — a second copy of this machine is how the
+   *  two would drift. */
+  activeSets: SetRef[];
   /** Seeded rest length for the rest currently running (prescribed − lag). */
   restSeconds: number;
-  /** Zoomed entry row. Deliberately NOT a phase: entry and rest are
-   *  concurrent, and making entry a phase value would make them mutually
-   *  exclusive — exactly the coupling this design removes. */
-  pendingEntry: (SetRef & { workSeconds: number }) | null;
+  /** Zoomed entry rows — one per member of the round just stopped, each
+   *  carrying that member's share of the round's work. Deliberately NOT a
+   *  phase: entry and rest are concurrent, and making entry a phase value would
+   *  make them mutually exclusive — exactly the coupling this design removes. */
+  pendingEntries: (SetRef & { workSeconds: number })[];
 };
 
 export const IDLE_TIMER: TimerState = {
   phase: "idle",
   anchorMs: null,
-  activeSet: null,
+  activeSets: [],
   restSeconds: 0,
-  pendingEntry: null,
+  pendingEntries: [],
 };
 
 export type TimerAction =
-  | { type: "press_start"; set: SetRef; nowMs: number }
+  | { type: "press_start"; sets: SetRef[]; nowMs: number }
   /** Countdown reached zero, or the athlete tapped to skip it. */
   | { type: "countdown_elapsed"; nowMs: number }
   | { type: "press_stop"; nowMs: number; prescribedRestSeconds: number }
-  | { type: "save_entry" }
+  /** One member's entry row was saved. The rest stay open. */
+  | { type: "save_entry"; set: SetRef }
   /** A set was uncommitted or deleted. */
   | { type: "clear_for_set"; set: SetRef }
   | { type: "reset" };
@@ -58,6 +63,12 @@ export type TimerAction =
 export function sameSet(a: SetRef | null, b: SetRef | null): boolean {
   if (!a || !b) return false;
   return a.exerciseIndex === b.exerciseIndex && a.setIndex === b.setIndex;
+}
+
+/** Membership test for a round. Null ref is never a member. */
+export function includesSet(list: SetRef[], ref: SetRef | null): boolean {
+  if (!ref) return false;
+  return list.some((s) => sameSet(s, ref));
 }
 
 /** Honest time under load. Floored at 1 so a very short set cannot go
@@ -134,14 +145,15 @@ export function timerReducer(state: TimerState, action: TimerAction): TimerState
       // offers (the circle reads STOP), so treat it as a no-op rather than
       // silently discarding an in-progress set's anchor.
       if (state.phase === "countdown" || state.phase === "running") return state;
+      if (action.sets.length === 0) return state;
       return {
         phase: "countdown",
         anchorMs: action.nowMs,
-        activeSet: action.set,
+        activeSets: action.sets,
         restSeconds: 0,
-        // Caller persists any open entry BEFORE dispatching — see the
-        // auto-save in LoggerSheet's handleStart.
-        pendingEntry: null,
+        // Caller persists any open entries BEFORE dispatching — see the
+        // auto-save in LoggerSheet's handleTimerStart.
+        pendingEntries: [],
       };
     }
 
@@ -151,29 +163,38 @@ export function timerReducer(state: TimerState, action: TimerAction): TimerState
     }
 
     case "press_stop": {
-      if (state.phase !== "running" || state.anchorMs === null || state.activeSet === null) {
+      if (state.phase !== "running" || state.anchorMs === null || state.activeSets.length === 0) {
         return state;
       }
-      const workSeconds = workSecondsFor(state.anchorMs, action.nowMs);
+      const shares = splitRoundWork(state.anchorMs, action.nowMs, state.activeSets.length);
       return {
         phase: "rest",
         // Anchor at the rack, not the tap.
         anchorMs: action.nowMs - PHONE_LAG_SECONDS * 1000,
-        activeSet: state.activeSet,
+        activeSets: state.activeSets,
         restSeconds: restSeedSeconds(action.prescribedRestSeconds),
-        pendingEntry: { ...state.activeSet, workSeconds },
+        pendingEntries: state.activeSets.map((s, i) => ({ ...s, workSeconds: shares[i] })),
       };
     }
 
     case "save_entry": {
-      if (state.pendingEntry === null) return state;
-      return { ...state, pendingEntry: null };
+      if (!state.pendingEntries.some((e) => sameSet(e, action.set))) return state;
+      return {
+        ...state,
+        pendingEntries: state.pendingEntries.filter((e) => !sameSet(e, action.set)),
+      };
     }
 
     case "clear_for_set": {
-      if (sameSet(state.activeSet, action.set)) return IDLE_TIMER;
-      if (state.pendingEntry && sameSet(state.pendingEntry, action.set)) {
-        return { ...state, pendingEntry: null };
+      // Un-committing or deleting ANY member of the round in play leaves
+      // nothing coherent to stop or rest after, so the whole timer goes —
+      // the same conservative rule the single-set machine applied.
+      if (includesSet(state.activeSets, action.set)) return IDLE_TIMER;
+      if (state.pendingEntries.some((e) => sameSet(e, action.set))) {
+        return {
+          ...state,
+          pendingEntries: state.pendingEntries.filter((e) => !sameSet(e, action.set)),
+        };
       }
       return state;
     }
@@ -196,9 +217,11 @@ export function timerReducer(state: TimerState, action: TimerAction): TimerState
  * different set — undetectable after the fact.
  *
  * Mirrors `remapTimerExercises` in LoggerSheet, including its rule for a
- * vanished target: if the set in play (or being rested after) is gone there is
- * nothing left to stop or save, so drop the whole timer rather than let it
- * advance against a set that no longer exists.
+ * vanished target: if any member of the round in play (or being rested after)
+ * is gone there is nothing left to stop or save for it, so drop the whole timer
+ * rather than let it advance against a set that no longer exists. A member that
+ * vanishes is dropped from the round; the timer only dies when every member is
+ * gone.
  *
  * `mapSetIndex` returns the set's new index within `exerciseIndex`, or null if
  * it is gone. Refs in any OTHER exercise are untouched.
@@ -208,27 +231,27 @@ export function remapTimerSets(
   exerciseIndex: number,
   mapSetIndex: (oldIndex: number) => number | null,
 ): TimerState {
-  if (state.activeSet === null && state.pendingEntry === null) return state;
-  let next = state;
+  if (state.activeSets.length === 0 && state.pendingEntries.length === 0) return state;
 
-  if (next.activeSet && next.activeSet.exerciseIndex === exerciseIndex) {
-    const moved = mapSetIndex(next.activeSet.setIndex);
-    if (moved === null) return IDLE_TIMER;
-    if (moved !== next.activeSet.setIndex) {
-      next = { ...next, activeSet: { ...next.activeSet, setIndex: moved } };
-    }
+  const activeSets: SetRef[] = [];
+  for (const ref of state.activeSets) {
+    if (ref.exerciseIndex !== exerciseIndex) { activeSets.push(ref); continue; }
+    const moved = mapSetIndex(ref.setIndex);
+    if (moved !== null) activeSets.push({ ...ref, setIndex: moved });
   }
+  // Every member of the round in play is gone: nothing left to stop or rest
+  // after, so drop the timer rather than let it advance against sets that no
+  // longer exist.
+  if (state.activeSets.length > 0 && activeSets.length === 0) return IDLE_TIMER;
 
-  if (next.pendingEntry && next.pendingEntry.exerciseIndex === exerciseIndex) {
-    const moved = mapSetIndex(next.pendingEntry.setIndex);
-    if (moved === null) {
-      next = { ...next, pendingEntry: null };
-    } else if (moved !== next.pendingEntry.setIndex) {
-      next = { ...next, pendingEntry: { ...next.pendingEntry, setIndex: moved } };
-    }
-  }
+  const pendingEntries = state.pendingEntries.flatMap((e) => {
+    if (e.exerciseIndex !== exerciseIndex) return [e];
+    const moved = mapSetIndex(e.setIndex);
+    return moved === null ? [] : [{ ...e, setIndex: moved }];
+  });
 
-  return next;
+  if (roundsUnchanged(state, activeSets, pendingEntries)) return state;
+  return { ...state, activeSets, pendingEntries };
 }
 
 /**
@@ -239,7 +262,11 @@ export function remapTimerSets(
  * `SetRef.exerciseIndex` is positional, so removing or reordering an exercise
  * silently re-aims every stored ref at whatever slid into the slot: STOP would
  * stamp `committed_at` / `work_seconds` onto a different exercise's set, and
- * `pendingEntry` would route the athlete's typed kg/reps there too.
+ * `pendingEntries` would route the athlete's typed kg/reps there too.
+ *
+ * Same rule for a vanished target as its set-axis twin: a member whose exercise
+ * is gone is dropped from the round; the timer only dies when every member is
+ * gone.
  *
  * `mapIndex` returns the exercise's new index, or null if it is gone.
  */
@@ -247,30 +274,48 @@ export function remapTimerExercises(
   state: TimerState,
   mapIndex: (oldIndex: number) => number | null,
 ): TimerState {
-  if (state.activeSet === null && state.pendingEntry === null) return state;
-  let next = state;
+  if (state.activeSets.length === 0 && state.pendingEntries.length === 0) return state;
 
-  if (next.activeSet) {
-    const moved = mapIndex(next.activeSet.exerciseIndex);
-    // The exercise holding the set in play (or being rested after) is gone.
-    // Nothing left to stop or save, so drop the timer rather than let it
-    // advance to `rest` against a set that no longer exists.
-    if (moved === null) return IDLE_TIMER;
-    if (moved !== next.activeSet.exerciseIndex) {
-      next = { ...next, activeSet: { ...next.activeSet, exerciseIndex: moved } };
-    }
+  const activeSets: SetRef[] = [];
+  for (const ref of state.activeSets) {
+    const moved = mapIndex(ref.exerciseIndex);
+    if (moved !== null) activeSets.push({ ...ref, exerciseIndex: moved });
   }
+  // Every exercise holding a member of the round in play (or being rested
+  // after) is gone. Nothing left to stop or save, so drop the timer rather than
+  // let it advance to `rest` against sets that no longer exist.
+  if (state.activeSets.length > 0 && activeSets.length === 0) return IDLE_TIMER;
 
-  if (next.pendingEntry) {
-    const moved = mapIndex(next.pendingEntry.exerciseIndex);
-    if (moved === null) {
-      next = { ...next, pendingEntry: null };
-    } else if (moved !== next.pendingEntry.exerciseIndex) {
-      next = { ...next, pendingEntry: { ...next.pendingEntry, exerciseIndex: moved } };
-    }
-  }
+  const pendingEntries = state.pendingEntries.flatMap((e) => {
+    const moved = mapIndex(e.exerciseIndex);
+    return moved === null ? [] : [{ ...e, exerciseIndex: moved }];
+  });
 
-  return next;
+  if (roundsUnchanged(state, activeSets, pendingEntries)) return state;
+  return { ...state, activeSets, pendingEntries };
+}
+
+/**
+ * Did a remap actually move anything?
+ *
+ * Both remaps run on EVERY list edit, including the common case of an edit
+ * nowhere near the round in play. Returning `state` itself when nothing moved
+ * keeps the timer object reference-equal, which is what lets the memo on
+ * ExerciseCard skip re-rendering every other card in the session. The
+ * single-set machine got this for free by mutating a `next` cursor only on a
+ * real move; building fresh arrays loses it unless it is asserted here.
+ */
+function roundsUnchanged(
+  state: TimerState,
+  activeSets: SetRef[],
+  pendingEntries: (SetRef & { workSeconds: number })[],
+): boolean {
+  if (activeSets.length !== state.activeSets.length) return false;
+  if (pendingEntries.length !== state.pendingEntries.length) return false;
+  return (
+    activeSets.every((s, i) => sameSet(s, state.activeSets[i]))
+    && pendingEntries.every((e, i) => sameSet(e, state.pendingEntries[i]))
+  );
 }
 
 /**
