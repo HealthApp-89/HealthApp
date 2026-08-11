@@ -34,6 +34,7 @@ import {
   PRIMARY_LIFT_NAME_PATTERNS,
 } from "@/lib/coach/prescription/current-comparison-value";
 import type { BlockPhase, WorkoutSetSample } from "@/lib/coach/prescription/types";
+import { seedSessionPlanForNewWeek } from "@/lib/coach/prescription/upsert-week-prescription";
 
 export async function generateWeeklyReview(args: {
   supabase: SupabaseClient;
@@ -162,10 +163,15 @@ export async function generateWeeklyReview(args: {
     next_week_start: nextWeekStart,
     phase: blockPhaseNext,
     rir_target: upcomingWeek?.rir_target ?? trainingWeek?.rir_target ?? null,
+    // Next week's layout: the already-written upcoming row if the Sunday
+    // prescription cron got there first (03:30 vs this job's 04:00), otherwise
+    // the FIRM schedule. Deliberately NOT this week's session_plan — that
+    // carries whatever mid-week swaps happened (padel, work) and proposing it
+    // as next week's prescription is how a one-off move used to become the
+    // permanent split. See seedSessionPlanForNewWeek.
     session_plan:
       (upcomingWeek?.session_plan as Record<string, string> | null) ??
-      (trainingWeek?.session_plan as Record<string, string> | null) ??
-      {},
+      (seedSessionPlanForNewWeek(null) as Record<string, string>),
     weekly_focus: upcomingWeek?.weekly_focus ?? trainingWeek?.weekly_focus ?? null,
     per_lift: perLift,
   };

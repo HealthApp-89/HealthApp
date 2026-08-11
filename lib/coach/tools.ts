@@ -39,7 +39,7 @@ import { typedTargetsForAllSlots, DEFAULT_MEAL_RATIOS } from "@/lib/food/meal-ta
 import { validateWeekPrescription } from "@/lib/coach/prescription/validate-week";
 import { maintenanceLoadFor } from "@/lib/coach/prescription/maintenance-baseline";
 import { prescribeWeek, computeActivityLayoutProposal } from "@/lib/coach/prescription/prescribe-week";
-import { upsertWeekPrescription } from "@/lib/coach/prescription/upsert-week-prescription";
+import { upsertWeekPrescription, seedSessionPlanForNewWeek } from "@/lib/coach/prescription/upsert-week-prescription";
 import { computeTargetRecommendation, type TargetRecommendation } from "@/lib/coach/prescription/calibrate-target";
 import { validateBlockInput, insertBlock } from "@/lib/coach/blocks/create-block";
 import { closeBlockCore } from "@/lib/coach/blocks/close-block";
@@ -2295,7 +2295,9 @@ export async function executeGetWeekPrescription(opts: {
   if (existing) {
     workingWeek = existing;
   } else {
-    // Borrow prior week's session_plan, if any.
+    // Day-of-week layout comes from the FIRM schedule, never from the prior
+    // week — see seedSessionPlanForNewWeek. Everything else below still
+    // carries forward (block continuity).
     const { data: priorRows } = await opts.supabase
       .from("training_weeks")
       .select("*")
@@ -2310,7 +2312,7 @@ export async function executeGetWeekPrescription(opts: {
       user_id: opts.userId,
       block_id: block?.id ?? null,
       week_start: weekStart,
-      session_plan: prior?.session_plan ?? {},
+      session_plan: seedSessionPlanForNewWeek(prior?.session_plan ?? null),
       original_session_plan: null,
       exercise_overrides: null,
       session_prescriptions: null,
