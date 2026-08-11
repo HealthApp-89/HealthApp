@@ -35,7 +35,7 @@ import {
   keepUnmovedRestOverrides,
   annotatedRestFor,
 } from "@/lib/logger/draft-ops";
-import { groupOfIndex, nextRound, roundFromLead } from "@/lib/logger/superset-groups";
+import { groupsOf, groupOfIndex, nextRound, roundFromLead } from "@/lib/logger/superset-groups";
 import {
   evaluateSet,
   type CoachLine,
@@ -450,6 +450,33 @@ export function LoggerSheet(props: Props) {
 
   const handleReorderAll = useCallback(() => {
     setReorderOpen(true);
+  }, []);
+
+  /** Break this exercise out of its superset for the rest of the session —
+   *  the cable station is occupied, the pair is not happening tonight.
+   *  Draft-local: the plan keeps its tag, and tomorrow's session is unaffected.
+   *
+   *  Drops the timer when the exercise is part of the live round, for the same
+   *  reason handleSetCommit does: the round's membership would change under a
+   *  running clock, and a STOP dispatched afterwards would split the work
+   *  across a different set of members than the one that was performed. */
+  const handleUngroup = useCallback((index: number) => {
+    setDraft((prev) => {
+      if (!prev) return prev;
+      const cur = timerOf(prev);
+      const involved =
+        cur.activeSets.some((s) => s.exerciseIndex === index)
+        || cur.pendingEntries.some((e) => e.exerciseIndex === index);
+      const exercises = prev.exercises.map((ex, i) => {
+        if (i !== index) return ex;
+        const { superset: _dropped, ...prescribed } = ex.prescribed;
+        return { ...ex, prescribed };
+      });
+      // `updated_at` is left alone: the IndexedDB mirror effect stamps it, and
+      // reading a clock inside a setState updater is the Rules-of-React
+      // violation this file avoids everywhere else.
+      return { ...prev, exercises, timer: involved ? IDLE_TIMER : prev.timer ?? null };
+    });
   }, []);
 
   // --- Timer handlers. All use functional setDraft so they stay reference-
@@ -1103,34 +1130,55 @@ export function LoggerSheet(props: Props) {
           </button>
         )}
 
-        {draft.exercises.map((ex, i) => (
-          <ExerciseCard
-            key={`${draft.started_at}-${ex.name}-${i}`}
-            userId={draft.user_id}
-            externalId={draft.external_id}
-            exercise={ex}
-            exerciseIndex={i}
-            allExercises={draft.exercises}
-            onExerciseChange={handleExerciseChange}
-            onReplace={handleExerciseReplace}
-            onRemove={handleExerciseRemove}
-            onReorderAll={handleReorderAll}
-            timer={timer}
-            // Edit mode replays a historical workout — no live timer runs, so
-            // the per-row START affordance must not be offered at all.
-            onTimerStart={props.editMode ? undefined : handleRowStart}
-            editMode={!!props.editMode}
-            onSetCommit={handleSetCommit}
-            onEntrySave={handleEntrySave}
-            onSetCleared={handleSetCleared}
-            onSetRemove={handleSetRemove}
-            onRestOverrideChange={handleRestOverrideChange}
-            onRestDialogOpenChange={handleRestDialogOpenChange}
-            coachLine={coach && coach.set.exerciseIndex === i ? coach.line : null}
-            coachLineSetIndex={coach && coach.set.exerciseIndex === i ? coach.set.setIndex : null}
-            onCoachLineDismiss={handleCoachLineDismiss}
-          />
-        ))}
+        {groupsOf(draft.exercises).map((group) => {
+          const cards = group.indices.map((i) => {
+            const ex = draft.exercises[i];
+            return (
+              <ExerciseCard
+                key={`${draft.started_at}-${ex.name}-${i}`}
+                userId={draft.user_id}
+                externalId={draft.external_id}
+                exercise={ex}
+                exerciseIndex={i}
+                allExercises={draft.exercises}
+                onExerciseChange={handleExerciseChange}
+                onReplace={handleExerciseReplace}
+                onRemove={handleExerciseRemove}
+                onReorderAll={handleReorderAll}
+                timer={timer}
+                // Edit mode replays a historical workout — no live timer runs, so
+                // the per-row START affordance must not be offered at all.
+                onTimerStart={props.editMode ? undefined : handleRowStart}
+                editMode={!!props.editMode}
+                onSetCommit={handleSetCommit}
+                onEntrySave={handleEntrySave}
+                onSetCleared={handleSetCleared}
+                onSetRemove={handleSetRemove}
+                onRestOverrideChange={handleRestOverrideChange}
+                onRestDialogOpenChange={handleRestDialogOpenChange}
+                coachLine={coach && coach.set.exerciseIndex === i ? coach.line : null}
+                coachLineSetIndex={coach && coach.set.exerciseIndex === i ? coach.set.setIndex : null}
+                onCoachLineDismiss={handleCoachLineDismiss}
+                onUngroup={group.tag ? handleUngroup : undefined}
+              />
+            );
+          });
+          if (!group.tag || group.indices.length < 2) return cards;
+          const rounds = Math.max(...group.indices.map((i) => draft.exercises[i].sets.length));
+          return (
+            <div key={`ss-${group.tag}-${group.indices[0]}`} className="mb-3">
+              <div className="flex items-center gap-2 mb-1.5 ml-0.5">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-purple-300 bg-purple-500/15 border border-purple-500/30 px-2 py-0.5 rounded-md">
+                  Superset {group.tag}
+                </span>
+                <span className="text-[10px] text-zinc-500">
+                  {rounds} rounds · rest after the last
+                </span>
+              </div>
+              <div className="border-l-2 border-purple-500/40 pl-2">{cards}</div>
+            </div>
+          );
+        })}
 
         <button
           onClick={() => { setPickerMode("add"); setPickerOpen(true); }}

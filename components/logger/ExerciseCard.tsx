@@ -66,12 +66,15 @@ type Props = {
   coachLineSetIndex: number | null;
   /** Take the line down — applied a load, or dismissed it. */
   onCoachLineDismiss: () => void;
+  /** Present only for a member of a real group (2+ exercises sharing a tag).
+   *  The sheet owns the mutation because it owns the draft. */
+  onUngroup?: (index: number) => void;
 };
 
 function ExerciseCardInner({
   userId, externalId, exercise, exerciseIndex, allExercises, onExerciseChange, onReplace, onRemove, onReorderAll,
   timer, onTimerStart, editMode, onSetCommit, onEntrySave, onSetCleared, onSetRemove, onRestOverrideChange,
-  onRestDialogOpenChange, coachLine, coachLineSetIndex, onCoachLineDismiss,
+  onRestDialogOpenChange, coachLine, coachLineSetIndex, onCoachLineDismiss, onUngroup,
 }: Props) {
   // Tier + rest prescription from session-structure annotation.
   const annotated = useMemo(() => {
@@ -183,6 +186,9 @@ function ExerciseCardInner({
               <button onClick={() => { setMenuOpen(false); onReplace(exerciseIndex); }} className="block w-full text-left px-2 py-1.5 hover:bg-zinc-700 rounded text-zinc-200">Replace</button>
               <button onClick={() => { setMenuOpen(false); onReorderAll(); }} className="block w-full text-left px-2 py-1.5 hover:bg-zinc-700 rounded text-zinc-200">Reorder exercises</button>
               <button onClick={() => { setMenuOpen(false); setRestDialog(true); }} className="block w-full text-left px-2 py-1.5 hover:bg-zinc-700 rounded text-zinc-200">Edit rest time</button>
+              {onUngroup && (
+                <button onClick={() => { setMenuOpen(false); onUngroup(exerciseIndex); }} className="block w-full text-left px-2 py-1.5 hover:bg-zinc-700 rounded text-zinc-200">Ungroup superset</button>
+              )}
               <button onClick={() => { setMenuOpen(false); onRemove(exerciseIndex); }} className="block w-full text-left px-2 py-1.5 hover:bg-zinc-700 rounded text-red-400">Remove</button>
             </div>
           )}
