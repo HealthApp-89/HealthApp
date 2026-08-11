@@ -8,7 +8,8 @@ import { Card } from "@/components/ui/Card";
 import { RADIUS, modeColorLight } from "@/lib/ui/theme";
 import { SessionStructureBanner } from "@/components/strength/SessionStructureBanner";
 import { LoggerSheet } from "@/components/logger/LoggerSheet";
-import { useExistingLoggerDraft } from "@/lib/logger/use-existing-draft";
+import { useTodaySessionStatus } from "@/lib/query/hooks/useTodaySessionStatus";
+import { SessionDoneBar } from "@/components/strength/SessionDoneBar";
 import { useUserToday } from "@/lib/query/hooks/useUserToday";
 import { fmtRest } from "@/lib/ui/rest-format";
 
@@ -34,8 +35,8 @@ export function TodayPlanCard({ plan, committedFromPlan, rirTarget, researchPhas
   const [loggerOpen, setLoggerOpen] = useState(false);
   const [draftEpoch, setDraftEpoch] = useState(0);
   const canStartSession = plan.sessionType !== "REST";
-  const hasDraft = useExistingLoggerDraft(userId, plan.sessionType, draftEpoch);
   const today = useUserToday(userId);
+  const { logged, hasDraft } = useTodaySessionStatus(userId, today ?? "", plan.sessionType, draftEpoch);
 
   // Pill text: prefer committed plan info if present.
   const pillText = committedFromPlan
@@ -198,7 +199,11 @@ export function TodayPlanCard({ plan, committedFromPlan, rirTarget, researchPhas
         </div>
       )}
 
-      {canStartSession && (
+      {logged && today && (
+        <SessionDoneBar userId={userId} date={today} workout={logged} />
+      )}
+
+      {canStartSession && (!logged || hasDraft) && (
         <button
           onClick={() => setLoggerOpen(true)}
           style={{
