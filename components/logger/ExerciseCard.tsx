@@ -27,10 +27,12 @@ type Props = {
   /** Session-wide timer state, read-only here. Only ever changes on a phase
    *  transition — no ticking value is passed down, so memo still pays. */
   timer: TimerState;
-  /** Athlete tapped START on a specific set row. Takes the whole ROUND the set
-   *  belongs to — one member for an ordinary exercise. Undefined in edit mode,
-   *  where no live timer runs and the affordance must not be offered. */
-  onTimerStart?: (sets: SetRef[]) => void;
+  /** Athlete tapped START on a specific set row. Names THIS set only — the card
+   *  knows nothing about supersets; LoggerSheet owns the draft and expands the
+   *  ref into the whole round (see `roundForSet`), so a row-level tap can never
+   *  begin half a pair. Undefined in edit mode, where no live timer runs and the
+   *  affordance must not be offered. */
+  onTimerStart?: (set: SetRef) => void;
   /** True inside a hydrated historical-workout edit. Edit mode has no dock and
    *  no `onTimerStart`, so a time-based row's ONLY commit path is its own
    *  hand-editable seconds field — see SetRow. Threaded explicitly rather than
@@ -287,7 +289,7 @@ function ExerciseCardInner({
                 <tr><td colSpan={columnCount} className="pb-1">
                   <button
                     type="button"
-                    onClick={() => onTimerStart([{ exerciseIndex, setIndex: i }])}
+                    onClick={() => onTimerStart({ exerciseIndex, setIndex: i })}
                     className="w-full text-[9px] font-bold uppercase tracking-widest text-green-400 bg-green-500/10 border border-green-500/25 rounded-md py-1"
                   >
                     Start this set

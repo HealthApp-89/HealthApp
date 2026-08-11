@@ -23,6 +23,7 @@ import {
   includesSet,
   restBetweenSets,
   totalWorkSeconds,
+  roundMemberStartOffsets,
   type TimerState,
   type SetRef,
 } from "@/lib/logger/set-timer";
@@ -33,8 +34,8 @@ import {
   commitPendingEntries,
   keepUnmovedRestOverrides,
   annotatedRestFor,
-  firstPendingSet,
 } from "@/lib/logger/draft-ops";
+import { groupOfIndex, nextRound } from "@/lib/logger/superset-groups";
 import {
   evaluateSet,
   type CoachLine,
@@ -182,6 +183,31 @@ function describeSet(
   return { activeLabel: `${ex.name} · ${which}`, targetLabel };
 }
 
+/** Dock captions for a round: which sets are in play and what they ask for. */
+function describeRound(
+  draft: LoggerDraft,
+  refs: SetRef[],
+): { activeLabel: string; targetLabel: string } {
+  if (refs.length === 0) return { activeLabel: "All sets committed", targetLabel: "tap Finish when done" };
+  if (refs.length === 1) return describeSet(draft, refs[0]);
+  const group = groupOfIndex(draft.exercises, refs[0].exerciseIndex);
+  const lead = draft.exercises[refs[0].exerciseIndex];
+  const roundNumber = lead ? lead.sets.slice(0, refs[0].setIndex).filter((s) => !s.warmup).length + 1 : 1;
+  const targets = refs.map((r) => {
+    const ex = draft.exercises[r.exerciseIndex];
+    const p = ex?.prescribed;
+    if (!ex || !p) return "";
+    const short = ex.name.split("(")[0].trim();
+    return p.baseKg != null
+      ? `${short} ${fmtNum(p.baseKg)}×${p.baseReps ?? "?"}`
+      : `${short} ×${p.baseReps ?? "?"}`;
+  });
+  return {
+    activeLabel: `Superset ${group.tag} · round ${roundNumber}`,
+    targetLabel: targets.join(" → "),
+  };
+}
+
 /** Wipe all entered sets + timer state, keep the current exercise list. */
 function resetDraft(draft: LoggerDraft, weekRirTarget: number | null): LoggerDraft {
   const nowIso = new Date().toISOString();
@@ -313,11 +339,12 @@ export function LoggerSheet(props: Props) {
   /** The between-sets line and the set it belongs to, as one value so the
    *  clear/remap rules below stay pure single-setState updates. */
   const [coach, setCoach] = useState<{ line: CoachLine; set: SetRef } | null>(null);
-  /** A set was just committed and is awaiting evaluation. The handlers only
-   *  record WHICH set; the effect below evaluates once the draft carrying that
+  /** Sets just committed and awaiting evaluation. A LIST because one START
+   *  auto-saves every member of the round it is leaving. The handlers only
+   *  record WHICH sets; the effect below evaluates once the draft carrying that
    *  commit has rendered. Keeping evaluateSet out of the setDraft updaters is
    *  what lets those updaters stay pure functions of `prev`. */
-  const [pendingCoachEval, setPendingCoachEval] = useState<SetRef | null>(null);
+  const [pendingCoachEval, setPendingCoachEval] = useState<SetRef[] | null>(null);
   /** Latest open entry rows, readable from the stable timer callbacks. They use
    *  functional setDraft (so they never close over a draft snapshot) and so
    *  cannot see `pendingEntries` — but the auto-save on START has to know which
@@ -325,6 +352,12 @@ export function LoggerSheet(props: Props) {
    *  effect below, read only from event handlers, which run after that effect
    *  has flushed. */
   const pendingEntryRefs = useRef<SetRef[]>([]);
+  /** Latest draft, readable from the stable timer callbacks. Same reason as
+   *  `pendingEntryRefs`: those callbacks use functional setDraft so they never
+   *  close over a draft snapshot and stay reference-equal for the memoized
+   *  cards — but expanding a row-level START into its whole round needs to READ
+   *  the exercise list. Written only from the mirroring effect below. */
+  const draftRef = useRef<LoggerDraft | null>(null);
 
   useWakeLock(!!draft);
 
@@ -443,14 +476,42 @@ export function LoggerSheet(props: Props) {
         nowIso,
       );
     });
-    // A round holds exactly one member until Task 5 wires the grouping in, so
-    // the lead entry is the only entry. Task 5 generalises the evaluation to
-    // every member it auto-saved.
-    const lead = autoSaved[0];
-    if (lead) {
-      setPendingCoachEval({ exerciseIndex: lead.exerciseIndex, setIndex: lead.setIndex });
-    }
+    // Coach on everything the auto-save just committed — a superset round hands
+    // over more than one set at a time, and the effect below picks the first
+    // line any of them earns.
+    if (autoSaved.length > 0) setPendingCoachEval(autoSaved);
   }, []);
+
+  /** The round a set belongs to: that set plus each other group member's first
+   *  uncommitted set, in group order. A row-level START must not begin half a
+   *  superset, and the dock's START goes through nextRound already.
+   *
+   *  A member whose zoom is still open is skipped exactly as `nextRound` skips
+   *  it: that set is uncommitted but already PERFORMED, and START commits it on
+   *  the way, so including it would re-run — and re-stamp `work_seconds` /
+   *  `started_at` on — a set the athlete has just finished. Reachable by saving
+   *  one member's entry row and tapping "Start this set" on the partner, which
+   *  the card offers because it only knows about its OWN pending entry. */
+  const roundForSet = useCallback((set: SetRef): SetRef[] => {
+    const d = draftRef.current;
+    if (!d) return [set];
+    const group = groupOfIndex(d.exercises, set.exerciseIndex);
+    if (group.indices.length === 1) return [set];
+    const skip = pendingEntryRefs.current;
+    const round: SetRef[] = [];
+    for (const ei of group.indices) {
+      if (ei === set.exerciseIndex) { round.push(set); continue; }
+      const si = d.exercises[ei].sets.findIndex(
+        (s, i) => !s.committed_at && !skip.some((k) => k.exerciseIndex === ei && k.setIndex === i),
+      );
+      if (si >= 0) round.push({ exerciseIndex: ei, setIndex: si });
+    }
+    return round;
+  }, []);
+
+  const handleRowStart = useCallback((set: SetRef) => {
+    handleTimerStart(roundForSet(set));
+  }, [handleTimerStart, roundForSet]);
 
   /** Manual ○ commit. Lives here, not in ExerciseCard, so both commit paths
    *  reach `evaluateCommittedSet` through the same signal. */
@@ -484,7 +545,7 @@ export function LoggerSheet(props: Props) {
         : prev.timer ?? null;
       return { ...prev, exercises, timer, updated_at: nowIso };
     });
-    setPendingCoachEval({ exerciseIndex, setIndex });
+    setPendingCoachEval([{ exerciseIndex, setIndex }]);
   }, []);
 
   /** Save the zoomed entry row. Writes the numbers, closes the zoom, and
@@ -495,7 +556,7 @@ export function LoggerSheet(props: Props) {
     if (!pendingEntryRefs.current.some((r) => sameSet(r, ref))) return;
     const nowIso = new Date().toISOString();
     setDraft((prev) => (prev ? commitPendingEntry(prev, ref, nowIso) : prev));
-    setPendingCoachEval({ exerciseIndex: ref.exerciseIndex, setIndex: ref.setIndex });
+    setPendingCoachEval([{ exerciseIndex: ref.exerciseIndex, setIndex: ref.setIndex }]);
   }, []);
 
   const handleCoachLineDismiss = useCallback(() => setCoach(null), []);
@@ -508,9 +569,9 @@ export function LoggerSheet(props: Props) {
       const next = timerReducer(timerOf(prev), { type: "countdown_elapsed", nowMs });
       if (next === timerOf(prev)) return prev;
       // Stamp the true set start on the draft set itself. Only the FIRST
-      // member of the round starts at countdown end; later members start after
-      // the earlier ones' work plus a transition, so Task 5 stamps those at
-      // stop from roundMemberStartOffsets. A round is one member long here.
+      // member of the round starts at countdown end; the later members are
+      // still waiting their turn, so `handleStop` stamps those from
+      // roundMemberStartOffsets once the round's total work is known.
       const ref = next.activeSets[0];
       if (!ref) return withTimer(prev, next, nowIso);
       const exercises = prev.exercises.map((ex, ei) =>
@@ -531,28 +592,43 @@ export function LoggerSheet(props: Props) {
     setDraft((prev) => {
       if (!prev) return prev;
       const cur = timerOf(prev);
-      const ref = cur.activeSets[0];
-      if (cur.phase !== "running" || !ref || cur.anchorMs === null) return prev;
-      const prescribedRest =
-        restOverrides[ref.exerciseIndex]
-        ?? annotatedRestFor(prev, ref.exerciseIndex);
-      const next = timerReducer(cur, { type: "press_stop", nowMs, prescribedRestSeconds: prescribedRest });
-      // The reducer already split the round's work across its members, so read
-      // the share back rather than recomputing it — a second copy of that
-      // arithmetic is exactly how the dock and the DB would drift. One member
-      // per round here; Task 5 turns this into a loop over pendingEntries.
-      const workSeconds = next.pendingEntries[0].workSeconds;
-      // Stop records the honest work time and opens the zoom; it does NOT
-      // commit. Commit is the Save tap (or the auto-save when START is pressed
-      // on the next set), which is what lets entry and rest run concurrently.
-      const exercises = prev.exercises.map((ex, ei) =>
-        ei !== ref.exerciseIndex ? ex : {
-          ...ex,
-          sets: ex.sets.map((s, si) =>
-            si !== ref.setIndex ? s : { ...s, work_seconds: workSeconds },
-          ),
-        },
+      if (cur.phase !== "running" || cur.activeSets.length === 0 || cur.anchorMs === null) return prev;
+      const roundStartMs = cur.anchorMs;
+      // Group rest, not per-exercise rest: the pair is one unit, so the longer
+      // of the members' prescriptions is what the athlete owes.
+      const prescribedRest = Math.max(
+        ...cur.activeSets.map((r) =>
+          restOverrides[r.exerciseIndex] ?? annotatedRestFor(prev, r.exerciseIndex),
+        ),
       );
+      const next = timerReducer(cur, { type: "press_stop", nowMs, prescribedRestSeconds: prescribedRest });
+      // Read the shares OFF the new state rather than recomputing them — one
+      // split, one source of truth for both the entry rows and the DB stamps.
+      const shares = next.pendingEntries.map((e) => e.workSeconds);
+      const offsets = roundMemberStartOffsets(shares);
+      let exercises = prev.exercises;
+      // Stop records the honest work time and opens the zooms; it does NOT
+      // commit. Commit is the Save tap (or the auto-save when START is pressed
+      // on the next round), which is what lets entry and rest run concurrently.
+      next.pendingEntries.forEach((entry, i) => {
+        // Member 0's started_at was stamped at countdown end; later members
+        // start when the earlier ones finish, plus one transition allowance.
+        const startedAt = i === 0
+          ? null
+          : new Date(roundStartMs + offsets[i] * 1000).toISOString();
+        exercises = exercises.map((ex, ei) =>
+          ei !== entry.exerciseIndex ? ex : {
+            ...ex,
+            sets: ex.sets.map((s, si) =>
+              si !== entry.setIndex ? s : {
+                ...s,
+                work_seconds: entry.workSeconds,
+                started_at: startedAt ?? s.started_at ?? null,
+              },
+            ),
+          },
+        );
+      });
       return withTimer({ ...prev, exercises }, next, nowIso);
     });
   }, [restOverrides]);
@@ -663,9 +739,11 @@ export function LoggerSheet(props: Props) {
   );
   const liveContext = useLiveSessionContext(props.userId, props.date, exerciseNames);
 
-  // Mirror the open entry rows into a ref the stable timer callbacks can read.
-  // See the declaration above for why they cannot read it from `draft`.
+  // Mirror the draft and its open entry rows into refs the stable timer
+  // callbacks can read. See the declarations above for why they cannot read
+  // either from `draft` directly.
   useEffect(() => {
+    draftRef.current = draft;
     // Via timerOf, not `draft.timer` — a draft resumed from IndexedDB across
     // the round refactor carries the old single-set shape and normalises here.
     pendingEntryRefs.current = timerOf(draft).pendingEntries.map((e) => ({
@@ -682,13 +760,15 @@ export function LoggerSheet(props: Props) {
   // re-committing a set while editing a three-week-old session would otherwise
   // celebrate a PR for a lift long since logged.
   useEffect(() => {
-    if (!pendingCoachEval || !draft) return;
-    const line = evaluateCommittedSet(
-      draft,
-      pendingCoachEval,
-      props.editMode ? undefined : liveContext.data,
-    );
-    setCoach(line ? { line, set: pendingCoachEval } : null);
+    if (!pendingCoachEval || pendingCoachEval.length === 0 || !draft) return;
+    // At most one line per commit, still — a round commits two sets, so the
+    // first rule that fires in group order wins and the rest stay silent.
+    let shown: { line: CoachLine; set: SetRef } | null = null;
+    for (const ref of pendingCoachEval) {
+      const line = evaluateCommittedSet(draft, ref, props.editMode ? undefined : liveContext.data);
+      if (line) { shown = { line, set: ref }; break; }
+    }
+    setCoach(shown);
     setPendingCoachEval(null);
   }, [pendingCoachEval, draft, liveContext.data, props.editMode]);
 
@@ -742,17 +822,18 @@ export function LoggerSheet(props: Props) {
   const diverged = exerciseListDiverged(draft);
   const timer = timerOf(draft);
   const midSet = timer.phase === "countdown" || timer.phase === "running";
-  // What START dispatches. During `rest`, timer.activeSets holds the sets just
-  // FINISHED, so the next set always comes from the pending scan — and the sets
-  // with a zoom still open are excluded, because START commits them on the way.
-  const nextSetRef = firstPendingSet(draft, timer.pendingEntries);
+  // What START dispatches. During `rest`, activeSets holds the sets just
+  // FINISHED, so the next round always comes from the pending scan — and the
+  // members whose zoom is still open are excluded, because START commits them
+  // on the way.
+  const nextRoundRefs = nextRound(draft, timer.pendingEntries);
   const anyDialogOpen =
     pickerOpen || reorderOpen || saveDefaultOpen || finishOpen
     || closeConfirmOpen || resetConfirmOpen || restDialogOpenIndex !== null;
-  // What the caption describes: the set in play mid-set, otherwise the next one.
-  const { activeLabel, targetLabel } = describeSet(
+  // What the caption describes: the round in play mid-set, otherwise the next.
+  const { activeLabel, targetLabel } = describeRound(
     draft,
-    midSet ? timer.activeSets[0] ?? null : nextSetRef,
+    midSet ? timer.activeSets : nextRoundRefs,
   );
 
   function togglePause() {
@@ -1046,7 +1127,7 @@ export function LoggerSheet(props: Props) {
             timer={timer}
             // Edit mode replays a historical workout — no live timer runs, so
             // the per-row START affordance must not be offered at all.
-            onTimerStart={props.editMode ? undefined : handleTimerStart}
+            onTimerStart={props.editMode ? undefined : handleRowStart}
             editMode={!!props.editMode}
             onSetCommit={handleSetCommit}
             onEntrySave={handleEntrySave}
@@ -1083,8 +1164,8 @@ export function LoggerSheet(props: Props) {
           startedAt={draft.started_at}
           pausedAt={draft.paused_at}
           pausedMsTotal={draft.paused_ms_total}
-          canStart={nextSetRef !== null}
-          onStart={() => { if (nextSetRef) handleTimerStart([nextSetRef]); }}
+          canStart={nextRoundRefs.length > 0}
+          onStart={() => { if (nextRoundRefs.length) handleTimerStart(nextRoundRefs); }}
           onCountdownElapsed={handleCountdownElapsed}
           onStop={handleStop}
         />
