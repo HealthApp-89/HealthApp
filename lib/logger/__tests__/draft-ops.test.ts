@@ -152,7 +152,7 @@ describe("firstPendingSet", () => {
       { name: "Squat", sets: [mkSet({ committed_at: NOW }), mkSet()] },
       { name: "Leg Press", sets: [mkSet()] },
     ]);
-    expect(firstPendingSet(d, null)).toEqual({ exerciseIndex: 0, setIndex: 1 });
+    expect(firstPendingSet(d, [])).toEqual({ exerciseIndex: 0, setIndex: 1 });
   });
 
   it("skips the set whose entry row is open", () => {
@@ -163,13 +163,13 @@ describe("firstPendingSet", () => {
       { name: "Squat", sets: [mkSet({ committed_at: NOW }), mkSet()] },
       { name: "Leg Press", sets: [mkSet()] },
     ]);
-    expect(firstPendingSet(d, { exerciseIndex: 0, setIndex: 1 }))
+    expect(firstPendingSet(d, [{ exerciseIndex: 0, setIndex: 1 }]))
       .toEqual({ exerciseIndex: 1, setIndex: 0 });
   });
 
   it("returns null once everything is committed, so the dock can disable START", () => {
     const d = mkDraft([{ name: "Squat", sets: [mkSet({ committed_at: NOW })] }]);
-    expect(firstPendingSet(d, null)).toBeNull();
+    expect(firstPendingSet(d, [])).toBeNull();
   });
 });
 

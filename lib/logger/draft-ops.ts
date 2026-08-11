@@ -131,17 +131,20 @@ export function annotatedRestFor(draft: LoggerDraft, exerciseIndex: number): num
  * committed — the dock then disables its START affordance rather than
  * dispatching a start for a set that does not exist.
  *
+ * `skip` is a LIST because a superset round opens one entry row per member,
+ * so more than one set can be uncommitted-but-finished at the same moment.
+ *
  * `skip` is the set with the zoomed entry row open. That set is uncommitted
  * until Save, so without skipping it START would offer to re-run the set the
  * athlete just finished — and the caller commits the entry first, so it would
  * count down to a set it had itself just committed.
  */
-export function firstPendingSet(draft: LoggerDraft, skip: SetRef | null): SetRef | null {
+export function firstPendingSet(draft: LoggerDraft, skip: SetRef[]): SetRef | null {
   for (let ei = 0; ei < draft.exercises.length; ei++) {
     const sets = draft.exercises[ei].sets;
     for (let si = 0; si < sets.length; si++) {
       const ref = { exerciseIndex: ei, setIndex: si };
-      if (!sets[si].committed_at && !sameSet(ref, skip)) return ref;
+      if (!sets[si].committed_at && !skip.some((s) => sameSet(ref, s))) return ref;
     }
   }
   return null;

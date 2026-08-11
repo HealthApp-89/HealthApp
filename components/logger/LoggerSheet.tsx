@@ -731,7 +731,7 @@ export function LoggerSheet(props: Props) {
   // What START dispatches. During `rest`, timer.activeSet is the set just
   // FINISHED, so the next set always comes from the pending scan — and the set
   // with the zoom still open is excluded, because START commits it on the way.
-  const nextSetRef = firstPendingSet(draft, timer.pendingEntry);
+  const nextSetRef = firstPendingSet(draft, timer.pendingEntry ? [timer.pendingEntry] : []);
   const anyDialogOpen =
     pickerOpen || reorderOpen || saveDefaultOpen || finishOpen
     || closeConfirmOpen || resetConfirmOpen || restDialogOpenIndex !== null;
