@@ -9,6 +9,19 @@ import type { ManualSessionEdits, WeekdayLong } from "@/lib/data/types";
 export type PlannedExercise = {
   name: string;
   warmup?: boolean;
+  /** Athlete-chosen rest between sets of THIS exercise, in seconds. Overrides
+   *  the tier value from `restSecondsFor` wherever the plan is read — the
+   *  logger, the morning brief and the strength card all show the same number.
+   *
+   *  Distinct from `ExerciseDraft.rest_override_seconds`, which is a
+   *  session-scoped nudge that dies with the draft. This one is plan data and
+   *  persists: it lives in `training_weeks.session_prescriptions` and survives
+   *  until the athlete changes it again.
+   *
+   *  Deliberately NOT named `rest_seconds`: that is the resolved field on
+   *  AnnotatedExercise, and SessionStructureBanner strips annotation fields
+   *  before persisting a reorder — a same-named plan field would be eaten. */
+  rest_seconds_override?: number;
   reps?: string;
   baseKg?: number;
   baseReps?: number;

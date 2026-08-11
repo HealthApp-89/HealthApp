@@ -27,7 +27,7 @@ import {
   type SetRef,
 } from "@/lib/logger/set-timer";
 import { annotateSession } from "@/lib/coach/session-structure/annotate";
-import { TRANSITION_BUFFER_SECONDS } from "@/lib/coach/session-structure/rules";
+import { TRANSITION_BUFFER_SECONDS, REST_SECONDS } from "@/lib/coach/session-structure/rules";
 
 /** The single-set timer shape this module still has to read. Not exported and
  *  deliberately not part of `TimerState` any more — it only exists on drafts
@@ -227,6 +227,71 @@ export function transitionAfterRound(
   if (!endsExercise) return null;
   const nextIndex = Math.max(...activeSets.map((r) => r.exerciseIndex)) + 1;
   return transitionRestFor(draft, nextIndex);
+}
+
+/**
+ * THE rest a STOP owes, for any round the logger can produce. One function so
+ * the dock, and anything that later wants to show rest before it is pressed,
+ * cannot disagree about the number.
+ *
+ * In precedence order:
+ *
+ *  1. **A warm-up ramp** rests at its own value — including the last-warm-up
+ *     bump. It never earns a walk-in: the ramp and its working sets are the
+ *     same bar in the same rack, and charging a station change there would
+ *     override the bump and strand the athlete before the set the ramp exists
+ *     to prepare.
+ *  2. **A superset round** rests at `REST_SECONDS.supersetRound` between
+ *     rounds — the partner exercise is the rest, so the pair is rested as a
+ *     unit rather than at its heavier member's tier value — and at
+ *     `supersetSetup` after its last round, for the weight change and the walk
+ *     to the next station. An athlete override on any member wins for the
+ *     between-rounds case. If a heavy compound follows, the ordinary walk-in
+ *     applies when it is longer: setting up must never cost the fresh start a
+ *     tier 1/2 lift is owed.
+ *  3. **A solo exercise** rests at its effective value, or hands off with a
+ *     walk-in when it is finished and a tier 1/2 lift is next.
+ */
+export function restAfterRound(draft: LoggerDraft, activeSets: SetRef[]): number {
+  if (activeSets.length === 0) return REST_SECONDS.isolationLarge;
+
+  const effective = (i: number) =>
+    draft.exercises[i]?.rest_override_seconds ?? annotatedRestFor(draft, i);
+  const memberRest = Math.max(...activeSets.map((r) => effective(r.exerciseIndex)));
+
+  // 1. Warm-up ramp.
+  const allWarmup = activeSets.every(
+    (r) => draft.exercises[r.exerciseIndex]?.sets[r.setIndex]?.warmup,
+  );
+  if (allWarmup) return memberRest;
+
+  const endsExercise = activeSets.every((r) => {
+    const ex = draft.exercises[r.exerciseIndex];
+    return ex != null && r.setIndex === ex.sets.length - 1;
+  });
+  const nextIndex = Math.max(...activeSets.map((r) => r.exerciseIndex)) + 1;
+  const walkIn = endsExercise ? transitionRestFor(draft, nextIndex) : null;
+
+  // 2. Superset round. A round spanning more than one exercise is a superset
+  //    by construction; a tagged single-member round is one the athlete has
+  //    not yet paired, and is rested like the pair it belongs to.
+  const isSuperset =
+    activeSets.length > 1
+    || activeSets.some((r) => draft.exercises[r.exerciseIndex]?.prescribed.superset != null);
+  if (isSuperset) {
+    if (!endsExercise) {
+      const overridden = activeSets
+        .map((r) => draft.exercises[r.exerciseIndex]?.rest_override_seconds)
+        .filter((v): v is number => v != null);
+      return overridden.length > 0
+        ? Math.max(...overridden)
+        : REST_SECONDS.supersetRound;
+    }
+    return Math.max(REST_SECONDS.supersetSetup, walkIn ?? 0);
+  }
+
+  // 3. Solo.
+  return walkIn ?? memberRest;
 }
 
 /**

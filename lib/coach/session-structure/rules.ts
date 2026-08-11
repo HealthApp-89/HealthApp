@@ -53,6 +53,13 @@ export const REST_SECONDS = {
   isolationLarge: 120,
   isolationSmall: 60,
   finisher: 45,
+  /** Between rounds of a superset, whatever its members are. The technique's
+   *  point is density: the partner exercise IS the rest for the first, so the
+   *  pair is rested as a unit rather than at the heavier member's tier value. */
+  supersetRound: 60,
+  /** After a superset's LAST round — changing weights and walking to the next
+   *  station costs more than the round-to-round turnaround. */
+  supersetSetup: 120,
 } as const;
 
 /** Added to the incoming exercise's rest to produce the between-exercise
@@ -96,6 +103,9 @@ export function isolationSize(name: string): "large" | "small" {
  *  annotateSession, not here — keeping this a pure (ex, tier) lookup is what
  *  makes it directly testable. */
 export function restSecondsFor(ex: PlannedExercise, tier: FatigueTier): number {
+  // An athlete-set value on the plan beats the tier table everywhere the plan
+  // is read, so the brief, the strength card and the logger cannot disagree.
+  if (ex.rest_seconds_override != null) return ex.rest_seconds_override;
   switch (tier) {
     case 0: return REST_SECONDS.warmup;
     case 1: return REST_SECONDS.heavyCompound;

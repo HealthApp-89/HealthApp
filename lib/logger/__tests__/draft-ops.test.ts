@@ -15,6 +15,7 @@ import {
   annotatedRestFor,
   transitionRestFor,
   transitionAfterRound,
+  restAfterRound,
 } from "@/lib/logger/draft-ops";
 import { IDLE_TIMER, type TimerState } from "@/lib/logger/set-timer";
 
@@ -410,5 +411,66 @@ describe("transitionAfterRound", () => {
       { exerciseIndex: 0, setIndex: 1 },
       { exerciseIndex: 1, setIndex: 1 },
     ])).toBe(300);
+  });
+});
+
+describe("restAfterRound", () => {
+  /** Arnold Press (tier 2, 180s) paired with Bicep Curl (tier 3 small, 60s),
+   *  then a solo cable exercise — the real shape of Friday's Arms day. */
+  const pairThenSolo = () => mkDraft([
+    { name: "Arnold Press (Dumbbell)", prescribed: { superset: "A" }, sets: [mkSet(), mkSet(), mkSet()] },
+    { name: "Bicep Curl (Dumbbell)", prescribed: { superset: "A" }, sets: [mkSet(), mkSet(), mkSet()] },
+    { name: "Cable External Rotation", sets: [mkSet()] },
+  ]);
+  const round = (setIndex: number) => [
+    { exerciseIndex: 0, setIndex },
+    { exerciseIndex: 1, setIndex },
+  ];
+
+  it("rests a superset round at 60s, not at its heavier member's tier value", () => {
+    // The partner exercise IS the rest for the first, so the pair is rested as
+    // a unit. Arnold's solo 180s would defeat the point of the technique.
+    expect(restAfterRound(pairThenSolo(), round(0))).toBe(60);
+    expect(restAfterRound(pairThenSolo(), round(1))).toBe(60);
+  });
+
+  it("gives 2 minutes after the superset's LAST round to set the next one up", () => {
+    expect(restAfterRound(pairThenSolo(), round(2))).toBe(120);
+  });
+
+  it("lets an override on a member win between rounds", () => {
+    const d = pairThenSolo();
+    d.exercises[0].rest_override_seconds = 90;
+    expect(restAfterRound(d, round(0))).toBe(90);
+  });
+
+  it("never lets superset setup undercut the walk-in a heavy lift is owed", () => {
+    // Squat after the pair: 240 + 60 = 300 beats the 120s setup, because
+    // arriving at a heavy compound under-rested costs load.
+    const d = mkDraft([
+      { name: "Bicep Curl (Dumbbell)", prescribed: { superset: "A" }, sets: [mkSet()] },
+      { name: "Hammer Curl (Dumbbell)", prescribed: { superset: "A" }, sets: [mkSet()] },
+      { name: "Squat (Barbell)", sets: [mkSet()] },
+    ]);
+    expect(restAfterRound(d, [
+      { exerciseIndex: 0, setIndex: 0 },
+      { exerciseIndex: 1, setIndex: 0 },
+    ])).toBe(300);
+  });
+
+  it("rests a warm-up ramp at its own bumped value, never a walk-in", () => {
+    const d = mkDraft([
+      { name: "Squat (Barbell)", prescribed: { warmup: true }, sets: [mkSet({ warmup: true })] },
+      { name: "Squat (Barbell)", sets: [mkSet()] },
+    ]);
+    expect(restAfterRound(d, [{ exerciseIndex: 0, setIndex: 0 }])).toBe(120);
+  });
+
+  it("honours a plan-level rest_seconds_override on a solo exercise", () => {
+    const d = mkDraft([
+      { name: "Overhead Press (Barbell)", prescribed: { rest_seconds_override: 150 }, sets: [mkSet(), mkSet()] },
+      { name: "Chest Fly", sets: [mkSet()] },
+    ]);
+    expect(restAfterRound(d, [{ exerciseIndex: 0, setIndex: 0 }])).toBe(150);
   });
 });
