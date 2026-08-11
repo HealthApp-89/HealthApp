@@ -43,6 +43,60 @@ export function groupsOf(exercises: Pick<ExerciseDraft, "prescribed">[]): Supers
   return groups;
 }
 
+/**
+ * What `exercises.superset_group` should say for each exercise, index-aligned
+ * with `exercises`. A tag survives ONLY when its group actually has 2+ members.
+ *
+ * The raw `prescribed.superset` tag is NOT the answer, and reading it at the
+ * commit site was a durable lie: removing a partner, ungrouping one side, or
+ * reordering something between the pair all leave a survivor that still carries
+ * the tag but was performed ALONE — with honest one-member timing. Migration
+ * 0057's column comment says a non-null value asserts that `work_seconds` is a
+ * split, `rest_seconds_actual` is inflated, and `started_at` after the first
+ * member is derived. For a solo round every one of those is false, and no
+ * consumer can tell afterwards.
+ *
+ * Same contiguity rule as `groupsOf` because it IS `groupsOf` — this exists so
+ * the commit path in LoggerSheet.tsx does not become a fourth copy of it in the
+ * one file this repo's vitest setup cannot reach.
+ */
+export function persistedGroupTags(
+  exercises: Pick<ExerciseDraft, "prescribed">[],
+): (string | null)[] {
+  const tags: (string | null)[] = exercises.map(() => null);
+  for (const group of groupsOf(exercises)) {
+    if (group.tag === null || group.indices.length < 2) continue;
+    for (const i of group.indices) tags[i] = group.tag;
+  }
+  return tags;
+}
+
+/**
+ * Drop the `superset` tag from every exercise that is now the lone member of
+ * its tag — the survivor of a removal, an ungroup, or a reorder that split a
+ * pair. A tag nobody shares means nothing, and while it sits there it still
+ * reads as "in a superset" to anything that asks the raw prescription rather
+ * than `groupsOf` (`ruleRestDiscipline`'s guard, the card chrome).
+ *
+ * Identity-preserving: returns the SAME array when nothing is orphaned, and the
+ * same objects for the exercises it does not touch, so the memo on ExerciseCard
+ * survives.
+ */
+export function stripOrphanTags<T extends Pick<ExerciseDraft, "prescribed">>(
+  exercises: T[],
+): T[] {
+  const orphans = new Set<number>();
+  for (const group of groupsOf(exercises)) {
+    if (group.tag !== null && group.indices.length === 1) orphans.add(group.indices[0]);
+  }
+  if (orphans.size === 0) return exercises;
+  return exercises.map((ex, i) => {
+    if (!orphans.has(i)) return ex;
+    const { superset: _dropped, ...prescribed } = ex.prescribed;
+    return { ...ex, prescribed };
+  });
+}
+
 /** The group containing `index`. Falls back to a one-member group so callers
  *  can rely on a non-null result for any valid index. */
 export function groupOfIndex(

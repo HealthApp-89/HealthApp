@@ -28,11 +28,22 @@ export function hydrateWorkoutAsDraft(
       sets: e.sets.length,
       baseReps: e.sets[0]?.reps ?? 10,
     };
-    // The saved grouping wins over whatever today's plan says: this is a
-    // record of what was performed, not a fresh prescription.
-    const prescribed: PlannedExercise = e.superset_group
-      ? { ...base, superset: e.superset_group }
-      : base;
+    // The saved grouping wins over whatever today's plan says — in BOTH
+    // directions. A tag on the row is restored; a NULL column means "performed
+    // alone", which is a fact about the past, not a gap for the present to
+    // fill. `base` came from today's resolveSessionPlan, so without the strip
+    // any pre-branch Arms workout opened in edit mode would silently inherit
+    // today's "A"/"B"/"C" pairing and re-commit ten independent lifts as
+    // supersets.
+    let prescribed: PlannedExercise;
+    if (e.superset_group) {
+      prescribed = { ...base, superset: e.superset_group };
+    } else if (base.superset !== undefined) {
+      const { superset: _dropped, ...rest } = base;
+      prescribed = rest;
+    } else {
+      prescribed = base;
+    }
     const sets: ExerciseSetDraft[] = e.sets.map((s) => ({
       set_index: s.set_index,
       kg: s.kg,

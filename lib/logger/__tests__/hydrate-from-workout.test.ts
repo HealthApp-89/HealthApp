@@ -85,6 +85,21 @@ describe("hydrateWorkoutAsDraft — superset grouping", () => {
     expect(draft.exercises[0].prescribed.superset).toBeUndefined();
   });
 
+  it("strips a tag today's plan carries when the saved row was performed alone", () => {
+    // The half the "saved grouping wins" comment did not implement. `base`
+    // comes from TODAY's resolveSessionPlan, so a pre-branch Arms workout
+    // opened in edit mode would silently inherit today's pairing — and with
+    // persistedGroupTags at the commit site, saving a typo'd rep would stamp
+    // ten independent lifts as supersets.
+    const draft = hydrateWorkoutAsDraft(workoutFixture(), [
+      { name: "Decline Bench", sets: 3, baseReps: 8, superset: "C" },
+    ]);
+    expect(draft.exercises[0].prescribed.superset).toBeUndefined();
+    // The rest of today's plan entry still applies — only the grouping is a
+    // fact about the past.
+    expect(draft.exercises[0].prescribed.sets).toBe(3);
+  });
+
   it("prefers the saved tag over today's plan entry", () => {
     // The plan may have been re-paired since; this row records what happened.
     const w = workoutFixture();

@@ -24,7 +24,6 @@ import {
   restBetweenSets,
   totalWorkSeconds,
   roundMemberStartOffsets,
-  type TimerState,
   type SetRef,
 } from "@/lib/logger/set-timer";
 import {
@@ -35,7 +34,14 @@ import {
   keepUnmovedRestOverrides,
   annotatedRestFor,
 } from "@/lib/logger/draft-ops";
-import { groupsOf, groupOfIndex, nextRound, roundFromLead } from "@/lib/logger/superset-groups";
+import {
+  groupsOf,
+  groupOfIndex,
+  nextRound,
+  roundFromLead,
+  persistedGroupTags,
+  stripOrphanTags,
+} from "@/lib/logger/superset-groups";
 import {
   evaluateSet,
   type CoachLine,
@@ -437,7 +443,11 @@ export function LoggerSheet(props: Props) {
       if (!prev) return prev;
       return {
         ...prev,
-        exercises: prev.exercises.filter((_, j) => j !== index),
+        // Removing one half of a pair leaves the other holding a tag nobody
+        // shares. `groupsOf` already treats it as solo, so the tag is dead
+        // weight — but it is dead weight the raw-prescription readers still
+        // believe (ruleRestDiscipline's guard, the card chrome). Strip it.
+        exercises: stripOrphanTags(prev.exercises.filter((_, j) => j !== index)),
         timer: remapTimerExercises(timerOf(prev), mapIndex),
       };
     });
@@ -459,23 +469,48 @@ export function LoggerSheet(props: Props) {
    *  Drops the timer when the exercise is part of the live round, for the same
    *  reason handleSetCommit does: the round's membership would change under a
    *  running clock, and a STOP dispatched afterwards would split the work
-   *  across a different set of members than the one that was performed. */
+   *  across a different set of members than the one that was performed.
+   *
+   *  FLUSHES FIRST, exactly as Finish and `pauseAndClose` do. `involved` is
+   *  also true during `rest`, when `pendingEntries` hold sets the athlete has
+   *  ALREADY PERFORMED — IDLE_TIMER clears them, both SetEntryRows unmount
+   *  losing their local drafts, `committed_at` stays null, and the sets drop
+   *  out of the commit payload AND out of totalWorkSeconds. Ungrouping one
+   *  member took the partner's set down with it. */
   const handleUngroup = useCallback((index: number) => {
+    // Hoisted out of the updater: React may invoke a setState updater more than
+    // once per commit, so reading the wall clock inside one is the same
+    // Rules-of-React violation `handleTimerStart` avoids.
+    const nowIso = new Date().toISOString();
     setDraft((prev) => {
       if (!prev) return prev;
       const cur = timerOf(prev);
       const involved =
         cur.activeSets.some((s) => s.exerciseIndex === index)
         || cur.pendingEntries.some((e) => e.exerciseIndex === index);
-      const exercises = prev.exercises.map((ex, i) => {
+      // Only when the timer is about to be dropped: an uninvolved ungroup
+      // leaves the open rows running and must not commit them behind the
+      // athlete's back.
+      const flushed = involved ? commitPendingEntries(prev, nowIso) : prev;
+      const untagged = flushed.exercises.map((ex, i) => {
         if (i !== index) return ex;
         const { superset: _dropped, ...prescribed } = ex.prescribed;
         return { ...ex, prescribed };
       });
+      // Ungrouping a pair strands the partner on a tag nobody shares — same
+      // orphan as a removal, same strip.
+      const exercises = stripOrphanTags(untagged);
       // `updated_at` is left alone: the IndexedDB mirror effect stamps it, and
       // reading a clock inside a setState updater is the Rules-of-React
       // violation this file avoids everywhere else.
-      return { ...prev, exercises, timer: involved ? IDLE_TIMER : prev.timer ?? null };
+      return {
+        ...flushed,
+        exercises,
+        // The normalised value, not `flushed.timer` — a draft resumed from
+        // IndexedDB before the round refactor carries the legacy single-set
+        // shape, and writing it back unnormalised keeps it legacy.
+        timer: involved ? IDLE_TIMER : timerOf(flushed),
+      };
     });
   }, []);
 
@@ -925,6 +960,12 @@ export function LoggerSheet(props: Props) {
     if (!draft) return;
     setCommitting(true);
     const elapsedMin = Math.round(getElapsedMs(draft, Date.now()) / 60000);
+    // What gets PERSISTED is the real group, not the raw tag: an exercise whose
+    // partner was removed, ungrouped, or reordered away still carries the tag
+    // but was performed alone, with honest one-member timing. Writing "A" there
+    // would be a permanent instruction to discount good data — see
+    // persistedGroupTags and migration 0057's column comment.
+    const groupTags = persistedGroupTags(draft.exercises);
     const payload: CommitSessionPayload = {
       user_id: draft.user_id,
       external_id: draft.external_id,
@@ -939,7 +980,7 @@ export function LoggerSheet(props: Props) {
       exercises: draft.exercises.map((ex, i) => ({
         name: ex.name,
         position: i,
-        superset_group: ex.prescribed.superset ?? null,
+        superset_group: groupTags[i] ?? null,
         sets: ex.sets
           .filter((s) => s.committed_at)
           .map((s, sIdx, arr) => {
@@ -1160,7 +1201,10 @@ export function LoggerSheet(props: Props) {
                 coachLine={coach && coach.set.exerciseIndex === i ? coach.line : null}
                 coachLineSetIndex={coach && coach.set.exerciseIndex === i ? coach.set.setIndex : null}
                 onCoachLineDismiss={handleCoachLineDismiss}
-                onUngroup={group.tag ? handleUngroup : undefined}
+                // A real group only — "Ungroup superset" on a lone tag-holder
+                // offers to break up a pair that does not exist. Matches
+                // ExerciseCard's onUngroup contract and the chrome below.
+                onUngroup={group.tag && group.indices.length >= 2 ? handleUngroup : undefined}
               />
             );
           });

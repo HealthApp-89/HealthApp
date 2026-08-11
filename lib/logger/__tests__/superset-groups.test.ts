@@ -1,7 +1,14 @@
 import { describe, it, expect } from "vitest";
 import type { LoggerDraft, ExerciseSetDraft } from "@/lib/logger/types";
 import type { PlannedExercise } from "@/lib/coach/sessionPlans";
-import { groupsOf, groupOfIndex, nextRound, roundFromLead } from "@/lib/logger/superset-groups";
+import {
+  groupsOf,
+  groupOfIndex,
+  nextRound,
+  roundFromLead,
+  persistedGroupTags,
+  stripOrphanTags,
+} from "@/lib/logger/superset-groups";
 
 const NOW = "2026-08-11T09:00:00.000Z";
 
@@ -70,6 +77,78 @@ describe("groupsOf", () => {
 
   it("returns nothing for an empty session", () => {
     expect(groupsOf([])).toEqual([]);
+  });
+});
+
+// What reaches exercises.superset_group. The three one-tap paths that produce a
+// tag-carrying exercise performed ALONE (remove the partner, ungroup one side,
+// reorder something between the pair) must persist NULL — a non-null value tells
+// every future consumer that the row's timing is split/inflated/derived, and for
+// a solo round none of that is true.
+describe("persistedGroupTags", () => {
+  it("tags both members of a real pair", () => {
+    expect(persistedGroupTags(mkDraft(ARMS).exercises)).toEqual(["A", "A", "B", "B", null]);
+  });
+
+  it("persists null for an orphan whose partner was removed", () => {
+    const ex = mkDraft([["Arnold Press", "A", 3, 0], ["Rear Delt Fly", null, 3, 0]]).exercises;
+    expect(persistedGroupTags(ex)).toEqual([null, null]);
+  });
+
+  it("persists null for both halves of a pair a reorder has separated", () => {
+    const ex = mkDraft([
+      ["Arnold Press", "A", 3, 0],
+      ["Rear Delt Fly", null, 3, 0],
+      ["Bicep Curl", "A", 3, 0],
+    ]).exercises;
+    expect(persistedGroupTags(ex)).toEqual([null, null, null]);
+  });
+
+  it("persists null for an untagged exercise", () => {
+    expect(persistedGroupTags(mkDraft([["Rear Delt Fly", null, 3, 0]]).exercises)).toEqual([null]);
+  });
+
+  it("tags all three members of a run of three", () => {
+    const ex = mkDraft([["A1", "A", 3, 0], ["A2", "A", 3, 0], ["A3", "A", 3, 0]]).exercises;
+    expect(persistedGroupTags(ex)).toEqual(["A", "A", "A"]);
+  });
+
+  it("is index-aligned with the exercise list", () => {
+    const ex = mkDraft(ARMS).exercises;
+    expect(persistedGroupTags(ex)).toHaveLength(ex.length);
+    expect(persistedGroupTags([])).toEqual([]);
+  });
+});
+
+describe("stripOrphanTags", () => {
+  it("drops the tag from a survivor whose partner is gone", () => {
+    const ex = mkDraft([["Arnold Press", "A", 3, 0], ["Rear Delt Fly", null, 3, 0]]).exercises;
+    const next = stripOrphanTags(ex);
+    expect(next[0].prescribed.superset).toBeUndefined();
+    expect(groupsOf(next)).toEqual([{ tag: null, indices: [0] }, { tag: null, indices: [1] }]);
+  });
+
+  it("drops the tag from both halves of a pair a reorder has separated", () => {
+    const ex = mkDraft([
+      ["Arnold Press", "A", 3, 0],
+      ["Rear Delt Fly", null, 3, 0],
+      ["Bicep Curl", "A", 3, 0],
+    ]).exercises;
+    const next = stripOrphanTags(ex);
+    expect(next.map((e) => e.prescribed.superset)).toEqual([undefined, undefined, undefined]);
+  });
+
+  it("leaves a real pair alone and returns the SAME array (memo identity)", () => {
+    const ex = mkDraft(ARMS).exercises;
+    const next = stripOrphanTags(ex);
+    expect(next).toBe(ex);
+  });
+
+  it("keeps untouched exercises reference-equal", () => {
+    const ex = mkDraft([["Arnold Press", "A", 3, 0], ["Rear Delt Fly", null, 3, 0]]).exercises;
+    const next = stripOrphanTags(ex);
+    expect(next[1]).toBe(ex[1]);
+    expect(next[0]).not.toBe(ex[0]);
   });
 });
 
