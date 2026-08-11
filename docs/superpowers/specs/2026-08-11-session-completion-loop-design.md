@@ -79,15 +79,25 @@ first chat open — typically ~04:30, hours before training. It never rewrites
 itself, so a morning opener can never mention the session that follows it.
 
 On session commit, the day's opener row in each of the four coach threads
-(`peter`, `carter`, `nora`, `remi`) is deleted **only when it is still the
-newest row of any kind in that thread**. The next visit to that coach
-regenerates an opener that knows about the session.
+(`peter`, `carter`, `nora`, `remi`) is deleted **only when the athlete has not
+engaged the thread since local day start** — no `role: "user"` turn of
+`kind: "coach"` in that thread today. The next visit to that coach regenerates
+an opener that knows about the session.
 
-The "still newest" condition is the whole safety property. If the athlete has
-already replied, the greeting is load-bearing conversational history and
-deleting it would orphan the reply. It is also unnecessary: live chat turns
-read the snapshot, which already contains today's workouts, so an engaged
-thread is aware regardless.
+The "no engagement" condition is the whole safety property, and it cannot be
+read off `role === "user"` alone. The turn-creating RPC never stamps `kind` on
+the assistant row it inserts (the column defaults to `'coach'`), so an
+ordinary assistant reply is byte-identical to an opener on `(kind, role)` — a
+"newest row is a coach/assistant row" check deletes the athlete's actual
+answer, not a stale greeting, the moment the athlete replies and gets a
+response. The kind scoping matters just as much: the morning-intake bot
+echoes the athlete's check-in answers as `role: "user", kind: "morning_intake"`
+rows in the `remi` thread, and every athlete who checks in produces one of
+these daily — counting it as engagement would permanently disable Remi's
+opener refresh. Non-coach *assistant* rows (e.g. a `workout_debrief` card)
+still block clearing via the "newest remaining row" check: once any card has
+landed in the thread, the greeting is history and there's nothing left to
+regenerate for.
 
 This runs in `POST /api/logger/session` alongside `evaluateAndStampTargetHit`
 and `repatchRemainingWeek`, and is non-fatal in the same way — a failure here

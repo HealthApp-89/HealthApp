@@ -54,4 +54,36 @@ describe("selectStaleOpenerIds", () => {
   it("returns nothing for an empty thread set", () => {
     expect(selectStaleOpenerIds([], DAY_START)).toEqual([]);
   });
+
+  it("preserves an opener answered by an ordinary assistant reply", () => {
+    // The turn-creating RPC never stamps `kind` on the assistant row it
+    // inserts, and the column defaults to 'coach' — so an ordinary chat
+    // reply is byte-identical to an opener on (kind, role). The distinguishing
+    // signal is the user turn that precedes it.
+    const rows: ThreadRow[] = [
+      opener("carter", "o1", "2026-08-12T00:17:00Z"),
+      { id: "u1", thread: "carter", kind: "coach", role: "user", created_at: "2026-08-12T08:00:00Z" },
+      { id: "r1", thread: "carter", kind: "coach", role: "assistant", created_at: "2026-08-12T08:05:00Z" },
+    ];
+    expect(selectStaleOpenerIds(rows, DAY_START)).toEqual([]);
+  });
+
+  it("still clears the opener when a morning_intake user row shares the thread", () => {
+    // Real production shape: the morning-intake bot echoes the athlete's
+    // own check-in answers as a role='user' row in the 'remi' thread, kind
+    // 'morning_intake'. Every athlete who does the check-in produces one of
+    // these daily — treating it as engagement would permanently disable
+    // Remi's opener refresh. It must not count.
+    const rows: ThreadRow[] = [
+      opener("remi", "o1", "2026-08-12T00:29:00Z"),
+      {
+        id: "mi1",
+        thread: "remi",
+        kind: "morning_intake",
+        role: "user",
+        created_at: "2026-08-12T04:31:00Z",
+      },
+    ];
+    expect(selectStaleOpenerIds(rows, DAY_START)).toEqual(["o1"]);
+  });
 });
