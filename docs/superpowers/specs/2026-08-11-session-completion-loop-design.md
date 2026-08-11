@@ -203,11 +203,14 @@ components are not reachable. Coverage goes on the pure and server seams:
   instead of returning `null`.
 - The opener-clearing predicate: clears an untouched opener, preserves one the
   athlete has replied to.
-- Unwind ordering: `target_hit_at_week` is cleared before the delete, and a
-  surviving qualifying session re-stamps it on re-evaluation.
+- The block-week derivation the unwind depends on: a session on `start_date` is
+  week 1, `start_date + 7d` is week 2, a date before the block start clamps to
+  1, and the earliest qualifying date wins.
 
-Card states are verified in the running app, per the standing constraint that
-this repo has no render-test harness.
+The unwind's step ordering is not unit-testable — it is a property of the route
+handler, and vitest cannot reach `app/`. It is verified by typecheck and by the
+manual walk in the plan's final task. Card states are verified the same way,
+per the standing constraint that this repo has no render-test harness.
 
 ## Deliberate exclusions
 
