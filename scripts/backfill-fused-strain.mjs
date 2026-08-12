@@ -10,8 +10,32 @@
 //   node --import ./scripts/alias-loader.mjs --experimental-strip-types \
 //        --env-file=.env.local scripts/backfill-fused-strain.mjs --yes
 
+// recomputeStrainForDay transitively imports lib/supabase/server.ts, which
+// top-level-imports `next/headers` for its Server Component client. ESM hoists
+// that import, so it explodes outside the Next bundler even though this script
+// only ever uses the unrelated service-role export. Stub the specifier locally
+// — same pattern as scripts/backfill-block-narratives.mjs and
+// scripts/smoke-food-lookup.mjs. Deliberately NOT a change to
+// scripts/alias-loader.mjs: that loader is shared by ~70 scripts, and a
+// resolution fallback there would let `next/headers` load Next's real
+// internals rather than a stub.
+import { register } from "node:module";
+
+const stubLoader = `
+export async function resolve(specifier, context, nextResolve) {
+  if (specifier === "next/headers") {
+    return {
+      url: "data:text/javascript,export%20const%20cookies%20%3D%20()%20%3D%3E%20(%7B%20getAll%3A%20()%20%3D%3E%20%5B%5D%2C%20set%3A%20()%20%3D%3E%20%7B%7D%20%7D)%3Bexport%20const%20headers%20%3D%20()%20%3D%3E%20new%20Headers()%3Bexport%20const%20draftMode%20%3D%20()%20%3D%3E%20(%7B%20isEnabled%3A%20false%2C%20enable%3A%20()%20%3D%3E%20%7B%7D%2C%20disable%3A%20()%20%3D%3E%20%7B%7D%20%7D)%3B",
+      shortCircuit: true,
+    };
+  }
+  return nextResolve(specifier, context);
+}
+`;
+register("data:text/javascript," + encodeURIComponent(stubLoader), import.meta.url);
+
 import { createClient } from "@supabase/supabase-js";
-import { recomputeStrainForDay } from "@/lib/coach/strain/recompute";
+const { recomputeStrainForDay } = await import("@/lib/coach/strain/recompute");
 
 const userId = process.env.AUDIT_USER_ID;
 if (!userId) throw new Error("AUDIT_USER_ID is required");
@@ -43,6 +67,7 @@ for (const row of before) {
   const res = await recomputeStrainForDay({ supabase: sb, userId, dateIso: row.date });
   if (res.strain === null) {
     skipped++;
+    console.log(`${row.date}  SKIPPED (${res.skipped ?? "no input"})`);
     continue;
   }
   const delta = res.strain - (row.strain ?? 0);

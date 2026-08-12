@@ -50,22 +50,7 @@ export async function resolve(specifier, context, nextResolve) {
     return { url: pathToFileURL(chosen).href, shortCircuit: true };
   }
 
-  // Bare package subpath imports without an explicit extension (e.g.
-  // "next/headers") fail under plain Node ESM resolution when the package
-  // has no "exports" map — Node's CJS require() auto-appends ".js", but
-  // import() does not. This bites any script that transitively imports
-  // lib/supabase/server.ts (which does "import { cookies } from
-  // \\"next/headers\\"" at module scope for its Server Component client,
-  // even though script call sites only use the unrelated service-role
-  // export). Retry once with ".js" appended before giving up.
-  try {
-    return await nextResolve(specifier, context);
-  } catch (err) {
-    if (err && err.code === "ERR_MODULE_NOT_FOUND" && !specifier.match(/\\.[a-z]+$/i)) {
-      return await nextResolve(specifier + ".js", context);
-    }
-    throw err;
-  }
+  return nextResolve(specifier, context);
 }
 `;
 
