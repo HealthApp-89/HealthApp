@@ -2567,18 +2567,45 @@ start, end = os.environ["RANGE_START"], os.environ["RANGE_END"]
 acts = g.get_activities_by_date(start, end)
 print(f"{len(acts)} activities {start} → {end}", file=sys.stderr)
 
-out = []
+# Distinct days, not per-activity: collect_activities re-lists and re-fetches
+# every activity for the day it is given, so iterating activities would refetch
+# a multi-activity day once per activity — pure redundant API load against an
+# unofficial endpoint, and every extra call is another chance to trip the
+# transient failure the loop below is trying to detect.
+days = sorted({(a.get("startTimeLocal") or "")[:10] for a in acts if a.get("startTimeLocal")})
+expected = {}
 for a in acts:
-    day = (a.get("startTimeLocal") or "")[:10]
+    d = (a.get("startTimeLocal") or "")[:10]
+    expected[d] = expected.get(d, 0) + 1
+
+out = []
+failed_days = []
+for day in days:
     recs = collector.collect_activities(g, day)
     for r in recs:
         if not any(x["external_id"] == r["external_id"] for x in out):
             r["local_date"] = day
             out.append(r)
-    print(f"  {day}: {len(recs)}", file=sys.stderr)
+    got, want = len(recs), expected.get(day, 0)
+    print(f"  {day}: {got}/{want}", file=sys.stderr)
+    if got < want:
+        failed_days.append((day, got, want))
 
 json.dump(out, open(os.environ["DUMP_PATH"], "w"))
 print(f"wrote {len(out)} activities to {os.environ['DUMP_PATH']}", file=sys.stderr)
+
+# A day whose fetch failed comes back empty, which is indistinguishable in the
+# dump from a genuine rest day. Comparing against the range listing is the only
+# way to tell, and an operator must not have to go stderr-archaeology hunting
+# for a `warn:` line to discover the backfill is short.
+if failed_days:
+    print(f"\nINCOMPLETE — {len(failed_days)} day(s) returned fewer activities than the range listing:",
+          file=sys.stderr)
+    for day, got, want in failed_days:
+        print(f"  {day}: got {got}, expected {want}", file=sys.stderr)
+    print("Re-run before upserting; a partial dump looks complete to the upsert script.",
+          file=sys.stderr)
+    sys.exit(1)
 ```
 
 - [ ] **Step 3: Write the upsert script**
@@ -2607,14 +2634,28 @@ const dump = JSON.parse(readFileSync(process.env.DUMP_PATH, "utf8"));
 
 const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
-const { data: profile } = await sb.from("profiles").select("age").eq("user_id", userId).maybeSingle();
-const hrMax = profile?.age ? Math.round(208 - 0.7 * profile.age) : 190;
+// Both reads fail LOUDLY. Silently falling through to hrMax=190 / rhr=50 is
+// how a run reports success while having used the wrong constants throughout —
+// it already happened once: a report claimed age was unset and 190 was used,
+// when age was 36 and 183 was used correctly. Nobody could tell either way,
+// because the script printed neither.
+const { data: profile, error: profileErr } = await sb
+  .from("profiles").select("age").eq("user_id", userId).maybeSingle();
+if (profileErr) throw profileErr;
+if (!profile) throw new Error(`no profiles row for ${userId} — wrong AUDIT_USER_ID or wrong environment`);
+const hrMax = profile.age ? Math.round(208 - 0.7 * profile.age) : 190;
 
-const { data: logs } = await sb
+const { data: logs, error: logsErr } = await sb
   .from("daily_logs")
   .select("date, resting_hr")
   .eq("user_id", userId);
+if (logsErr) throw logsErr;
 const rhrBy = new Map((logs ?? []).map((r) => [r.date, r.resting_hr ?? 50]));
+
+console.log(
+  `hrMax=${hrMax} (age=${profile.age ?? "unset"}), ` +
+    `resting_hr known for ${rhrBy.size} days`,
+);
 
 const rows = dump.map((a) => {
   const samples = toHrSamples(a.hr_samples ?? null);
@@ -2642,7 +2683,8 @@ const rows = dump.map((a) => {
   };
 });
 
-console.log(`${rows.length} activities to upsert`);
+const defaulted = rows.filter((r) => !rhrBy.has(r.local_date)).length;
+console.log(`${rows.length} activities to upsert; ${defaulted} on days with no resting_hr (using 50)`);
 const byMonth = {};
 for (const r of rows) byMonth[r.local_date.slice(0, 7)] = (byMonth[r.local_date.slice(0, 7)] ?? 0) + 1;
 console.table(byMonth);
