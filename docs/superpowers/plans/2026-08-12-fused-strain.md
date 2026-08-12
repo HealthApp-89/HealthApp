@@ -1457,6 +1457,24 @@ describe("dedupeActivities", () => {
     const reverse = dedupeActivities([band, mkActivity()]).kept[0].external_id;
     expect(forward).toBe(reverse);
   });
+
+  it("points a chain-superseded record at the eventual winner, not a middle one", () => {
+    // Three devices, one real session. Processed in external_id order, the
+    // mid-quality record wins against the worst and then loses to the best.
+    // The first loser must still name the SURVIVOR — superseded_by is
+    // documented as naming the activity that won, and a pointer to something
+    // itself superseded makes the audit trail require a walk nobody performs.
+    const stream = (n: number): Array<[number, number]> =>
+      Array.from({ length: n }, (_, i) => [T0 + i * 1000, 110] as [number, number]);
+    const worst = mkActivity({ external_id: "a", device_id: "d3", hr_samples: stream(100) });
+    const middle = mkActivity({ external_id: "b", device_id: "d2", hr_samples: stream(200) });
+    const best = mkActivity({ external_id: "c", device_id: "d1", hr_samples: stream(300) });
+
+    const { kept, superseded } = dedupeActivities([worst, middle, best]);
+    expect(kept.map((k) => k.external_id)).toEqual(["c"]);
+    expect(superseded).toHaveLength(2);
+    for (const entry of superseded) expect(entry.superseded_by).toBe("c");
+  });
 });
 ```
 
@@ -1566,14 +1584,30 @@ export function dedupeActivities(activities: ActivityInput[]): {
     }
   }
 
-  return { kept, superseded };
+  // Resolve chains. A record can win one pairwise comparison and lose the next:
+  // with three overlapping devices the first loser ends up naming a middle
+  // record that was itself later displaced. `superseded_by` is documented as
+  // naming the activity that WON, so walk each pointer to the survivor. The
+  // `seen` guard makes termination independent of how the loop above evolves.
+  const winnerOf = new Map(superseded.map((x) => [x.external_id, x.superseded_by]));
+  const resolved = superseded.map((x) => {
+    let target = x.superseded_by;
+    const seen = new Set<string>([x.external_id]);
+    while (winnerOf.has(target) && !seen.has(target)) {
+      seen.add(target);
+      target = winnerOf.get(target)!;
+    }
+    return { external_id: x.external_id, superseded_by: target };
+  });
+
+  return { kept, superseded: resolved };
 }
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `npx vitest run lib/coach/strain/__tests__/match-sessions.test.ts`
-Expected: PASS, 14 tests.
+Expected: PASS, 15 tests.
 
 - [ ] **Step 5: Commit**
 
