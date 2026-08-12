@@ -157,9 +157,12 @@ moving the aggregate scale** — this is what keeps the fitted `w` valid:
 - **Muscle-mass weighting** from `getExerciseMuscles().primary`, reusing the
   existing large/small classification in
   [session-structure](../../../lib/coach/session-structure/).
-- **Relative intensity** — load as a fraction of the exercise's current e1RM via
-  [bestComparisonValue](../../../lib/coach/e1rm.ts), falling back to neutral when
-  no e1RM history exists.
+- **Relative intensity** — load as a fraction of the exercise's current e1RM,
+  falling back to neutral when no e1RM reference exists. The reference is the
+  best Brzycki e1RM among the session's own non-warmup 1–12 rep sets rather than
+  [bestComparisonValue](../../../lib/coach/e1rm.ts)'s history lookup: a
+  per-exercise history query would make the backfill quadratic, and since this
+  is a bounded redistribution factor the two agree on the day's top set anyway.
 
 Normalisation is explicit: the weighted sum is rescaled so that replaying the 25
 calibration sessions reproduces their mean raw tonnage. The *Verification*

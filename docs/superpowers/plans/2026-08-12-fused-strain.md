@@ -23,9 +23,11 @@
 - Sidecar stays derivation-free: it fetches and POSTs raw data, the app computes.
 - `activityTrainingLoad` / `aerobicTrainingEffect` / `anaerobicTrainingEffect` are stored as metadata and **never used as model inputs**.
 
-### Deviation from the spec, approved at plan time
+### Deviations from the spec, approved at plan time
 
-The spec says `banisterTrimp` is "reused unchanged; only the caller changes." That is not achievable for the baseline term: excluding an activity window from a 2-minute sample stream leaves a 50-minute gap, and `banisterTrimp`'s existing `g > 0 && g < 60` guard would score that gap as 50 minutes at the pre-activity heart rate. Task 3 therefore adds `banisterOverIntervals` in the strain module, which reduces to the same arithmetic as `banisterTrimp` when no windows are excluded. `banisterTrimp` in `derive-strain.ts` stays untouched and continues to feed the `garmin_daily.trimp_banister` shadow column.
+**1. A new TRIMP walk instead of reusing `banisterTrimp`.** The spec says `banisterTrimp` is "reused unchanged; only the caller changes." That is not achievable for the baseline term: excluding an activity window from a 2-minute sample stream leaves a 50-minute gap, and `banisterTrimp`'s existing `g > 0 && g < 60` guard would score that gap as 50 minutes at the pre-activity heart rate. Task 3 therefore adds `banisterOverIntervals` in the strain module, which reduces to the same arithmetic as `banisterTrimp` when no windows are excluded. `banisterTrimp` in `derive-strain.ts` stays untouched and continues to feed the `garmin_daily.trimp_banister` shadow column.
+
+**2. Relative intensity uses a within-session e1RM, not `bestComparisonValue`.** The spec routes intensity through `bestComparisonValue` in [lib/coach/e1rm.ts](../../../lib/coach/e1rm.ts), which reads an exercise's history. Doing that per exercise per day would make the 500-day backfill in Task 16 quadratic in queries. Task 9 instead takes the best Brzycki e1RM among the session's own non-warmup 1–12 rep sets. Intensity is a bounded redistribution factor (±15%, never rescaling the day), so a same-session reference is sufficient — and on the exercise that actually matters, the day's top set, the two agree by construction. Recorded here rather than only in a code comment because it is a spec divergence, not an implementation detail.
 
 ---
 
@@ -1691,7 +1693,7 @@ Create `lib/coach/strain/assemble.ts`:
 import { activityTrimp, activityWindow, toHrSamples, type ActivityInput } from "./activity-load";
 import { baselineTrimp } from "./baseline-load";
 import { composeStrain } from "./compose";
-import { dedupeActivities, matchActivityToWorkout, type WorkoutWindow } from "./match-sessions";
+import { dedupeActivities, type WorkoutWindow } from "./match-sessions";
 import { mechanicalLoad, type MechanicalExercise } from "./mechanical-load";
 import type { DayLoad, HrSample, TimeWindow } from "./types";
 
@@ -1718,10 +1720,12 @@ export type AssembleResult = {
  *  Pure — every input is passed in, so the whole model is testable without a
  *  database and the recompute writer stays a thin shell around it.
  *
- *  The matching result is deliberately NOT used to gate the activity term: a
- *  matched activity and an unmatched one are both real cardio. Matching exists
- *  so the mechanical term knows which workouts were already covered by an
- *  activity record, and so an unlogged activity still contributes. */
+ *  Matching plays no part here, deliberately: every kept activity is real
+ *  cardio and every logged workout is real mechanical work, whether or not the
+ *  two describe the same session. The double-count risk is wall-clock overlap
+ *  between two HR sources, which the window exclusion below handles directly.
+ *  `matchActivityToWorkout` stays available for diagnostics — which workouts a
+ *  device actually witnessed — but nothing in the arithmetic needs it. */
 export function assembleDay(input: AssembleInput): AssembleResult {
   const { kept, superseded } = dedupeActivities(input.activities);
 
@@ -1742,10 +1746,6 @@ export function assembleDay(input: AssembleInput): AssembleResult {
   for (const w of input.workouts) {
     mechanical += mechanicalLoad(w.exercises, input.rirTarget);
   }
-
-  // Computed for its side value to future readers: which workouts a device
-  // actually witnessed. Not used to scale anything today.
-  for (const a of kept) matchActivityToWorkout(a, input.workouts);
 
   const load: DayLoad = { baseline, activity, mechanical };
   return {
@@ -1801,7 +1801,11 @@ git commit -m "feat(strain): day assembly joining baseline, activity and mechani
 
 **Interfaces:**
 - Consumes: `assembleDay` (Task 8); `getUserTimezone` from `@/lib/time/get-user-tz`; `localDayRangeUtc` from `@/lib/time`; `brzycki` from `@/lib/coach/e1rm`.
-- Produces: `recomputeStrainForDay(args: { supabase: SupabaseClient; userId: string; dateIso: string }): Promise<{ strain: number | null; skipped?: string }>`
+- Produces:
+  - `computeDayStrain(args: { supabase: SupabaseClient; userId: string; dateIso: string }): Promise<{ result: AssembleResult | null; allDaySamples: HrSample[]; skipped?: string }>` — reads and assembles, **writes nothing**
+  - `recomputeStrainForDay(args: same): Promise<{ strain: number | null; skipped?: string }>` — calls the above, then persists
+
+The split exists so the audit in Task 17 can verify stored values against a fresh computation **without mutating the rows it is auditing**. An audit that heals what it finds can report a drift exactly once and passes forever after, which is not a gate.
 
 - [ ] **Step 1: Write the implementation**
 
@@ -1812,7 +1816,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { localDayRangeUtc } from "@/lib/time";
 import { getUserTimezone } from "@/lib/time/get-user-tz";
 import { brzycki } from "@/lib/coach/e1rm";
-import { assembleDay, type AssembleWorkout } from "./assemble";
+import { assembleDay, type AssembleResult, type AssembleWorkout } from "./assemble";
 import { medianGapSeconds, toHrSamples } from "./index";
 import type { ActivityInput } from "./activity-load";
 import type { HrSample } from "./types";
@@ -1821,19 +1825,17 @@ import type { MechanicalExercise } from "./mechanical-load";
 const DEFAULT_HR_MAX = 190;
 const DEFAULT_HR_REST = 50;
 
-/** Recompute and store one day's strain. The SINGLE writer of
- *  daily_logs.strain — the Garmin ingest and both logger session routes all
- *  funnel here, so there is one place where the number is decided.
+/** Read one day's inputs and assemble its strain. WRITES NOTHING.
  *
- *  Returns the stored value, or `{ strain: null, skipped }` when the day has no
- *  usable input. A day with no HR and no workout is left ALONE rather than
- *  written as 0: absence of data is not absence of strain, and overwriting a
- *  historical value with 0 would be a silent data loss. */
-export async function recomputeStrainForDay(args: {
+ *  Separated from the writer below so an audit can compare stored against
+ *  computed without healing the discrepancy it is looking for.
+ *
+ *  Returns `{ result: null, skipped }` when the day has no usable input. */
+export async function computeDayStrain(args: {
   supabase: SupabaseClient;
   userId: string;
   dateIso: string;
-}): Promise<{ strain: number | null; skipped?: string }> {
+}): Promise<{ result: AssembleResult | null; allDaySamples: HrSample[]; skipped?: string }> {
   const { supabase, userId, dateIso } = args;
   const tz = await getUserTimezone(userId);
   const { startUtc } = localDayRangeUtc(dateIso, tz);
@@ -1916,7 +1918,7 @@ export async function recomputeStrainForDay(args: {
   });
 
   if (allDaySamples.length === 0 && activities.length === 0 && workouts.length === 0) {
-    return { strain: null, skipped: "no_input" };
+    return { result: null, allDaySamples, skipped: "no_input" };
   }
 
   const { data: week } = await supabase
@@ -1936,6 +1938,25 @@ export async function recomputeStrainForDay(args: {
     hrMax,
     rirTarget: week?.rir_target ?? null,
   });
+
+  return { result, allDaySamples };
+}
+
+/** Recompute AND store one day's strain. The SINGLE writer of
+ *  daily_logs.strain — the Garmin ingest and both logger session routes all
+ *  funnel here, so there is one place where the number is decided.
+ *
+ *  A day with no HR and no workout is left ALONE rather than written as 0:
+ *  absence of data is not absence of strain, and overwriting a historical
+ *  value with 0 would be a silent data loss. */
+export async function recomputeStrainForDay(args: {
+  supabase: SupabaseClient;
+  userId: string;
+  dateIso: string;
+}): Promise<{ strain: number | null; skipped?: string }> {
+  const { supabase, userId, dateIso } = args;
+  const { result, allDaySamples, skipped } = await computeDayStrain(args);
+  if (!result) return { strain: null, skipped };
 
   const { error } = await supabase.from("daily_logs").upsert(
     {
@@ -1994,7 +2015,7 @@ Expected: exit 0.
 
 ```bash
 git add lib/coach/strain/recompute.ts
-git commit -m "feat(strain): recomputeStrainForDay as the single writer"
+git commit -m "feat(strain): computeDayStrain plus recomputeStrainForDay, the single writer"
 ```
 
 ---
@@ -3055,15 +3076,18 @@ Create `scripts/audit-strain-recompute.mjs`:
 ```js
 // scripts/audit-strain-recompute.mjs
 //
-// Verifies stored daily_logs.strain equals a fresh recompute for the last 30
+// Verifies stored daily_logs.strain equals a fresh computation for the last 30
 // days. Catches ingest drift, a missed recompute trigger, and any second writer
 // reappearing on the column.
+//
+// READ-ONLY: uses computeDayStrain rather than recomputeStrainForDay, so a
+// failure stays failed until someone fixes it.
 //
 //   AUDIT_USER_ID=<uuid> node --import ./scripts/alias-loader.mjs \
 //     --experimental-strip-types --env-file=.env.local scripts/audit-strain-recompute.mjs
 
 import { createClient } from "@supabase/supabase-js";
-import { recomputeStrainForDay } from "@/lib/coach/strain/recompute";
+import { computeDayStrain } from "@/lib/coach/strain/recompute";
 import { createAuditReporter } from "./audit-utils.mjs";
 
 const { assert, summary } = createAuditReporter();
@@ -3083,12 +3107,14 @@ if (error) throw error;
 
 let mismatches = 0;
 for (const row of rows) {
-  const fresh = await recomputeStrainForDay({ supabase: sb, userId, dateIso: row.date });
-  if (fresh.strain === null) continue;
-  const drift = Math.abs(fresh.strain - (row.strain ?? 0));
+  // computeDayStrain, NOT recomputeStrainForDay: an audit that writes heals the
+  // drift it just found, reports it exactly once, and passes forever after.
+  const { result } = await computeDayStrain({ supabase: sb, userId, dateIso: row.date });
+  if (!result) continue;
+  const drift = Math.abs(result.strain - (row.strain ?? 0));
   if (drift > 0.01) {
     mismatches++;
-    console.log(`  ${row.date}: stored ${row.strain?.toFixed(2)} vs fresh ${fresh.strain.toFixed(2)}`);
+    console.log(`  ${row.date}: stored ${row.strain?.toFixed(2)} vs fresh ${result.strain.toFixed(2)}`);
   }
 }
 assert(`stored strain matches recompute for all ${rows.length} recent days`, mismatches === 0);
@@ -3107,7 +3133,7 @@ AUDIT_USER_ID=94fee5c6-7d9a-4b05-be3a-8407505b5429 \
 node --import ./scripts/alias-loader.mjs --experimental-strip-types --env-file=.env.local \
   scripts/audit-strain-recompute.mjs
 ```
-Expected: zero mismatches. Note this audit is itself a writer — it recomputes into the same rows, so a mismatch is reported once and self-heals.
+Expected: zero mismatches. The audit is read-only, so any mismatch persists across runs until the underlying cause is fixed — re-running is not a remedy.
 
 - [ ] **Step 5: Commit**
 
