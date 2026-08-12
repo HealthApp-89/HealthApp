@@ -44,6 +44,61 @@ def login() -> Garmin:
     return g
 
 
+def collect_activities(g: Garmin, d: str) -> list:
+    """Activities for one day, each with its native-resolution HR stream.
+
+    The all-day wellness stream is 2-minute-sampled and aliases lifting away
+    entirely — a 45-minute session yields ~22 samples and HR falls between
+    sets. The activity file carries the real thing (1,000-2,500 points), which
+    is where every training peak lives. No derivation here; the app computes
+    TRIMP.
+    """
+    out = []
+    try:
+        acts = g.get_activities_by_date(d, d)
+    except Exception as e:  # noqa: BLE001 — unofficial API, best-effort
+        print(f"  warn: get_activities_by_date failed for {d}: {e}", file=sys.stderr)
+        return out
+
+    for a in acts or []:
+        aid = a.get("activityId")
+        if aid is None:
+            continue
+        rec = {
+            "external_id": str(aid),
+            "activity_type": (a.get("activityType") or {}).get("typeKey"),
+            "started_at": a.get("startTimeGMT"),
+            "duration_s": int(a.get("duration") or 0),
+            "avg_hr": a.get("averageHR"),
+            "max_hr": a.get("maxHR"),
+            "device_id": str(a["deviceId"]) if a.get("deviceId") is not None else None,
+            "garmin_load": a.get("activityTrainingLoad"),
+            "aerobic_te": a.get("aerobicTrainingEffect"),
+            "anaerobic_te": a.get("anaerobicTrainingEffect"),
+            "body_battery_diff": a.get("differenceBodyBattery"),
+            "zone_seconds": {
+                str(i): a.get(f"hrTimeInZone_{i}") for i in range(1, 6)
+                if a.get(f"hrTimeInZone_{i}") is not None
+            },
+            "hr_samples": [],
+        }
+        try:
+            det = g.get_activity_details(aid, maxchart=4000, maxpoly=0)
+            descs = {x["key"]: x["metricsIndex"] for x in (det.get("metricDescriptors") or [])}
+            hi, ti = descs.get("directHeartRate"), descs.get("directTimestamp")
+            if hi is not None and ti is not None:
+                pts = []
+                for m in det.get("activityDetailMetrics") or []:
+                    v = m.get("metrics") or []
+                    if len(v) > max(hi, ti) and v[hi] is not None and v[ti] is not None:
+                        pts.append([int(v[ti]), int(v[hi])])
+                rec["hr_samples"] = pts
+        except Exception as e:  # noqa: BLE001
+            print(f"  warn: activity detail {aid} failed: {e}", file=sys.stderr)
+        out.append(rec)
+    return out
+
+
 def collect_day(g: Garmin, d: str) -> dict:
     """Assemble one day's raw payload. Each getter is wrapped so a single
     missing metric never aborts the day."""
@@ -147,6 +202,8 @@ def collect_day(g: Garmin, d: str) -> dict:
     if hr and hr.get("heartRateValues"):
         # [[ts_ms, bpm], ...]; drop nulls (off-wrist)
         day["hr_samples"] = [[t, b] for t, b in hr["heartRateValues"] if b is not None]
+
+    day["activities"] = collect_activities(g, d)
 
     return day
 
