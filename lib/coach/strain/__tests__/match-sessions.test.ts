@@ -125,4 +125,22 @@ describe("dedupeActivities", () => {
     const reverse = dedupeActivities([band, mkActivity()]).kept[0].external_id;
     expect(forward).toBe(reverse);
   });
+
+  it("points a chain-superseded record at the eventual winner, not a middle one", () => {
+    // Three devices, one real session. Processed in external_id order, the
+    // mid-quality record wins against the worst and then loses to the best.
+    // The first loser must still name the SURVIVOR — superseded_by is
+    // documented as naming the activity that won, and a pointer to something
+    // itself superseded makes the audit trail require a walk nobody performs.
+    const stream = (n: number): Array<[number, number]> =>
+      Array.from({ length: n }, (_, i) => [T0 + i * 1000, 110] as [number, number]);
+    const worst = mkActivity({ external_id: "a", device_id: "d3", hr_samples: stream(100) });
+    const middle = mkActivity({ external_id: "b", device_id: "d2", hr_samples: stream(200) });
+    const best = mkActivity({ external_id: "c", device_id: "d1", hr_samples: stream(300) });
+
+    const { kept, superseded } = dedupeActivities([worst, middle, best]);
+    expect(kept.map((k) => k.external_id)).toEqual(["c"]);
+    expect(superseded).toHaveLength(2);
+    for (const entry of superseded) expect(entry.superseded_by).toBe("c");
+  });
 });

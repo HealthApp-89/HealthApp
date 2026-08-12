@@ -94,5 +94,21 @@ export function dedupeActivities(activities: ActivityInput[]): {
     }
   }
 
-  return { kept, superseded };
+  // Resolve chains. A record can win one pairwise comparison and lose the next:
+  // with three overlapping devices the first loser ends up naming a middle
+  // record that was itself later displaced. `superseded_by` is documented as
+  // naming the activity that WON, so walk each pointer to the survivor. The
+  // `seen` guard makes termination independent of how the loop above evolves.
+  const winnerOf = new Map(superseded.map((x) => [x.external_id, x.superseded_by]));
+  const resolved = superseded.map((x) => {
+    let target = x.superseded_by;
+    const seen = new Set<string>([x.external_id]);
+    while (winnerOf.has(target) && !seen.has(target)) {
+      seen.add(target);
+      target = winnerOf.get(target)!;
+    }
+    return { external_id: x.external_id, superseded_by: target };
+  });
+
+  return { kept, superseded: resolved };
 }
