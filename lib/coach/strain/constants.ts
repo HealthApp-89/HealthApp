@@ -2,10 +2,17 @@ import type { HrSource } from "./types";
 
 /** Fitted strain constants.
  *
- *  Fitted 2026-08-12 by scripts/fit-strain-constants.mjs against
+ *  Refitted 2026-08-12 by scripts/fit-strain-constants.mjs against
  *  scripts/fixtures/strain-calibration-2026.json — 61 labelled April–May 2026
  *  days carrying WHOOP's own strength-adjusted values, the only labelled data
- *  that will ever exist for this athlete. RMSE 1.625.
+ *  that will ever exist for this athlete. RMSE 1.481 (previous fit, against
+ *  each day's own resting HR, was 1.625).
+ *
+ *  This refit scores the baseline term against `resting_hr_baseline` (a
+ *  90-day rolling median, see lib/coach/strain/compose.ts) rather than the
+ *  day's own resting HR — per-day RHR made the whole scale drift upward as
+ *  the athlete's fitness improved. The fixture rows carry both fields; the
+ *  fit and calibration audit read `resting_hr_baseline ?? resting_hr`.
  *
  *  Three-term form: strain = min(21, A·ln(1 + k·(baseline + activity + w·mechanical))).
  *
@@ -17,10 +24,10 @@ import type { HrSource } from "./types";
  *  Do not hand-tune. scripts/audit-strain-calibration.mjs asserts these
  *  reproduce the fixture within RMSE 1.8 and will fail if they drift. */
 export const STRAIN_CALIBRATION = {
-  A: 11.75,
-  k: 0.00577,
-  w: 0.027705,
-  mechanicalNorm: 0.936051,
+  A: 13.5,
+  k: 0.0042,
+  w: 0.031178,
+  mechanicalNorm: 0.936033,
 } as const;
 
 /** Longest interval a single pair of HR samples may contribute, in minutes.
