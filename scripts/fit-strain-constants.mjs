@@ -13,6 +13,7 @@ import { banisterOverIntervals } from "@/lib/coach/strain/trimp";
 import { toHrSamples, activityWindow } from "@/lib/coach/strain/activity-load";
 import { dedupeActivities } from "@/lib/coach/strain/match-sessions";
 import { rawTonnage, combinedFactor } from "@/lib/coach/strain/mechanical-load";
+import { brzycki } from "@/lib/coach/e1rm";
 
 const fixture = JSON.parse(readFileSync("scripts/fixtures/strain-calibration-2026.json", "utf8"));
 const HR_MAX = 183;
@@ -51,12 +52,15 @@ const rows = fixture.map((f) => {
   return { date: f.date, whoop: f.whoop_strain, baseline, activity, raw: rawTonnage(exercises), weighted };
 });
 
+// Canonical brzycki, same reason as the audit: the fit must resolve intensity
+// exactly as production does, or mechanicalNorm is fitted against a quantity
+// the runtime never produces.
 function bestE1rm(sets) {
   let best = null;
   for (const s of sets) {
-    if (s.warmup || !s.kg || !s.reps || s.reps < 1 || s.reps > 12) continue;
-    const v = s.kg / (1.0278 - 0.0278 * s.reps);
-    if (best === null || v > best) best = v;
+    if (s.warmup || !s.kg || !s.reps) continue;
+    const v = brzycki(s.kg, s.reps);
+    if (v !== null && (best === null || v > best)) best = v;
   }
   return best;
 }

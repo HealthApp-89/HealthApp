@@ -13,6 +13,7 @@
 import { readFileSync } from "node:fs";
 import { assembleDay } from "@/lib/coach/strain";
 import { rawTonnage, mechanicalLoad } from "@/lib/coach/strain/mechanical-load";
+import { brzycki } from "@/lib/coach/e1rm";
 import { createAuditReporter } from "./audit-utils.mjs";
 
 const { assert, summary } = createAuditReporter();
@@ -22,12 +23,18 @@ const RMSE_CEILING = 1.8;
 
 assert("fixture has the full labelled set", fixture.length >= 55);
 
+// brzycki from lib/coach/e1rm.ts, NOT a local reimplementation. This is the
+// regression gate for the strain model, and production resolves intensity
+// through that same helper (recompute.ts -> bestSessionE1rm -> brzycki). A
+// hand-rolled copy here would keep passing on stale math if brzycki ever
+// changed — the gate would be blind to exactly the kind of drift it exists
+// to catch.
 function bestE1rm(sets) {
   let best = null;
   for (const s of sets) {
-    if (s.warmup || !s.kg || !s.reps || s.reps < 1 || s.reps > 12) continue;
-    const v = s.kg / (1.0278 - 0.0278 * s.reps);
-    if (best === null || v > best) best = v;
+    if (s.warmup || !s.kg || !s.reps) continue;
+    const v = brzycki(s.kg, s.reps);
+    if (v !== null && (best === null || v > best)) best = v;
   }
   return best;
 }
