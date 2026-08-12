@@ -26,41 +26,47 @@ export async function computeDayStrain(args: {
   const tz = await getUserTimezone(userId);
   const { startUtc } = localDayRangeUtc(dateIso, tz);
 
-  const [{ data: profile }, { data: dayLog }, { data: activityRows }, { data: workoutRows }] =
-    await Promise.all([
-      supabase.from("profiles").select("age").eq("user_id", userId).maybeSingle(),
-      supabase
-        .from("daily_logs")
-        .select("resting_hr")
-        .eq("user_id", userId)
-        .eq("date", dateIso)
-        .maybeSingle(),
-      supabase
-        .from("garmin_activities")
-        .select(
-          "external_id, started_at, duration_s, device_id, activity_type, hr_samples, superseded_by",
-        )
-        .eq("user_id", userId)
-        .eq("local_date", dateIso),
-      supabase
-        .from("workouts")
-        .select(
-          "id, started_at, date, duration_min, exercises(name, exercise_sets(kg, reps, warmup, rir, started_at, work_seconds))",
-        )
-        .eq("user_id", userId)
-        .eq("date", dateIso),
-    ]);
+  const [
+    { data: profile },
+    { data: dayLog },
+    { data: activityRows },
+    { data: workoutRows, error: workoutErr },
+  ] = await Promise.all([
+    supabase.from("profiles").select("age").eq("user_id", userId).maybeSingle(),
+    supabase
+      .from("daily_logs")
+      .select("resting_hr")
+      .eq("user_id", userId)
+      .eq("date", dateIso)
+      .maybeSingle(),
+    supabase
+      .from("garmin_activities")
+      .select(
+        "external_id, started_at, duration_s, device_id, activity_type, hr_samples, superseded_by",
+      )
+      .eq("user_id", userId)
+      .eq("local_date", dateIso),
+    supabase
+      .from("workouts")
+      .select(
+        "id, started_at, date, duration_min, exercises(name, exercise_sets(kg, reps, warmup, rir, started_at, work_seconds))",
+      )
+      .eq("user_id", userId)
+      .eq("date", dateIso),
+  ]);
+  if (workoutErr) throw workoutErr;
 
   const hrMax = profile?.age ? Math.round(208 - 0.7 * profile.age) : DEFAULT_HR_MAX;
   const hrRest = dayLog?.resting_hr ?? DEFAULT_HR_REST;
 
   // All-day stream lives on garmin_daily.raw.hr_samples, written by the ingest.
-  const { data: garminDay } = await supabase
+  const { data: garminDay, error: garminDayErr } = await supabase
     .from("garmin_daily")
     .select("raw")
     .eq("user_id", userId)
     .eq("date", dateIso)
     .maybeSingle();
+  if (garminDayErr) throw garminDayErr;
   const rawAllDay = (garminDay?.raw?.hr_samples ?? null) as Array<[number, number]> | null;
   const allDaySamples: HrSample[] = toHrSamples(rawAllDay);
 

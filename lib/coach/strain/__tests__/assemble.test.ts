@@ -69,7 +69,7 @@ describe("assembleDay", () => {
     expect(withLift.strain).toBeGreaterThan(without.strain);
   });
 
-  it("excludes a matched activity's window from the baseline term", () => {
+  it("excludes a scored activity's window from the baseline term", () => {
     const withActivity = assembleDay(
       mkInput({ activities: [SESSION_ACTIVITY], workouts: [SESSION_WORKOUT] }),
     );

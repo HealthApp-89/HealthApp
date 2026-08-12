@@ -126,11 +126,24 @@ export async function DELETE(
     console.error("[logger/session DELETE] repatchRemainingWeek failed:", err);
   }
 
-  // Unwind the mechanical term too. Non-fatal and self-healing: the next
-  // ingest or commit recomputes the same day. Runs after the delete above,
-  // so the recompute sees the day WITHOUT the deleted session's sets.
+  // Unwind the mechanical term. Non-fatal and self-healing.
+  //
+  // A skip here is NOT the same as a skip on the ingest path. The collector
+  // fetches complete days only, so today has no all-day HR yet; deleting the
+  // day's only workout leaves no HR, no activity and no workout, which
+  // computeDayStrain reports as "no_input" and declines to write. That would
+  // strand the value computed while the session existed — the deleted session's
+  // tonnage, preserved forever. On the delete path the honest value is null.
   try {
-    await recomputeStrainForDay({ supabase, userId: user.id, dateIso: workout.date as string });
+    const res = await recomputeStrainForDay({ supabase, userId: user.id, dateIso: workout.date as string });
+    if (res.strain === null) {
+      const { error } = await supabase
+        .from("daily_logs")
+        .update({ strain: null, updated_at: new Date().toISOString() })
+        .eq("user_id", user.id)
+        .eq("date", workout.date as string);
+      if (error) throw error;
+    }
   } catch (err) {
     console.error("[logger/session/delete] recomputeStrainForDay failed:", err);
   }
