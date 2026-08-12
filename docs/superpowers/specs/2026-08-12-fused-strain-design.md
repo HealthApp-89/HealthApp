@@ -323,12 +323,21 @@ this, which is why the rule is window-based.
 | `compose.ts` | sum → log map → clamp |
 | `constants.ts` | the frozen fit, with provenance |
 
-`recomputeStrainForDay(userId, date)` becomes the **single writer** of
+`recomputeStrainForDay(userId, date, onEmpty?)` becomes the **single writer** of
 `daily_logs.strain`, called from exactly three places:
 
 - `POST /api/ingest/garmin`
 - `POST /api/logger/session`
 - `DELETE /api/logger/session/[workout_id]`
+
+An `onEmpty` parameter decides what a day with no usable input means. Every
+caller but one takes the default, `"skip"` — leave the stored value alone,
+because absence of data is not absence of strain. The DELETE route passes
+`"null"`: there, "nothing left to score" is the honest answer, and skipping
+would strand the value computed while the deleted session still existed. This
+is a parameter rather than a rule at the call site specifically so the column
+keeps exactly one writer, and so the rule lives in `lib/` where the test suite
+can reach it — `lib/coach/strain/__tests__/recompute-on-empty.test.ts`.
 
 The logger calls are non-fatal, matching the existing `clearStaleOpeners`
 precedent on that route — a strain recompute must never fail a session commit.
