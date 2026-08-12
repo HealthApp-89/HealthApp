@@ -402,5 +402,13 @@ pattern, idempotent, with a printed diff and a `--yes` gate.
   does not report it and the Fenix is worn only for cardio, the recovery column
   goes null on strength days and `deriveReadiness` loses an input. Out of scope
   here; flagged as separate work to resolve before any device change.
+- **Baseline dominates the load sum, which the refit must absorb.** A full day of
+  ordinary living contributes ~83 TRIMP units; a hard 50-minute session adds ~43
+  from heart rate and ~13 from tonnage. Under the provisional constants every day
+  therefore sits high on the flat part of the log curve and a heavy day separates
+  from a rest day by under 2 points. This is expected — those constants were fitted
+  with baseline as a flat offset OUTSIDE the log — but it means the three-term
+  refit is doing real work, not cosmetic re-tuning, and its RMSE ≤ 1.8 gate is the
+  check on whether the form converges at all.
 - **2026-05-25 is the largest residual** (actual 19.49, model 15.34). Unexplained;
   retained in the fixture rather than dropped, so the audit threshold reflects it.
