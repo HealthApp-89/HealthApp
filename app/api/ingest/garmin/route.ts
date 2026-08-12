@@ -6,6 +6,7 @@ import { extractBearer, resolveIngestToken } from "@/lib/ingest/auth";
 import {
   edwardsTrimp,
   banisterTrimp,
+  trimpToStrain,
   type HrSample,
 } from "@/lib/coach/garmin/derive-strain";
 import { mapToDailyLogs, mapMovementEnergy, mapGarminWellness, type GarminDayInput } from "@/lib/coach/garmin/map-metrics";
@@ -107,10 +108,16 @@ export async function POST(request: Request) {
     const hrRest = d.resting_hr ?? 50;
     const edw = samples.length ? edwardsTrimp(samples, hrMax) : null;
     const ban = samples.length ? banisterTrimp(samples, hrRest, hrMax) : null;
-    // Strain is no longer derived here — recomputeStrainForDay owns the column
-    // and fuses cardio with the logger's mechanical load. edw/ban stay to feed
-    // the garmin_daily shadow columns for parallel comparison.
+    // Strain is no longer derived for daily_logs — recomputeStrainForDay owns
+    // that column and fuses cardio with the logger's mechanical load.
     const strain = null;
+
+    // The Edwards-derived value still goes to the garmin_daily SHADOW row.
+    // That table exists to answer "what would the old model have said for this
+    // day?", and nulling this column would silently retire that question while
+    // leaving the table nominally intact. Distinct variable, distinct table —
+    // the ownership rule is about daily_logs.
+    const shadowStrain = edw !== null ? trimpToStrain(edw) : null;
 
     garminRows.push({
       user_id: userId,
@@ -139,7 +146,7 @@ export async function POST(request: Request) {
       acute_load: d.acute_load ?? null,
       chronic_load: d.chronic_load ?? null,
       vo2max: d.vo2max ?? null,
-      strain,
+      strain: shadowStrain,
       trimp_edwards: edw,
       trimp_banister: ban,
       raw: d,

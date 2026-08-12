@@ -111,7 +111,9 @@ assert("me omits sleep_hours", !("sleep_hours" in me));
 // Absent metric → null (present key, homogeneous payload), not omitted.
 const meEmpty = mapMovementEnergy({ date: "2026-07-02" }, null);
 assert("me absent steps = null", meEmpty.steps === null);
-assert("me absent strain = null", meEmpty.strain === null);
+// strain is omitted (not null) when absent: recomputeStrainForDay owns the
+// column now, and a null key here would clobber its value on every ingest.
+assert("me absent strain omitted", !("strain" in meEmpty));
 assert("me absent key present", "calories" in meEmpty);
 
 // ── map-metrics: mapGarminWellness (Body Battery + Stress cluster) ────────────

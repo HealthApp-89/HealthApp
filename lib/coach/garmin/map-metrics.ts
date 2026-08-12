@@ -93,10 +93,17 @@ export type MovementEnergyRow = {
 };
 
 /** Partial "movement/energy" cluster Garmin owns ahead of the full cutover.
- *  All five columns are always present (null when absent) so the daily_logs
- *  upsert payload stays homogeneous; NO `source` key is emitted, so a
- *  co-owned row keeps whatever source tag WHOOP set. Single-owner columns,
- *  so writing null is honest ("no Garmin data that day"), not a clobber. */
+ *  Four of the five columns (steps/distance_km/calories/active_calories) are
+ *  always present (null when absent) so the daily_logs upsert payload stays
+ *  homogeneous; NO `source` key is emitted, so a co-owned row keeps whatever
+ *  source tag WHOOP set. Single-owner columns, so writing null is honest
+ *  ("no Garmin data that day"), not a clobber.
+ *
+ *  `strain` is the exception: `recomputeStrainForDay` (lib/coach/strain/
+ *  recompute.ts) is the sole writer of daily_logs.strain now, so this mapper
+ *  never has a value to contribute and the key is OMITTED rather than
+ *  written null — a null here would silently overwrite the number
+ *  recomputeStrainForDay just computed on every routine ingest. */
 export function mapMovementEnergy(
   input: GarminDayInput,
   strain: number | null,
