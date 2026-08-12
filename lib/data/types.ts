@@ -64,6 +64,38 @@ export type DailyLog = {
   stress_avg: number | null;
   stress_max: number | null;
   stress_qualifier: string | null;
+  // ── Fused strain (migration 0058) ──────────────────────────────────────────
+  hr_sample_density: number | null;
+  updated_at: string;
+};
+
+/** One Garmin-recorded activity. Mirrors public.garmin_activities.
+ *  `hr_samples` is the raw [[epoch_ms, bpm]] stream; `trimp` is the derived
+ *  Banister value. `garmin_load` / `aerobic_te` / `anaerobic_te` are metadata
+ *  only and are never model inputs. */
+export type GarminActivityRow = {
+  id: string;
+  user_id: string;
+  external_id: string;
+  local_date: string;
+  activity_type: string | null;
+  started_at: string;
+  duration_s: number;
+  avg_hr: number | null;
+  max_hr: number | null;
+  device_id: string | null;
+  hr_source: "wrist" | "arm" | "chest" | "unknown";
+  hr_sample_count: number;
+  hr_median_gap_s: number | null;
+  zone_seconds: Record<string, number> | null;
+  garmin_load: number | null;
+  aerobic_te: number | null;
+  anaerobic_te: number | null;
+  body_battery_diff: number | null;
+  trimp: number | null;
+  hr_samples: Array<[number, number]> | null;
+  superseded_by: string | null;
+  created_at: string;
   updated_at: string;
 };
 

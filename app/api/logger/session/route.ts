@@ -7,6 +7,7 @@ import { repatchRemainingWeek } from "@/lib/coach/prescription/repatch-week";
 import { getUserTimezone } from "@/lib/time/get-user-tz";
 import { todayInUserTz, localDayRangeUtc } from "@/lib/time";
 import { clearStaleOpeners } from "@/lib/coach/opener-refresh";
+import { recomputeStrainForDay } from "@/lib/coach/strain/recompute";
 
 export async function POST(req: Request) {
   let payload: CommitSessionPayload;
@@ -56,6 +57,20 @@ export async function POST(req: Request) {
       });
     } catch (err) {
       console.error("[logger/session] repatchRemainingWeek failed:", err);
+    }
+
+    // Fused strain: the mechanical term means today's number moves as soon as
+    // the session lands, instead of waiting for tomorrow's collector run.
+    // Non-fatal, matching every other post-commit hook on this route — a
+    // derived value must never fail a session the athlete already performed.
+    try {
+      await recomputeStrainForDay({
+        supabase,
+        userId: payload.user_id,
+        dateIso: payload.date,
+      });
+    } catch (err) {
+      console.error("[logger/session] recomputeStrainForDay failed:", err);
     }
 
     // Openers are written at dawn and never rewrite themselves. Clear the
