@@ -2,23 +2,25 @@ import type { HrSource } from "./types";
 
 /** Fitted strain constants.
  *
- *  PROVISIONAL — fitted 2026-08-12 under a TWO-term form in which baseline was a
- *  fixed +3.5 strain constant rather than a load term:
+ *  Fitted 2026-08-12 by scripts/fit-strain-constants.mjs against
+ *  scripts/fixtures/strain-calibration-2026.json — 61 labelled April–May 2026
+ *  days carrying WHOOP's own strength-adjusted values, the only labelled data
+ *  that will ever exist for this athlete. RMSE 1.625.
  *
- *    strain = 3.5 + 4.5·ln(1 + 0.0706·(activity_trimp + 0.00795·mechanical))
+ *  Three-term form: strain = min(21, A·ln(1 + k·(baseline + activity + w·mechanical))).
  *
- *  RMSE 1.56 over 61 labelled April–May 2026 days. Superseded by
- *  scripts/fit-strain-constants.mjs once scripts/fixtures/strain-calibration-2026.json
- *  carries baseline HR for the calibration window (see the plan's Task 13).
+ *  `w` converts tonnage-equivalent kilograms into TRIMP units.
+ *  `mechanicalNorm` rescales the muscle/intensity/RIR-weighted sum back onto
+ *  the raw-tonnage scale the fit was performed on, so those factors
+ *  redistribute load between exercises without moving the aggregate.
  *
- *  `w` converts tonnage-equivalent kilograms into TRIMP units: 1 TRIMP ≈ 126 kg.
- *  `mechanicalNorm` rescales the muscle/intensity/RIR-weighted sum back onto the
- *  raw-tonnage scale the fit was performed on. 1 until the refit computes it. */
+ *  Do not hand-tune. scripts/audit-strain-calibration.mjs asserts these
+ *  reproduce the fixture within RMSE 1.8 and will fail if they drift. */
 export const STRAIN_CALIBRATION = {
-  A: 4.5,
-  k: 0.0706,
-  w: 0.00795,
-  mechanicalNorm: 1,
+  A: 11.75,
+  k: 0.00577,
+  w: 0.027705,
+  mechanicalNorm: 0.936051,
 } as const;
 
 /** Longest interval a single pair of HR samples may contribute, in minutes.

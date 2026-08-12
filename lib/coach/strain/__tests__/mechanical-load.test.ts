@@ -8,6 +8,7 @@ import {
   mechanicalLoad,
   type MechanicalExercise,
 } from "@/lib/coach/strain/mechanical-load";
+import { STRAIN_CALIBRATION } from "@/lib/coach/strain/constants";
 
 function ex(
   name: string,
@@ -150,18 +151,24 @@ describe("mechanicalLoad", () => {
   });
 
   it("reduces to raw tonnage when nothing is known — unmapped, no e1RM, no RIR", () => {
+    // combinedFactor is neutral (1) here, but mechanicalLoad still applies the
+    // fitted mechanicalNorm rescale — that rescale moved the aggregate off raw
+    // tonnage on the 2026-08-12 refit (mechanicalNorm != 1), so the "nothing is
+    // known" case reduces to raw tonnage × mechanicalNorm, not raw tonnage itself.
     const blind = [ex("Completely Invented Movement 9000", [{ kg: 50, reps: 10 }], null)];
-    expect(mechanicalLoad(blind, null)).toBeCloseTo(rawTonnage(blind), 9);
+    expect(mechanicalLoad(blind, null)).toBeCloseTo(rawTonnage(blind) * STRAIN_CALIBRATION.mechanicalNorm, 9);
   });
 
   it("bounds the worst compounding case — the reason the product is clamped", () => {
     // Large muscle (1.15) × near-ceiling intensity (~1.06) × two reps past the
     // RIR target (1.15) multiplies to 1.40 if each factor is clamped alone.
-    // Clamping the product holds it at 1.15.
+    // Clamping the product holds it at 1.15 — and mechanicalLoad then applies
+    // the fitted mechanicalNorm rescale on top, so the ceiling this test checks
+    // is raw × 1.15 × mechanicalNorm, not raw × 1.15.
     const brutal = [ex("Deadlift (Barbell)", [{ kg: 140, reps: 5, rir: 0 }], 180)];
     const raw = rawTonnage(brutal);
-    expect(mechanicalLoad(brutal, 2)).toBeLessThanOrEqual(raw * 1.15 + 1e-9);
-    expect(mechanicalLoad(brutal, 2)).toBeCloseTo(raw * 1.15, 6);
+    expect(mechanicalLoad(brutal, 2)).toBeLessThanOrEqual(raw * 1.15 * STRAIN_CALIBRATION.mechanicalNorm + 1e-9);
+    expect(mechanicalLoad(brutal, 2)).toBeCloseTo(raw * 1.15 * STRAIN_CALIBRATION.mechanicalNorm, 6);
   });
 });
 
