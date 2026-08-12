@@ -11,12 +11,53 @@
 //   AUDIT_USER_ID=<uuid> node --import ./scripts/alias-loader.mjs \
 //     --experimental-strip-types --env-file=.env.local scripts/freeze-strain-calibration.mjs
 
-import { writeFileSync, mkdirSync } from "node:fs";
+import { writeFileSync, mkdirSync, existsSync, readFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 
 const FROM = "2026-04-01";
 const TO = "2026-05-31";
 const OUT = "scripts/fixtures/strain-calibration-2026.json";
+
+// ── ONE-SHOT. ALREADY FIRED. DO NOT RE-RUN. ─────────────────────────────────
+//
+// This script reads `daily_logs.strain` and writes it out as `whoop_strain`,
+// the label the strain model is calibrated against. That was correct exactly
+// once, on 2026-08-12, while those rows still held values from the WHOOP strap.
+//
+// They do not any more. The backfill that followed (scripts/backfill-fused-strain.mjs)
+// overwrote that column with the model's OWN OUTPUT. So a re-run today would not
+// merely lose the labels — it would relabel the model's predictions as its own
+// ground truth, and scripts/audit-strain-calibration.mjs would then compare the
+// model against itself, passing at ~0 RMSE forever while real validation was
+// silently gone. A green gate proving nothing is worse than no gate.
+//
+// WHOOP is disconnected permanently, so those labels cannot be re-derived from
+// anywhere. The committed fixture is the only copy that will ever exist.
+//
+// The script is kept for provenance — it documents how the fixture was built.
+// If you are calibrating a NEW window against a NEW label source, write a new
+// script with a new output path; do not repoint this one.
+if (existsSync(OUT)) {
+  let labelled = 0;
+  try {
+    labelled = JSON.parse(readFileSync(OUT, "utf8")).filter(
+      (d) => typeof d.whoop_strain === "number",
+    ).length;
+  } catch {
+    // Unparseable: still refuse. A corrupt fixture is recoverable from git;
+    // an overwritten one is not.
+  }
+  console.error(
+    `REFUSING TO RUN.\n\n` +
+      `${OUT} already exists and holds ${labelled} labelled days.\n` +
+      `Those labels came from a WHOOP strap that is permanently disconnected, and\n` +
+      `daily_logs.strain — this script's input — has since been overwritten with the\n` +
+      `model's own output. Running would overwrite irreplaceable ground truth with\n` +
+      `the predictions it is supposed to validate.\n\n` +
+      `Read the block above ${OUT.split("/").pop()} in this file before doing anything else.`,
+  );
+  process.exit(1);
+}
 
 const userId = process.env.AUDIT_USER_ID;
 if (!userId) throw new Error("AUDIT_USER_ID is required");
