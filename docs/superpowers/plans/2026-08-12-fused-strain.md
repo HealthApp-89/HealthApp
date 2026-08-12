@@ -2377,11 +2377,20 @@ In the same loop, replace:
 with:
 
 ```ts
-    // Strain is no longer derived here — recomputeStrainForDay owns the column
-    // and fuses cardio with the logger's mechanical load. edw/ban stay to feed
-    // the garmin_daily shadow columns for parallel comparison.
+    // Strain is no longer derived for daily_logs — recomputeStrainForDay owns
+    // that column and fuses cardio with the logger's mechanical load.
     const strain = null;
+
+    // The Edwards-derived value still goes to the garmin_daily SHADOW row.
+    // That table exists to answer "what would the old model have said for this
+    // day?", and nulling this column would silently retire that question while
+    // leaving the table nominally intact. Distinct variable, distinct table —
+    // the ownership rule is about daily_logs.
+    const shadowStrain = edw !== null ? trimpToStrain(edw) : null;
 ```
+
+Keep the `trimpToStrain` import for this, and in the `garminRows.push({...})`
+literal change `strain,` to `strain: shadowStrain,`.
 
 Both `mapToDailyLogs` and `mapMovementEnergy` skip a null strain, so the movement/energy write no longer touches the column.
 
@@ -2406,6 +2415,19 @@ Expected: typecheck exit 0, and `mapToDailyLogs` guards on non-null strain. `map
 ```
 
 Update `MovementEnergyRow`'s `strain` to `strain?: number | null` and re-run typecheck.
+
+Two things are now mechanically false and must be swept in the same commit,
+since this change is what falsified them:
+
+- The docstring above `mapMovementEnergy` claims "All five columns are always
+  present (null when absent) ... writing null is honest, not a clobber."
+  That is now specifically untrue of `strain`. Amend it to carve out the
+  exception and name `recomputeStrainForDay` as the column's owner.
+- [scripts/audit-garmin-strain.mjs](scripts/audit-garmin-strain.mjs) asserts
+  `meEmpty.strain === null`, which now fails — the key is absent, not null.
+  Change it to `!("strain" in meEmpty)` and reword the label. Leaving a
+  knowingly-failing assertion in a repo audit script is worse than the small
+  scope increase: the next person to run it learns to distrust it.
 
 - [ ] **Step 6: Commit**
 
