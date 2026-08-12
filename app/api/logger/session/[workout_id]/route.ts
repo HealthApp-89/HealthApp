@@ -31,6 +31,7 @@ import { clearTargetHitStamp, reevaluateTargetHit } from "@/lib/coach/prescripti
 import { repatchRemainingWeek } from "@/lib/coach/prescription/repatch-week";
 import { getUserTimezone } from "@/lib/time/get-user-tz";
 import { todayInUserTz } from "@/lib/time";
+import { recomputeStrainForDay } from "@/lib/coach/strain/recompute";
 
 export const dynamic = "force-dynamic";
 
@@ -123,6 +124,15 @@ export async function DELETE(
     });
   } catch (err) {
     console.error("[logger/session DELETE] repatchRemainingWeek failed:", err);
+  }
+
+  // Unwind the mechanical term too. Non-fatal and self-healing: the next
+  // ingest or commit recomputes the same day. Runs after the delete above,
+  // so the recompute sees the day WITHOUT the deleted session's sets.
+  try {
+    await recomputeStrainForDay({ supabase, userId: user.id, dateIso: workout.date as string });
+  } catch (err) {
+    console.error("[logger/session/delete] recomputeStrainForDay failed:", err);
   }
 
   return NextResponse.json({ ok: true });
