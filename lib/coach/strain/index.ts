@@ -11,3 +11,4 @@ export { dedupeActivities, matchActivityToWorkout, MATCH_TOLERANCE_MS } from "./
 export type { WorkoutWindow } from "./match-sessions";
 export { banisterOverIntervals, medianGapSeconds } from "./trimp";
 export type { DayLoad, HrSample, HrSource, TimeWindow } from "./types";
+export { restingBaseline, RESTING_BASELINE_DAYS, MIN_BASELINE_SAMPLES } from "./resting-baseline";

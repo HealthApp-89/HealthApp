@@ -27,12 +27,12 @@ const rows = fixture.map((f) => {
   for (const a of kept) {
     const s = toHrSamples(a.hr_samples);
     if (s.length < 2) continue;
-    activity += banisterOverIntervals(s, f.resting_hr, HR_MAX);
+    activity += banisterOverIntervals(s, f.resting_hr_baseline ?? f.resting_hr, HR_MAX);
     excluded.push(activityWindow(a));
   }
   const baseline = banisterOverIntervals(
     toHrSamples(f.all_day_samples),
-    f.resting_hr,
+    f.resting_hr_baseline ?? f.resting_hr,
     HR_MAX,
     excluded,
   );

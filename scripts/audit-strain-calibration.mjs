@@ -49,7 +49,7 @@ for (const f of fixture) {
     allDaySamples: (f.all_day_samples ?? []).map(([ts, bpm]) => ({ ts, bpm })),
     activities: f.activities,
     workouts: exercises.length ? [{ workout_id: f.date, startMs, endMs: startMs + 86_400_000, exercises }] : [],
-    hrRest: f.resting_hr,
+    hrRest: f.resting_hr_baseline ?? f.resting_hr,
     hrMax: HR_MAX,
     rirTarget: null,
   });

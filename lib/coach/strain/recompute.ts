@@ -4,6 +4,7 @@ import { getUserTimezone } from "@/lib/time/get-user-tz";
 import { brzycki } from "@/lib/coach/e1rm";
 import { assembleDay, type AssembleResult, type AssembleWorkout } from "./assemble";
 import { medianGapSeconds, toHrSamples } from "./index";
+import { restingBaseline, RESTING_BASELINE_DAYS } from "./resting-baseline";
 import type { ActivityInput } from "./activity-load";
 import type { HrSample } from "./types";
 import type { MechanicalExercise } from "./mechanical-load";
@@ -26,9 +27,13 @@ export async function computeDayStrain(args: {
   const tz = await getUserTimezone(userId);
   const { startUtc } = localDayRangeUtc(dateIso, tz);
 
+  const windowStart = new Date(Date.parse(`${dateIso}T00:00:00Z`) - RESTING_BASELINE_DAYS * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+
   const [
     { data: profile },
-    { data: dayLog },
+    { data: rhrRows },
     { data: activityRows },
     { data: workoutRows, error: workoutErr },
   ] = await Promise.all([
@@ -37,8 +42,8 @@ export async function computeDayStrain(args: {
       .from("daily_logs")
       .select("resting_hr")
       .eq("user_id", userId)
-      .eq("date", dateIso)
-      .maybeSingle(),
+      .gte("date", windowStart)
+      .lte("date", dateIso),
     supabase
       .from("garmin_activities")
       .select(
@@ -57,7 +62,7 @@ export async function computeDayStrain(args: {
   if (workoutErr) throw workoutErr;
 
   const hrMax = profile?.age ? Math.round(208 - 0.7 * profile.age) : DEFAULT_HR_MAX;
-  const hrRest = dayLog?.resting_hr ?? DEFAULT_HR_REST;
+  const hrRest = restingBaseline((rhrRows ?? []).map((r) => r.resting_hr), DEFAULT_HR_REST);
 
   // All-day stream lives on garmin_daily.raw.hr_samples, written by the ingest.
   const { data: garminDay, error: garminDayErr } = await supabase
