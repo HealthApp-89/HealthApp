@@ -1573,7 +1573,7 @@ export function dedupeActivities(activities: ActivityInput[]): {
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `npx vitest run lib/coach/strain/__tests__/match-sessions.test.ts`
-Expected: PASS, 15 tests.
+Expected: PASS, 14 tests.
 
 - [ ] **Step 5: Commit**
 
