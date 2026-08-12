@@ -970,6 +970,7 @@ git commit -m "feat(strain): baseline load with activity windows excluded"
   - `muscleFactor(name: string): number`
   - `intensityFactor(kg: number, e1rm: number | null): number`
   - `rirFactor(rir: number | null, rirTarget: number | null): number`
+  - `combinedFactor(name: string, kg: number, e1rm: number | null, rir: number | null, rirTarget: number | null): number` — the product of the three, clamped as a product
   - `mechanicalLoad(exercises: MechanicalExercise[], rirTarget: number | null): number`
 
 - [ ] **Step 1: Write the failing test**
@@ -983,6 +984,7 @@ import {
   muscleFactor,
   intensityFactor,
   rirFactor,
+  combinedFactor,
   mechanicalLoad,
   type MechanicalExercise,
 } from "@/lib/coach/strain/mechanical-load";
@@ -1131,6 +1133,32 @@ describe("mechanicalLoad", () => {
     const blind = [ex("Completely Invented Movement 9000", [{ kg: 50, reps: 10 }], null)];
     expect(mechanicalLoad(blind, null)).toBeCloseTo(rawTonnage(blind), 9);
   });
+
+  it("bounds the worst compounding case — the reason the product is clamped", () => {
+    // Large muscle (1.15) × near-ceiling intensity (~1.06) × two reps past the
+    // RIR target (1.15) multiplies to 1.40 if each factor is clamped alone.
+    // Clamping the product holds it at 1.15.
+    const brutal = [ex("Deadlift (Barbell)", [{ kg: 140, reps: 5, rir: 0 }], 180)];
+    const raw = rawTonnage(brutal);
+    expect(mechanicalLoad(brutal, 2)).toBeLessThanOrEqual(raw * 1.15 + 1e-9);
+    expect(mechanicalLoad(brutal, 2)).toBeCloseTo(raw * 1.15, 6);
+  });
+});
+
+describe("combinedFactor", () => {
+  it("clamps the product, not the individual factors", () => {
+    // Each factor is inside 0.85-1.15, but 1.15 × 1.058 × 1.15 = 1.40 unclamped.
+    expect(combinedFactor("Deadlift (Barbell)", 140, 180, 0, 2)).toBeCloseTo(1.15, 9);
+  });
+
+  it("clamps the floor case too", () => {
+    // Small muscle × light load × heavily sandbagged would fall to 0.61.
+    expect(combinedFactor("Bicep Curl (Dumbbell)", 5, 100, 8, 2)).toBeCloseTo(0.85, 9);
+  });
+
+  it("is neutral when nothing is known", () => {
+    expect(combinedFactor("Completely Invented Movement 9000", 50, null, null, null)).toBe(1);
+  });
 });
 ```
 
@@ -1173,10 +1201,16 @@ const LARGE_MUSCLE_IDS: ReadonlySet<number> = new Set([
   MUSCLE_ID.Traps,
 ]);
 
-/** All three factors live inside this band. They exist to REDISTRIBUTE load
- *  between exercises and sets, not to rescale the day — the fitted `w` was
- *  derived from raw tonnage, so a factor that moved the aggregate would
- *  silently invalidate it. */
+/** Every factor — and, critically, their PRODUCT — lives inside this band. They
+ *  exist to REDISTRIBUTE load between exercises and sets, not to rescale the
+ *  day: the fitted `w` was derived from raw tonnage, so anything that moved the
+ *  aggregate would silently invalidate it.
+ *
+ *  Clamping each factor separately is not enough. Three independently-clamped
+ *  factors multiply out to [0.85³, 1.15³] = [0.61, 1.52] — a ±52% swing, not the
+ *  ±15% this band is supposed to express. A heavy deadlift set taken past its
+ *  RIR target hits 1.15 × 1.06 × 1.15 = 1.40 on its own. So `combinedFactor`
+ *  below clamps the product, and that is the bound the tests assert. */
 const FACTOR_MIN = 0.85;
 const FACTOR_MAX = 1.15;
 
@@ -1225,6 +1259,18 @@ export function rirFactor(rir: number | null, rirTarget: number | null): number 
   return clampFactor(1 + ((FACTOR_MAX - 1) * (rirTarget - rir)) / 2);
 }
 
+/** The single multiplier applied to one set's tonnage. Clamped as a PRODUCT,
+ *  not per factor — see the FACTOR_MIN/FACTOR_MAX note above for why. */
+export function combinedFactor(
+  name: string,
+  kg: number,
+  e1rm: number | null,
+  rir: number | null,
+  rirTarget: number | null,
+): number {
+  return clampFactor(muscleFactor(name) * intensityFactor(kg, e1rm) * rirFactor(rir, rirTarget));
+}
+
 /** Tonnage-equivalent kilograms for a session: raw tonnage redistributed by
  *  muscle mass, relative intensity and proximity to failure, then rescaled by
  *  the frozen `mechanicalNorm` so the aggregate lands back on the raw-tonnage
@@ -1235,13 +1281,11 @@ export function mechanicalLoad(
 ): number {
   let total = 0;
   for (const e of exercises) {
-    const mFactor = muscleFactor(e.name);
     for (const s of e.sets) {
       if (s.warmup) continue;
       const tonnage = (s.kg ?? 0) * (s.reps ?? 0);
       if (tonnage === 0) continue;
-      total +=
-        tonnage * mFactor * intensityFactor(s.kg ?? 0, e.e1rm) * rirFactor(s.rir, rirTarget);
+      total += tonnage * combinedFactor(e.name, s.kg ?? 0, e.e1rm, s.rir, rirTarget);
     }
   }
   return total * STRAIN_CALIBRATION.mechanicalNorm;
@@ -1774,7 +1818,7 @@ export { STRAIN_CALIBRATION, DEVICE_HR_SOURCE, HR_SOURCE_RANK, MAX_INTERVAL_MIN 
 export { activityTrimp, activityWindow, resolveHrSource, toHrSamples } from "./activity-load";
 export type { ActivityInput } from "./activity-load";
 export { baselineTrimp } from "./baseline-load";
-export { mechanicalLoad, rawTonnage } from "./mechanical-load";
+export { mechanicalLoad, rawTonnage, combinedFactor } from "./mechanical-load";
 export type { MechanicalExercise, MechanicalSet } from "./mechanical-load";
 export { dedupeActivities, matchActivityToWorkout, MATCH_TOLERANCE_MS } from "./match-sessions";
 export type { WorkoutWindow } from "./match-sessions";
@@ -2722,7 +2766,7 @@ import { readFileSync } from "node:fs";
 import { banisterOverIntervals } from "@/lib/coach/strain/trimp";
 import { toHrSamples, activityWindow } from "@/lib/coach/strain/activity-load";
 import { dedupeActivities } from "@/lib/coach/strain/match-sessions";
-import { rawTonnage, muscleFactor, intensityFactor, rirFactor } from "@/lib/coach/strain/mechanical-load";
+import { rawTonnage, combinedFactor } from "@/lib/coach/strain/mechanical-load";
 
 const fixture = JSON.parse(readFileSync("scripts/fixtures/strain-calibration-2026.json", "utf8"));
 const HR_MAX = 183;
@@ -2748,12 +2792,14 @@ const rows = fixture.map((f) => {
   const exercises = f.exercises.map((e) => ({ ...e, e1rm: bestE1rm(e.sets) }));
   let weighted = 0;
   for (const e of exercises) {
-    const mf = muscleFactor(e.name);
     for (const s of e.sets) {
       if (s.warmup) continue;
       const t = (s.kg ?? 0) * (s.reps ?? 0);
       if (!t) continue;
-      weighted += t * mf * intensityFactor(s.kg ?? 0, e.e1rm) * rirFactor(s.rir, null);
+      // combinedFactor, NOT the three factors multiplied by hand: the runtime
+      // clamps the PRODUCT, so re-deriving it here would fit mechanicalNorm
+      // against a quantity mechanicalLoad never produces.
+      weighted += t * combinedFactor(e.name, s.kg ?? 0, e.e1rm, s.rir, null);
     }
   }
   return { date: f.date, whoop: f.whoop_strain, baseline, activity, raw: rawTonnage(exercises), weighted };

@@ -152,7 +152,14 @@ was performed on.
 
 Raw tonnage treats a 100 kg deadlift set and a 25 kg curl set as equivalent. Two
 refinements, both **normalised so they redistribute between exercises without
-moving the aggregate scale** — this is what keeps the fitted `w` valid:
+moving the aggregate scale** — this is what keeps the fitted `w` valid.
+
+The refinements are multiplied together and the **product** is clamped to
+0.85–1.15, not each factor separately. Clamping factors individually leaves the
+product free to reach [0.85³, 1.15³] = [0.61, 1.52] — a ±52% swing rather than
+the ±15% the band is meant to express, and a heavy deadlift set taken past its
+RIR target reaches 1.40 on its own. The per-session bound is what makes `w`,
+fitted on raw tonnage, still meaningful for any individual day.
 
 - **Muscle-mass weighting** from `getExerciseMuscles().primary`, reusing the
   existing large/small classification in
