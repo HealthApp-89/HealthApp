@@ -3432,3 +3432,344 @@ Recorded so a later reader knows these were decisions, not oversights:
 - **No UI work.** `daily_logs.strain` is replaced in place and every existing consumer inherits the new number. `deriveReadiness` does not read strain, so readiness is untouched.
 - **`training_readiness` on a device split** — if the Fenix is worn only for cardio and CIRQA does not report Training Readiness, `daily_logs.recovery` goes null on strength days. Separate work; flagged in the spec's open risks.
 - **CIRQA sampling density is unverified** until the hardware exists. `hr_sample_density` makes any degradation visible rather than silent.
+
+---
+
+# Addendum — post-review fixes (Tasks 19–21)
+
+Added 2026-08-12 after the whole-branch review. Tasks 1–18 are complete and
+merged into the branch; these close the review's two blocking findings plus the
+resting-heart-rate drift the review surfaced.
+
+## Why Task 20 exists
+
+`computeDayStrain` resolves `hrRest` from **that day's** `daily_logs.resting_hr`.
+Banister TRIMP scores heart-rate *reserve*, so a falling resting HR mechanically
+raises baseline load for identical activity. Measured on real data: the athlete's
+resting HR fell 60.7 → 54.9 between the calibration window and the present, and
+2026-08-04 scores **3.46 at RHR 50 versus 0.95 at RHR 60.7** — a rest day nearly
+quadrupling because he got fitter, not because he did more.
+
+That defeats the arc's stated priority: a strain history comparable across time.
+It also explains the p10 compression previously recorded as structural. The fix
+is a slow rolling baseline, so day-to-day RHR noise stops leaking into strain and
+the scale re-bases only as fitness genuinely changes.
+
+---
+
+## Task 19: Close the two blocking review findings
+
+**Files:**
+- Modify: `app/api/logger/session/[workout_id]/route.ts`
+- Modify: `lib/coach/strain/recompute.ts`
+- Modify: `lib/coach/strain/__tests__/assemble.test.ts`
+
+- [ ] **Step 1: Fix the delete-path unwind (Critical)**
+
+`computeDayStrain` returns `{ result: null, skipped: "no_input" }` when a day has
+no HR, no activities and no workouts, and `recomputeStrainForDay` then writes
+nothing. That invariant is right for a reader-initiated recompute — absence of
+data is not absence of strain — and wrong for a writer-initiated *unwind*.
+
+The collector fetches complete days only, so **today always has zero all-day HR
+samples**. A same-day commit → delete therefore hits exactly that state, and the
+strain computed while the workout existed survives the deletion. That mis-tap is
+the scenario the DELETE route exists for.
+
+In `app/api/logger/session/[workout_id]/route.ts`, replace the recompute hook
+body with:
+
+```ts
+  // Unwind the mechanical term. Non-fatal and self-healing.
+  //
+  // A skip here is NOT the same as a skip on the ingest path. The collector
+  // fetches complete days only, so today has no all-day HR yet; deleting the
+  // day's only workout leaves no HR, no activity and no workout, which
+  // computeDayStrain reports as "no_input" and declines to write. That would
+  // strand the value computed while the session existed — the deleted session's
+  // tonnage, preserved forever. On the delete path the honest value is null.
+  try {
+    const res = await recomputeStrainForDay({ supabase, userId, dateIso: workoutDate });
+    if (res.strain === null) {
+      const { error } = await supabase
+        .from("daily_logs")
+        .update({ strain: null, updated_at: new Date().toISOString() })
+        .eq("user_id", userId)
+        .eq("date", workoutDate);
+      if (error) throw error;
+    }
+  } catch (err) {
+    console.error("[logger/session/delete] recomputeStrainForDay failed:", err);
+  }
+```
+
+- [ ] **Step 2: Throw on the two reads whose failure lowers the number (Important)**
+
+In `computeDayStrain`, the six reads discard `error`. That is idiomatic for
+readers repo-wide, but this function feeds a **writer**: a transient failure on
+`workouts` or `garmin_daily` makes the day look emptier than it is and persists a
+lower number with nothing surfaced.
+
+Destructure `error` from the `workouts` and `garmin_daily` reads and throw:
+
+```ts
+  if (workoutErr) throw workoutErr;
+  ...
+  if (garminDayErr) throw garminDayErr;
+```
+
+Both call sites already wrap `recomputeStrainForDay` in try/catch and treat it as
+non-fatal, so throwing degrades to "leave the existing value alone", which is the
+honest outcome. Leave the other four reads as they are — their failure cannot
+silently lower the result.
+
+- [ ] **Step 3: Rename the misleading test**
+
+In `lib/coach/strain/__tests__/assemble.test.ts`, rename
+`"excludes a matched activity's window from the baseline term"` to
+`"excludes a scored activity's window from the baseline term"`. Exclusion depends
+on the activity having a usable HR stream, not on matching — `assembleDay` never
+matches. The old name names a concept the arithmetic deliberately does not use.
+
+- [ ] **Step 4: Verify**
+
+Run: `npx vitest run lib/coach/strain && npm run typecheck`
+Expected: 87 passing, typecheck exit 0.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add lib/coach/strain app/api/logger/session
+git commit -m "fix(strain): unwind strain on delete, fail loud on load-lowering reads"
+```
+
+---
+
+## Task 20: Rolling resting-heart-rate baseline
+
+**Files:**
+- Create: `lib/coach/strain/resting-baseline.ts`
+- Create: `lib/coach/strain/__tests__/resting-baseline.test.ts`
+- Modify: `lib/coach/strain/recompute.ts`, `lib/coach/strain/index.ts`
+- Create: `scripts/add-rhr-baseline-to-fixture.mjs`
+
+**Interfaces:**
+- Produces: `RESTING_BASELINE_DAYS = 90`, `MIN_BASELINE_SAMPLES = 10`,
+  `restingBaseline(values: Array<number | null>, fallback: number): number`
+
+- [ ] **Step 1: Write the failing test**
+
+Create `lib/coach/strain/__tests__/resting-baseline.test.ts`:
+
+```ts
+import { describe, it, expect } from "vitest";
+import { restingBaseline, MIN_BASELINE_SAMPLES } from "@/lib/coach/strain/resting-baseline";
+
+describe("restingBaseline", () => {
+  it("returns the fallback when there is nothing to work with", () => {
+    expect(restingBaseline([], 50)).toBe(50);
+    expect(restingBaseline([null, null], 50)).toBe(50);
+  });
+
+  it("returns the fallback below the minimum sample count", () => {
+    const few = Array.from({ length: MIN_BASELINE_SAMPLES - 1 }, () => 55);
+    expect(restingBaseline(few, 50)).toBe(50);
+  });
+
+  it("uses the median once there are enough samples", () => {
+    const vals = Array.from({ length: MIN_BASELINE_SAMPLES }, (_, i) => 50 + i);
+    expect(restingBaseline(vals, 99)).toBe(vals[Math.floor(vals.length / 2)]);
+  });
+
+  it("ignores nulls when counting toward the minimum", () => {
+    const vals = [...Array.from({ length: MIN_BASELINE_SAMPLES }, () => 55), null, null];
+    expect(restingBaseline(vals, 99)).toBe(55);
+  });
+
+  it("is a median, not a mean — one implausible reading cannot move it", () => {
+    const vals = [...Array.from({ length: 30 }, () => 55), 200];
+    expect(restingBaseline(vals, 99)).toBe(55);
+  });
+
+  it("tracks a genuine sustained drop rather than freezing forever", () => {
+    const before = restingBaseline(Array.from({ length: 90 }, () => 61), 50);
+    const after = restingBaseline(Array.from({ length: 90 }, () => 55), 50);
+    expect(after).toBeLessThan(before);
+  });
+});
+```
+
+- [ ] **Step 2: Run it and watch it fail**
+
+Run: `npx vitest run lib/coach/strain/__tests__/resting-baseline.test.ts`
+Expected: FAIL, cannot resolve the module.
+
+- [ ] **Step 3: Implement**
+
+Create `lib/coach/strain/resting-baseline.ts`:
+
+```ts
+/** Window over which the resting-heart-rate baseline is taken, in days. */
+export const RESTING_BASELINE_DAYS = 90;
+
+/** Below this many real readings the window is too thin to trust; the caller's
+ *  fallback is used instead. */
+export const MIN_BASELINE_SAMPLES = 10;
+
+/** The resting heart rate the strain model scores against.
+ *
+ *  Deliberately NOT the day's own reading. Banister TRIMP scores heart-rate
+ *  RESERVE, so a lower resting HR converts identical activity into more load —
+ *  measured on this athlete, a rest day scored 3.46 at RHR 50 against 0.95 at
+ *  60.7, purely because his resting rate had fallen. Feeding the daily value in
+ *  therefore makes the whole scale drift upward as fitness improves, and makes a
+ *  strain history incomparable across exactly the change it should be measuring.
+ *
+ *  A 90-day median re-bases slowly and visibly instead: day-to-day RHR noise
+ *  (itself a recovery signal, not a load one) cannot reach strain at all, while a
+ *  genuine sustained drop still moves the baseline over a quarter. */
+export function restingBaseline(values: Array<number | null>, fallback: number): number {
+  const real = values.filter((v): v is number => typeof v === "number" && Number.isFinite(v) && v > 0);
+  if (real.length < MIN_BASELINE_SAMPLES) return fallback;
+  real.sort((a, b) => a - b);
+  return real[Math.floor(real.length / 2)];
+}
+```
+
+Export both constants and the function from `lib/coach/strain/index.ts`.
+
+- [ ] **Step 4: Wire it into `computeDayStrain`**
+
+Widen the existing `daily_logs` read from a single-day `resting_hr` lookup to the
+baseline window, and resolve `hrRest` through it:
+
+```ts
+  const windowStart = new Date(Date.parse(`${dateIso}T00:00:00Z`) - RESTING_BASELINE_DAYS * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+  const { data: rhrRows } = await supabase
+    .from("daily_logs")
+    .select("resting_hr")
+    .eq("user_id", userId)
+    .gte("date", windowStart)
+    .lte("date", dateIso);
+  const hrRest = restingBaseline((rhrRows ?? []).map((r) => r.resting_hr), DEFAULT_HR_REST);
+```
+
+The `.slice(0, 10)` here is on a UTC-constructed instant used purely as a query
+bound over a `date` column, not a "today" computation — it does not need the
+user's timezone and does not trip the timezone audit. Run
+`node scripts/audit-timezone-usage.mjs` to confirm.
+
+- [ ] **Step 5: Add the baseline to the frozen fixture WITHOUT regenerating it**
+
+The fixture is now the only surviving copy of the WHOOP labels — Task 16
+overwrote `daily_logs.strain`. It must be amended in place, never rebuilt.
+
+Create `scripts/add-rhr-baseline-to-fixture.mjs`:
+
+```js
+// Adds a `resting_hr_baseline` field to each fixture day, computed from the
+// 90-day rolling window of daily_logs.resting_hr (a column Task 16 did NOT
+// touch). Every existing field, including whoop_strain, is copied through
+// unchanged — this file is the only surviving copy of those labels and must
+// never be regenerated from the database.
+import { readFileSync, writeFileSync } from "node:fs";
+import { createClient } from "@supabase/supabase-js";
+import { restingBaseline, RESTING_BASELINE_DAYS } from "@/lib/coach/strain/resting-baseline";
+
+const PATH = "scripts/fixtures/strain-calibration-2026.json";
+const userId = process.env.AUDIT_USER_ID;
+if (!userId) throw new Error("AUDIT_USER_ID is required");
+
+const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+const fixture = JSON.parse(readFileSync(PATH, "utf8"));
+
+const { data: logs, error } = await sb
+  .from("daily_logs").select("date, resting_hr").eq("user_id", userId).order("date");
+if (error) throw error;
+
+let added = 0;
+for (const day of fixture) {
+  const start = new Date(Date.parse(`${day.date}T00:00:00Z`) - RESTING_BASELINE_DAYS * 86_400_000)
+    .toISOString().slice(0, 10);
+  const vals = logs.filter((r) => r.date >= start && r.date <= day.date).map((r) => r.resting_hr);
+  day.resting_hr_baseline = restingBaseline(vals, day.resting_hr);
+  added++;
+}
+
+const labels = fixture.filter((d) => typeof d.whoop_strain === "number").length;
+if (labels !== fixture.length) throw new Error(`label loss: ${labels}/${fixture.length}`);
+console.log(`added resting_hr_baseline to ${added} days; ${labels} labels intact`);
+writeFileSync(PATH, JSON.stringify(fixture));
+```
+
+Run it, then confirm the labels survived:
+
+```bash
+AUDIT_USER_ID=94fee5c6-7d9a-4b05-be3a-8407505b5429 node --import ./scripts/alias-loader.mjs \
+  --experimental-strip-types --env-file=.env.local scripts/add-rhr-baseline-to-fixture.mjs
+```
+
+- [ ] **Step 6: Point the fit and calibration audit at the new field**
+
+In both `scripts/fit-strain-constants.mjs` and `scripts/audit-strain-calibration.mjs`,
+replace every use of `f.resting_hr` with `f.resting_hr_baseline ?? f.resting_hr`.
+The fit must score days exactly as the runtime now does, or the constants describe
+a quantity production never produces.
+
+- [ ] **Step 7: Verify**
+
+Run: `npx vitest run lib/coach/strain && npm run typecheck && node scripts/audit-timezone-usage.mjs`
+Expected: 93 passing (87 + 6 new), typecheck clean, timezone audit ok.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add lib/coach/strain scripts/add-rhr-baseline-to-fixture.mjs scripts/fit-strain-constants.mjs scripts/audit-strain-calibration.mjs scripts/fixtures/strain-calibration-2026.json
+git commit -m "feat(strain): score against a 90-day resting-HR baseline, not the day's value"
+```
+
+---
+
+## Task 21: Refit and re-backfill under the rolling baseline
+
+- [ ] **Step 1: Refit**
+
+Run `scripts/fit-strain-constants.mjs`. The same hard stop applies: **if RMSE
+exceeds 1.8, STOP** and report rather than editing constants or widening grids.
+
+Report the new RMSE against the previous 1.625. A modest change either way is
+expected — the baseline term's inputs have shifted for every day.
+
+- [ ] **Step 2: Freeze the new constants**
+
+Update `lib/coach/strain/constants.ts` with the fitted values and refresh the
+provenance comment: new fit date, new RMSE, and a note that scoring is against
+the rolling baseline.
+
+- [ ] **Step 3: Re-run the calibration audit**
+
+Run `scripts/audit-strain-calibration.mjs`. Expected: all assertions pass.
+
+- [ ] **Step 4: Re-backfill**
+
+Run `scripts/backfill-fused-strain.mjs` dry, inspect, then `--yes`.
+
+- [ ] **Step 5: Confirm the drift is gone**
+
+Report the strain distribution for Apr–May versus Jun–Aug. Under the previous
+per-day RHR they were p50 5.37 vs 7.55 — a gap substantially caused by the
+resting-HR fall rather than by training. The gap should now be materially
+smaller. Report both, and say plainly whether it closed.
+
+- [ ] **Step 6: Re-run the recompute audit and the full suite**
+
+Run `scripts/audit-strain-recompute.mjs`, `npx vitest run`, `npm run typecheck`.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add lib/coach/strain/constants.ts
+git commit -m "feat(strain): refit and re-backfill under the rolling resting-HR baseline"
+```
