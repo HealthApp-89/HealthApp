@@ -6,10 +6,12 @@ import { extractBearer, resolveIngestToken } from "@/lib/ingest/auth";
 import {
   edwardsTrimp,
   banisterTrimp,
-  trimpToStrain,
   type HrSample,
 } from "@/lib/coach/garmin/derive-strain";
 import { mapToDailyLogs, mapMovementEnergy, mapGarminWellness, type GarminDayInput } from "@/lib/coach/garmin/map-metrics";
+import { recomputeStrainForDay } from "@/lib/coach/strain/recompute";
+import { resolveHrSource, toHrSamples } from "@/lib/coach/strain/activity-load";
+import { banisterOverIntervals, medianGapSeconds } from "@/lib/coach/strain/trimp";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -46,6 +48,25 @@ const daySchema = z.object({
   vo2max: z.number().nullish(),
   // [epoch_ms, bpm] pairs, 2-min-sampled all-day HR (TRIMP input).
   hr_samples: z.array(z.tuple([z.number(), z.number()])).nullish(),
+  activities: z
+    .array(
+      z.object({
+        external_id: z.string(),
+        activity_type: z.string().nullish(),
+        started_at: z.string(),
+        duration_s: z.number(),
+        avg_hr: z.number().nullish(),
+        max_hr: z.number().nullish(),
+        device_id: z.string().nullish(),
+        garmin_load: z.number().nullish(),
+        aerobic_te: z.number().nullish(),
+        anaerobic_te: z.number().nullish(),
+        body_battery_diff: z.number().nullish(),
+        zone_seconds: z.record(z.string(), z.number()).nullish(),
+        hr_samples: z.array(z.tuple([z.number(), z.number()])).nullish(),
+      }),
+    )
+    .nullish(),
 });
 
 const bodySchema = z.object({ days: z.array(daySchema).min(1).max(31) });
@@ -78,6 +99,7 @@ export async function POST(request: Request) {
 
   const garminRows: Record<string, unknown>[] = [];
   const dailyRows: Record<string, unknown>[] = [];
+  const activityRows: Record<string, unknown>[] = [];
   const now = new Date().toISOString();
 
   for (const d of parsed.days) {
@@ -85,9 +107,10 @@ export async function POST(request: Request) {
     const hrRest = d.resting_hr ?? 50;
     const edw = samples.length ? edwardsTrimp(samples, hrMax) : null;
     const ban = samples.length ? banisterTrimp(samples, hrRest, hrMax) : null;
-    // Edwards is the default strain source; swap to Banister after the
-    // parallel-month calibration if it tracks WHOOP better (spec §5).
-    const strain = edw !== null ? trimpToStrain(edw) : null;
+    // Strain is no longer derived here — recomputeStrainForDay owns the column
+    // and fuses cardio with the logger's mechanical load. edw/ban stay to feed
+    // the garmin_daily shadow columns for parallel comparison.
+    const strain = null;
 
     garminRows.push({
       user_id: userId,
@@ -134,6 +157,34 @@ export async function POST(request: Request) {
     // ingest regardless of metrics_source (same contract as movement/energy).
     const wellness = mapGarminWellness(dayInput as GarminDayInput);
     dailyRows.push({ ...mapped, ...wellness, user_id: userId, updated_at: now });
+
+    for (const a of d.activities ?? []) {
+      const activitySamples = toHrSamples(a.hr_samples ?? null);
+      activityRows.push({
+        user_id: userId,
+        external_id: a.external_id,
+        local_date: d.date,
+        activity_type: a.activity_type ?? null,
+        started_at: a.started_at,
+        duration_s: Math.round(a.duration_s),
+        avg_hr: a.avg_hr ?? null,
+        max_hr: a.max_hr ?? null,
+        device_id: a.device_id ?? null,
+        hr_source: resolveHrSource(a.device_id ?? null),
+        hr_sample_count: activitySamples.length,
+        hr_median_gap_s: medianGapSeconds(activitySamples),
+        zone_seconds: a.zone_seconds ?? null,
+        garmin_load: a.garmin_load ?? null,
+        aerobic_te: a.aerobic_te ?? null,
+        anaerobic_te: a.anaerobic_te ?? null,
+        body_battery_diff: a.body_battery_diff ?? null,
+        // Derived here so the row is self-describing in the DB; the composer
+        // recomputes from hr_samples rather than trusting this column.
+        trimp: banisterOverIntervals(activitySamples, d.resting_hr ?? 50, hrMax),
+        hr_samples: a.hr_samples ?? null,
+        updated_at: now,
+      });
+    }
   }
 
   if (garminRows.length > 0) {
@@ -154,6 +205,27 @@ export async function POST(request: Request) {
     daysUpserted = dailyRows.length;
     revalidatePath("/");
     revalidatePath("/coach");
+  }
+
+  if (activityRows.length > 0) {
+    const { error } = await sr
+      .from("garmin_activities")
+      .upsert(activityRows, { onConflict: "user_id,external_id" });
+    if (error) {
+      console.error("[ingest/garmin] garmin_activities upsert failed:", error.message);
+      return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+    }
+  }
+
+  // Fused strain, recomputed per ingested day. Non-fatal: the ingest's own
+  // writes have already succeeded, and the nightly run plus any workout commit
+  // will retry. Failing the ingest here would lose raw data to a derived value.
+  for (const d of parsed.days) {
+    try {
+      await recomputeStrainForDay({ supabase: sr, userId, dateIso: d.date });
+    } catch (err) {
+      console.error("[ingest/garmin] recomputeStrainForDay failed for", d.date, err);
+    }
   }
 
   return NextResponse.json({

@@ -89,7 +89,7 @@ export type MovementEnergyRow = {
   distance_km: number | null;
   calories: number | null;
   active_calories: number | null;
-  strain: number | null;
+  strain?: number | null;
 };
 
 /** Partial "movement/energy" cluster Garmin owns ahead of the full cutover.
@@ -105,14 +105,18 @@ export function mapMovementEnergy(
     v === undefined || v === null ? null : Math.round(v);
   const numOrNull = (v: number | undefined | null) =>
     v === undefined || v === null ? null : v;
-  return {
+  const row: MovementEnergyRow = {
     date: input.date,
     steps: intOrNull(input.steps),
     distance_km: numOrNull(input.distance_km),
     calories: intOrNull(input.calories),
     active_calories: intOrNull(input.active_calories),
-    strain: strain,
+    strain,
   };
+  // A null strain here means "not derived in this path" — recomputeStrainForDay
+  // owns the column. Writing null would clobber a good value with nothing.
+  if (strain === null) delete (row as Partial<MovementEnergyRow>).strain;
+  return row;
 }
 
 export type GarminWellnessRow = {
