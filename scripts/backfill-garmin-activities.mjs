@@ -19,14 +19,28 @@ const dump = JSON.parse(readFileSync(process.env.DUMP_PATH, "utf8"));
 
 const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
-const { data: profile } = await sb.from("profiles").select("age").eq("user_id", userId).maybeSingle();
-const hrMax = profile?.age ? Math.round(208 - 0.7 * profile.age) : 190;
+// Both reads fail LOUDLY. Silently falling through to hrMax=190 / rhr=50 is
+// how a run reports success while having used the wrong constants throughout —
+// it already happened once: a report claimed age was unset and 190 was used,
+// when age was 36 and 183 was used correctly. Nobody could tell either way,
+// because the script printed neither.
+const { data: profile, error: profileErr } = await sb
+  .from("profiles").select("age").eq("user_id", userId).maybeSingle();
+if (profileErr) throw profileErr;
+if (!profile) throw new Error(`no profiles row for ${userId} — wrong AUDIT_USER_ID or wrong environment`);
+const hrMax = profile.age ? Math.round(208 - 0.7 * profile.age) : 190;
 
-const { data: logs } = await sb
+const { data: logs, error: logsErr } = await sb
   .from("daily_logs")
   .select("date, resting_hr")
   .eq("user_id", userId);
+if (logsErr) throw logsErr;
 const rhrBy = new Map((logs ?? []).map((r) => [r.date, r.resting_hr ?? 50]));
+
+console.log(
+  `hrMax=${hrMax} (age=${profile.age ?? "unset"}), ` +
+    `resting_hr known for ${rhrBy.size} days`,
+);
 
 const rows = dump.map((a) => {
   const samples = toHrSamples(a.hr_samples ?? null);
@@ -54,7 +68,8 @@ const rows = dump.map((a) => {
   };
 });
 
-console.log(`${rows.length} activities to upsert`);
+const defaulted = rows.filter((r) => !rhrBy.has(r.local_date)).length;
+console.log(`${rows.length} activities to upsert; ${defaulted} on days with no resting_hr (using 50)`);
 const byMonth = {};
 for (const r of rows) byMonth[r.local_date.slice(0, 7)] = (byMonth[r.local_date.slice(0, 7)] ?? 0) + 1;
 console.table(byMonth);
