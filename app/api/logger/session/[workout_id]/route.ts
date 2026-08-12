@@ -135,15 +135,12 @@ export async function DELETE(
   // strand the value computed while the session existed — the deleted session's
   // tonnage, preserved forever. On the delete path the honest value is null.
   try {
-    const res = await recomputeStrainForDay({ supabase, userId: user.id, dateIso: workout.date as string });
-    if (res.strain === null) {
-      const { error } = await supabase
-        .from("daily_logs")
-        .update({ strain: null, updated_at: new Date().toISOString() })
-        .eq("user_id", user.id)
-        .eq("date", workout.date as string);
-      if (error) throw error;
-    }
+    await recomputeStrainForDay({
+      supabase,
+      userId: user.id,
+      dateIso: workout.date as string,
+      onEmpty: "null",
+    });
   } catch (err) {
     console.error("[logger/session/delete] recomputeStrainForDay failed:", err);
   }

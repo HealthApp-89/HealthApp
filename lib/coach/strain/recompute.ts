@@ -139,21 +139,46 @@ export async function computeDayStrain(args: {
   return { result, allDaySamples };
 }
 
+/** What to do when the day turns out to have no usable input.
+ *
+ *  `"skip"` — leave the stored value alone. Correct for a recompute triggered
+ *  by an ingest: absence of data is not absence of strain, and overwriting a
+ *  historical value would be silent data loss.
+ *
+ *  `"null"` — clear the column. Correct for a recompute triggered by a
+ *  DELETION, where "nothing left to score" is the honest answer and skipping
+ *  would strand the value computed while the deleted session still existed. */
+export type OnEmpty = "skip" | "null";
+
 /** Recompute AND store one day's strain. The SINGLE writer of
  *  daily_logs.strain — the Garmin ingest and both logger session routes all
  *  funnel here, so there is one place where the number is decided.
  *
- *  A day with no HR and no workout is left ALONE rather than written as 0:
- *  absence of data is not absence of strain, and overwriting a historical
- *  value with 0 would be a silent data loss. */
+ *  That is why `onEmpty` is a parameter rather than a rule at the call site.
+ *  The delete path genuinely needs the opposite behaviour from every other
+ *  caller, and expressing that as a direct write from the route would put a
+ *  second writer on the column — and put it in a route file, where this repo's
+ *  vitest setup (node env, `lib/**` only) structurally cannot reach it. */
 export async function recomputeStrainForDay(args: {
   supabase: SupabaseClient;
   userId: string;
   dateIso: string;
+  onEmpty?: OnEmpty;
 }): Promise<{ strain: number | null; skipped?: string }> {
-  const { supabase, userId, dateIso } = args;
+  const { supabase, userId, dateIso, onEmpty = "skip" } = args;
   const { result, allDaySamples, skipped } = await computeDayStrain(args);
-  if (!result) return { strain: null, skipped };
+
+  if (!result) {
+    if (onEmpty === "null") {
+      const { error } = await supabase
+        .from("daily_logs")
+        .update({ strain: null, updated_at: new Date().toISOString() })
+        .eq("user_id", userId)
+        .eq("date", dateIso);
+      if (error) throw error;
+    }
+    return { strain: null, skipped };
+  }
 
   const { error } = await supabase.from("daily_logs").upsert(
     {
