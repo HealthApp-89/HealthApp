@@ -44,6 +44,26 @@ def login() -> Garmin:
     return g
 
 
+def _iso_utc(gmt) -> str | None:
+    """Garmin returns startTimeGMT as "YYYY-MM-DD HH:MM:SS" — genuinely UTC, but
+    with no zone marker and a space separator.
+
+    Node's Date.parse() reads a zone-less date-time as LOCAL time. Forwarding the
+    raw string therefore shifts every activity window by the reader's UTC offset:
+    verified on the athlete's own Mac (Asia/Dubai), "2026-08-10 09:14:34" parses
+    to 05:14:34Z — four hours early. Production on Vercel runs TZ=UTC and would
+    silently be correct, while the local backfill script would silently be wrong,
+    excluding the wrong four hours from the baseline term and leaving the real
+    session double-counted.
+
+    Normalising the format here is formatting, not derivation.
+    """
+    if not isinstance(gmt, str) or not gmt.strip():
+        return None
+    v = gmt.strip().replace(" ", "T")
+    return v if v.endswith("Z") else v + "Z"
+
+
 def collect_activities(g: Garmin, d: str) -> list:
     """Activities for one day, each with its native-resolution HR stream.
 
@@ -61,13 +81,18 @@ def collect_activities(g: Garmin, d: str) -> list:
         return out
 
     for a in acts or []:
+      # One malformed activity must not cost the day. Everything below reads
+      # fields whose type this unofficial API does not guarantee — a non-numeric
+      # duration or a non-dict activityType would otherwise raise out of this
+      # function, past the caller, and abort the whole run before its POST.
+      try:
         aid = a.get("activityId")
         if aid is None:
             continue
         rec = {
             "external_id": str(aid),
             "activity_type": (a.get("activityType") or {}).get("typeKey"),
-            "started_at": a.get("startTimeGMT"),
+            "started_at": _iso_utc(a.get("startTimeGMT")),
             "duration_s": int(a.get("duration") or 0),
             "avg_hr": a.get("averageHR"),
             "max_hr": a.get("maxHR"),
@@ -96,6 +121,8 @@ def collect_activities(g: Garmin, d: str) -> list:
         except Exception as e:  # noqa: BLE001
             print(f"  warn: activity detail {aid} failed: {e}", file=sys.stderr)
         out.append(rec)
+      except Exception as e:  # noqa: BLE001 — malformed record, skip just this one
+        print(f"  warn: activity record skipped for {d}: {e}", file=sys.stderr)
     return out
 
 
@@ -203,7 +230,12 @@ def collect_day(g: Garmin, d: str) -> dict:
         # [[ts_ms, bpm], ...]; drop nulls (off-wrist)
         day["hr_samples"] = [[t, b] for t, b in hr["heartRateValues"] if b is not None]
 
-    day["activities"] = collect_activities(g, d)
+    # Routed through `safe`, like every other getter in this function: a raising
+    # activity pass must cost the activities, not the day. `collect_day` had
+    # never been able to raise before this line existed, so `main`'s loop has no
+    # try/except of its own — an escape here would abort the entire run before
+    # the batched POST, losing days that had already collected cleanly.
+    day["activities"] = safe(collect_activities, g, d) or []
 
     return day
 
