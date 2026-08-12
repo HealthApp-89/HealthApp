@@ -60,14 +60,21 @@ describe("activityTrimp", () => {
   });
 
   it("captures a spike that 2-minute sampling would alias away", () => {
-    // 30 min: 150 bpm for 40 s of every 3 min, 75 bpm otherwise — a lifting set
-    // pattern. Sampled at 1 s it registers; sampled every 2 min it may not.
+    // 30 min: 150 bpm for 40 s of every 4 min, 75 bpm otherwise — a lifting set
+    // pattern. Sampled at 1 s the spike registers; sampled every 2 min it does not.
+    //
+    // The 240 s cycle is chosen against the 120 s sampling period so every
+    // sparse sample lands in a rest phase (indices 60, 180, 300, 420 … are all
+    // ≥ 40 mod 240). A 180 s cycle would drift on and off the spike, and since
+    // each sparse sample is credited for the full 2 min that follows it, one
+    // that catches a 40 s spike scores two whole minutes at 150 — making sparse
+    // score HIGHER and inverting what this test is trying to show.
     const dense: Array<[number, number]> = [];
     for (let s = 0; s <= 1800; s++) {
-      const phase = s % 180;
+      const phase = s % 240;
       dense.push([T0 + s * 1000, phase < 40 ? 150 : 75]);
     }
-    const sparse = dense.filter((_, i) => i % 120 === 60); // samples land in the rest phase
+    const sparse = dense.filter((_, i) => i % 120 === 60); // every sample in a rest phase
     const denseTrimp = activityTrimp(mkActivity({ hr_samples: dense }), 50, 183);
     const sparseTrimp = activityTrimp(mkActivity({ hr_samples: sparse }), 50, 183);
     expect(denseTrimp).toBeGreaterThan(sparseTrimp);
