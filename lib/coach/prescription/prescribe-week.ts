@@ -253,6 +253,15 @@ export async function prescribeWeek(opts: {
     ? computeWholeBlockPhase({ block: block!, focusLift: focusLift!, week, recentSets, rirTarget, todayIso })
     : "pre_target";
 
+  // Sets from the 28 days BEFORE the block started — the anchor for the
+  // focus-block clamp on secondary primaries (see the isPrimary branch below).
+  // Fetched once; empty when there's no focus block or no pre-block history,
+  // in which case the clamp falls back to the rolling baseline.
+  const blockEntrySets: WorkoutSetSample[] =
+    isFocusBlock && block!.start_date
+      ? await fetchRecentSets(supabase, userId, block!.start_date, block!.start_date)
+      : [];
+
   for (const [weekdayStr, sessionType] of Object.entries(week.session_plan ?? {})) {
     const weekday = weekdayStr as WeekdayLong;
     if (sessionType === "REST" || sessionType === "Mobility") continue;
@@ -288,13 +297,24 @@ export async function prescribeWeek(opts: {
         const currentWorkingKg =
           maintenanceLoadFor(baseEx.name, rirTarget, recentSets, todayIso) ??
           baseEx.baseKg ?? 0;
+        // Clamp ceiling anchors to what the athlete could do ENTERING the block,
+        // not to the rolling 28d max. Anchoring to the rolling max ratchets the
+        // lift down: the athlete performs the clamped load, that becomes the new
+        // window max, and the next cycle clamps 0.92x again — ~8% decay per turn
+        // for any secondary the athlete never exceeds. Falls back to the rolling
+        // value when the block has no pre-block history for this lift (new lift,
+        // new athlete), which is the pre-fix behaviour.
+        const clampAnchorKg = isFocusBlock
+          ? maintenanceLoadFor(baseEx.name, rirTarget, blockEntrySets, block!.start_date) ??
+            currentWorkingKg
+          : null;
         exercises.push(
           prescribeSecondaryAutoregulated({
             baseExercise: baseEx,
             currentWorkingKg,
             lastWeekHitRirTargetCleanly: lastWeekClean(recentSets, baseEx, rirTarget),
             consecutiveRirMisses: consecutiveMisses(recentSets, baseEx, rirTarget),
-            maintenanceBaselineKg: isFocusBlock ? currentWorkingKg : null,
+            maintenanceBaselineKg: clampAnchorKg,
             focusBlockClampMultiplier: isFocusBlock ? FOCUS_BLOCK_CLAMP : null,
             baselineSets: baseEx.sets ?? 3,
             baselineReps: baseEx.baseReps ?? 6,
@@ -573,17 +593,23 @@ function roundDownToStep(kg: number, step: number): number {
  *  fall through correctly even when the focus lift isn't in this week's plan. */
 // ── data adapter ──────────────────────────────────────────────────────────
 
+/** Sets from the 28 days ending at `todayIso`. When `beforeIso` is given the
+ *  window is additionally bounded to strictly BEFORE that date — used to read
+ *  block-entry capacity without any in-block session leaking into the window. */
 async function fetchRecentSets(
   supabase: SupabaseClient,
   userId: string,
   todayIso: string,
+  beforeIso?: string,
 ): Promise<WorkoutSetSample[]> {
   const cutoff = subtractDaysIso(todayIso, 28);
-  const { data, error } = await supabase
+  let query = supabase
     .from("workouts")
     .select("date, exercises(name, exercise_sets(kg, reps, warmup, failure, rir, set_index))")
     .eq("user_id", userId)
-    .gte("date", cutoff)
+    .gte("date", cutoff);
+  if (beforeIso) query = query.lt("date", beforeIso);
+  const { data, error } = await query
     .order("date", { ascending: false })
     // Make the embedded set ordering CONTRACTUAL. Both effort predicates are
     // order-independent by construction (session-grouping.ts), but without
