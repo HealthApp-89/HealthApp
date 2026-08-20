@@ -30,6 +30,12 @@ export function sessionsForExercise(
   const byDate = new Map<string, WorkoutSetSample[]>();
   for (const s of recentSets) {
     if (s.warmup) continue;
+    // Heavy top set (migration 0059). Excluded because every verdict built on
+    // these sessions is about the WORKING sets: isCleanSet checks reps against
+    // the prescribed target, and a top set is deliberately below it — leaving
+    // it in reads as a missed rep target and triggers a back-off on an
+    // exercise that actually performed as prescribed.
+    if (s.is_top_set) continue;
     if (s.exercise_name.trim().toLowerCase() !== needle) continue;
     const list = byDate.get(s.performed_on) ?? [];
     list.push(s);

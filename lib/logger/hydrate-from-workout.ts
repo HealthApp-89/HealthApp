@@ -56,6 +56,13 @@ export function hydrateWorkoutAsDraft(
       rest_seconds_actual: s.rest_seconds_actual,
       started_at: s.started_at,
       work_seconds: s.work_seconds,
+      // Preserved from the STORED row, exactly like superset_group above and
+      // for the same reason: whether a set was a top set is a fact about the
+      // session that was performed, not something today's plan gets to decide.
+      // Dropping it here would silently demote the set on re-commit, and its
+      // weight would then re-enter the working-load baseline it was excluded
+      // from — see migration 0059.
+      is_top_set: s.is_top_set ?? false,
     }));
     return { name: e.name, position: i, prescribed, sets };
   });

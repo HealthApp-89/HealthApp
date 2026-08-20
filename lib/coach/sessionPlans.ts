@@ -70,6 +70,27 @@ export type PlannedExercise = {
    *  Total mechanical work is kg × reps × 2; mechanical-load.ts is the only
    *  consumer that sums total work and so the only one that reads this. */
   unilateral?: boolean;
+  /** A single heavier, lower-rep set performed BEFORE the working sets.
+   *  Only ever set on a block's FOCUS lift — a secondary sits under the 0.92
+   *  maintenance clamp, so a heavy single there would defeat the focus block.
+   *
+   *  `pctOfE1rm` is the intent and lives in the static template; `kg` is
+   *  resolved by prescribeWeek from the lift's current e1RM, rounded to the
+   *  equipment grid, and is what the logger and the brief render. `kg` is
+   *  therefore absent in SESSION_PLANS and present in session_prescriptions.
+   *
+   *  Modelled as a FIELD rather than a second same-name exercise entry
+   *  because `maintenanceLoadFor` takes the max kg across clean non-warmup
+   *  sets — a 72.5 kg top set logged beside 60 kg back-offs would silently
+   *  become next week's working load and ratchet the exercise up. Warmup ramp
+   *  entries get away with sharing a name only because every rule filters
+   *  `warmup` out; there is no such filter for a heavier working set, which is
+   *  why `exercise_sets.is_top_set` exists (migration 0059).
+   *
+   *  The top set doubles as the block's measurement: at ~85% of e1RM the rep
+   *  count that comes back re-estimates e1RM directly, so a target that was
+   *  mis-set announces itself in week 1 instead of week 5. */
+  topSet?: { reps: number; pctOfE1rm: number; kg?: number };
 };
 
 // NOTE: `intermediate` on Chest Fly (2.3kg) and Seated Leg Curl (2.3kg) is a
@@ -106,14 +127,22 @@ export const SESSION_PLANS: Record<string, PlannedExercise[]> = {
     // warm-up dose and should be none of those things.
     { name: "Cable External Rotation", warmup: true, baseKg: 9, baseReps: 15, sets: 2, key: "cable_ext_rot", increment: { step: 4.5 }, unilateral: true,
       note: "Prehab warm-up. 15 per side, light — external rotation is structurally weaker than internal, so a light load here is expected." },
-    // The heavy top set is PROSE, not prescription, and only ever on the focus
-    // lift. PlannedExercise has one baseReps and one sets — there is no per-set
-    // scheme in the model, and a second same-name entry would collide in
-    // maintenanceLoadFor and double-progression (both key by name; warmup ramps
-    // only get away with it because every rule filters warmups out). Engine
-    // support for per-set schemes is a follow-up.
+    // topSet is resolved to a real load by prescribeWeek from the lift's
+    // current e1RM (see resolveTopSetKg), and only survives on the FOCUS lift
+    // in a pre_target phase.
+    //
+    // `reps` and `pctOfE1rm` MUST agree under Brzycki or the top set lies every
+    // week. Brzycki is kg = e1RM x (37 - reps)/36, so 85% <-> 6 reps (31/36 =
+    // 0.861); a 5-rep set is 88.9%. Prescribing 5 reps at 85% would have the
+    // athlete hit the rep target with load to spare and re-estimate e1RM ~4%
+    // BELOW its true value, every single week.
+    //
+    // That agreement is what makes the top set a measurement: at 6 reps the
+    // count that comes back re-estimates e1RM directly — 4 reps says the block
+    // target is too high, 8 says it is already beaten.
     { name: "Bench Press (Barbell)", baseKg: 60, baseReps: 8, sets: 3, key: "bench", increment: { step: 2.5 },
-      note: "Block focus lift. Top set first: 4-6 reps at ~85%, then the two prescribed back-off sets. Flat, replacing decline — decline was the only barbell chest press and is the shortest-ROM angle. Weeks 1-2 re-baseline: there is one flat data point (81.3 e1RM, April) against a decline peak of 90, so start here and let the load find itself." },
+      topSet: { reps: 6, pctOfE1rm: 0.85 },
+      note: "Block focus lift. Flat, replacing decline — decline was the only barbell chest press and is the shortest-ROM angle. Weeks 1-2 re-baseline: there is one flat data point (81.3 e1RM, April) against a decline peak of 90, so start here and let the load find itself." },
     { name: "Seated Row (Machine)", baseKg: 50, baseReps: 10, sets: 4, key: "seated_row", increment: { step: 5 } },
     { name: "Incline Bench Press (Dumbbell)", baseKg: 40, baseReps: 10, sets: 3, key: "incline_db", increment: { step: 4 } },
     { name: "Lat Pulldown (Cable)", baseKg: 50, baseReps: 10, sets: 4, key: "lat_pulldown", increment: { step: 5 } },

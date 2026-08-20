@@ -32,6 +32,7 @@ import { recentEffortQuality } from "@/lib/coach/prescription/effort-quality";
 import { setAdherenceFor, IGNORED_EXPOSURES_LIMIT } from "@/lib/coach/prescription/volume-adherence";
 import type { VolumeFrequencySignal } from "@/lib/data/types";
 import { maintenanceLoadFor } from "@/lib/coach/prescription/maintenance-baseline";
+import { currentComparisonValueForLift } from "@/lib/coach/prescription/current-comparison-value";
 import { discoverEffectiveExercises } from "@/lib/coach/prescription/recent-workouts-discovery";
 import type { BlockPhase, WorkoutSetSample } from "@/lib/coach/prescription/types";
 import { fetchMuscleVolumeServer } from "@/lib/query/fetchers/muscleVolume";
@@ -51,6 +52,43 @@ import { applyStructureOverrides } from "@/lib/coach/prescription/structure-over
 import { equalizeSupersetSets } from "@/lib/coach/prescription/superset-sets";
 
 const FOCUS_BLOCK_CLAMP = 0.92;
+
+/**
+ * Resolve `topSet.kg` from the lift's current e1RM. The static template
+ * declares the intent (`{ reps, pctOfE1rm }`); this fills in the load the
+ * logger and the brief actually render.
+ *
+ * Deliberately a no-op in three cases, each of which would otherwise produce a
+ * confidently wrong heavy single:
+ *   - no `topSet` on the exercise (every non-focus lift)
+ *   - no e1RM resolvable from the last 28 days, so there is nothing to take a
+ *     percentage OF. A top set is dropped rather than guessed from baseKg:
+ *     baseKg is a conservative opening load, and 85% of it is not heavy.
+ *   - a non-`pre_target` block phase. Consolidation, off_pace and deload all
+ *     mean "hold load, do not push", and a heavy single is pushing.
+ */
+function resolveTopSetKg(
+  ex: PlannedExercise,
+  lift: PrimaryLift,
+  recentSets: WorkoutSetSample[],
+  todayIso: string,
+  rirTarget: number,
+  phase: BlockPhase = "pre_target",
+): PlannedExercise {
+  if (!ex.topSet) return ex;
+  if (phase !== "pre_target") {
+    const { topSet: _dropped, ...rest } = ex;
+    return rest;
+  }
+  const e1rm = currentComparisonValueForLift({ lift, metric: "e1rm", recentSets, rirTarget, todayIso });
+  if (e1rm == null || !(e1rm > 0)) {
+    const { topSet: _dropped, ...rest } = ex;
+    return rest;
+  }
+  const step = ex.increment?.step ?? 2.5;
+  const kg = Math.round((e1rm * ex.topSet.pctOfE1rm) / step) * step;
+  return { ...ex, topSet: { ...ex.topSet, kg } };
+}
 
 // ── Activity-aware lighten helpers ─────────────────────────────────────────────
 
@@ -282,17 +320,16 @@ export async function prescribeWeek(opts: {
         const currentWorkingKg =
           maintenanceLoadFor(baseEx.name, rirTarget, recentSets, todayIso) ??
           baseEx.baseKg ?? 0;
-        exercises.push(
-          prescribePrimaryFromPhase({
-            baseExercise: baseEx,
-            phase: blockPhase,
-            currentWorkingKg,
-            lastWeekHitRirTargetCleanly: lastWeekClean(recentSets, baseEx, rirTarget),
-            rirTarget,
-            baselineSets: baseEx.sets ?? 3,
-            baselineReps: baseEx.baseReps ?? 6,
-          })
-        );
+        const prescribed = prescribePrimaryFromPhase({
+          baseExercise: baseEx,
+          phase: blockPhase,
+          currentWorkingKg,
+          lastWeekHitRirTargetCleanly: lastWeekClean(recentSets, baseEx, rirTarget),
+          rirTarget,
+          baselineSets: baseEx.sets ?? 3,
+          baselineReps: baseEx.baseReps ?? 6,
+        });
+        exercises.push(resolveTopSetKg(prescribed, focusLift!, recentSets, todayIso, rirTarget, blockPhase));
       } else if (isPrimary) {
         const currentWorkingKg =
           maintenanceLoadFor(baseEx.name, rirTarget, recentSets, todayIso) ??
@@ -555,7 +592,15 @@ export function augmentFirstLoadedCompoundWithWarmups(
   if (w1Kg <= 0 || w2Kg <= 0) return exercises;
 
   // Drop the superset tag: warmups are performed alone, before the round.
-  const { superset: _supersetDropped, ...soloCompound } = compound;
+  // Drop topSet for the same reason and with sharper consequences: these
+  // entries are spreads of the working exercise, so an inherited topSet would
+  // put a heavy 5-rep single on every ramp row AND on the working row — three
+  // top sets on one exercise, each of them excluded from the load baseline.
+  const {
+    superset: _supersetDropped,
+    topSet: _topSetDropped,
+    ...soloCompound
+  } = compound;
 
   const warmup1: PlannedExercise = {
     ...soloCompound,
@@ -605,7 +650,7 @@ async function fetchRecentSets(
   const cutoff = subtractDaysIso(todayIso, 28);
   let query = supabase
     .from("workouts")
-    .select("date, exercises(name, exercise_sets(kg, reps, warmup, failure, rir, set_index))")
+    .select("date, exercises(name, exercise_sets(kg, reps, warmup, failure, rir, set_index, is_top_set))")
     .eq("user_id", userId)
     .gte("date", cutoff);
   if (beforeIso) query = query.lt("date", beforeIso);
@@ -618,7 +663,7 @@ async function fetchRecentSets(
     .order("set_index", { referencedTable: "exercises.exercise_sets", ascending: true });
   if (error || !data) return [];
 
-  type RawSet = { kg: number | null; reps: number | null; warmup: boolean | null; failure: boolean | null; rir: number | null; set_index: number | null };
+  type RawSet = { kg: number | null; reps: number | null; warmup: boolean | null; failure: boolean | null; rir: number | null; set_index: number | null; is_top_set: boolean | null };
   type RawExercise = { name: string; exercise_sets: RawSet[] | null };
   type RawWorkout = { date: string; exercises: RawExercise[] | null };
 
@@ -637,6 +682,7 @@ async function fetchRecentSets(
           failure: !!s.failure,
           performed_on: w.date,
           rir: s.rir ?? null,
+          is_top_set: s.is_top_set ?? false,
         });
       }
     }

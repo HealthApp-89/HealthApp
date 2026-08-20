@@ -27,6 +27,11 @@ export type ExerciseSetDraft = {
   started_at?: string | null;
   /** Honest time under load in seconds, phone lag already deducted. */
   work_seconds?: number | null;
+  /** The exercise's heavy top set (migration 0059) — lower reps, ~85% of e1RM,
+   *  performed before the working sets, focus lift only. Persisted so the
+   *  engine can exclude it from working-LOAD baselines while still counting it
+   *  for e1RM; without the flag its weight becomes next week's working load. */
+  is_top_set?: boolean;
 };
 
 /**
@@ -116,6 +121,8 @@ export type CommitSessionPayload = {
       rest_seconds_actual: number | null;
       started_at: string | null;
       work_seconds: number | null;
+      /** Heavy top set (migration 0059). See ExerciseSetDraft.is_top_set. */
+      is_top_set: boolean;
     }[];
   }[];
 };

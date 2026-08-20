@@ -171,3 +171,27 @@ describe("volume properties the split was designed to fix", () => {
     }
   });
 });
+
+describe("the heavy top set", () => {
+  it("is declared only on the block's focus lift", () => {
+    const withTop = DAYS.flatMap((t) => SESSION_PLANS[t]!).filter((e) => e.topSet);
+    expect(withTop.map((e) => e.name)).toEqual(["Bench Press (Barbell)"]);
+  });
+
+  it("has reps and pctOfE1rm that agree under Brzycki", () => {
+    // If they disagree, the top set re-estimates e1RM wrongly EVERY week and
+    // the block target drifts. Brzycki: kg = e1RM x (37 - reps)/36.
+    for (const ex of DAYS.flatMap((t) => SESSION_PLANS[t]!)) {
+      if (!ex.topSet) continue;
+      const implied = (37 - ex.topSet.reps) / 36;
+      expect(Math.abs(implied - ex.topSet.pctOfE1rm), `${ex.name}: ${ex.topSet.reps} reps implies ${implied.toFixed(3)}, declared ${ex.topSet.pctOfE1rm}`).toBeLessThan(0.02);
+    }
+  });
+
+  it("carries no resolved kg in the static template", () => {
+    // kg is prescribeWeek's job — a hardcoded one would go stale silently.
+    for (const ex of DAYS.flatMap((t) => SESSION_PLANS[t]!)) {
+      if (ex.topSet) expect(ex.topSet.kg).toBeUndefined();
+    }
+  });
+});

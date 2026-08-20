@@ -12,6 +12,7 @@ import { useWakeLock } from "@/lib/logger/rest-timer";
 import { useImmersiveSurface } from "@/components/providers/ImmersiveProvider";
 import { seedRir } from "@/lib/logger/seed-rir";
 import { seedReps } from "@/lib/logger/seed-reps";
+import { expandPlannedSets } from "@/lib/logger/expand-sets";
 import { useLiveSessionContext } from "@/lib/query/hooks/useLiveSessionContext";
 import { fmtNum } from "@/lib/ui/score";
 import {
@@ -88,23 +89,9 @@ function makeDraftFromPlan(args: {
     name: p.name,
     position: i,
     prescribed: p,
-    sets: Array.from({ length: p.sets ?? 1 }, (_unused, j) => ({
-      set_index: j,
-      kg: p.duration_seconds != null ? null : (p.baseKg ?? null),
-      // Seeded like kg, and for a sharper reason since Task 6: the zoom's Save
-      // and the auto-save on START both commit without a rep count being
-      // typed, and a null-reps row drops silently out of e1RM, volume, the
-      // debrief and the prescription engine. See lib/logger/seed-reps.ts.
-      reps: seedReps(p),
-      duration_seconds: null,
-      warmup: !!p.warmup && j === 0,
-      failure: false,
-      // warmups and duration-based exercises carry no RIR
-      rir: (!!p.warmup && j === 0) || p.duration_seconds != null
-        ? null
-        : seedRir(p, args.weekRirTarget),
-      committed_at: null,
-    })),
+    // Set expansion (incl. the heavy top set) lives in lib/logger/expand-sets.ts
+    // so it is reachable by vitest, which scans lib/**/__tests__ only.
+    sets: expandPlannedSets(p, args.weekRirTarget),
   }));
   return {
     user_id: args.userId,
@@ -1023,6 +1010,7 @@ export function LoggerSheet(props: Props) {
               // in Task 7. Null for hand-logged and hydrated-historical sets.
               started_at: s.started_at ?? null,
               work_seconds: s.work_seconds ?? null,
+              is_top_set: s.is_top_set ?? false,
             };
           }),
       })),

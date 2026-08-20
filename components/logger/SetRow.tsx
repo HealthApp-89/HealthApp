@@ -124,12 +124,24 @@ export function SetRow({
     }
     setBadgeOpen(false);
   };
-  const setLabel = set.warmup ? "W" : set.failure ? "F" : String(workingSetNumber);
+  // "T" for the heavy top set. It reads before failure because a top set taken
+  // to failure is still a top set — the flag says what the set WAS FOR, while
+  // `failure` says how it went, and only the former changes how the engine
+  // reads its load (migration 0059).
+  const setLabel = set.warmup
+    ? "W"
+    : set.is_top_set
+      ? "T"
+      : set.failure
+        ? "F"
+        : String(workingSetNumber);
   const setBadgeClass = set.warmup
     ? "bg-yellow-500/15 text-yellow-300"
-    : set.failure
-      ? "bg-red-500/15 text-red-400"
-      : "bg-zinc-800 text-zinc-200";
+    : set.is_top_set
+      ? "bg-sky-500/20 text-sky-300"
+      : set.failure
+        ? "bg-red-500/15 text-red-400"
+        : "bg-zinc-800 text-zinc-200";
 
   return (
     <tr>
