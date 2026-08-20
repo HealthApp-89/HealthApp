@@ -142,6 +142,7 @@ export const SESSION_PLANS: Record<string, PlannedExercise[]> = {
     // target is too high, 8 says it is already beaten.
     { name: "Bench Press (Barbell)", baseKg: 60, baseReps: 8, sets: 3, key: "bench", increment: { step: 2.5 },
       topSet: { reps: 6, pctOfE1rm: 0.85 },
+      video_url: "https://www.youtube.com/watch?v=JY2PW3LhHtQ",
       note: "Block focus lift. Flat, replacing decline — decline was the only barbell chest press and is the shortest-ROM angle. Weeks 1-2 re-baseline: there is one flat data point (81.3 e1RM, April) against a decline peak of 90, so start here and let the load find itself." },
     { name: "Seated Row (Machine)", baseKg: 50, baseReps: 10, sets: 4, key: "seated_row", increment: { step: 5 } },
     { name: "Incline Bench Press (Dumbbell)", baseKg: 40, baseReps: 10, sets: 3, key: "incline_db", increment: { step: 4 } },
@@ -152,6 +153,7 @@ export const SESSION_PLANS: Record<string, PlannedExercise[]> = {
   ],
   "Lower B": [
     { name: "Deadlift (Barbell)", baseKg: 82.5, baseReps: 8, sets: 3, key: "deadlift", increment: { step: 2.5 },
+      video_url: "https://www.youtube.com/watch?v=MBbyAqvTNkU",
       note: "FULL range from the floor, unlike the shin-level partials logged before 2026-08-20. Expect this to feel harder at a lighter load — the floor break is the part that was being skipped. Re-baselined from 90 kg; the historical 121 e1RM is a partial-ROM number." },
     { name: "Leg Press", baseKg: 140, baseReps: 10, sets: 3, key: "leg_press", increment: { step: 5 } },
     // rest_seconds_override, not a tier change: the tier is RIGHT about which
@@ -161,6 +163,7 @@ export const SESSION_PLANS: Record<string, PlannedExercise[]> = {
     // sessions committed in a batch rather than timed).
     { name: "Hip Thrust (Machine)", baseKg: 60, baseReps: 10, sets: 3, key: "hip_thrust_machine", increment: { step: 2.5 },
       rest_seconds_override: 90,
+      video_url: "https://www.youtube.com/watch?v=tztHvSLdXLA",
       note: "Restored 2026-08-20 — was in the template but discovery had dropped it from every prescription after 3 sessions in June." },
     { name: "Seated Leg Curl (Machine)", baseKg: 41, baseReps: 10, sets: 3, key: "leg_curl", increment: { step: 5, intermediate: 2.3 } },
     { name: "Seated Calf Raise (Machine)", baseKg: 50, baseReps: 10, sets: 3, key: "calf", increment: { step: 5 }, note: "Pause 1s at full stretch." },
@@ -172,11 +175,13 @@ export const SESSION_PLANS: Record<string, PlannedExercise[]> = {
     { name: "Overhead Press (Barbell)", baseKg: 35, baseReps: 8, sets: 3, key: "ohp", increment: { step: 5 },
       note: "Anchors its own day now. It used to sit BETWEEN the two chest presses, pre-fatiguing front delts and triceps for the incline — which is part of why incline DB stalled at 40 kg." },
     { name: "Chest-Supported Row (Dumbbell)", baseKg: 40, baseReps: 10, sets: 4, key: "cs_row", increment: { step: 4 },
+      video_url: "https://www.youtube.com/watch?v=_b6ch2nIchk",
       note: "Second horizontal row. Chest supported, so the lower back contributes nothing two days after the deadlift." },
     { name: "Chest Fly", baseKg: 32, baseReps: 10, sets: 3, key: "chest_fly", increment: { step: 5, intermediate: 2.3 }, superset: "A" },
     { name: "Rear Delt Fly", baseKg: 29.3, baseReps: 10, sets: 3, key: "rear_delt_fly", increment: { step: 5, intermediate: 2.3 }, superset: "A" },
     { name: "Lateral Raise (Dumbbell)", baseKg: 20, baseReps: 10, sets: 3, key: "lateral_raise", increment: { step: 4 }, superset: "B" },
-    { name: "Overhead Triceps Extension (Cable)", baseKg: 20, baseReps: 10, sets: 3, key: "oh_triceps", increment: { step: 4.5 }, superset: "B" },
+    { name: "Overhead Triceps Extension (Cable)", baseKg: 20, baseReps: 10, sets: 3, key: "oh_triceps", increment: { step: 4.5 }, superset: "B",
+      video_url: "https://www.youtube.com/watch?v=l4i7iDLiMXs" },
     { name: "Bicep Curl (Dumbbell)", baseKg: 24, baseReps: 10, sets: 3, key: "bicep_curl", increment: { step: 4 } },
     { name: "Reverse Crunch", baseReps: 10, sets: 2, key: "reverse_crunch", note: "Supine, arms at sides, knees to chest with no momentum", video_url: "https://www.youtube.com/watch?v=fhrkw1aaP8k" },
   ],
