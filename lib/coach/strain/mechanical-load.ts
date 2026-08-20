@@ -1,4 +1,5 @@
 import { getExerciseMuscles, MUSCLE_ID } from "@/lib/coach/exercise-muscles";
+import { resolveExercise } from "@/lib/coach/exercise-library";
 import { STRAIN_CALIBRATION } from "./constants";
 
 /** One logged set, reduced to what the mechanical term reads. */
@@ -42,6 +43,24 @@ const FACTOR_MAX = 1.15;
 
 const clampFactor = (v: number) => Math.min(FACTOR_MAX, Math.max(FACTOR_MIN, v));
 
+/** Work done by ONE set: kg × reps, doubled for a unilateral exercise because
+ *  its `reps` are per side and one set is one round of both sides.
+ *
+ *  The ONLY place in the codebase that has to know about `unilateral` — every
+ *  other rule reads reps as a per-side quantity and is correct by construction.
+ *  Both tonnage functions below route through here so they cannot disagree
+ *  about what a set is worth.
+ *
+ *  Note this is deliberately scale-preserving against the frozen calibration:
+ *  the rotations were previously stored as combined reps (18 kg × 30) and are
+ *  now stored per side (18 kg × 15) with this ×2, so the product is unchanged
+ *  and STRAIN_CALIBRATION stays valid. Migrating the rows WITHOUT this doubling
+ *  would have silently halved those sessions' mechanical term. */
+export function setTonnage(exerciseName: string, kg: number | null, reps: number | null): number {
+  const base = (kg ?? 0) * (reps ?? 0);
+  return resolveExercise(exerciseName)?.unilateral ? base * 2 : base;
+}
+
 /** Σ kg × reps over non-warmup sets. This is the quantity the calibration fit
  *  was performed on and the scale everything below preserves. */
 export function rawTonnage(exercises: MechanicalExercise[]): number {
@@ -49,7 +68,7 @@ export function rawTonnage(exercises: MechanicalExercise[]): number {
   for (const e of exercises) {
     for (const s of e.sets) {
       if (s.warmup) continue;
-      total += (s.kg ?? 0) * (s.reps ?? 0);
+      total += setTonnage(e.name, s.kg, s.reps);
     }
   }
   return total;
@@ -109,7 +128,7 @@ export function mechanicalLoad(
   for (const e of exercises) {
     for (const s of e.sets) {
       if (s.warmup) continue;
-      const tonnage = (s.kg ?? 0) * (s.reps ?? 0);
+      const tonnage = setTonnage(e.name, s.kg, s.reps);
       if (tonnage === 0) continue;
       total += tonnage * combinedFactor(e.name, s.kg ?? 0, e.e1rm, s.rir, rirTarget);
     }

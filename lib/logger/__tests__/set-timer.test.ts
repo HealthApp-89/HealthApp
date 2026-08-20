@@ -33,16 +33,19 @@ function running(startMs: number): TimerState {
 }
 
 describe("constants", () => {
-  it("pins the phone lag and countdown at 5s each", () => {
-    expect(PHONE_LAG_SECONDS).toBe(5);
+  it("pins the phone lag at 4s and the countdown at 5s", () => {
+    // Not the same number and not interchangeable: the countdown is a chosen
+    // UX duration, the lag is a MEASURED quantity (calibrated against Garmin
+    // work time, 2026-08-20 — see the constant's docstring).
+    expect(PHONE_LAG_SECONDS).toBe(4);
     expect(COUNTDOWN_SECONDS).toBe(5);
   });
 });
 
 describe("workSecondsFor", () => {
   it("deducts the phone lag from raw elapsed", () => {
-    // 38s on the clock, 5s of which was fumbling for the phone.
-    expect(workSecondsFor(T0, T0 + 38_000)).toBe(33);
+    // 38s on the clock, 4s of which was racking and reaching for the phone.
+    expect(workSecondsFor(T0, T0 + 38_000)).toBe(34);
   });
 
   it("floors at 1 for a set shorter than the lag", () => {
@@ -53,14 +56,26 @@ describe("workSecondsFor", () => {
     expect(workSecondsFor(T0, T0)).toBe(1);
   });
 
-  it("truncates sub-second remainders rather than rounding up", () => {
-    expect(workSecondsFor(T0, T0 + 38_900)).toBe(33);
+  it("rounds sub-second remainders instead of truncating", () => {
+    // Truncation only ever errs downward, so summing a session compounds the
+    // loss. Rounding is unbiased, which is what a summed quantity needs.
+    expect(workSecondsFor(T0, T0 + 38_900)).toBe(35); // .9 rounds up
+    expect(workSecondsFor(T0, T0 + 38_100)).toBe(34); // .1 rounds down
+    expect(workSecondsFor(T0, T0 + 38_500)).toBe(35); // .5 rounds up
+  });
+
+  it("does not accumulate a one-directional error across a session", () => {
+    // 20 sets each landing on a .6 remainder. Truncation would shed 20s over
+    // the session; rounding tracks the true total.
+    const perSet = workSecondsFor(T0, T0 + 30_600);
+    const trueTotal = 20 * (30.6 - PHONE_LAG_SECONDS);
+    expect(Math.abs(perSet * 20 - trueTotal)).toBeLessThanOrEqual(10);
   });
 });
 
 describe("restSeedSeconds", () => {
-  it("seeds a 3:00 prescription at 2:55", () => {
-    expect(restSeedSeconds(180)).toBe(175);
+  it("seeds a 3:00 prescription at 2:56", () => {
+    expect(restSeedSeconds(180)).toBe(176);
   });
 
   it("floors at 1 for a prescription at or below the lag", () => {
@@ -76,22 +91,25 @@ describe("splitRoundWork", () => {
   });
 
   it("deducts one transition allowance for a pair and splits the rest", () => {
-    // 100s wall clock − 5s phone lag − 5s transition = 90s of work, 45 each.
-    expect(splitRoundWork(T0, T0 + 100_000, 2)).toEqual([45, 45]);
+    // 101s wall clock − 4s phone lag − 5s transition = 92s of work, 46 each.
+    expect(splitRoundWork(T0, T0 + 101_000, 2)).toEqual([46, 46]);
   });
 
   it("gives an odd remainder to the first member so the sum stays exact", () => {
-    // 101s − 5 − 5 = 91 → 46 + 45.
-    const shares = splitRoundWork(T0, T0 + 101_000, 2);
-    expect(shares).toEqual([46, 45]);
+    // Input chosen so the split is ODD — that is the whole point of this test,
+    // so it must be re-picked whenever PHONE_LAG_SECONDS moves, not just
+    // re-numbered. 100s − 4 − 5 = 91 → 46 + 45.
+    const shares = splitRoundWork(T0, T0 + 100_000, 2);
     expect(shares[0] + shares[1]).toBe(91);
+    expect(shares).toEqual([46, 45]);
+    expect(shares[0]).toBeGreaterThan(shares[1]);
   });
 
   it("deducts two transitions for a three-member round", () => {
-    // 125s − 5 − 10 = 110 → 38 + 36 + 36.
+    // 125s − 4 − 10 = 111 → 37 each.
     const shares = splitRoundWork(T0, T0 + 125_000, 3);
-    expect(shares.reduce((a, b) => a + b, 0)).toBe(110);
-    expect(shares[0]).toBe(38);
+    expect(shares.reduce((a, b) => a + b, 0)).toBe(111);
+    expect(shares[0]).toBe(37);
   });
 
   it("floors every member at 1 second for an absurdly short round", () => {
@@ -153,20 +171,20 @@ describe("timerReducer — countdown_elapsed", () => {
 });
 
 describe("timerReducer — press_stop", () => {
-  it("anchors rest at the rack, five seconds before the stop press", () => {
+  it("anchors rest at the rack, PHONE_LAG_SECONDS before the stop press", () => {
     const s = timerReducer(running(T0), {
       type: "press_stop", nowMs: T0 + 38_000, prescribedRestSeconds: 180,
     });
     expect(s.phase).toBe("rest");
     expect(s.anchorMs).toBe(T0 + 38_000 - PHONE_LAG_SECONDS * 1000);
-    expect(s.restSeconds).toBe(175);
+    expect(s.restSeconds).toBe(176);
   });
 
   it("opens a pending entry carrying the honest work time", () => {
     const s = timerReducer(running(T0), {
       type: "press_stop", nowMs: T0 + 38_000, prescribedRestSeconds: 180,
     });
-    expect(s.pendingEntries).toEqual([{ ...SET_A, workSeconds: 33 }]);
+    expect(s.pendingEntries).toEqual([{ ...SET_A, workSeconds: 34 }]);
   });
 
   it("is ignored when no set is running", () => {
@@ -236,13 +254,13 @@ describe("derivations", () => {
       type: "press_stop", nowMs: T0 + 38_000, prescribedRestSeconds: 180,
     });
     const stopPress = T0 + 38_000;
-    // 5s already elapsed at the moment of the press.
-    expect(restRemaining(rest, stopPress)).toBe(170);
+    // PHONE_LAG_SECONDS already elapsed at the moment of the press.
+    expect(restRemaining(rest, stopPress)).toBe(172);
     expect(isRestOvertime(rest, stopPress)).toBe(false);
-    // 175s of countdown from the rack = 170s after the press.
-    expect(restRemaining(rest, stopPress + 170_000)).toBe(0);
-    expect(restRemaining(rest, stopPress + 217_000)).toBe(-47);
-    expect(isRestOvertime(rest, stopPress + 217_000)).toBe(true);
+    // 176s of countdown from the rack = 172s after the press.
+    expect(restRemaining(rest, stopPress + 172_000)).toBe(0);
+    expect(restRemaining(rest, stopPress + 219_000)).toBe(-47);
+    expect(isRestOvertime(rest, stopPress + 219_000)).toBe(true);
   });
 
   it("reports zero for derivations that do not apply to the current phase", () => {
@@ -257,7 +275,7 @@ describe("derivations", () => {
       type: "press_stop", nowMs: T0 + 38_000, prescribedRestSeconds: 180,
     });
     // Phone locked for 20 minutes.
-    expect(restRemaining(rest, T0 + 38_000 + 1_200_000)).toBe(-1030);
+    expect(restRemaining(rest, T0 + 38_000 + 1_200_000)).toBe(-1028);
   });
 });
 
@@ -316,10 +334,10 @@ describe("remapTimerSets", () => {
   it("remaps pendingEntries alongside activeSets, preserving their workSeconds", () => {
     const next = remapTimerSets(resting(), 0, removeAt(0));
     expect(next.activeSets).toEqual([{ exerciseIndex: 0, setIndex: 0 }]);
-    expect(next.pendingEntries).toEqual([{ exerciseIndex: 0, setIndex: 0, workSeconds: 33 }]);
+    expect(next.pendingEntries).toEqual([{ exerciseIndex: 0, setIndex: 0, workSeconds: 34 }]);
     // Rest keeps running underneath — a delete elsewhere must not touch it.
     expect(next.phase).toBe("rest");
-    expect(next.restSeconds).toBe(175);
+    expect(next.restSeconds).toBe(176);
   });
 
   it("ignores a removal in a DIFFERENT exercise", () => {
