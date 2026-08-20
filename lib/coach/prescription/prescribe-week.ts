@@ -51,7 +51,15 @@ import { BIG_FOUR_SET } from "@/lib/coach/session-structure/tiers";
 import { applyStructureOverrides } from "@/lib/coach/prescription/structure-overrides";
 import { equalizeSupersetSets } from "@/lib/coach/prescription/superset-sets";
 
-const FOCUS_BLOCK_CLAMP = 0.92;
+/** Focus-block load CEILING as a multiple of block-entry capacity.
+ *
+ *  1.0, not 0.92: a secondary's maintenance relief comes from cutting VOLUME
+ *  (see prescribeSecondaryAutoregulated Step 3), never from cutting load. The
+ *  reduced-training evidence is consistent that intensity is the variable to
+ *  preserve. At 1.0 this still does its original job — stopping a secondary
+ *  climbing mid-block, and stopping a mid-block jump to a higher prior load —
+ *  without pushing the athlete below what he has already demonstrated. */
+const FOCUS_BLOCK_CLAMP = 1.0;
 
 /**
  * Resolve `topSet.kg` from the lift's current e1RM. The static template
@@ -353,6 +361,12 @@ export async function prescribeWeek(opts: {
             consecutiveRirMisses: consecutiveMisses(recentSets, baseEx, rirTarget),
             maintenanceBaselineKg: clampAnchorKg,
             focusBlockClampMultiplier: isFocusBlock ? FOCUS_BLOCK_CLAMP : null,
+            // Stable anchor for the focus-block volume cut. MUST be the static
+            // template count: baseEx.sets comes from discovery's median
+            // realized count and would re-reduce every week.
+            staticBaselineSets:
+              (SESSION_PLANS[sessionType] ?? []).find((e) => !e.warmup && e.name === baseEx.name)?.sets
+              ?? null,
             baselineSets: baseEx.sets ?? 3,
             baselineReps: baseEx.baseReps ?? 6,
             isFocusBlock,
