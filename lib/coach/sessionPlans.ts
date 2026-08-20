@@ -154,7 +154,13 @@ export const SESSION_PLANS: Record<string, PlannedExercise[]> = {
     { name: "Deadlift (Barbell)", baseKg: 82.5, baseReps: 8, sets: 3, key: "deadlift", increment: { step: 2.5 },
       note: "FULL range from the floor, unlike the shin-level partials logged before 2026-08-20. Expect this to feel harder at a lighter load — the floor break is the part that was being skipped. Re-baselined from 90 kg; the historical 121 e1RM is a partial-ROM number." },
     { name: "Leg Press", baseKg: 140, baseReps: 10, sets: 3, key: "leg_press", increment: { step: 5 } },
+    // rest_seconds_override, not a tier change: the tier is RIGHT about which
+    // muscle this trains, it is wrong about what the movement costs. Athlete's
+    // own ceiling, 2026-08-20 — "1 minute to 90 sec is a max for it". The
+    // recorded data could not settle it (3 gaps, all reading 0:05, from June
+    // sessions committed in a batch rather than timed).
     { name: "Hip Thrust (Machine)", baseKg: 60, baseReps: 10, sets: 3, key: "hip_thrust_machine", increment: { step: 2.5 },
+      rest_seconds_override: 90,
       note: "Restored 2026-08-20 — was in the template but discovery had dropped it from every prescription after 3 sessions in June." },
     { name: "Seated Leg Curl (Machine)", baseKg: 41, baseReps: 10, sets: 3, key: "leg_curl", increment: { step: 5, intermediate: 2.3 } },
     { name: "Seated Calf Raise (Machine)", baseKg: 50, baseReps: 10, sets: 3, key: "calf", increment: { step: 5 }, note: "Pause 1s at full stretch." },
@@ -192,7 +198,7 @@ export const SESSION_PLANS: Record<string, PlannedExercise[]> = {
   Legs: [
     { name: "Squat (Barbell)", baseKg: 62.5, baseReps: 6, sets: 3, key: "squat", increment: { step: 2.5 } },
     { name: "Leg Press", baseKg: 85, baseReps: 12, sets: 3, key: "leg_press", increment: { step: 5 } },
-    { name: "Hip Thrust (Machine)", baseKg: 60, baseReps: 10, sets: 3, key: "hip_thrust_machine", note: "baseKg is a starting estimate — confirm on first session", increment: { step: 2.5 } },
+    { name: "Hip Thrust (Machine)", baseKg: 60, baseReps: 10, sets: 3, key: "hip_thrust_machine", rest_seconds_override: 90, note: "baseKg is a starting estimate — confirm on first session", increment: { step: 2.5 } },
     { name: "Leg Extension (Machine)", baseKg: 31, baseReps: 12, sets: 3, key: "leg_ext", increment: { step: 5, intermediate: 2.5 } },
     { name: "Seated Leg Curl (Machine)", baseKg: 30, baseReps: 12, sets: 3, key: "leg_curl", increment: { step: 5, intermediate: 2.3 } },
     { name: "Hip Abductor (Machine)", baseKg: 56, baseReps: 10, sets: 3, key: "abductor", increment: { step: 5, intermediate: 2 } },
@@ -202,7 +208,12 @@ export const SESSION_PLANS: Record<string, PlannedExercise[]> = {
     { name: "Deadlift (Barbell)", baseKg: 82.5, baseReps: 6, sets: 3, key: "deadlift", increment: { step: 2.5 } },
     { name: "Lat Pulldown (Cable)", baseKg: 45, baseReps: 10, sets: 4, key: "lat_pulldown", increment: { step: 5 } },
     { name: "Seated Row (Machine)", baseKg: 38, baseReps: 12, sets: 3, key: "seated_row", increment: { step: 5 } },
-    { name: "Pullover (Dumbbell)", baseKg: 18, baseReps: 12, sets: 3, key: "pullover", increment: { step: 2 } },
+    // Tier 2 because its primary is Lats, a large muscle — but at 18 kg it is
+    // functionally an isolation, and it carries the lowest prescribed-vs-actual
+    // ratio in the whole dataset (0.34: told 3:00, took 1:02 over 4 timed gaps).
+    // Athlete confirmed 1 minute. Same shape as the overhead press: right tier,
+    // wrong intensity.
+    { name: "Pullover (Dumbbell)", baseKg: 18, baseReps: 12, sets: 3, key: "pullover", increment: { step: 2 }, rest_seconds_override: 60 },
     { name: "Shrug (Barbell)", baseKg: 45, baseReps: 10, sets: 3, key: "shrug", increment: { step: 2.5 } },
     { name: "Back Extension", reps: "10×3", key: "back_ext" },
   ],

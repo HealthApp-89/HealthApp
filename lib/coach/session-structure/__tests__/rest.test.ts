@@ -19,9 +19,9 @@ import {
   isolationSize,
   restSecondsFor,
 } from "@/lib/coach/session-structure/rules";
-import { tierOf } from "@/lib/coach/session-structure/tiers";
+import { tierOf, getFatigueTier } from "@/lib/coach/session-structure/tiers";
 import { annotateSession } from "@/lib/coach/session-structure/annotate";
-import type { PlannedExercise } from "@/lib/coach/sessionPlans";
+import { SESSION_PLANS, type PlannedExercise } from "@/lib/coach/sessionPlans";
 
 // PlannedExercise requires only `name`; every other field is optional, so no
 // cast is needed here.
@@ -186,5 +186,36 @@ describe("annotateSession — rest", () => {
     const s = annotateSession(liftingDay());
     expect(s.exercises[1].rest_seconds).toBe(120);
     expect(s.exercises[1].transition_seconds).toBeNull();
+  });
+});
+
+describe("rest_seconds_override — the athlete's own value", () => {
+  it("beats the tier table", () => {
+    // The escape hatch for exercises the tier system over-classifies: correct
+    // about which muscle, wrong about what the movement costs.
+    const e = ex("Hip Thrust (Machine)");
+    expect(restSecondsFor(e, 2)).toBe(120);
+    expect(restSecondsFor({ ...e, rest_seconds_override: 90 }, 2)).toBe(90);
+  });
+
+  it("is set on the entries the athlete called out on 2026-08-20", () => {
+    const hip = SESSION_PLANS["Lower B"]!.find((e) => e.name === "Hip Thrust (Machine)")!;
+    expect(hip.rest_seconds_override).toBe(90);
+    const pullover = SESSION_PLANS.Back!.find((e) => e.name === "Pullover (Dumbbell)")!;
+    expect(pullover.rest_seconds_override).toBe(60);
+    // Pullover's recorded ratio was 0.34 — told 3:00, took 1:02 — the lowest
+    // in the dataset. The override matches what he actually does.
+    expect(restSecondsFor(pullover, getFatigueTier(pullover.name, false))).toBe(60);
+  });
+
+  it("does not leak onto exercises the tier table gets right", () => {
+    for (const name of ["Seated Row (Machine)", "Lat Pulldown (Cable)", "Leg Press"]) {
+      const e = SESSION_PLANS["Upper A"]?.find((x) => x.name === name)
+        ?? SESSION_PLANS["Upper B"]?.find((x) => x.name === name)
+        ?? SESSION_PLANS["Lower B"]?.find((x) => x.name === name);
+      if (!e) continue;
+      expect(e.rest_seconds_override, name).toBeUndefined();
+      expect(restSecondsFor(e, getFatigueTier(e.name, false)), name).toBe(120);
+    }
   });
 });
