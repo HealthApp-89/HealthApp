@@ -151,7 +151,7 @@ export const SESSION_PLANS: Record<string, PlannedExercise[]> = {
     { name: "Hammer Curl (Dumbbell)", baseKg: 24, baseReps: 10, sets: 3, key: "hammer_curl", increment: { step: 4 } },
   ],
   "Lower B": [
-    { name: "Deadlift (Barbell)", baseKg: 77.5, baseReps: 6, sets: 3, key: "deadlift", increment: { step: 2.5 },
+    { name: "Deadlift (Barbell)", baseKg: 82.5, baseReps: 8, sets: 3, key: "deadlift", increment: { step: 2.5 },
       note: "FULL range from the floor, unlike the shin-level partials logged before 2026-08-20. Expect this to feel harder at a lighter load — the floor break is the part that was being skipped. Re-baselined from 90 kg; the historical 121 e1RM is a partial-ROM number." },
     { name: "Leg Press", baseKg: 140, baseReps: 10, sets: 3, key: "leg_press", increment: { step: 5 } },
     { name: "Hip Thrust (Machine)", baseKg: 60, baseReps: 10, sets: 3, key: "hip_thrust_machine", increment: { step: 2.5 },

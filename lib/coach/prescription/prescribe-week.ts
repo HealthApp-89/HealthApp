@@ -362,10 +362,10 @@ export async function prescribeWeek(opts: {
             maintenanceBaselineKg: clampAnchorKg,
             focusBlockClampMultiplier: isFocusBlock ? FOCUS_BLOCK_CLAMP : null,
             // Stable anchor for the focus-block volume cut. MUST be the static
-            // template count: baseEx.sets comes from discovery's median
+            // template target: baseEx.baseReps comes from discovery's median
             // realized count and would re-reduce every week.
-            staticBaselineSets:
-              (SESSION_PLANS[sessionType] ?? []).find((e) => !e.warmup && e.name === baseEx.name)?.sets
+            staticBaselineReps:
+              (SESSION_PLANS[sessionType] ?? []).find((e) => !e.warmup && e.name === baseEx.name)?.baseReps
               ?? null,
             baselineSets: baseEx.sets ?? 3,
             baselineReps: baseEx.baseReps ?? 6,

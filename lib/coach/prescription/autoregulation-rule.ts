@@ -21,13 +21,30 @@
 // the right variable.
 //
 // So: the clamp multiplier is now 1.0 — a true CEILING that stops a secondary
-// climbing mid-block, never an active cut — and the set reduction returns,
-// computed against `staticBaselineSets` (SESSION_PLANS) rather than against
-// last week's output, so it cannot compound.
+// climbing mid-block, never an active cut — and the volume cut comes off REPS
+// while SETS are held, computed against the static template rather than last
+// week's output so it cannot compound.
+//
+// Reps rather than sets, revised again 2026-08-20 after the first version
+// halved the athlete's working volume. Two reasons, and the second is the
+// stronger one:
+//   1. Sets carry the exposure. Three sets of six is three rehearsals of the
+//      pattern at the maintenance load; two of eight is two.
+//   2. Proximity to failure. The athlete pulled 82.5x8 at RIR 2, so 2x8 puts
+//      the SECOND set at roughly RIR 0-1 — near-limit work on a lift that is
+//      supposed to be resting. 3x6 at the same load sits at RIR 3-4 on every
+//      set: less fatigue per set AND one more exposure.
+// Total volume lands at 60-75% of full, squarely in the maintenance band,
+// where the set-cut version was landing at ~50%.
 
 import type { PlannedExercise } from "@/lib/coach/sessionPlans";
 import type { BlockPhase } from "@/lib/coach/prescription/types";
 import { roundToStep } from "@/lib/coach/prescription/calibrate-target";
+
+/** Fraction of the template rep target a secondary keeps during a focus block.
+ *  0.75 puts total volume at 60-75% of full — the maintenance band — while
+ *  leaving every set comfortably short of failure. */
+export const MAINTENANCE_REP_FRACTION = 0.75;
 
 export type AutoregInput = {
   baseExercise: PlannedExercise;
@@ -39,14 +56,15 @@ export type AutoregInput = {
    *  a reduction. Outside a focus block, pass null to disable the clamp. */
   focusBlockClampMultiplier: number | null;
   baselineSets: number;
-  /** Set count from the STATIC template (SESSION_PLANS), which does not move
+  /** Rep target from the STATIC template (SESSION_PLANS), which does not move
    *  week to week. The focus-block volume cut is computed against this and
-   *  never against `baselineSets` — the latter comes from
-   *  discoverEffectiveExercises, which returns the MEDIAN REALIZED set count,
-   *  so reducing against it would subtract from an already-reduced number and
-   *  compound to nothing across a block. That is exactly the failure that got
-   *  the previous "-1 set" rule removed. Omit to disable the volume cut. */
-  staticBaselineSets?: number | null;
+   *  NEVER against `baselineReps` — that comes from discoverEffectiveExercises,
+   *  which returns the MEDIAN REALIZED rep count, so it tracks last week's
+   *  already-reduced prescription. Reducing against it re-reduces every week
+   *  and converges on the floor; that compounding is exactly what got the
+   *  previous focus-block volume rule removed on 2026-06-06. Omit to disable
+   *  the volume cut. */
+  staticBaselineReps?: number | null;
   baselineReps: number;
   isFocusBlock: boolean;
   /** Block phase governs whole-block discipline. consolidation / off_pace hold
@@ -97,32 +115,29 @@ export function prescribeSecondaryAutoregulated(input: AutoregInput): PlannedExe
     if (nextKg > ceiling) nextKg = ceiling;
   }
 
-  // Step 3: volume. deload_week's halving wins outright. Otherwise a focus
-  // block takes ONE set off the STATIC template count — the maintenance dose
-  // that Step 2 deliberately no longer takes out of the load.
+  // Step 3: volume. deload_week's halving of SETS wins outright. Otherwise a
+  // focus block takes a quarter off the STATIC template's REP target and holds
+  // sets — the maintenance dose that Step 2 deliberately no longer takes out of
+  // the load.
   //
-  // The subtraction is off `staticBaselineSets`, never `input.baselineSets`.
-  // The latter is discovery's median REALIZED count, so it tracks whatever the
-  // athlete performed last week — including a previously-reduced prescription.
-  // Reducing against it re-reduces every week and converges on the floor, which
-  // is precisely how the 2026-06-06 version detrained the secondaries. Anchored
-  // to the template, the cut is the same size in week 1 and week 5.
+  // Anchored to `staticBaselineReps`, never `input.baselineReps`: the latter is
+  // discovery's median REALIZED count, so it tracks whatever was performed last
+  // week including a previously-reduced prescription, and reducing against it
+  // converges on the floor. Anchored to the template, the cut is the same size
+  // in week 1 and week 5.
   //
-  // Floored at 2 so a 3-set exercise lands at 2 rather than 1: one working set
-  // is a token, not a maintenance dose.
-  let sets: number;
-  if (setsOverride != null) {
-    sets = setsOverride;
-  } else if (input.isFocusBlock && phase === "pre_target" && input.staticBaselineSets != null) {
-    sets = Math.max(2, input.staticBaselineSets - 1);
-  } else {
-    sets = input.baselineSets;
-  }
+  // Floored at 4 reps: below that this stops being a maintenance dose and turns
+  // into heavy singles, which is the opposite of the intent.
+  const sets = setsOverride != null ? setsOverride : input.baselineSets;
+  const reps =
+    setsOverride == null && input.isFocusBlock && phase === "pre_target" && input.staticBaselineReps != null
+      ? Math.max(4, Math.round(input.staticBaselineReps * MAINTENANCE_REP_FRACTION))
+      : input.baselineReps;
 
   return {
     ...ex,
     baseKg: nextKg,
-    baseReps: input.baselineReps,
+    baseReps: reps,
     sets,
   };
 }
