@@ -42,15 +42,47 @@ function parseReps(spec: string | number | undefined): number | null {
  *  Rest length matters because it protects volume-load: anything that costs
  *  reps on sets 2-4 costs the stimulus set 1 bought (Schoenfeld 2016; Grgic
  *  2017/2018 meta-analyses). These are the values the athlete is expected to
- *  actually take, not the floor of a range. */
+ *  actually take, not the floor of a range.
+ *
+ *  RECALIBRATED 2026-08-20 against 64 true-anchor rest gaps recorded by the
+ *  logger's timer (`restBetweenSets`; the other 471 recorded gaps fall back to
+ *  the legacy commit-to-commit proxy, which measures rest PLUS set execution
+ *  and reads inflated, so they were excluded). Prescribed vs the athlete's own
+ *  median, by bucket:
+ *
+ *    heavy compound (squat/DL/bench)  4:00 -> he takes 4:01   kept
+ *    overhead press                   4:00 -> he takes 2:31   -> lightCompound
+ *    secondary compound               3:00 -> he takes 2:02   -> 120
+ *    isolation large                  2:00 -> he takes ~1:05  -> 75
+ *    isolation small                  1:00 -> he takes 1:03   kept
+ *    finisher                         0:45 -> he takes 0:49   kept
+ *
+ *  He honours three buckets out of four almost to the second and takes
+ *  two-thirds of what the fourth asks for — consistently, on EVERY tier-2
+ *  exercise (ratios 0.34-0.73, no counterexample). Tier 1's aggregate ratio of
+ *  1.00 was hiding a split: the big three pulled the median while the overhead
+ *  press sat at 0.63. He was already self-regulating by absolute systemic cost,
+ *  which is the thing the tier table cannot see, because tier is assigned by
+ *  movement category and never looks at what is on the bar.
+ *
+ *  Small sample; worth re-deriving once the timer has more coverage. The script
+ *  that produced it compares `exercise_sets.rest_seconds_actual` against
+ *  `restSecondsFor` per exercise, excluding warmups and superset members (whose
+ *  recorded rest contains the partner's work — see migration 0057). */
 export const REST_SECONDS = {
   warmup: 45,
   /** The ramp set immediately before the first working exercise. 45s here
    *  compromises the heaviest set of the day. */
   lastWarmup: 120,
   heavyCompound: 240,
-  secondaryCompound: 180,
-  isolationLarge: 120,
+  /** A tier-1 compound whose PRIMARY mover is a small muscle — the overhead
+   *  press is the case that matters. Same tier as the squat and the same
+   *  relative intensity, a fraction of the systemic cost: 35 kg overhead is
+   *  not 85 kg on the back. Calibrated against the athlete's own behaviour
+   *  (see REST_SECONDS' doc block). */
+  lightCompound: 150,
+  secondaryCompound: 120,
+  isolationLarge: 75,
   isolationSmall: 60,
   finisher: 45,
   /** Between rounds of a superset, whatever its members are. The technique's
@@ -108,7 +140,14 @@ export function restSecondsFor(ex: PlannedExercise, tier: FatigueTier): number {
   if (ex.rest_seconds_override != null) return ex.rest_seconds_override;
   switch (tier) {
     case 0: return REST_SECONDS.warmup;
-    case 1: return REST_SECONDS.heavyCompound;
+    // A tier-1 lift driven by a small primary mover costs far less
+    // systemically than one driven by a large one, at any relative intensity.
+    // Reuses isolationSize rather than a second taxonomy: the large/small
+    // muscle split is the same question being asked one tier up.
+    case 1:
+      return isolationSize(ex.name) === "large"
+        ? REST_SECONDS.heavyCompound
+        : REST_SECONDS.lightCompound;
     case 2: return REST_SECONDS.secondaryCompound;
     case 3:
       return isolationSize(ex.name) === "large"

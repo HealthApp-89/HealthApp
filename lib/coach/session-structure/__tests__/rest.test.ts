@@ -59,16 +59,28 @@ describe("restSecondsFor", () => {
     expect(restSecondsFor(e, 1)).toBe(240);
   });
 
-  it("gives a secondary compound 3 minutes", () => {
-    const e = ex("Seated Cable Row");
-    expect(tierOf(e)).toBe(2);
-    expect(restSecondsFor(e, 2)).toBe(180);
+  it("splits tier 1 by the size of the PRIMARY mover, not by tier alone", () => {
+    // Recalibrated 2026-08-20 from the athlete's own recorded rest: he takes
+    // 4:01 on squat/deadlift/bench and 2:31 on the overhead press. Same tier,
+    // same relative intensity, a fraction of the systemic cost — 35 kg
+    // overhead is not 85 kg on the back. Reuses isolationSize rather than
+    // inventing a second taxonomy.
+    for (const heavy of ["Squat (Barbell)", "Deadlift (Barbell)", "Bench Press (Barbell)"]) {
+      expect(restSecondsFor(ex(heavy), 1), heavy).toBe(240);
+    }
+    expect(restSecondsFor(ex("Overhead Press (Barbell)"), 1)).toBe(150);
   });
 
-  it("gives a large-muscle isolation 2 minutes", () => {
+  it("gives a secondary compound 2 minutes", () => {
+    const e = ex("Seated Cable Row");
+    expect(tierOf(e)).toBe(2);
+    expect(restSecondsFor(e, 2)).toBe(120);
+  });
+
+  it("gives a large-muscle isolation 75 seconds", () => {
     const e = ex("Chest Fly");
     expect(tierOf(e)).toBe(3);
-    expect(restSecondsFor(e, 3)).toBe(120);
+    expect(restSecondsFor(e, 3)).toBe(75);
   });
 
   it("gives a small-muscle isolation 60 seconds", () => {
@@ -115,7 +127,7 @@ describe("annotateSession — rest", () => {
     const s = annotateSession(liftingDay());
     expect(typeof s.exercises[2].rest_seconds).toBe("number");
     expect(s.exercises[2].rest_seconds).toBe(240);
-    expect(s.exercises[3].rest_seconds).toBe(180);
+    expect(s.exercises[3].rest_seconds).toBe(120);
   });
 
   it("bumps the LAST warm-up before the first working exercise, not the first warm-up", () => {
@@ -126,7 +138,7 @@ describe("annotateSession — rest", () => {
 
   it("no-ops the bump on a session with no warm-ups", () => {
     const s = annotateSession([ex("Seated Cable Row"), ex("Chest Fly")]);
-    expect(s.exercises.map((e) => e.rest_seconds)).toEqual([180, 120]);
+    expect(s.exercises.map((e) => e.rest_seconds)).toEqual([120, 75]);
   });
 
   it("no-ops the bump when every entry is a warm-up", () => {
@@ -140,7 +152,7 @@ describe("annotateSession — rest", () => {
   it("sets transition_seconds to the incoming exercise's rest plus a minute", () => {
     const s = annotateSession(liftingDay());
     expect(s.exercises[2].transition_seconds).toBe(300); // into the squat: 240 + 60
-    expect(s.exercises[3].transition_seconds).toBe(240); // into the row:   180 + 60
+    expect(s.exercises[3].transition_seconds).toBe(180); // into the row:   120 + 60
   });
 
   it("gives no transition into an isolation or a finisher", () => {
