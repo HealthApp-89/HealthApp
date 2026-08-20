@@ -15,6 +15,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { PlannedExercise } from "@/lib/coach/sessionPlans";
 import { SESSION_PLANS } from "@/lib/coach/sessionPlans";
+import { resolveExercise } from "@/lib/coach/exercise-library";
 import { tierOf } from "@/lib/coach/session-structure/tiers";
 
 const MIN_SESSIONS_REQUIRED = 4; // need at least N sessions of this type to discover
@@ -115,11 +116,30 @@ export async function discoverEffectiveExercises(opts: {
   const libraryOrder = SESSION_PLANS[sessionType] ?? [];
   const libraryKeys = new Set(libraryOrder.map((e) => e.name.toLowerCase()));
 
-  // First pass: library exercises that survive presence threshold (preserves order).
+  // First pass: every library exercise, in template order.
+  //
+  // A template entry below the presence threshold is KEPT at its template
+  // defaults rather than dropped. Dropping it made this function a one-way
+  // door: the prescription is what the athlete trains from, so an exercise
+  // that fell out of the last 8 sessions vanished from the prescription, which
+  // guaranteed it stayed out — it could never climb back over the threshold it
+  // had just failed. Hip Thrust (Machine) was performed 3x in June 2026 and
+  // then disappeared from every prescription, leaving Legs day with no hip
+  // hinge at all; RDL never appeared once. Both are in SESSION_PLANS.
+  //
+  // So discovery now only ever ADDS or RE-NUMBERS, never REMOVES. Its original
+  // job — "SESSION_PLANS lists RDL but I never do RDL" — is still served by the
+  // second pass and by refreshing baseKg/baseReps/sets below. Removing an
+  // exercise is a deliberate act with three explicit paths already built for
+  // it (manual_session_edits, session_structure_overrides, editing the
+  // template); it should not happen by attrition.
   for (const libEx of libraryOrder) {
     const k = libEx.name.toLowerCase();
     const found = presence.get(k);
-    if (!found || found.count / totalSessions < PRESENCE_THRESHOLD) continue;
+    if (!found || found.count / totalSessions < PRESENCE_THRESHOLD) {
+      survivors.push({ ...libEx });
+      continue;
+    }
     survivors.push({
       ...libEx,
       baseKg: found.exemplar.kgs.length > 0 ? Math.max(...found.exemplar.kgs) : libEx.baseKg,
@@ -138,8 +158,21 @@ export async function discoverEffectiveExercises(opts: {
   // so a tier-2 secondary compound like "Leg Press Single Leg" lands after
   // the tier-1 squat, not appended behind the tier-3 isolation machines.
   // Library order (already tier-ascending) is never disturbed.
+  // Library ids already covered by a template entry. Now that the first pass
+  // KEEPS every template exercise, a logged name that differs only in wording
+  // from a template name would surface as a second entry for the same
+  // movement — "Seated Calf Raise" (template) beside "Seated Calf Raise
+  // (Machine)" (logged). Dedup on the resolved library id rather than the
+  // string, so aliases collapse. Unresolvable names fall through and are
+  // compared by name alone, which is the pre-existing behaviour.
+  const libraryIds = new Set(
+    libraryOrder.map((e) => resolveExercise(e.name)?.id).filter((id): id is string => id != null),
+  );
+
   for (const [k, entry] of presence) {
     if (libraryKeys.has(k)) continue;
+    const resolvedId = resolveExercise(entry.exemplar.name)?.id;
+    if (resolvedId != null && libraryIds.has(resolvedId)) continue;
     if (entry.count / totalSessions < PRESENCE_THRESHOLD) continue;
     const ex: PlannedExercise = {
       name: entry.exemplar.name,

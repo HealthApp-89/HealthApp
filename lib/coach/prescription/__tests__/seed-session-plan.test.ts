@@ -26,34 +26,44 @@ describe("seedSessionPlanForNewWeek", () => {
   });
 
   it("ignores a prior week that was swapped mid-week", () => {
-    // Exactly the 2026-08-03 row: Chest and Mobility traded places, Back moved
-    // off Thursday onto Saturday.
+    // Shape of the 2026-08-03 row that first exposed the drift: days traded
+    // places and stayed traded. The day NAMES moved to Upper/Lower on
+    // 2026-08-20; the invariant under test did not — a new week always seeds
+    // from WEEKLY_SESSIONS, never from whatever last week ended up as.
     const swapped: SessionPlan = {
-      Monday: "Legs",
-      Tuesday: "Mobility",
-      Wednesday: "Chest",
+      Monday: "Lower A",
+      Tuesday: "REST",
+      Wednesday: "Upper A",
       Thursday: "REST",
-      Friday: "Arms",
-      Saturday: "Back",
+      Friday: "Upper B",
+      Saturday: "Lower B",
       Sunday: "REST",
     };
     const seeded = seedSessionPlanForNewWeek(swapped);
     expect(seeded).toEqual(WEEKLY_SESSIONS);
-    // The specific regressions the athlete reported.
-    expect(seeded.Tuesday).toBe("Chest");
-    expect(seeded.Wednesday).toBe("Mobility");
-    expect(seeded.Thursday).toBe("Back");
+    expect(seeded.Tuesday).toBe("Upper A");
+    expect(seeded.Thursday).toBe("Lower B");
     expect(seeded.Saturday).toBe("REST");
+  });
+
+  it("seeds from the CURRENT split even when the prior week used the legacy one", () => {
+    // Historical rows carry Chest/Legs/Back/Arms. They must not leak forward.
+    const legacy: SessionPlan = {
+      Monday: "Legs", Tuesday: "Chest", Wednesday: "Mobility",
+      Thursday: "Back", Friday: "Arms", Saturday: "REST", Sunday: "REST",
+    };
+    expect(seedSessionPlanForNewWeek(legacy)).toEqual(WEEKLY_SESSIONS);
   });
 
   it("does not let a caller mutate the shared constant through the result", () => {
     const seeded = seedSessionPlanForNewWeek(null);
-    seeded.Monday = "Arms";
-    expect(WEEKLY_SESSIONS.Monday).toBe("Legs");
+    const before = WEEKLY_SESSIONS.Monday;
+    seeded.Monday = "Upper B";
+    expect(WEEKLY_SESSIONS.Monday).toBe(before);
   });
 
   it("still produces a full seven-day plan", () => {
-    const seeded = seedSessionPlanForNewWeek({ Monday: "Legs" });
+    const seeded = seedSessionPlanForNewWeek({ Monday: "Lower A" });
     expect(Object.keys(seeded).sort()).toEqual(
       ["Friday", "Monday", "Saturday", "Sunday", "Thursday", "Tuesday", "Wednesday"],
     );

@@ -34,6 +34,14 @@ import { activityRegions, recoveryWindowHours, regionOverlap } from "./model";
 //   Mobility / REST — no significant load
 // ─────────────────────────────────────────────────────────────────────────────
 export const SESSION_REGION_MAP: Record<string, MuscleRegion[]> = {
+  // Upper/Lower split (2026-08-20). Both Lower days load the lower back —
+  // Lower A via the RDL, Lower B via the deadlift — so padel or a hard ride
+  // adjacent to either should lighten the same regions.
+  "Lower A": ["legs", "lower_back"],
+  "Upper A": ["chest", "back", "arms", "shoulders"],
+  "Lower B": ["legs", "lower_back"],
+  "Upper B": ["chest", "back", "arms", "shoulders"],
+  // Legacy body-part split — retained for historical weeks.
   Legs: ["legs", "lower_back"],
   Chest: ["chest", "shoulders"],
   Back: ["back", "lower_back"],

@@ -103,6 +103,9 @@ export const EXERCISE_MUSCLES: Record<string, MuscleMapping> = {
   "seated row":             { primary: [M.Lats], secondary: [M.Traps, M.Biceps] },
   "bent over row":          { primary: [M.Lats], secondary: [M.Traps, M.RearDelts, M.Biceps] },
   "t bar row":              { primary: [M.Lats], secondary: [M.Traps, M.Biceps] },
+  // Chest supported on an incline bench: erectors contribute nothing, so no
+  // lower-back secondary. Added 2026-08-20 with the Upper/Lower split.
+  "chest supported row":    { primary: [M.Lats], secondary: [M.Traps, M.RearDelts, M.Biceps] },
   "face pull":              { primary: [M.RearDelts], secondary: [M.Traps] },
   "back extension":         { primary: [M.Glutes, M.Hams], secondary: [] },
 
@@ -132,6 +135,7 @@ export const EXERCISE_MUSCLES: Record<string, MuscleMapping> = {
   "triceps pushdown":       { primary: [M.Triceps], secondary: [] },
   "overhead tricep extension": { primary: [M.Triceps], secondary: [] },
   "triceps extension":      { primary: [M.Triceps], secondary: [] },
+  "overhead triceps extension": { primary: [M.Triceps], secondary: [] },
   "skull crusher":          { primary: [M.Triceps], secondary: [] },
   "close grip bench press": { primary: [M.Triceps], secondary: [M.Chest, M.FrontDelts] },
   "rope pushdown":          { primary: [M.Triceps], secondary: [] },

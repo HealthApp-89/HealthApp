@@ -10,6 +10,7 @@
 import { describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { discoverEffectiveExercises } from "@/lib/coach/prescription/recent-workouts-discovery";
+import { SESSION_PLANS } from "@/lib/coach/sessionPlans";
 
 type FixtureExercise = { name: string; kg?: number; reps?: number };
 
@@ -94,16 +95,62 @@ describe("discoverEffectiveExercises ordering", () => {
 
     expect(discovered).not.toBeNull();
     const names = discovered!.map((e) => e.name);
-    // Tier-2 secondary compound slots directly after the tier-1 squat,
-    // ahead of every tier-3 isolation machine.
+    // Template order is preserved and every template entry is present, even
+    // the ones absent from all six fixture sessions (Leg Press, Hip Thrust).
+    // The off-script "Leg Press Single Leg" is a tier-2 secondary compound and
+    // slots after the tier-1 squat, ahead of every tier-3 isolation machine.
     expect(names).toEqual([
       "Squat (Barbell)",
+      "Leg Press",
+      "Hip Thrust (Machine)",
       "Leg Press Single Leg",
       "Leg Extension (Machine)",
       "Seated Leg Curl (Machine)",
       "Hip Abductor (Machine)",
-      "Seated Calf Raise (Machine)",
+      "Seated Calf Raise",
     ]);
+  });
+
+  it("NEVER drops a template exercise the athlete stopped doing", async () => {
+    // The one-way door. Hip Thrust (Machine) is in SESSION_PLANS.Legs and
+    // absent from all six sessions. Dropping it removed it from the
+    // prescription, which is what the athlete trains from — so it could never
+    // climb back over the threshold it had just failed. It vanished from the
+    // real program in June 2026 exactly this way, leaving Legs with no hinge.
+    const withoutHinge = LEGS_SESSION.filter((e) => !/hip thrust/i.test(e.name));
+    const workouts = Array.from({ length: 6 }, (_, i) =>
+      makeWorkout(`w${i}`, `2026-07-${String(20 - i * 3).padStart(2, "0")}`, withoutHinge),
+    );
+    const discovered = await discoverEffectiveExercises({
+      supabase: fakeSupabase(workouts),
+      userId: "u1",
+      sessionType: "Legs",
+    });
+    const names = discovered!.map((e) => e.name);
+    expect(names).toContain("Hip Thrust (Machine)");
+    expect(names).toContain("Leg Press");
+
+    // Retained at TEMPLATE defaults, not at invented numbers.
+    const template = SESSION_PLANS.Legs!.find((e) => e.name === "Hip Thrust (Machine)")!;
+    const got = discovered!.find((e) => e.name === "Hip Thrust (Machine)")!;
+    expect(got.baseKg).toBe(template.baseKg);
+    expect(got.sets).toBe(template.sets);
+  });
+
+  it("collapses a logged alias into its template entry rather than listing both", async () => {
+    // "Seated Calf Raise (Machine)" is logged; "Seated Calf Raise" is the
+    // template name. Both resolve to library id `seated_calf`, so keeping
+    // every template entry must not produce two rows for one movement.
+    const workouts = Array.from({ length: 6 }, (_, i) =>
+      makeWorkout(`w${i}`, `2026-07-${String(20 - i * 3).padStart(2, "0")}`, LEGS_SESSION),
+    );
+    const discovered = await discoverEffectiveExercises({
+      supabase: fakeSupabase(workouts),
+      userId: "u1",
+      sessionType: "Legs",
+    });
+    const calf = discovered!.filter((e) => /seated calf raise/i.test(e.name));
+    expect(calf).toHaveLength(1);
   });
 
   it("keeps library-order behavior unchanged when every exercise is on-script", async () => {
@@ -121,11 +168,15 @@ describe("discoverEffectiveExercises ordering", () => {
       sessionType: "Legs",
     });
 
-    expect(discovered!.map((e) => e.name)).toEqual([
+    // Every template entry survives, in template order; the three the athlete
+    // actually performed carry refreshed numbers.
+    const names = discovered!.map((e) => e.name);
+    expect(names.slice(0, 3)).toEqual([
       "Squat (Barbell)",
       "Leg Press",
-      "Leg Extension (Machine)",
+      "Hip Thrust (Machine)",
     ]);
+    expect(names).toEqual(SESSION_PLANS.Legs!.map((e) => e.name));
   });
 });
 
