@@ -18,7 +18,7 @@ const DEADLIFT: PlannedExercise = {
   increment: { step: 2.5 },
 };
 
-function prescribe(currentWorkingKg: number, anchorKg: number, staticSets: number | null = null) {
+function prescribe(currentWorkingKg: number, anchorKg: number, staticReps: number | null = null) {
   return prescribeSecondaryAutoregulated({
     baseExercise: DEADLIFT,
     currentWorkingKg,
@@ -28,7 +28,7 @@ function prescribe(currentWorkingKg: number, anchorKg: number, staticSets: numbe
     maintenanceBaselineKg: anchorKg,
     focusBlockClampMultiplier: FOCUS_BLOCK_CLAMP,
     baselineSets: 3,
-    staticBaselineSets: staticSets,
+    staticBaselineReps: staticReps,
     baselineReps: 8,
     isFocusBlock: true,
     blockPhase: "pre_target",
@@ -114,18 +114,21 @@ function mk(performed_on: string, kg: number, reps: number): WorkoutSetSample {
 }
 
 describe("focus-block volume cut", () => {
-  it("takes one set off the STATIC template count", () => {
-    expect(prescribe(82.5, 82.5, 3).sets).toBe(2);
-    expect(prescribe(82.5, 82.5, 4).sets).toBe(3);
+  it("takes a quarter off the STATIC template rep target and HOLDS sets", () => {
+    // Sets carry the exposure: 3x6 is three rehearsals of the pattern at the
+    // maintenance load, 2x8 is two. And at a load good for 8 reps at RIR 2,
+    // the second set of 2x8 lands near failure on a lift that is resting.
+    const r = prescribe(82.5, 82.5, 8);
+    expect(r.baseReps).toBe(6);
+    expect(r.sets).toBe(3);
   });
 
-  it("does not compound when its own output is fed back as realized volume", () => {
-    // THE bug that got the 2026-06-06 version removed. Discovery reports the
-    // MEDIAN REALIZED set count, so last week's reduced prescription becomes
-    // this week's baselineSets. Anchored to the static template, the result is
-    // identical every week regardless of what was performed.
-    const staticSets = 3;
-    let realized = 3;
+  it("does not compound when its own output is fed back as realized reps", () => {
+    // THE bug that got the 2026-06-06 version removed, in its new location.
+    // Discovery reports the MEDIAN REALIZED rep count, so last week's reduced
+    // prescription becomes this week's baselineReps. Anchored to the static
+    // template, the result is identical every week regardless.
+    let realizedReps = 8;
     const out: number[] = [];
     for (let i = 0; i < 5; i++) {
       const r = prescribeSecondaryAutoregulated({
@@ -135,21 +138,31 @@ describe("focus-block volume cut", () => {
         consecutiveRirMisses: 0,
         maintenanceBaselineKg: 82.5,
         focusBlockClampMultiplier: FOCUS_BLOCK_CLAMP,
-        baselineSets: realized,          // <- tracks what was performed
-        staticBaselineSets: staticSets,  // <- does not move
-        baselineReps: 8,
+        baselineSets: 3,
+        baselineReps: realizedReps,   // <- tracks what was performed
+        staticBaselineReps: 8,        // <- does not move
         isFocusBlock: true,
         blockPhase: "pre_target",
       });
-      out.push(r.sets!);
-      realized = r.sets!;
+      out.push(r.baseReps!);
+      realizedReps = r.baseReps!;
     }
-    expect(out).toEqual([2, 2, 2, 2, 2]);
+    expect(out).toEqual([6, 6, 6, 6, 6]);
   });
 
-  it("floors at 2 — one working set is a token, not a maintenance dose", () => {
-    expect(prescribe(82.5, 82.5, 2).sets).toBe(2);
-    expect(prescribe(82.5, 82.5, 1).sets).toBe(2);
+  it("floors at 4 reps — below that it is heavy singles, not maintenance", () => {
+    expect(prescribe(82.5, 82.5, 5).baseReps).toBe(4);
+    expect(prescribe(82.5, 82.5, 4).baseReps).toBe(4);
+  });
+
+  it("keeps total volume in the maintenance band, not half", () => {
+    // The first version cut a set and landed at ~50% of working volume. Holding
+    // sets and trimming reps lands at 75%.
+    const r = prescribe(82.5, 82.5, 8);
+    const full = 82.5 * 8 * 3;
+    const maintained = r.baseKg! * r.baseReps! * r.sets!;
+    expect(maintained / full).toBeGreaterThan(0.6);
+    expect(maintained / full).toBeLessThan(0.85);
   });
 
   it("leaves volume alone outside a focus block", () => {
@@ -157,22 +170,24 @@ describe("focus-block volume cut", () => {
       baseExercise: DEADLIFT, currentWorkingKg: 82.5,
       lastWeekHitRirTargetCleanly: true, consecutiveRirMisses: 0,
       maintenanceBaselineKg: null, focusBlockClampMultiplier: null,
-      baselineSets: 3, staticBaselineSets: 3, baselineReps: 8,
+      baselineSets: 3, baselineReps: 8, staticBaselineReps: 8,
       isFocusBlock: false, blockPhase: "pre_target",
     });
     expect(r.sets).toBe(3);
+    expect(r.baseReps).toBe(8);
     expect(r.baseKg).toBe(85); // free to progress
   });
 
-  it("lets deload_week's halving win over the focus-block cut", () => {
+  it("lets deload_week's set halving win over the focus-block rep cut", () => {
     const r = prescribeSecondaryAutoregulated({
       baseExercise: DEADLIFT, currentWorkingKg: 82.5,
       lastWeekHitRirTargetCleanly: true, consecutiveRirMisses: 0,
       maintenanceBaselineKg: 82.5, focusBlockClampMultiplier: FOCUS_BLOCK_CLAMP,
-      baselineSets: 4, staticBaselineSets: 4, baselineReps: 8,
+      baselineSets: 4, baselineReps: 8, staticBaselineReps: 8,
       isFocusBlock: true, blockPhase: "deload_week",
     });
     expect(r.sets).toBe(2);
-    expect(r.baseKg).toBe(65); // 0.80x still applies in deload
+    expect(r.baseReps).toBe(8);   // deload owns volume via sets, not reps
+    expect(r.baseKg).toBe(65);
   });
 });
