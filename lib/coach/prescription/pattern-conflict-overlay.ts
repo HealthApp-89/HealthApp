@@ -19,6 +19,16 @@ const LOW_AXIAL_HINGE_KEYS = ["hip_thrust", "45_hyper_loaded", "cable_pull_throu
  *  focus day per-week from training_weeks.session_plan, since users may
  *  train Back on different weekdays. */
 const PRIMARY_LIFT_TO_SESSION: Record<PrimaryLift, string> = {
+  deadlift: "Lower B",
+  squat:    "Lower A",
+  bench:    "Upper A",
+  ohp:      "Upper B",
+};
+
+/** Same map for the legacy body-part split. Consulted only when the week's
+ *  session_plan carries no Upper/Lower day, so historical weeks (and any week
+ *  restored from a pre-2026-08-20 row) still resolve their focus day. */
+const LEGACY_PRIMARY_LIFT_TO_SESSION: Record<PrimaryLift, string> = {
   deadlift: "Back",
   squat:    "Legs",
   bench:    "Chest",
@@ -64,10 +74,17 @@ export function validatePatternConflicts(
 
 export function focusDayForBlock(block: TrainingBlock, week: TrainingWeek): WeekdayLong | null {
   if (block.primary_lift == null) return null;
-  const focusSessionType = PRIMARY_LIFT_TO_SESSION[block.primary_lift];
   const sessionPlan = week.session_plan as Record<WeekdayLong, string>;
-  for (const [day, type] of Object.entries(sessionPlan) as Array<[WeekdayLong, string]>) {
-    if (type === focusSessionType) return day;
+  const entries = Object.entries(sessionPlan) as Array<[WeekdayLong, string]>;
+
+  // Current split first, then the legacy body-part names. Falling back rather
+  // than picking one map by date keeps historical weeks resolvable and means a
+  // week restored from a pre-2026-08-20 row still finds its focus day.
+  for (const map of [PRIMARY_LIFT_TO_SESSION, LEGACY_PRIMARY_LIFT_TO_SESSION]) {
+    const focusSessionType = map[block.primary_lift];
+    for (const [day, type] of entries) {
+      if (type === focusSessionType) return day;
+    }
   }
   return null;
 }

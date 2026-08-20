@@ -81,6 +81,75 @@ export type PlannedExercise = {
 // by 4kg total. Unilateral DB exercises (single DB held with both hands, e.g.
 // Pullover) step by 2kg. See memory equipment-gym-dumbbells.
 export const SESSION_PLANS: Record<string, PlannedExercise[]> = {
+  // ── Upper/Lower split (2026-08-20) ─────────────────────────────────────────
+  // Accessory anchors are 10, not 15: the double-progression range is
+  // bottom + width, so a 15 anchor topped out at 17-19 reps — above brzycki's
+  // 12-rep cap, which left most accessory work generating no e1RM point at all.
+  "Lower A": [
+    // No heavy top set here. That belongs to the block's FOCUS lift only —
+    // squat is a secondary in a bench block and sits under the 0.92 maintenance
+    // clamp, so a heavy single would defeat the point of the focus block.
+    { name: "Squat (Barbell)", baseKg: 80, baseReps: 8, sets: 3, key: "squat", increment: { step: 2.5 } },
+    { name: "Romanian Deadlift (Barbell)", baseKg: 60, baseReps: 8, sets: 3, key: "rdl", increment: { step: 2.5 },
+      note: "Knees stay fixed, hips push BACK, bar drags the thighs to mid-shin. Never touches the floor — this is the continuous-tension hamstring lift, distinct from Thursday's deadlift. Start conservative; it is a new movement.",
+      video_url: "https://www.youtube.com/watch?v=JCXUYuzwNrM" },
+    { name: "Leg Extension (Machine)", baseKg: 45, baseReps: 10, sets: 3, key: "leg_ext", increment: { step: 5, intermediate: 2.5 } },
+    { name: "Seated Leg Curl (Machine)", baseKg: 41, baseReps: 10, sets: 3, key: "leg_curl", increment: { step: 5, intermediate: 2.3 } },
+    { name: "Seated Calf Raise (Machine)", baseKg: 50, baseReps: 10, sets: 3, key: "calf", increment: { step: 5 },
+      note: "Pause 1s at full stretch. Measured tempo was ~1.8s/rep, which is bouncing out of the bottom — calves want the loaded stretch." },
+    { name: "Dead Bug", baseReps: 10, sets: 2, key: "dead_bug", note: "Per side — arms relaxed at sides, opposite leg lowers, lumbar pressed to floor", video_url: "https://www.youtube.com/watch?v=bxn9FBrt4-A" },
+  ],
+  "Upper A": [
+    // warmup:true is load-bearing, not cosmetic. Left as a working exercise the
+    // engine ramps it (its own warmup sets at 4.5 kg), progresses it, and counts
+    // it toward rear-delt volume as if it were a rowing set. It is prehab at a
+    // warm-up dose and should be none of those things.
+    { name: "Cable External Rotation", warmup: true, baseKg: 9, baseReps: 15, sets: 2, key: "cable_ext_rot", increment: { step: 4.5 }, unilateral: true,
+      note: "Prehab warm-up. 15 per side, light — external rotation is structurally weaker than internal, so a light load here is expected." },
+    // The heavy top set is PROSE, not prescription, and only ever on the focus
+    // lift. PlannedExercise has one baseReps and one sets — there is no per-set
+    // scheme in the model, and a second same-name entry would collide in
+    // maintenanceLoadFor and double-progression (both key by name; warmup ramps
+    // only get away with it because every rule filters warmups out). Engine
+    // support for per-set schemes is a follow-up.
+    { name: "Bench Press (Barbell)", baseKg: 60, baseReps: 8, sets: 3, key: "bench", increment: { step: 2.5 },
+      note: "Block focus lift. Top set first: 4-6 reps at ~85%, then the two prescribed back-off sets. Flat, replacing decline — decline was the only barbell chest press and is the shortest-ROM angle. Weeks 1-2 re-baseline: there is one flat data point (81.3 e1RM, April) against a decline peak of 90, so start here and let the load find itself." },
+    { name: "Seated Row (Machine)", baseKg: 50, baseReps: 10, sets: 4, key: "seated_row", increment: { step: 5 } },
+    { name: "Incline Bench Press (Dumbbell)", baseKg: 40, baseReps: 10, sets: 3, key: "incline_db", increment: { step: 4 } },
+    { name: "Lat Pulldown (Cable)", baseKg: 50, baseReps: 10, sets: 4, key: "lat_pulldown", increment: { step: 5 } },
+    { name: "Face Pull (Cable)", baseKg: 25, baseReps: 15, sets: 3, key: "face_pull", increment: { step: 4.5 }, superset: "A" },
+    { name: "Triceps Pushdown (Cable - Straight Bar)", baseKg: 22.5, baseReps: 10, sets: 3, key: "triceps_pushdown", increment: { step: 2.5 }, superset: "A" },
+    { name: "Hammer Curl (Dumbbell)", baseKg: 24, baseReps: 10, sets: 3, key: "hammer_curl", increment: { step: 4 } },
+  ],
+  "Lower B": [
+    { name: "Deadlift (Barbell)", baseKg: 77.5, baseReps: 6, sets: 3, key: "deadlift", increment: { step: 2.5 },
+      note: "FULL range from the floor, unlike the shin-level partials logged before 2026-08-20. Expect this to feel harder at a lighter load — the floor break is the part that was being skipped. Re-baselined from 90 kg; the historical 121 e1RM is a partial-ROM number." },
+    { name: "Leg Press", baseKg: 140, baseReps: 10, sets: 3, key: "leg_press", increment: { step: 5 } },
+    { name: "Hip Thrust (Machine)", baseKg: 60, baseReps: 10, sets: 3, key: "hip_thrust_machine", increment: { step: 2.5 },
+      note: "Restored 2026-08-20 — was in the template but discovery had dropped it from every prescription after 3 sessions in June." },
+    { name: "Seated Leg Curl (Machine)", baseKg: 41, baseReps: 10, sets: 3, key: "leg_curl", increment: { step: 5, intermediate: 2.3 } },
+    { name: "Seated Calf Raise (Machine)", baseKg: 50, baseReps: 10, sets: 3, key: "calf", increment: { step: 5 }, note: "Pause 1s at full stretch." },
+    { name: "Back Extension", baseReps: 10, sets: 3, key: "back_ext" },
+  ],
+  "Upper B": [
+    // The agreed drop-day when a week runs hot (padel twice, or HRV below
+    // baseline). Its work is the most duplicated elsewhere in the week.
+    { name: "Overhead Press (Barbell)", baseKg: 35, baseReps: 8, sets: 3, key: "ohp", increment: { step: 5 },
+      note: "Anchors its own day now. It used to sit BETWEEN the two chest presses, pre-fatiguing front delts and triceps for the incline — which is part of why incline DB stalled at 40 kg." },
+    { name: "Chest-Supported Row (Dumbbell)", baseKg: 40, baseReps: 10, sets: 4, key: "cs_row", increment: { step: 4 },
+      note: "Second horizontal row. Chest supported, so the lower back contributes nothing two days after the deadlift." },
+    { name: "Chest Fly", baseKg: 32, baseReps: 10, sets: 3, key: "chest_fly", increment: { step: 5, intermediate: 2.3 }, superset: "A" },
+    { name: "Rear Delt Fly", baseKg: 29.3, baseReps: 10, sets: 3, key: "rear_delt_fly", increment: { step: 5, intermediate: 2.3 }, superset: "A" },
+    { name: "Lateral Raise (Dumbbell)", baseKg: 20, baseReps: 10, sets: 3, key: "lateral_raise", increment: { step: 4 }, superset: "B" },
+    { name: "Overhead Triceps Extension (Cable)", baseKg: 20, baseReps: 10, sets: 3, key: "oh_triceps", increment: { step: 4.5 }, superset: "B" },
+    { name: "Bicep Curl (Dumbbell)", baseKg: 24, baseReps: 10, sets: 3, key: "bicep_curl", increment: { step: 4 } },
+    { name: "Reverse Crunch", baseReps: 10, sets: 2, key: "reverse_crunch", note: "Supine, arms at sides, knees to chest with no momentum", video_url: "https://www.youtube.com/watch?v=fhrkw1aaP8k" },
+  ],
+
+  // ── Legacy body-part split (pre-2026-08-20) ────────────────────────────────
+  // Retained: 73 historical workouts carry these `type` strings, and discovery,
+  // adherence and the workout debrief all resolve against them. Mobility is
+  // still live as an ad-hoc session.
   Chest: [
     { name: "Push Up", warmup: true, reps: "12×3" },
     { name: "Decline Bench Press (Barbell)", baseKg: 60, baseReps: 8, sets: 3, key: "decline_bench", increment: { step: 2.5 } },
@@ -140,12 +209,39 @@ export const SESSION_PLANS: Record<string, PlannedExercise[]> = {
   ],
 };
 
+/**
+ * Upper/Lower over four days, adopted 2026-08-20. Replaces the five-day
+ * body-part split (Mon Legs / Tue Chest / Wed Mobility / Thu Back / Fri Arms).
+ *
+ * The split changed because PLANNED days were never the constraint — attendance
+ * was. Actual cadence over Apr-Aug 2026 was 3.3 sessions/wk against a 5-day
+ * plan, and under a body-part split hitting 3 of 5 means two muscle groups get
+ * ZERO that week. That is exactly how lats reached 6.5 sets/wk (below MEV) and
+ * how the deadlift went eight weeks with two sessions: Back day was the one
+ * that got dropped, and it carried both. Upper/Lower makes a missed day cost a
+ * muscle HALF its volume instead of all of it, and gives two exposures a week
+ * at full attendance instead of one.
+ *
+ * Upper A deliberately carries the pull volume, not Upper B. Upper B is the
+ * agreed drop-day when a week runs hot, and the first draft had it holding most
+ * of the rows — so dropping it would have returned the week to a ~1.7 push:pull
+ * ratio and silently undone the whole correction. As laid out, the week is
+ * 0.88 push:pull intact and 0.64 with Upper B dropped.
+ *
+ * Saturday's Z1-Z2 ride is NOT a session_plan value: endurance work lives in
+ * training_weeks.endurance_session_plan (keyed 0=Sun..6=Sat), which is the seam
+ * the endurance pillar, the morning brief and adherence already read.
+ *
+ * The old Chest/Legs/Back/Arms SESSION_PLANS entries are retained below — 73
+ * historical workouts carry those `type` strings, and discovery, adherence and
+ * the debrief all resolve against them.
+ */
 export const WEEKLY_SESSIONS: Record<string, string> = {
-  Monday: "Legs",
-  Tuesday: "Chest",
-  Wednesday: "Mobility",
-  Thursday: "Back",
-  Friday: "Arms",
+  Monday: "Lower A",
+  Tuesday: "Upper A",
+  Wednesday: "REST",
+  Thursday: "Lower B",
+  Friday: "Upper B",
   Saturday: "REST",
   Sunday: "REST",
 };

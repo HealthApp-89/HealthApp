@@ -997,7 +997,8 @@ export type PlanPayload = {
     sessions_per_week: number;
     day_pattern: { [weekday: string]: string };
     template_session_types: Array<
-      "Chest" | "Legs" | "Back" | "Mobility" | "REST"
+      | "Lower A" | "Upper A" | "Lower B" | "Upper B"
+      | "Chest" | "Legs" | "Back" | "Arms" | "Mobility" | "REST"
     >;
     weekly_volume_targets: {
       [primary_lift: string]: { reps_per_week: number; sets_per_week: number };
