@@ -11,8 +11,20 @@
 // They are the same fact seen from two sides, which is why one constant drives
 // both and neither is allowed to re-declare it.
 
-/** Seconds between racking the bar and the stop press actually registering. */
-export const PHONE_LAG_SECONDS = 5;
+/** Seconds between racking the bar and the stop press actually registering.
+ *
+ *  Calibrated 2026-08-20 against Garmin's independently-derived work time
+ *  (wrist accelerometry set detection) over two full sessions:
+ *
+ *    Aug 18 Legs   garmin 786s  logger 752s  20 sets  -1.7s/set
+ *    Aug 19 Chest  garmin 744s  logger 727s  21 sets  -0.8s/set
+ *
+ *  Σours - Σgarmin = n x (trueLag - PHONE_LAG_SECONDS) puts the real lag at
+ *  ~3.3-4.2s once the rounding loss below is netted out. Was 5; the systematic
+ *  under-report that produced is worth about a second a set. Two independent
+ *  measurement systems agreeing inside 4% is the reason to trust this number
+ *  rather than raise it again on a hunch — re-derive it, don't guess it. */
+export const PHONE_LAG_SECONDS = 4;
 
 /** Walk-up countdown after START. Deliberately NOT counted as work. */
 export const COUNTDOWN_SECONDS = 5;
@@ -72,10 +84,17 @@ export function includesSet(list: SetRef[], ref: SetRef | null): boolean {
 }
 
 /** Honest time under load. Floored at 1 so a very short set cannot go
- *  negative once the lag is deducted. Truncates rather than rounds — a set is
- *  not credited with a second it did not complete. */
+ *  negative once the lag is deducted.
+ *
+ *  ROUNDS rather than truncates. This used to floor, on the reasoning that a
+ *  set should not be credited with a second it did not complete — which is
+ *  right about a single set and wrong about a session. Truncation only ever
+ *  errs downward, so it compounds: ~0.5s per set of guaranteed one-directional
+ *  loss, ~10s across a session, and it lands hardest on the short sets where
+ *  it is the largest share. Rounding is unbiased, which is what a quantity
+ *  that gets SUMMED needs to be. */
 export function workSecondsFor(startAnchorMs: number, stopPressMs: number): number {
-  const raw = Math.floor((stopPressMs - startAnchorMs) / 1000) - PHONE_LAG_SECONDS;
+  const raw = Math.round((stopPressMs - startAnchorMs) / 1000) - PHONE_LAG_SECONDS;
   return Math.max(1, raw);
 }
 
