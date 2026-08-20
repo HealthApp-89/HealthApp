@@ -60,6 +60,16 @@ export type PlannedExercise = {
    *  dissolves the group, and removing a member leaves the survivor solo, so
    *  there is no invalid state to validate against. */
   superset?: string;
+  /** true → performed ONE LIMB AT A TIME, so `reps` / `baseReps` are PER SIDE
+   *  and one set is one round of both sides. Carrier copy of the canonical
+   *  `LibraryExercise.unilateral` — duplicated here for the same reason
+   *  `increment` is: the plan flows through session_prescriptions into the
+   *  logger, which must label the rep field "reps/side" without a library
+   *  round-trip (and some planned exercises aren't in the library at all).
+   *
+   *  Total mechanical work is kg × reps × 2; mechanical-load.ts is the only
+   *  consumer that sums total work and so the only one that reads this. */
+  unilateral?: boolean;
 };
 
 // NOTE: `intermediate` on Chest Fly (2.3kg) and Seated Leg Curl (2.3kg) is a
@@ -76,9 +86,9 @@ export const SESSION_PLANS: Record<string, PlannedExercise[]> = {
     { name: "Decline Bench Press (Barbell)", baseKg: 60, baseReps: 8, sets: 3, key: "decline_bench", increment: { step: 2.5 } },
     { name: "Overhead Press (Barbell)", baseKg: 30, baseReps: 7, sets: 3, key: "ohp", increment: { step: 5 } },
     { name: "Incline Bench Press (Dumbbell)", baseKg: 32, baseReps: 11, sets: 3, key: "incline_db", increment: { step: 4 } },
-    { name: "Chest Fly", baseKg: 22, baseReps: 15, sets: 3, key: "chest_fly", increment: { step: 5, intermediate: 2.3 } },
-    { name: "Lateral Raise (Dumbbell)", baseKg: 12, baseReps: 12, sets: 4, key: "lateral_raise", increment: { step: 4 } },
-    { name: "Triceps Pushdown (Cable)", baseKg: 23, baseReps: 15, sets: 3, key: "triceps", increment: { step: 2.5 } },
+    { name: "Chest Fly", baseKg: 22, baseReps: 10, sets: 3, key: "chest_fly", increment: { step: 5, intermediate: 2.3 } },
+    { name: "Lateral Raise (Dumbbell)", baseKg: 12, baseReps: 10, sets: 4, key: "lateral_raise", increment: { step: 4 } },
+    { name: "Triceps Pushdown (Cable)", baseKg: 23, baseReps: 10, sets: 3, key: "triceps", increment: { step: 2.5 } },
     { name: "Dead Bug", baseReps: 6, sets: 2, key: "dead_bug", note: "Per side — arms relaxed at sides, opposite leg lowers, lumbar pressed to floor", video_url: "https://www.youtube.com/watch?v=bxn9FBrt4-A" },
   ],
   Legs: [
@@ -87,27 +97,30 @@ export const SESSION_PLANS: Record<string, PlannedExercise[]> = {
     { name: "Hip Thrust (Machine)", baseKg: 60, baseReps: 10, sets: 3, key: "hip_thrust_machine", note: "baseKg is a starting estimate — confirm on first session", increment: { step: 2.5 } },
     { name: "Leg Extension (Machine)", baseKg: 31, baseReps: 12, sets: 3, key: "leg_ext", increment: { step: 5, intermediate: 2.5 } },
     { name: "Seated Leg Curl (Machine)", baseKg: 30, baseReps: 12, sets: 3, key: "leg_curl", increment: { step: 5, intermediate: 2.3 } },
-    { name: "Hip Abductor (Machine)", baseKg: 56, baseReps: 15, sets: 3, key: "abductor", increment: { step: 5, intermediate: 2 } },
-    { name: "Seated Calf Raise", baseKg: 40, baseReps: 15, sets: 3, key: "calf", increment: { step: 5 } },
+    { name: "Hip Abductor (Machine)", baseKg: 56, baseReps: 10, sets: 3, key: "abductor", increment: { step: 5, intermediate: 2 } },
+    { name: "Seated Calf Raise", baseKg: 40, baseReps: 10, sets: 3, key: "calf", increment: { step: 5 } },
   ],
   Back: [
     { name: "Deadlift (Barbell)", baseKg: 82.5, baseReps: 6, sets: 3, key: "deadlift", increment: { step: 2.5 } },
     { name: "Lat Pulldown (Cable)", baseKg: 45, baseReps: 10, sets: 4, key: "lat_pulldown", increment: { step: 5 } },
     { name: "Seated Row (Machine)", baseKg: 38, baseReps: 12, sets: 3, key: "seated_row", increment: { step: 5 } },
     { name: "Pullover (Dumbbell)", baseKg: 18, baseReps: 12, sets: 3, key: "pullover", increment: { step: 2 } },
-    { name: "Shrug (Barbell)", baseKg: 45, baseReps: 15, sets: 3, key: "shrug", increment: { step: 2.5 } },
+    { name: "Shrug (Barbell)", baseKg: 45, baseReps: 10, sets: 3, key: "shrug", increment: { step: 2.5 } },
     { name: "Back Extension", reps: "10×3", key: "back_ext" },
   ],
   Arms: [
-    { name: "Arnold Press (Dumbbell)", baseKg: 24, baseReps: 15, sets: 3, key: "arnold_press", increment: { step: 4 }, superset: "A" },
-    { name: "Bicep Curl (Dumbbell)", baseKg: 20, baseReps: 15, sets: 3, key: "bicep_curl", increment: { step: 4 }, superset: "A" },
-    { name: "Front Raise (Dumbbell)", baseKg: 16, baseReps: 15, sets: 3, key: "front_raise", increment: { step: 4 }, superset: "B" },
-    { name: "Hammer Curl (Dumbbell)", baseKg: 20, baseReps: 15, sets: 3, key: "hammer_curl", increment: { step: 4 }, superset: "B" },
-    { name: "Lateral Raise (Dumbbell)", baseKg: 12, baseReps: 15, sets: 3, key: "lateral_raise", increment: { step: 4 }, superset: "C" },
-    { name: "Triceps Pushdown (Cable - Straight Bar)", baseKg: 22.5, baseReps: 12, sets: 3, key: "triceps_pushdown", increment: { step: 2.5 }, superset: "C" },
-    { name: "Cable External Rotation", baseKg: 9, baseReps: 28, sets: 3, key: "cable_ext_rot", increment: { step: 4.5 } },
-    { name: "Cable Internal Rotation", baseKg: 18, baseReps: 30, sets: 3, key: "cable_int_rot", increment: { step: 4.5 } },
-    { name: "Rear Delt Fly", baseKg: 25, baseReps: 15, sets: 3, key: "rear_delt_fly", increment: { step: 5, intermediate: 2.3 } },
+    { name: "Arnold Press (Dumbbell)", baseKg: 24, baseReps: 10, sets: 3, key: "arnold_press", increment: { step: 4 }, superset: "A" },
+    { name: "Bicep Curl (Dumbbell)", baseKg: 20, baseReps: 10, sets: 3, key: "bicep_curl", increment: { step: 4 }, superset: "A" },
+    { name: "Front Raise (Dumbbell)", baseKg: 16, baseReps: 10, sets: 3, key: "front_raise", increment: { step: 4 }, superset: "B" },
+    { name: "Hammer Curl (Dumbbell)", baseKg: 20, baseReps: 10, sets: 3, key: "hammer_curl", increment: { step: 4 }, superset: "B" },
+    { name: "Lateral Raise (Dumbbell)", baseKg: 12, baseReps: 10, sets: 3, key: "lateral_raise", increment: { step: 4 }, superset: "C" },
+    { name: "Triceps Pushdown (Cable - Straight Bar)", baseKg: 22.5, baseReps: 10, sets: 3, key: "triceps_pushdown", increment: { step: 2.5 }, superset: "C" },
+    // Rotations: `unilateral` — baseReps is PER SIDE. 15/side is the same work
+    // the athlete was already doing; the old 28/30 anchors were both sides
+    // summed into one number, which the engine read as a single 30-rep set.
+    { name: "Cable External Rotation", baseKg: 9, baseReps: 15, sets: 3, key: "cable_ext_rot", increment: { step: 4.5 }, unilateral: true },
+    { name: "Cable Internal Rotation", baseKg: 18, baseReps: 15, sets: 3, key: "cable_int_rot", increment: { step: 4.5 }, unilateral: true },
+    { name: "Rear Delt Fly", baseKg: 25, baseReps: 10, sets: 3, key: "rear_delt_fly", increment: { step: 5, intermediate: 2.3 } },
     { name: "Reverse Crunch", baseReps: 10, sets: 2, key: "reverse_crunch", note: "Supine, arms at sides, knees to chest with no momentum", video_url: "https://www.youtube.com/watch?v=fhrkw1aaP8k" },
   ],
   Mobility: [

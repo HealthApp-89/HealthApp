@@ -83,6 +83,19 @@ export type LibraryExercise = {
    *          single-arm row, goblet squat). Total system load = per-DB. Smallest
    *          achievable total-load jump = increment.step (2 kg). */
   pairedDb?: boolean;
+  /** true → the exercise is performed ONE LIMB AT A TIME (single-arm, single-leg).
+   *
+   *  Changes what a rep means, not what a set means:
+   *   - `reps` / `baseReps` are PER SIDE. "15" means 15 each side.
+   *   - One SET is one round of both sides, so per-muscle set counting
+   *     (muscle-volume.ts) is already correct and needs no adjustment.
+   *   - Total mechanical work is kg × reps × 2 — see mechanical-load.ts, the
+   *     only consumer that sums total work and therefore the only one that
+   *     has to know about this flag.
+   *
+   *  Orthogonal to `pairedDb`, which models one-vs-two implements for LOAD.
+   *  A single-arm dumbbell row is `pairedDb: false, unilateral: true`. */
+  unilateral?: boolean;
   /** Alternative display names used in SESSION_PLANS or by the user. Matched
    *  case-insensitively by resolveExercise so the double-progression rule can
    *  find the correct loadability for exercises whose plan name differs from
@@ -650,7 +663,8 @@ export const EXERCISE_LIBRARY: readonly LibraryExercise[] = [
     role: "accessory",
     increment: { step: 4.5 },
     pairedDb: false,
-    notes: "Athlete's current Arms day rotator-cuff external-rotation. Unilateral; step matches the cable stack used (SESSION_PLANS key: cable_ext_rot).",
+    unilateral: true,
+    notes: "Athlete's current Arms day rotator-cuff external-rotation. Unilateral; step matches the cable stack used (SESSION_PLANS key: cable_ext_rot). External rotation is structurally weaker than internal (infraspinatus + teres minor vs subscapularis + pec + lat + teres major) — a lighter load here is expected, not an error.",
   },
   {
     id: "cable_internal_rotation",
@@ -666,7 +680,8 @@ export const EXERCISE_LIBRARY: readonly LibraryExercise[] = [
     role: "accessory",
     increment: { step: 4.5 },
     pairedDb: false,
-    notes: "Athlete's current Arms day rotator-cuff internal-rotation. Unilateral; step matches the cable stack used (SESSION_PLANS key: cable_int_rot).",
+    unilateral: true,
+    notes: "Athlete's current Arms day rotator-cuff internal-rotation. Unilateral; step matches the cable stack used (SESSION_PLANS key: cable_int_rot). primaryMuscle is RearDelts only because TargetedMuscleGroup has no front-delt bucket — the anterior attribution lives in exercise-muscles.ts, which maps this to FrontDelts.",
   },
 
   // ── PULL — Traps ───────────────────────────────────────────────────────────
@@ -837,7 +852,24 @@ export const EXERCISE_LIBRARY: readonly LibraryExercise[] = [
     loadability: "moderate",
     role: "accessory",
     increment: { step: 5 },
-    notes: "Athlete's current Legs day quad volume.",
+    notes: "Athlete's current Legs day quad volume. Bilateral — baseKg is the total load pressed by both legs. Historical rows logged as \"Leg Press Single Leg\" were this exercise under a stale title (the athlete switched machines and never renamed it); scripts/migrate-unilateral-reps.mjs renamed them here.",
+  },
+  {
+    id: "leg_press_single_leg",
+    name: "Leg Press (Single Leg)",
+    pattern: "squat",
+    primaryMuscle: "Quads",
+    secondaryMuscles: ["Glutes"],
+    equipment: ["machine"],
+    stability: "low",
+    romBias: "midrange",
+    skill: "low",
+    jointStress: ["knee", "hip"],
+    loadability: "moderate",
+    role: "accessory",
+    increment: { step: 5 },
+    unilateral: true,
+    notes: "True single-leg press: reps are PER SIDE and kg is the load moved by one leg. Deliberately NOT aliased to \"Leg Press Single Leg\" — that string denotes bilateral work in this athlete's history and was migrated to `leg_press`. Not currently programmed; available for future use.",
   },
   {
     id: "hack_squat",
