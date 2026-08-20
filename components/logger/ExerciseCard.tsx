@@ -232,8 +232,11 @@ function ExerciseCardInner({
         <tbody>
           {exercise.sets.map((s, i) => {
             const isActiveRow = activeSetIndex === i;
+            // Top sets are excluded alongside warmups so the BACK-OFF sets
+            // still read 1, 2, 3. The top set renders as "T" rather than a
+            // number, so counting it would leave the card with no set 1.
             const workingSetNumber =
-              exercise.sets.slice(0, i).filter((x) => !x.warmup).length + 1;
+              exercise.sets.slice(0, i).filter((x) => !x.warmup && !x.is_top_set).length + 1;
             return (
             <Fragment key={i}>
               {pendingEntry && pendingEntry.setIndex === i ? (

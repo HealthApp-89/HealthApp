@@ -36,6 +36,13 @@ export function maintenanceLoadFor(
     if (s.performed_on < cutoff) return false;
     if (s.exercise_name !== exerciseNameOrKey && s.exercise_key !== exerciseNameOrKey) return false;
     if (s.warmup) return false;
+    // Heavy top set (migration 0059). Excluded because this function returns a
+    // MAX and a top set is heavier by design — leaving it in would make it the
+    // next working load, so the back-offs would ratchet up to the top-set
+    // weight and the scheme would eat itself within two cycles. Note this is
+    // the opposite treatment to e1RM comparison, which deliberately KEEPS top
+    // sets (see current-comparison-value.ts).
+    if (s.is_top_set) return false;
     if (s.failure) return false;
     if (s.reps < MIN_REPS_FOR_BASELINE) return false;
     return true;

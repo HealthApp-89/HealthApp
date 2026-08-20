@@ -16,6 +16,8 @@ export type WorkoutForEditSet = {
   /** Honest time under load in seconds, phone lag already deducted. Null
    *  when the set was not timed. */
   work_seconds: number | null;
+  /** Heavy top set (migration 0059). false for pre-0059 rows and imports. */
+  is_top_set?: boolean | null;
 };
 
 export type WorkoutForEditExercise = {
@@ -40,7 +42,7 @@ export type WorkoutForEdit = {
 };
 
 const QUERY_COLS =
-  "id, user_id, date, type, duration_min, started_at, external_id, source, created_at, exercises(id, name, position, superset_group, exercise_sets(set_index, kg, reps, duration_seconds, warmup, failure, rest_seconds_actual, rir, started_at, work_seconds))";
+  "id, user_id, date, type, duration_min, started_at, external_id, source, created_at, exercises(id, name, position, superset_group, exercise_sets(set_index, kg, reps, duration_seconds, warmup, failure, rest_seconds_actual, rir, started_at, work_seconds, is_top_set))";
 
 type RawSet = WorkoutForEditSet;
 type RawExercise = {
