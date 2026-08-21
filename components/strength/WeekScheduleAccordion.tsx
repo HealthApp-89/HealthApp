@@ -22,6 +22,11 @@ export type WeekDayEntry = {
   baselineExercises: PlannedExercise[];
   dayClass: DayClass;
   loggedWorkout?: TodaySessionWorkout | null;
+  /** Endurance session prescribed for this day, if any. Lives in a SEPARATE
+   *  column from session_plan (training_weeks.endurance_session_plan, keyed
+   *  0=Sun..6=Sat), which is why a scheduled ride used to render as a bare
+   *  "Rest day" here while the morning brief showed it correctly. */
+  endurance?: { sport: string; duration_min: number; description?: string } | null;
 };
 
 type Props = {
@@ -89,6 +94,7 @@ export function WeekScheduleAccordion({
           baselineExercises={d.baselineExercises}
           dayClass={d.dayClass}
           loggedWorkout={d.loggedWorkout ?? null}
+          endurance={d.endurance ?? null}
           isExpanded={expanded.has(d.weekdayShort)}
           onToggle={() => toggle(d.weekdayShort)}
           weekOverrides={weekOverrides}
