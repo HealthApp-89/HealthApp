@@ -94,6 +94,13 @@ export function StrengthScheduleClient({ userId }: Props) {
     const prescriptions = trainingWeek?.session_prescriptions ?? null;
 
     const loggedDates = new Set(workouts.map((w) => w.date));
+    // Endurance lives in its own column keyed 0=Sun..6=Sat (Date#getDay), NOT
+    // in session_plan — endurance work is not a strength session type and has
+    // no SESSION_PLANS entry. Reading it here is what stops a scheduled ride
+    // rendering as a bare "Rest day".
+    const endurancePlan = (trainingWeek?.endurance_session_plan ?? null) as
+      | Record<string, { sport: string; duration_min: number; description?: string }>
+      | null;
 
     return WEEKDAY_ORDER.map<WeekDayEntry>((wd, i) => {
       const date = addDays(weekStart, i);
@@ -118,6 +125,9 @@ export function StrengthScheduleClient({ userId }: Props) {
       const baselineExercises = sessionType === "REST"
         ? []
         : getEffectiveSessionPlan(sessionType, weekdayLong, prescriptions, overrides, userTemplate, null);
+
+      const endurance =
+        endurancePlan?.[String(new Date(`${date}T00:00:00Z`).getUTCDay())] ?? null;
 
       const isToday = date === todayIso;
       const isPast = date < todayIso;
@@ -160,6 +170,7 @@ export function StrengthScheduleClient({ userId }: Props) {
         baselineExercises,
         dayClass,
         loggedWorkout,
+        endurance,
       };
     });
   }, [trainingWeek, workouts, templatesMap, weekStart, todayIso]);

@@ -25,6 +25,8 @@ type Props = {
   weekdayLong: string;
   date: string;
   sessionType: string;
+  /** Endurance session for this day, from training_weeks.endurance_session_plan. */
+  endurance?: { sport: string; duration_min: number; description?: string } | null;
   exercises: PlannedExercise[];
   /** Engine-resolved plan WITHOUT the manual-edit layer (DayEditSheet baseline). */
   baselineExercises: PlannedExercise[];
@@ -70,6 +72,7 @@ export function ScheduleDayRow({
   weekdayLong,
   date,
   sessionType,
+  endurance = null,
   exercises,
   baselineExercises,
   dayClass,
@@ -172,8 +175,19 @@ export function ScheduleDayRow({
             </span>
           </div>
 
-          <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: COLOR.textStrong }}>
-            {isRest ? "Rest day" : sessionType}
+          {/* A rest day carrying an endurance session is not expandable — the
+              chevron and the detail body are both gated on !isRest — so the
+              ride is shown inline rather than hidden behind a toggle that
+              does not exist for this row. */}
+          <span style={{ flex: 1, display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+            <span style={{ fontSize: 14, fontWeight: 600, color: COLOR.textStrong }}>
+              {isRest ? (endurance ? "Rest day \u00b7 ride" : "Rest day") : sessionType}
+            </span>
+            {endurance && (
+              <span style={{ fontSize: 11, color: COLOR.textMuted, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                {endurance.duration_min} min {endurance.sport}
+              </span>
+            )}
           </span>
 
           <span
